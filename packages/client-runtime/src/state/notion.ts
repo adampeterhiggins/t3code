@@ -43,6 +43,12 @@ export function createNotionEnvironmentAtoms<R, E>(
       label: "environment-data:notion:get-page",
       tag: WS_METHODS.notionGetPage,
     }),
+    // The same read for a link's hover card, so hovering it again is instant.
+    page: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:notion:page",
+      tag: WS_METHODS.notionGetPage,
+      staleTimeMs: 5 * 60_000,
+    }),
     // Every thread group's linked Notion page in the environment.
     threadLinks: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
       label: "environment-data:notion:thread-links",

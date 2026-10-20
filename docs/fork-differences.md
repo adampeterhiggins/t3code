@@ -982,8 +982,9 @@ limits apply. Disabling the trigger or integration stops new launches. Code:
 
 A bare Slack message link left in any rendered message on web or desktop (an agent's reply, a
 paste-as-text, a message sent from mobile) shows `#channel · Author` once `slack.getLinkPreview`
-reads it, with the message's first line on hover. It shows its URL while Slack is off, disconnected,
-or the read fails. The server keeps each preview as a file under the caches directory
+reads it, and hovering any Slack message link shows the card a Slack chip shows (see
+[Links in messages preview like chips](#links-in-messages-preview-like-chips)). It shows its URL
+while Slack is off, disconnected, or the read fails. The server keeps each preview as a file under the caches directory
 (`slack-link-previews`), so a link is read from Slack once; it holds no reply count, since that
 would go stale. Mobile shows the URL.
 
@@ -1361,17 +1362,30 @@ web, desktop, or mobile, shows its short name instead of the URL: `owner/repo#16
 request or GitHub issue (with `L4-L14` appended for a link to lines), `ENG-123` for a Linear issue,
 `owner/repo` for a repository, and `owner/repo@<ref>` for a release, branch, tag, or commit (a
 `/tree/` link whose ref has a slash keeps its URL, since it may be a folder). It still opens,
-previews, and copies as the full URL. Link text the writer chose is left alone. On web and desktop,
-hovering any GitHub release, branch, tag, or commit link in a message reads it and shows its name,
-commit, author, and date. A bare Slack link is not one of these: it names the message only when
-Slack is on and connected (see [Slack messages and threads](#slack-messages-and-threads)).
+previews, and copies as the full URL. Link text the writer chose is left alone. A bare Slack link
+is not one of these: it names the message only when Slack is on and connected (see
+[Slack messages and threads](#slack-messages-and-threads)).
 
 Code: `packages/shared/src/composerObjectLinks.ts`,
 `apps/web/src/components/chat/useResolveComposerObjectLink.ts`, and `convertObjectLinks` in
 `apps/web/src/components/chat/ChatComposer.tsx`; GitHub refs are read in
-`apps/server/src/githubIssues/gitHubRefs.ts` and previewed by
-`apps/web/src/components/GitHubRefLinkPreview.tsx`. User guide:
+`apps/server/src/githubIssues/gitHubRefs.ts`. User guide:
 [composer.md](./user/composer.md#context-in-your-message).
+
+## Links in messages preview like chips
+
+On web and desktop, hovering a link in any message (an agent's reply included, whatever its link
+text) to something a chip could hold shows the card that chip would show. That covers Linear and
+GitHub issues, GitHub releases, branches, tags and commits, repositories, Notion pages, Granola
+notes, Slack and Discord messages, and T3 Code prompt links. The link is read when it is hovered,
+through the same read and record a pasted copy of it would become, so an agent's link and your
+chip for the same thing look alike. A link whose integration is turned off, or that can't be read,
+shows its URL. Pull request and thread links keep their own previews. Mobile has no hover.
+
+The composer, sent-message chips, and these links take each kind's icon, label, and card from one
+place: [`linkedObjectPresentation.tsx`](../apps/web/src/components/linkedObjectPresentation.tsx).
+Links are read by
+[`LinkedObjectLinkPreview.tsx`](../apps/web/src/components/chat/LinkedObjectLinkPreview.tsx).
 
 ## Numeric pull request references include linked repositories
 
@@ -1928,8 +1942,9 @@ header and mobile tab switcher show a chip with open, change, and unlink. Linkin
 client-guarded RPC that needs the orchestration-operate grant, and unlinking stays available with
 the integration turned off.
 
-A bare note link in a rendered message on web or desktop reads as the meeting's title, with its
-date and participants on hover, once `granola.getNoteSummary` reads it. The server keeps each
+A bare note link in a rendered message on web or desktop reads as the meeting's title once
+`granola.getNoteSummary` reads it, and hovering it shows the note's chip card (see
+[Links in messages preview like chips](#links-in-messages-preview-like-chips)). The server keeps each
 summary it reads in memory, so a link is read from Granola once per server run. It reads
 "Granola note" while Granola is off, disconnected, or the read fails.
 

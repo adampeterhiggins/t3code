@@ -47,6 +47,12 @@ export function createSlackEnvironmentAtoms<R, E>(
       label: "environment-data:slack:get-thread",
       tag: WS_METHODS.slackGetThread,
     }),
+    // The same read for a link's hover card, so hovering it again is instant.
+    thread: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:slack:thread",
+      tag: WS_METHODS.slackGetThread,
+      staleTimeMs: 5 * 60_000,
+    }),
     // Keyed by link. The server keeps each preview, so one read per session is enough.
     linkPreview: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:slack:link-preview",

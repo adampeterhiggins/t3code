@@ -64,8 +64,8 @@ The thread is copied when you attach it, so later replies don't change a message
 sent. Chips in an unsent draft don't survive a reload; attach the message again.
 
 A Slack link that stays a link in a message, such as one in an agent's reply, shows the channel and
-author instead of its URL on web and desktop while Slack is connected. Hover it for the message's
-first line.
+author instead of its URL on web and desktop while Slack is connected. Hover it to read the thread,
+as you would on its chip.
 
 If T3 Code can't read a pasted link, it becomes a broken-link chip you can retry. The first time
 that happens because Slack isn't connected, a notice says so.

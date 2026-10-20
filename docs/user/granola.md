@@ -31,7 +31,7 @@ The chat header shows the meeting's title; on mobile the chip sits beside the ta
 
 ## Links in messages
 
-A Granola note link left as a link in a message, such as one an agent writes in its reply, shows the meeting's title on web and desktop. Hover it to see the date and who attended.
+A Granola note link left as a link in a message, such as one an agent writes in its reply, shows the meeting's title on web and desktop. Hover it to see the note, as you would on its chip.
 
 ## Turn off or disconnect
 

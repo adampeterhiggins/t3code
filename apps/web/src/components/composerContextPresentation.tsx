@@ -6,7 +6,6 @@ import type {
   UnreadLinkContextRecord,
 } from "@t3tools/contracts";
 import ChatMarkdown from "./ChatMarkdown";
-import { GitHubRefIcon, gitHubRefKindLabel } from "./gitHubRefPresentation";
 import { ReviewCommentCard } from "./ReviewCommentCard";
 import type {
   CheckoutContextRecord,
@@ -25,14 +24,11 @@ import { filePreviewKind } from "@t3tools/shared/filePreview";
 import { AttachmentQuickLookPreview } from "./files/AttachmentQuickLook";
 import { videoMimeType } from "@t3tools/shared/video";
 import {
-  FolderGit2Icon,
   FolderIcon,
   MessageCircleIcon,
-  MessageSquareTextIcon,
   MessagesSquareIcon,
   MousePointerClickIcon,
 } from "lucide-react";
-import { DiscordIcon, GitHubIcon, GranolaIcon, LinearIcon, NotionIcon, SlackIcon } from "./Icons";
 import { createContext, type MouseEvent, type ReactElement, type ReactNode, use } from "react";
 import type { EnvironmentId } from "@t3tools/contracts";
 
@@ -40,7 +36,6 @@ import type { ComposerFileAttachment, ComposerImageAttachment } from "~/composer
 import type { IssueContextRecord } from "~/issueContextStore";
 import { composerFileNeedsReattach } from "~/composerDraftStore";
 import { useTheme } from "~/hooks/useTheme";
-import { useLinearLinkClickHandler } from "~/browser/useLinearLinkClickHandler";
 import {
   formatAttachmentUploadProgress,
   type AttachmentUploadState,
@@ -63,10 +58,20 @@ import type { TerminalContextDraft } from "~/lib/terminalContext";
 import type { ReviewCommentContext } from "~/reviewCommentContext";
 import { ComposerPendingTerminalContextChip } from "./chat/ComposerPendingTerminalContexts";
 import { ThreadContextChip } from "./ThreadContextChip";
+import {
+  isLinkedObjectContextKind,
+  LINKED_OBJECT_CONTEXT_KINDS,
+  LinkedObjectDetails,
+  linkedObjectIcon,
+  linkedObjectKindLabel,
+  type LinkedObjectContextKind,
+  type LinkedObjectContextRecord,
+} from "./linkedObjectPresentation";
 import { SubagentContextChip } from "./chat/SubagentContextChip";
 import {
   createContextPresentationRegistry,
   type ContextPresentationCapability,
+  type ContextPresentationHandler,
 } from "./contextPresentationRegistry";
 import type { ContextChipKind } from "./ContextChip";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
@@ -78,15 +83,6 @@ import {
   ImageAttachmentPreview,
   ImageChipButton,
   CheckoutDetails,
-  GitHubIssueDetails,
-  GitHubRefDetails,
-  LinearIssueDetails,
-  RepositoryDetails,
-  DiscordThreadDetails,
-  SlackThreadDetails,
-  NotionPageDetails,
-  GranolaNoteDetails,
-  PromptLinkDetails,
   PULL_REQUEST_CHIP_KINDS,
   PullRequestChip,
   ThreadTabSummaryDetails,
@@ -467,6 +463,12 @@ function UnresolvedContextChip(props: { label: string }) {
   );
 }
 
+function isLinkedObjectEntry(
+  entry: ComposerDraftContextRecord,
+): entry is Extract<ComposerDraftContextRecord, { kind: LinkedObjectContextKind }> {
+  return isLinkedObjectContextKind(entry.kind);
+}
+
 interface ComposerContextRenderContext {
   label: string;
 }
@@ -579,74 +581,31 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
           <UnresolvedContextChip label={context.label} />
         ),
     },
-    {
-      kind: "linear-issue",
-      canRender: (entry) => entry.kind === "linear-issue",
-      render: (entry, context, definition) =>
-        entry.kind === "linear-issue" ? (
-          <ContextChip
-            icon={<LinearIcon />}
-            label={entry.record.label}
-            kindLabel="Linear issue"
-            details={<ComposerLinearIssueDetails record={entry.record} />}
-            detailsMode={definition.capabilities.details}
-            kind="linear-issue"
-          />
-        ) : (
-          <UnresolvedContextChip label={context.label} />
-        ),
-    },
-    {
-      kind: "github-issue",
-      canRender: (entry) => entry.kind === "github-issue",
-      render: (entry, context, definition) =>
-        entry.kind === "github-issue" ? (
-          <ContextChip
-            icon={<GitHubIcon />}
-            label={entry.record.label}
-            kindLabel="GitHub issue"
-            details={<ComposerGitHubIssueDetails record={entry.record} />}
-            detailsMode={definition.capabilities.details}
-            kind="github-issue"
-          />
-        ) : (
-          <UnresolvedContextChip label={context.label} />
-        ),
-    },
-    {
-      kind: "github-ref",
-      canRender: (entry) => entry.kind === "github-ref",
-      render: (entry, context, definition) =>
-        entry.kind === "github-ref" ? (
-          <ContextChip
-            icon={<GitHubRefIcon refType={entry.record.refType} />}
-            label={entry.record.label}
-            kindLabel={gitHubRefKindLabel(entry.record.refType)}
-            details={<ComposerGitHubRefDetails record={entry.record} />}
-            detailsMode={definition.capabilities.details}
-            kind="github-ref"
-          />
-        ) : (
-          <UnresolvedContextChip label={context.label} />
-        ),
-    },
-    {
-      kind: "repository",
-      canRender: (entry) => entry.kind === "repository",
-      render: (entry, context, definition) =>
-        entry.kind === "repository" ? (
-          <ContextChip
-            icon={<FolderGit2Icon />}
-            label={entry.record.label}
-            kindLabel="Repository"
-            details={<ComposerRepositoryDetails record={entry.record} />}
-            detailsMode={definition.capabilities.details}
-            kind="repository"
-          />
-        ) : (
-          <UnresolvedContextChip label={context.label} />
-        ),
-    },
+    ...LINKED_OBJECT_CONTEXT_KINDS.map(
+      (
+        kind,
+      ): ContextPresentationHandler<
+        ComposerDraftContextRecord,
+        ComposerContextRenderContext,
+        ReactElement
+      > => ({
+        kind,
+        canRender: (entry) => entry.kind === kind,
+        render: (entry, context, definition) =>
+          isLinkedObjectEntry(entry) ? (
+            <ContextChip
+              icon={linkedObjectIcon(entry.record)}
+              label={entry.record.label}
+              kindLabel={linkedObjectKindLabel(entry.record)}
+              details={<ComposerLinkedObjectDetails record={entry.record} />}
+              detailsMode={definition.capabilities.details}
+              kind={kind}
+            />
+          ) : (
+            <UnresolvedContextChip label={context.label} />
+          ),
+      }),
+    ),
     {
       kind: "checkout",
       canRender: (entry) => entry.kind === "checkout",
@@ -659,74 +618,6 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
             details={<CheckoutDetails record={entry.record} />}
             detailsMode={definition.capabilities.details}
             kind="checkout"
-          />
-        ) : (
-          <UnresolvedContextChip label={context.label} />
-        ),
-    },
-    {
-      kind: "notion-page",
-      canRender: (entry) => entry.kind === "notion-page",
-      render: (entry, context, definition) =>
-        entry.kind === "notion-page" ? (
-          <ContextChip
-            icon={<NotionIcon />}
-            label={entry.record.label}
-            kindLabel="Notion page"
-            details={<ComposerNotionPageDetails record={entry.record} />}
-            detailsMode={definition.capabilities.details}
-            kind="notion-page"
-          />
-        ) : (
-          <UnresolvedContextChip label={context.label} />
-        ),
-    },
-    {
-      kind: "granola-note",
-      canRender: (entry) => entry.kind === "granola-note",
-      render: (entry, context, definition) =>
-        entry.kind === "granola-note" ? (
-          <ContextChip
-            icon={<GranolaIcon />}
-            label={entry.record.label}
-            kindLabel="Granola note"
-            details={<ComposerGranolaNoteDetails record={entry.record} />}
-            detailsMode={definition.capabilities.details}
-            kind="granola-note"
-          />
-        ) : (
-          <UnresolvedContextChip label={context.label} />
-        ),
-    },
-    {
-      kind: "slack-thread",
-      canRender: (entry) => entry.kind === "slack-thread",
-      render: (entry, context, definition) =>
-        entry.kind === "slack-thread" ? (
-          <ContextChip
-            icon={<SlackIcon />}
-            label={entry.record.label}
-            kindLabel={entry.record.scope === "thread" ? "Slack thread" : "Slack message"}
-            details={<ComposerSlackThreadDetails record={entry.record} />}
-            detailsMode={definition.capabilities.details}
-            kind="slack-thread"
-          />
-        ) : (
-          <UnresolvedContextChip label={context.label} />
-        ),
-    },
-    {
-      kind: "discord-thread",
-      canRender: (entry) => entry.kind === "discord-thread",
-      render: (entry, context, definition) =>
-        entry.kind === "discord-thread" ? (
-          <ContextChip
-            icon={<DiscordIcon />}
-            label={entry.record.label}
-            kindLabel={entry.record.scope === "thread" ? "Discord thread" : "Discord message"}
-            details={<ComposerDiscordThreadDetails record={entry.record} />}
-            detailsMode={definition.capabilities.details}
-            kind="discord-thread"
           />
         ) : (
           <UnresolvedContextChip label={context.label} />
@@ -748,23 +639,6 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
       render: (entry, context) =>
         entry.kind === "subagent" ? (
           <SubagentContextChip record={entry.record} />
-        ) : (
-          <UnresolvedContextChip label={context.label} />
-        ),
-    },
-    {
-      kind: "prompt-link",
-      canRender: (entry) => entry.kind === "prompt-link",
-      render: (entry, context, definition) =>
-        entry.kind === "prompt-link" ? (
-          <ContextChip
-            icon={<MessageSquareTextIcon />}
-            label={entry.record.label}
-            kindLabel="T3 Code prompt link"
-            details={<ComposerPromptLinkDetails record={entry.record} />}
-            detailsMode={definition.capabilities.details}
-            kind="prompt-link"
-          />
         ) : (
           <UnresolvedContextChip label={context.label} />
         ),
@@ -795,48 +669,9 @@ function ComposerUnreadLinkChip({ record }: { record: UnreadLinkContextRecord })
   );
 }
 
-function ComposerPromptLinkDetails({ record }: { record: PromptLinkContextRecord }) {
+function ComposerLinkedObjectDetails({ record }: { record: LinkedObjectContextRecord }) {
   const actions = use(ComposerContextActionsContext);
-  return <PromptLinkDetails record={record} onOpenLink={actions.openLink} />;
-}
-
-function ComposerRepositoryDetails({ record }: { record: RepositoryContextRecord }) {
-  const actions = use(ComposerContextActionsContext);
-  return <RepositoryDetails record={record} onOpenLink={actions.openLink} />;
-}
-
-function ComposerLinearIssueDetails({ record }: { record: LinearIssueContextRecord }) {
-  const actions = use(ComposerContextActionsContext);
-  const openLinearLink = useLinearLinkClickHandler(actions.openLink);
-  return (
-    <LinearIssueDetails
-      identifier={record.identifier}
-      stateName={record.stateName}
-      url={record.url}
-      markdown={record.markdown}
-      onOpenLink={openLinearLink}
-    />
-  );
-}
-
-function ComposerGitHubIssueDetails({ record }: { record: GitHubIssueContextRecord }) {
-  const actions = use(ComposerContextActionsContext);
-  return <GitHubIssueDetails record={record} onOpenLink={actions.openLink} />;
-}
-
-function ComposerGitHubRefDetails({ record }: { record: GitHubRefContextRecord }) {
-  const actions = use(ComposerContextActionsContext);
-  return <GitHubRefDetails record={record} onOpenLink={actions.openLink} />;
-}
-
-function ComposerSlackThreadDetails({ record }: { record: SlackThreadContextRecord }) {
-  const actions = use(ComposerContextActionsContext);
-  return <SlackThreadDetails record={record} onOpenLink={actions.openLink} />;
-}
-
-function ComposerDiscordThreadDetails({ record }: { record: DiscordThreadContextRecord }) {
-  const actions = use(ComposerContextActionsContext);
-  return <DiscordThreadDetails record={record} onOpenLink={actions.openLink} />;
+  return <LinkedObjectDetails record={record} onOpenLink={actions.openLink} />;
 }
 
 /** Compact chip for one reference. Unknown kinds and missing records use the registry fallback. */
@@ -849,14 +684,4 @@ export function ComposerContextReferenceChip(props: {
   return composerContextPresentationRegistry.render(props.kind, records.get(props.contextId), {
     label: props.label,
   });
-}
-
-function ComposerGranolaNoteDetails({ record }: { record: GranolaNoteContextRecord }) {
-  const actions = use(ComposerContextActionsContext);
-  return <GranolaNoteDetails record={record} onOpenLink={actions.openLink} />;
-}
-
-function ComposerNotionPageDetails({ record }: { record: NotionPageContextRecord }) {
-  const actions = use(ComposerContextActionsContext);
-  return <NotionPageDetails record={record} onOpenLink={actions.openLink} />;
 }

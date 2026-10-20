@@ -2,7 +2,6 @@ import {
   resolveFileOpenTarget,
   DEFAULT_SERVER_SETTINGS,
   EDITORS,
-  parseGitHubRefUrl,
   type GitHubRefType,
 } from "@t3tools/contracts";
 import { formatFilePathForClipboard } from "@t3tools/client-runtime/media-actions";
@@ -250,7 +249,7 @@ import {
 } from "../browser/openFileInPreview";
 import { resolveLinkTarget } from "../browser/browserLinkTarget";
 import { PullRequestLinkPreview } from "./pullRequest/PullRequestLinkPreview";
-import { GitHubRefLinkPreview } from "./GitHubRefLinkPreview";
+import { isPreviewableObjectLink, LinkedObjectLinkPreview } from "./chat/LinkedObjectLinkPreview";
 import { GitHubRefIcon, gitHubRefTypeFromUrl } from "./gitHubRefPresentation";
 
 const isAssetNotFoundError = Schema.is(AssetWorkspaceAssetNotFoundError);
@@ -1957,17 +1956,12 @@ function SlackLinkText({
     );
   }
   return (
-    <Tooltip>
-      <TooltipTrigger render={<span />}>
-        <MarkdownExternalLinkContent
-          host={host}
-          plainText={`${preview.channelLabel} · ${preview.authorName}`}
-        >
-          {url}
-        </MarkdownExternalLinkContent>
-      </TooltipTrigger>
-      <TooltipPopup side="top">{preview.title}</TooltipPopup>
-    </Tooltip>
+    <MarkdownExternalLinkContent
+      host={host}
+      plainText={`${preview.channelLabel} · ${preview.authorName}`}
+    >
+      {url}
+    </MarkdownExternalLinkContent>
   );
 }
 
@@ -2010,17 +2004,12 @@ function DiscordLinkText({
     );
   }
   return (
-    <Tooltip>
-      <TooltipTrigger render={<span />}>
-        <MarkdownExternalLinkContent
-          host={host}
-          plainText={`${preview.channelLabel} · ${preview.authorName}`}
-        >
-          {url}
-        </MarkdownExternalLinkContent>
-      </TooltipTrigger>
-      <TooltipPopup side="top">{preview.title}</TooltipPopup>
-    </Tooltip>
+    <MarkdownExternalLinkContent
+      host={host}
+      plainText={`${preview.channelLabel} · ${preview.authorName}`}
+    >
+      {url}
+    </MarkdownExternalLinkContent>
   );
 }
 
@@ -2054,24 +2043,10 @@ function GranolaLinkText({
       </MarkdownExternalLinkContent>
     );
   }
-  const date = note.meetingAt === null ? null : new Date(note.meetingAt);
-  const when =
-    date === null || Number.isNaN(date.getTime())
-      ? null
-      : date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-  const detail = [when, note.participants.join(", ") || null].filter(Boolean).join(" · ");
-  const label = (
+  return (
     <MarkdownExternalLinkContent host={host} plainText={note.title}>
       {url}
     </MarkdownExternalLinkContent>
-  );
-  return detail ? (
-    <Tooltip>
-      <TooltipTrigger render={<span />}>{label}</TooltipTrigger>
-      <TooltipPopup side="top">{detail}</TooltipPopup>
-    </Tooltip>
-  ) : (
-    label
   );
 }
 
@@ -3540,8 +3515,16 @@ const CHAT_MARKDOWN_COMPONENTS = {
           />
         );
       }
-      if (environmentId !== null && parseGitHubRefUrl(href) !== null) {
-        return <GitHubRefLinkPreview link={link} url={href} environmentId={environmentId} />;
+      const objectLink = parseComposerObjectLink(href);
+      if (environmentId !== null && isPreviewableObjectLink(objectLink)) {
+        return (
+          <LinkedObjectLinkPreview
+            link={link}
+            objectLink={objectLink}
+            environmentId={environmentId}
+            threadRef={threadRef ?? null}
+          />
+        );
       }
       return (
         <Tooltip>
