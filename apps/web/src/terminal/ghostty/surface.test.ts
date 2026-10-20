@@ -1012,6 +1012,20 @@ describe("GhosttyTerminalSurface visibility", () => {
     expect(surface.input.readOnly).toBe(true);
   });
 
+  it("extends a selection drag for a host that scrolls the canvas, and only during one", async () => {
+    const harness = createHarness();
+    const surface = await harness.create({ readOnly: true });
+    surface.write("hello world");
+    harness.flushFrame();
+
+    surface.extendSelectionDrag(37, 5);
+    expect(surface.getSelection()).toBe("");
+
+    harness.pointer("pointerdown", 5, 1);
+    surface.extendSelectionDrag(37, 5);
+    expect(surface.getSelection()).toBe("hello");
+  });
+
   it("selects a word on a read-only viewer's touch long press, and scrolls on a drag", async () => {
     const harness = createHarness();
     const surface = await harness.create({ readOnly: true });

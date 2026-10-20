@@ -61,6 +61,64 @@ function cssRgb({ r, g, b }: GhosttyColor): string {
 }
 
 /**
+ * The terminal autoscrolls a selection drag vertically through its scrollback, but sideways
+ * scrolling belongs to the card's scroller. While a mouse drag is past its left or right edge,
+ * scroll it, faster the further out the pointer is, and keep extending the selection.
+ */
+function followSelectionDragSideways(
+  surface: GhosttyTerminalSurface,
+  scroller: HTMLElement,
+): () => void {
+  let pointer: { x: number; y: number } | null = null;
+  let frame = 0;
+  const step = () => {
+    frame = 0;
+    if (pointer === null) return;
+    const bounds = scroller.getBoundingClientRect();
+    const overshoot =
+      pointer.x < bounds.left
+        ? pointer.x - bounds.left
+        : pointer.x > bounds.right
+          ? pointer.x - bounds.right
+          : 0;
+    if (overshoot === 0) return;
+    const before = scroller.scrollLeft;
+    scroller.scrollLeft +=
+      Math.sign(overshoot) * Math.min(40, Math.max(4, Math.abs(overshoot) / 3));
+    if (scroller.scrollLeft === before) return;
+    surface.extendSelectionDrag(pointer.x, pointer.y);
+    frame = window.requestAnimationFrame(step);
+  };
+  const onPointerDown = (event: PointerEvent) => {
+    if (event.button === 0 && event.pointerType !== "touch") {
+      pointer = { x: event.clientX, y: event.clientY };
+    }
+  };
+  // The surface captures the pointer for a drag, so its moves reach the canvas from anywhere.
+  const onPointerMove = (event: PointerEvent) => {
+    if (pointer === null) return;
+    pointer = { x: event.clientX, y: event.clientY };
+    if (frame === 0) frame = window.requestAnimationFrame(step);
+  };
+  const onPointerEnd = () => {
+    pointer = null;
+    if (frame !== 0) window.cancelAnimationFrame(frame);
+    frame = 0;
+  };
+  surface.canvas.addEventListener("pointerdown", onPointerDown);
+  surface.canvas.addEventListener("pointermove", onPointerMove);
+  window.addEventListener("pointerup", onPointerEnd);
+  window.addEventListener("pointercancel", onPointerEnd);
+  return () => {
+    onPointerEnd();
+    surface.canvas.removeEventListener("pointerdown", onPointerDown);
+    surface.canvas.removeEventListener("pointermove", onPointerMove);
+    window.removeEventListener("pointerup", onPointerEnd);
+    window.removeEventListener("pointercancel", onPointerEnd);
+  };
+}
+
+/**
  * Captured output drawn by the terminal's own renderer, read-only. Selection, copy, and
  * scrolling are the terminal drawer's, so the excerpt behaves exactly as it did there. The grid
  * is as wide as the widest line, so lines never rewrap; the card scrolls sideways instead.
@@ -108,6 +166,7 @@ function TerminalExcerptPreview({
   });
   const [status, setStatus] = useState<"loading" | "ready" | "failed">("loading");
   const frameRef = useRef<HTMLDivElement>(null);
+  const scrollerRef = useRef<HTMLDivElement>(null);
   const mountRef = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<GhosttyTerminalSurface | null>(null);
 
@@ -122,9 +181,11 @@ function TerminalExcerptPreview({
 
   useEffect(() => {
     const frame = frameRef.current;
+    const scroller = scrollerRef.current;
     const mount = mountRef.current;
-    if (!frame || !mount) return;
+    if (!frame || !scroller || !mount) return;
     let cancelled = false;
+    let stopFollowingDrag: (() => void) | null = null;
     void GhosttyTerminalSurface.create(mount, {
       theme: terminalThemeFromApp(),
       font: {
@@ -174,6 +235,7 @@ function TerminalExcerptPreview({
         surface.sizeToGrid(cols, rows);
         surface.resetAndWrite(content);
         surface.scrollToTop();
+        stopFollowingDrag = followSelectionDragSideways(surface, scroller);
         setStatus("ready");
       },
       () => {
@@ -182,6 +244,7 @@ function TerminalExcerptPreview({
     );
     return () => {
       cancelled = true;
+      stopFollowingDrag?.();
       surfaceRef.current?.dispose();
       surfaceRef.current = null;
     };
@@ -220,7 +283,7 @@ function TerminalExcerptPreview({
         className="relative"
         style={{ backgroundColor: cssRgb(terminalTheme.background) }}
       >
-        <div className="max-h-80 overflow-x-auto overflow-y-hidden">
+        <div ref={scrollerRef} className="max-h-80 overflow-x-auto overflow-y-hidden">
           <div
             ref={mountRef}
             className={ready ? "relative" : "invisible absolute top-0 left-0"}

@@ -1619,6 +1619,15 @@ export class GhosttyTerminalSurface {
     this.requestRender();
   }
 
+  /**
+   * Extend a selection drag in progress to a pointer position, for hosts that scroll the canvas
+   * under a stationary pointer, such as a horizontally scrolling container.
+   */
+  extendSelectionDrag(clientX: number, clientY: number): void {
+    if (this.disposed || this.selectionAnchorScreen === null) return;
+    this.extendSelectionTo(clientX, clientY);
+  }
+
   private setSelectionAutoscroll(delta: number): void {
     this.selectionScrollDelta = delta;
     if (delta === 0) {
