@@ -31,8 +31,49 @@ const issueJson = (number: number, kind: "issues" | "pull" = "issues") => ({
   updatedAt: "2026-09-30T00:00:00Z",
 });
 
+const commit = (oid: string, headline: string) => ({
+  oid,
+  messageHeadline: headline,
+  message: `${headline}\n\nWhy it changed.`,
+  committedDate: "2026-10-20T10:33:05Z",
+  additions: 12,
+  deletions: 3,
+  changedFilesIfAvailable: 2,
+  author: { name: "Ada Lovelace", user: { login: "ada" } },
+});
+const SHA = "ad4eeea9da2ad42884d1974c67e555aedd5350b3";
+const empty = { release: null, branch: null, tag: null, object: null };
+
+// What the ref query answers for each `ref` variable.
+const refRepositories: Record<string, unknown> = {
+  "v1.2.0": {
+    ...empty,
+    release: {
+      name: "Retry fix",
+      tagName: "v1.2.0",
+      description: "## What's Changed\n* Retries now back off",
+      isPrerelease: true,
+      publishedAt: "2026-10-20T10:37:41Z",
+      createdAt: "2026-10-20T10:33:05Z",
+      author: { login: "ada" },
+      tagCommit: commit(SHA, "Back off retries"),
+    },
+    tag: { target: { target: commit(SHA, "Back off retries") } },
+  },
+  "v1.1.0": { ...empty, tag: { target: { target: commit(SHA, "Older work") } } },
+  "feature/retry": { ...empty, branch: { target: commit(SHA, "Back off retries") } },
+  "feature/retry/src": empty,
+  [SHA.slice(0, 7)]: { ...empty, object: commit(SHA, "Back off retries") },
+};
+
 const execute: GitHubCli.GitHubCli["Service"]["execute"] = (input) => {
   calls.push(input.args);
+  if (input.args[0] === "api") {
+    const ref = input.args.find((arg) => arg.startsWith("ref="))?.slice(4) ?? "";
+    return Effect.succeed(
+      output(JSON.stringify({ data: { repository: refRepositories[ref] ?? empty } })),
+    );
+  }
   const [, action, reference] = input.args;
   if (action === "list")
     return Effect.succeed(output(JSON.stringify([issueJson(1), issueJson(2)])));
@@ -118,6 +159,64 @@ layer("GitHubIssues", (it) => {
       assert.strictEqual(issue.number, 5);
       assert.include(issue.markdown, "# acme/app#5: Issue 5");
       assert.include(issue.markdown, "**cy (maintainer)** (2026-09-30):\nOn it.");
+    }),
+  );
+
+  it.effect("reads a release link, with its notes", () =>
+    Effect.gen(function* () {
+      const issues = yield* GitHubIssues.GitHubIssues;
+      const url = "https://github.com/acme/app/releases/tag/v1.2.0";
+      const ref = yield* issues.getRef({ url });
+      assert.include(ref, {
+        repository: "acme/app",
+        refType: "release",
+        ref: "v1.2.0",
+        title: "Retry fix",
+        url,
+        sha: SHA,
+        authorLogin: "ada",
+        isPrerelease: true,
+      });
+      assert.include(ref.markdown, "# acme/app release Retry fix");
+      assert.include(ref.markdown, "Pre-release");
+      assert.include(ref.markdown, "* Retries now back off");
+    }),
+  );
+
+  it.effect("reads a release link whose tag has no release as the tag", () =>
+    Effect.gen(function* () {
+      const issues = yield* GitHubIssues.GitHubIssues;
+      const ref = yield* issues.getRef({
+        url: "https://github.com/acme/app/releases/tag/v1.1.0",
+      });
+      assert.include(ref, { refType: "tag", ref: "v1.1.0", title: "Older work", sha: SHA });
+    }),
+  );
+
+  it.effect("tells a branch from a folder in a tree link", () =>
+    Effect.gen(function* () {
+      const issues = yield* GitHubIssues.GitHubIssues;
+      const branch = yield* issues.getRef({
+        url: "https://github.com/acme/app/tree/feature/retry",
+      });
+      assert.include(branch, { refType: "branch", ref: "feature/retry", authorLogin: "ada" });
+      assert.include(branch.markdown, `Head commit: ${SHA}`);
+      const folder = yield* Effect.flip(
+        issues.getRef({ url: "https://github.com/acme/app/tree/feature/retry/src" }),
+      );
+      assert.strictEqual(folder.reason, "not-found");
+    }),
+  );
+
+  it.effect("reads a commit link as its full SHA and message", () =>
+    Effect.gen(function* () {
+      const issues = yield* GitHubIssues.GitHubIssues;
+      const ref = yield* issues.getRef({
+        url: `https://github.com/acme/app/commit/${SHA.slice(0, 7)}`,
+      });
+      assert.include(ref, { refType: "commit", ref: SHA, title: "Back off retries" });
+      assert.include(ref.markdown, "Changes: 2 files, +12 −3");
+      assert.include(ref.markdown, "Why it changed.");
     }),
   );
 });

@@ -2,6 +2,8 @@ import type {
   ComposerContextId,
   GitHubIssueContext,
   GitHubIssueContextRecord,
+  GitHubRefContext,
+  GitHubRefContextRecord,
   GranolaNoteContext,
   GranolaNoteContextRecord,
   LinearIssueContext,
@@ -14,7 +16,10 @@ import type {
   SlackThreadContextRecord,
 } from "@t3tools/contracts";
 
-import { sanitizeComposerContextLabel } from "./composerContextReferences.ts";
+import {
+  sanitizeComposerContextLabel,
+  toKindScopedComposerContextId,
+} from "./composerContextReferences.ts";
 
 /**
  * Chip records for integration objects, from the snapshot the server read. Shared so the
@@ -56,6 +61,33 @@ export function gitHubIssueContextRecord(issue: GitHubIssueContext): GitHubIssue
     url: issue.url,
     state: issue.state,
     markdown: issue.markdown,
+  };
+}
+
+/** `repo@v1.2.0`, `repo@main`, or `repo@abc1234`: the label a ref's chip shows. */
+export function gitHubRefLabel(ref: {
+  readonly repository: string;
+  readonly refType: GitHubRefContext["refType"];
+  readonly ref: string;
+}): string {
+  const name = ref.repository.split("/").at(-1) ?? ref.repository;
+  return `${name}@${ref.refType === "commit" ? ref.ref.slice(0, 7) : ref.ref}`;
+}
+
+export function gitHubRefContextRecord(ref: GitHubRefContext): GitHubRefContextRecord {
+  const id = `${ref.repository}_${ref.refType}_${ref.ref}`.toLowerCase();
+  return {
+    version: 1,
+    kind: "github-ref",
+    contextId: toKindScopedComposerContextId("github-ref", id),
+    label: sanitizeComposerContextLabel(gitHubRefLabel(ref), "github-ref"),
+    repository: ref.repository,
+    refType: ref.refType,
+    ref: ref.ref.slice(0, 255),
+    title: ref.title.slice(0, 2_048),
+    url: ref.url.slice(0, 2_048),
+    sha: ref.sha,
+    markdown: ref.markdown,
   };
 }
 

@@ -151,6 +151,23 @@ class T3ContextChip(
           lineTo(18f, 15f)
           line(6f, 9f, 6f, 21f)
         }
+        // lucide `tag`, `git-branch`, and `git-commit-horizontal`, the GitHub ref glyphs web draws.
+        "tag" -> {
+          line(2f, 2f, 12f, 2f, 22f, 12f, 12f, 22f, 2f, 12f, 2f, 2f)
+          addCircle(7.5f, 7.5f, 1.5f, Path.Direction.CW)
+        }
+        "arrow.triangle.branch" -> {
+          line(6f, 3f, 6f, 15f)
+          addCircle(18f, 6f, 3f, Path.Direction.CW)
+          addCircle(6f, 18f, 3f, Path.Direction.CW)
+          moveTo(18f, 9f)
+          cubicTo(18f, 13.97f, 13.97f, 18f, 9f, 18f)
+        }
+        "circle.and.line.horizontal" -> {
+          addCircle(12f, 12f, 3f, Path.Direction.CW)
+          line(3f, 12f, 9f, 12f)
+          line(15f, 12f, 21f, 12f)
+        }
         "cursorarrow.click" -> {
           line(4f, 3f, 19f, 12f, 12f, 14f, 9f, 21f, 4f, 3f)
           line(13f, 15f, 18f, 21f)

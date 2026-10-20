@@ -8,6 +8,7 @@ import type {
   GranolaNoteContextRecord,
   PromptLinkContextRecord,
   GitHubIssueContextRecord,
+  GitHubRefContextRecord,
   LinearIssueContextRecord,
   SlackThreadContextRecord,
   SubagentContextRecord,
@@ -16,7 +17,8 @@ import type {
 
 /**
  * An attached snapshot fetched from another service (a Linear or GitHub issue, a Slack thread, a
- * Notion page, a Granola note) or, in the fork, a referenced subagent or a T3 Code prompt link.
+ * Notion page, a Granola note) or, in the fork, a referenced subagent, a T3 Code prompt link, or a
+ * GitHub release, tag, branch, or commit.
  */
 export type IssueContextRecord =
   | LinearIssueContextRecord
@@ -25,7 +27,8 @@ export type IssueContextRecord =
   | NotionPageContextRecord
   | GranolaNoteContextRecord
   | SubagentContextRecord
-  | PromptLinkContextRecord;
+  | PromptLinkContextRecord
+  | GitHubRefContextRecord;
 
 const EMPTY: ReadonlyArray<IssueContextRecord> = [];
 

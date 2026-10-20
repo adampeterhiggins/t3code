@@ -291,6 +291,12 @@ function formatComposerContextProviderPayload(record: KnownComposerContextRecord
         `state: ${record.state}`,
         record.markdown,
       ].join("\n");
+    case "github-ref":
+      return [
+        `github ${record.refType}: ${record.repository}@${record.ref}`,
+        `url: ${record.url}`,
+        record.markdown,
+      ].join("\n");
     case "repository":
       return formatRepositoryPayload(record);
     case "checkout":

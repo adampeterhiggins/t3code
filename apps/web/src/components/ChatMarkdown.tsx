@@ -1,4 +1,10 @@
-import { resolveFileOpenTarget, DEFAULT_SERVER_SETTINGS, EDITORS } from "@t3tools/contracts";
+import {
+  resolveFileOpenTarget,
+  DEFAULT_SERVER_SETTINGS,
+  EDITORS,
+  parseGitHubRefUrl,
+  type GitHubRefType,
+} from "@t3tools/contracts";
 import { formatFilePathForClipboard } from "@t3tools/client-runtime/media-actions";
 import { MarkdownFindContext, findRevealRef } from "./chat/markdownFindContext";
 import {
@@ -243,6 +249,8 @@ import {
 } from "../browser/openFileInPreview";
 import { resolveLinkTarget } from "../browser/browserLinkTarget";
 import { PullRequestLinkPreview } from "./pullRequest/PullRequestLinkPreview";
+import { GitHubRefLinkPreview } from "./GitHubRefLinkPreview";
+import { GitHubRefIcon, gitHubRefTypeFromUrl } from "./gitHubRefPresentation";
 
 const isAssetNotFoundError = Schema.is(AssetWorkspaceAssetNotFoundError);
 
@@ -1315,7 +1323,13 @@ function isGitHubHost(host: string): boolean {
   return hostname === "github.com" || hostname.endsWith(".github.com");
 }
 
-const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon({ host }: { host: string }) {
+const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon({
+  host,
+  gitHubRefType,
+}: {
+  host: string;
+  gitHubRefType?: GitHubRefType | null | undefined;
+}) {
   const [failedHost, setFailedHost] = useState<string | null>(null);
   const brandIcon = isGitHubHost(host);
   const faviconUrl = brandIcon ? null : faviconUrlForOrigin(`https://${host}`);
@@ -1324,7 +1338,9 @@ const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon({ host }: { host: 
       className="ms-[0.25em] me-[0.2em] inline-flex size-[14px] [vertical-align:-0.125em]"
       aria-hidden
     >
-      {brandIcon ? (
+      {gitHubRefType ? (
+        <GitHubRefIcon refType={gitHubRefType} className={MARKDOWN_LINK_FAVICON_CLASS_NAME} />
+      ) : brandIcon ? (
         <GitHubIcon className={MARKDOWN_LINK_FAVICON_CLASS_NAME} />
       ) : faviconUrl === null || failedHost === host || failedFaviconHosts.has(host) ? (
         <GlobeIcon className={MARKDOWN_LINK_FAVICON_CLASS_NAME} />
@@ -2068,10 +2084,12 @@ const CHAT_MARKDOWN_LITERAL_HTML_REHYPE_PLUGINS = [rehypeHeadingIds] satisfies N
 
 function MarkdownExternalLinkContent({
   host,
+  gitHubRefType,
   plainText,
   children,
 }: {
   host: string;
+  gitHubRefType?: GitHubRefType | null | undefined;
   plainText: string | null;
   children: ReactNode;
 }) {
@@ -2080,7 +2098,7 @@ function MarkdownExternalLinkContent({
     return (
       <>
         <span className="whitespace-nowrap">
-          <MarkdownLinkFavicon host={host} />
+          <MarkdownLinkFavicon host={host} gitHubRefType={gitHubRefType} />
           {plainText.slice(0, leadingLength)}
         </span>
         {breakableExternalLinkText(plainText.slice(leadingLength))}
@@ -2096,7 +2114,7 @@ function MarkdownExternalLinkContent({
     return (
       <>
         <span className="whitespace-nowrap">
-          <MarkdownLinkFavicon host={host} />
+          <MarkdownLinkFavicon host={host} gitHubRefType={gitHubRefType} />
           {firstChild.slice(0, leadingLength)}
         </span>
         {breakableExternalLinkText(firstChild.slice(leadingLength))}
@@ -2108,7 +2126,7 @@ function MarkdownExternalLinkContent({
   return (
     <>
       <span className="whitespace-nowrap">
-        <MarkdownLinkFavicon host={host} />
+        <MarkdownLinkFavicon host={host} gitHubRefType={gitHubRefType} />
         {firstChild}
       </span>
       {childNodes.slice(1)}
@@ -3425,7 +3443,11 @@ const CHAT_MARKDOWN_COMPONENTS = {
           ) : faviconHost && href && isBareGranolaLink && environmentId !== null ? (
             <GranolaLinkText environmentId={environmentId} host={faviconHost} url={href} />
           ) : faviconHost && hasText && !isPullRequestAutolink ? (
-            <MarkdownExternalLinkContent host={faviconHost} plainText={objectLabel ?? linkText}>
+            <MarkdownExternalLinkContent
+              host={faviconHost}
+              gitHubRefType={href ? gitHubRefTypeFromUrl(href) : null}
+              plainText={objectLabel ?? linkText}
+            >
               {linkChildren}
             </MarkdownExternalLinkContent>
           ) : (
@@ -3459,6 +3481,9 @@ const CHAT_MARKDOWN_COMPONENTS = {
             onOpenFallback={openDeferredMarkdownLink}
           />
         );
+      }
+      if (environmentId !== null && parseGitHubRefUrl(href) !== null) {
+        return <GitHubRefLinkPreview link={link} url={href} environmentId={environmentId} />;
       }
       return (
         <Tooltip>

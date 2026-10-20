@@ -38,6 +38,7 @@ export * from "./granola.ts";
 export * from "./slack.ts";
 export * from "./githubIssues.ts";
 export * from "./messageDrafts.ts";
+export * from "./githubRefs.ts";
 export * from "./contextRepositories.ts";
 export * from "./checkouts.ts";
 export * from "./projectClone.ts";

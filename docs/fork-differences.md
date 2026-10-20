@@ -1283,7 +1283,10 @@ one file (`#diff-<hash>L4-L14`) becomes a chip for those lines of the diff, and 
 the diff does not show them. A T3 Code prompt link (`https://app.t3.codes/new?prompt=…`, or a
 thread link carrying `?prompt=`) becomes a chip labelled with the start of its prompt; hovering it
 shows the decoded prompt, and the agent receives the link with the prompt and any repository or pull
-request it names. The text goes in as
+request it names. A github.com release (`/releases/tag/<tag>`), branch or tag (`/tree/<ref>`), or
+commit (`/commit/<sha>`) link becomes a chip labelled `repo@<ref>` (`repo@<sha7>` for a commit),
+with an icon for its kind; hovering it shows, and the agent receives, the release notes or the
+commit message. A `/tree/` link to a folder is not a ref and stays a link. The text goes in as
 usual, then each link becomes a chip once its object loads. A link that
 cannot be read, or that was edited away meanwhile, stays as text. Paste-as-text (`Cmd+Shift+V`)
 skips it, and typing never retries a link the draft already converted or tried, so undo and a
@@ -1291,14 +1294,19 @@ deleted chip stick. Mobile does not convert links.
 
 A bare link of one of those kinds that is still a link when the message renders, in any message on
 web, desktop, or mobile, shows its short name instead of the URL: `owner/repo#162` for a pull
-request or GitHub issue (with `L4-L14` appended for a link to lines), `ENG-123` for a Linear issue, and
-`owner/repo` for a repository. It still opens, previews, and copies as the full URL. Link text the
-writer chose is left alone. A bare Slack link is not one of these: it names the message only when
+request or GitHub issue (with `L4-L14` appended for a link to lines), `ENG-123` for a Linear issue,
+`owner/repo` for a repository, and `owner/repo@<ref>` for a release, branch, tag, or commit (a
+`/tree/` link whose ref has a slash keeps its URL, since it may be a folder). It still opens,
+previews, and copies as the full URL. Link text the writer chose is left alone. On web and desktop,
+hovering any GitHub release, branch, tag, or commit link in a message reads it and shows its name,
+commit, author, and date. A bare Slack link is not one of these: it names the message only when
 Slack is on and connected (see [Slack messages and threads](#slack-messages-and-threads)).
 
 Code: `packages/shared/src/composerObjectLinks.ts`,
 `apps/web/src/components/chat/useResolveComposerObjectLink.ts`, and `convertObjectLinks` in
-`apps/web/src/components/chat/ChatComposer.tsx`. User guide:
+`apps/web/src/components/chat/ChatComposer.tsx`; GitHub refs are read in
+`apps/server/src/githubIssues/gitHubRefs.ts` and previewed by
+`apps/web/src/components/GitHubRefLinkPreview.tsx`. User guide:
 [composer.md](./user/composer.md#context-in-your-message).
 
 ## Numeric pull request references include linked repositories

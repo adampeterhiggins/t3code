@@ -59,6 +59,7 @@ const contextChipVariants = cva(
         "slack-thread": "[--context-chip-accent:oklch(0.62_0.16_345)]",
         subagent: "[--context-chip-accent:oklch(0.62_0.12_150)]",
         "prompt-link": "[--context-chip-accent:oklch(0.62_0.12_190)]",
+        "github-ref": "[--context-chip-accent:oklch(0.62_0.02_259)]",
       },
       state: {
         unresolved: "border-dashed",
@@ -76,6 +77,7 @@ const contextChipVariants = cva(
           "granola-note",
           "slack-thread",
           "prompt-link",
+          "github-ref",
           "pull-request",
           "pr-open",
           "pr-draft",
@@ -112,6 +114,7 @@ const contextChipVariants = cva(
           "slack-thread",
           "subagent",
           "prompt-link",
+          "github-ref",
         ],
         className:
           "[--context-chip-border:color-mix(in_oklab,var(--context-chip-accent)_34%,var(--contrast-border))] [--context-chip-border-hover:color-mix(in_oklab,var(--context-chip-accent)_48%,var(--contrast-border))] [--context-chip-foreground:color-mix(in_oklab,var(--context-chip-accent)_22%,var(--contrast-foreground))] border-(--context-chip-border) bg-(--context-chip-accent)/11 text-(--context-chip-foreground) [button:enabled&,a&]:hover:border-(--context-chip-border-hover) [button:enabled&,a&]:hover:bg-(--context-chip-accent)/17",

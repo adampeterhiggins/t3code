@@ -1,12 +1,16 @@
 import {
   GITHUB_ISSUE_MARKDOWN_MAX_CHARS,
+  GITHUB_REF_MARKDOWN_MAX_CHARS,
   GitHubIssueError,
   type GitHubGetIssueInput,
+  type GitHubGetRefInput,
   type GitHubIssueContext,
   type GitHubIssueSummary,
   type GitHubListIssuesInput,
   type GitHubListIssuesResult,
+  type GitHubRefContext,
   parseGitHubIssueUrl,
+  parseGitHubRefUrl,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -15,6 +19,7 @@ import * as Schema from "effect/Schema";
 
 import { GitHubCli, type GitHubCliError } from "../sourceControl/GitHubCli.ts";
 import { renderGitHubIssueMarkdown } from "./gitHubIssueMarkdown.ts";
+import { GITHUB_REF_QUERY, GitHubRefResponse, toGitHubRefContext } from "./gitHubRefs.ts";
 
 const LIST_LIMIT = 50;
 const SUMMARY_FIELDS = "number,title,url,state,stateReason,author,assignees,labels,updatedAt";
@@ -57,6 +62,7 @@ const decodeSummaries = Schema.decodeUnknownEffect(
   Schema.fromJsonString(Schema.Array(IssueSummaryJson)),
 );
 const decodeDetail = Schema.decodeUnknownEffect(Schema.fromJsonString(IssueDetailJson));
+const decodeRefResponse = Schema.decodeUnknownEffect(Schema.fromJsonString(GitHubRefResponse));
 
 /** `NOT_PLANNED` reads as `not planned`; a reopened issue has no reason to show. */
 function stateReason(raw: string | null | undefined): string | null {
@@ -132,6 +138,10 @@ export class GitHubIssues extends Context.Service<
     readonly getIssueSummary: (
       input: GitHubGetIssueInput,
     ) => Effect.Effect<GitHubIssueSummary, GitHubIssueError>;
+    /** A release, tag, branch, or commit link, read through the same `gh` session as issues. */
+    readonly getRef: (
+      input: GitHubGetRefInput,
+    ) => Effect.Effect<GitHubRefContext, GitHubIssueError>;
   }
 >()("t3/githubIssues/GitHubIssues") {}
 
@@ -215,7 +225,36 @@ export const make = Effect.gen(function* () {
     return yield* viewSummary(process.cwd(), input.url);
   });
 
-  return GitHubIssues.of({ listIssues, getIssue, getIssueSummary });
+  const getRef = Effect.fn("github_issues.get_ref")(function* (input: GitHubGetRefInput) {
+    const link = parseGitHubRefUrl(input.url);
+    if (link === null) return yield* notFound();
+    const [owner, name] = link.repository.split("/") as [string, string];
+    const raw = yield* run(process.cwd(), [
+      "api",
+      "graphql",
+      "-f",
+      `query=${GITHUB_REF_QUERY}`,
+      "-f",
+      `owner=${owner}`,
+      "-f",
+      `name=${name}`,
+      "-f",
+      `ref=${link.ref}`,
+      "-f",
+      `branchRef=refs/heads/${link.ref}`,
+      "-f",
+      `tagRef=refs/tags/${link.ref}`,
+    ]);
+    const response = yield* decodeRefResponse(raw).pipe(Effect.mapError(decodeError));
+    const repository = response.data.repository;
+    const context =
+      repository == null
+        ? null
+        : toGitHubRefContext(link, input.url, repository, GITHUB_REF_MARKDOWN_MAX_CHARS);
+    return context ?? (yield* notFound());
+  });
+
+  return GitHubIssues.of({ listIssues, getIssue, getIssueSummary, getRef });
 });
 
 export const layer = Layer.effect(GitHubIssues, make);

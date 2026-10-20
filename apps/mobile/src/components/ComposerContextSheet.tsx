@@ -41,6 +41,13 @@ import { Sheet } from "./ui/Sheet";
 import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
 import { getMobileTerminalTheme } from "../features/terminal/terminalTheme";
 
+const GITHUB_REF_TYPE_LABELS = {
+  release: "Release",
+  tag: "Tag",
+  branch: "Branch",
+  commit: "Commit",
+} as const;
+
 const THREAD_TAB_SUMMARY_ROLE_LABELS = {
   user: "User",
   assistant: "Agent",
@@ -435,6 +442,37 @@ export function ComposerContextSheet(props: {
                     accessibilityRole="link"
                     onPress={() => {
                       void tryOpenExternalUrl(record.url, "github-issue").then((opened) => {
+                        if (!opened) Dialog.alert("Could not open GitHub", "Try again later.");
+                      });
+                    }}
+                    className="rounded-xl bg-subtle p-4"
+                  >
+                    <Text className="text-foreground">Open on GitHub</Text>
+                  </Pressable>
+                ) : null}
+                {/* Plain text like the other captured context here: exactly what the agent received. */}
+                <Text selectable className="text-sm text-foreground">
+                  {record.markdown}
+                </Text>
+              </View>
+            ) : null}
+            {record.kind === "github-ref" ? (
+              <View className="gap-3">
+                <View className="gap-1">
+                  <Text selectable className="text-lg font-t3-semibold text-foreground">
+                    {record.title}
+                  </Text>
+                  <Text className="text-sm text-foreground-muted">
+                    {record.repository}@
+                    {record.refType === "commit" ? record.ref.slice(0, 7) : record.ref} ·{" "}
+                    {GITHUB_REF_TYPE_LABELS[record.refType]}
+                  </Text>
+                </View>
+                {/^https?:\/\//i.test(record.url) ? (
+                  <Pressable
+                    accessibilityRole="link"
+                    onPress={() => {
+                      void tryOpenExternalUrl(record.url, "markdown-link").then((opened) => {
                         if (!opened) Dialog.alert("Could not open GitHub", "Try again later.");
                       });
                     }}

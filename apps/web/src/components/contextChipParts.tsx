@@ -1,4 +1,5 @@
 import type {
+  GitHubRefContextRecord,
   GranolaNoteContextRecord,
   NotionPageContextRecord,
   PromptLinkContextRecord,
@@ -36,6 +37,7 @@ import {
 import { PULL_REQUEST_STATE_PRESENTATION } from "~/components/pullRequest/pullRequestIcons";
 import type { PullRequestContextDisplayState } from "~/lib/composerContextRecords";
 import { formatLinearMarkdownForPreview } from "~/lib/linearMarkdown";
+import { gitHubRefTypeLabel } from "./gitHubRefPresentation";
 import { cn } from "~/lib/utils";
 import ChatMarkdown from "./ChatMarkdown";
 import { PierreEntryIcon } from "./chat/PierreEntryIcon";
@@ -570,6 +572,29 @@ export function GitHubIssueDetails(props: {
         onOpenLink={props.onOpenLink}
       />
       <GitHubIssueMarkdown markdown={record.markdown} />
+    </div>
+  );
+}
+
+/**
+ * An attached GitHub release, tag, branch, or commit: the release notes or commit message the
+ * agent received, with a link back to GitHub.
+ */
+export function GitHubRefDetails(props: {
+  record: Pick<GitHubRefContextRecord, "repository" | "refType" | "ref" | "url" | "markdown">;
+  onOpenLink: (event: MouseEvent<HTMLElement>, url: string) => void;
+}) {
+  const { record } = props;
+  const name = record.refType === "commit" ? record.ref.slice(0, 7) : record.ref;
+  return (
+    <div className="flex flex-col gap-2">
+      <IssueDetailsHeader
+        summary={`${record.repository} · ${gitHubRefTypeLabel(record.refType)} ${name}`}
+        url={record.url}
+        linkLabel="Open on GitHub"
+        onOpenLink={props.onOpenLink}
+      />
+      <IssueMarkdownBody text={record.markdown} />
     </div>
   );
 }

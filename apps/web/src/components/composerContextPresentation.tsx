@@ -1,9 +1,11 @@
 import type {
+  GitHubRefContextRecord,
   GranolaNoteContextRecord,
   NotionPageContextRecord,
   PromptLinkContextRecord,
 } from "@t3tools/contracts";
 import ChatMarkdown from "./ChatMarkdown";
+import { GitHubRefIcon, gitHubRefKindLabel } from "./gitHubRefPresentation";
 import { ReviewCommentCard } from "./ReviewCommentCard";
 import type {
   CheckoutContextRecord,
@@ -75,6 +77,7 @@ import {
   ImageChipButton,
   CheckoutDetails,
   GitHubIssueDetails,
+  GitHubRefDetails,
   LinearIssueDetails,
   RepositoryDetails,
   SlackThreadDetails,
@@ -107,7 +110,8 @@ export type ComposerDraftContextRecord =
   | { kind: "file"; record: ComposerFileAttachment; upload?: AttachmentUploadState | undefined }
   | { kind: "thread"; record: ThreadContextRecord }
   | { kind: "subagent"; record: SubagentContextRecord }
-  | { kind: "prompt-link"; record: PromptLinkContextRecord };
+  | { kind: "prompt-link"; record: PromptLinkContextRecord }
+  | { kind: "github-ref"; record: GitHubRefContextRecord };
 
 export interface ComposerContextActions {
   environmentId: EnvironmentId | null;
@@ -219,6 +223,8 @@ function issueDraftContextRecord(record: IssueContextRecord): ComposerDraftConte
       return { kind: "subagent", record };
     case "prompt-link":
       return { kind: "prompt-link", record };
+    case "github-ref":
+      return { kind: "github-ref", record };
   }
 }
 
@@ -594,6 +600,23 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
         ),
     },
     {
+      kind: "github-ref",
+      canRender: (entry) => entry.kind === "github-ref",
+      render: (entry, context, definition) =>
+        entry.kind === "github-ref" ? (
+          <ContextChip
+            icon={<GitHubRefIcon refType={entry.record.refType} />}
+            label={entry.record.label}
+            kindLabel={gitHubRefKindLabel(entry.record.refType)}
+            details={<ComposerGitHubRefDetails record={entry.record} />}
+            detailsMode={definition.capabilities.details}
+            kind="github-ref"
+          />
+        ) : (
+          <UnresolvedContextChip label={context.label} />
+        ),
+    },
+    {
       kind: "repository",
       canRender: (entry) => entry.kind === "repository",
       render: (entry, context, definition) =>
@@ -746,6 +769,11 @@ function ComposerLinearIssueDetails({ record }: { record: LinearIssueContextReco
 function ComposerGitHubIssueDetails({ record }: { record: GitHubIssueContextRecord }) {
   const actions = use(ComposerContextActionsContext);
   return <GitHubIssueDetails record={record} onOpenLink={actions.openLink} />;
+}
+
+function ComposerGitHubRefDetails({ record }: { record: GitHubRefContextRecord }) {
+  const actions = use(ComposerContextActionsContext);
+  return <GitHubRefDetails record={record} onOpenLink={actions.openLink} />;
 }
 
 function ComposerSlackThreadDetails({ record }: { record: SlackThreadContextRecord }) {

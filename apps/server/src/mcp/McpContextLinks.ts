@@ -1,6 +1,7 @@
 import {
   type ComposerContextRecord,
   GitHubGetIssueInput,
+  GitHubGetRefInput,
   GranolaGetNoteInput,
   LinearGetIssueInput,
   NotionGetPageInput,
@@ -16,6 +17,7 @@ import {
 } from "@t3tools/shared/composerObjectLinks";
 import {
   gitHubIssueContextRecord,
+  gitHubRefContextRecord,
   granolaNoteContextRecord,
   linearIssueContextRecord,
   notionPageContextRecord,
@@ -57,6 +59,7 @@ export class McpContextLinks extends Context.Service<
 
 const decodeLinearGetIssueInput = Schema.decodeUnknownEffect(LinearGetIssueInput);
 const decodeGitHubGetIssueInput = Schema.decodeUnknownEffect(GitHubGetIssueInput);
+const decodeGitHubGetRefInput = Schema.decodeUnknownEffect(GitHubGetRefInput);
 const decodeNotionGetPageInput = Schema.decodeUnknownEffect(NotionGetPageInput);
 const decodeGranolaGetNoteInput = Schema.decodeUnknownEffect(GranolaGetNoteInput);
 const decodeSlackGetThreadInput = Schema.decodeUnknownEffect(SlackGetThreadInput);
@@ -104,6 +107,14 @@ export const make = Effect.gen(function* () {
             gitHubIssues.getIssue(input).pipe(Effect.mapError(unreadable(url))),
           ),
           Effect.map(gitHubIssueContextRecord),
+        );
+      case "github-ref":
+        return decodeGitHubGetRefInput({ url }).pipe(
+          Effect.mapError(malformed(url)),
+          Effect.flatMap((input) =>
+            gitHubIssues.getRef(input).pipe(Effect.mapError(unreadable(url))),
+          ),
+          Effect.map(gitHubRefContextRecord),
         );
       case "notion-page":
         return Effect.gen(function* () {
@@ -177,7 +188,7 @@ export const make = Effect.gen(function* () {
         return link === null
           ? Effect.fail(
               invalid(
-                `${url} is not a link T3 Code can attach. Use a Slack message, Notion page, Granola note, Linear issue, GitHub issue, GitHub repository, or T3 Code prompt link.`,
+                `${url} is not a link T3 Code can attach. Use a Slack message, Notion page, Granola note, Linear issue, GitHub issue, GitHub repository, GitHub release, tag, branch, or commit, or T3 Code prompt link.`,
               ),
             )
           : Effect.succeed(link);

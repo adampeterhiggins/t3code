@@ -166,6 +166,7 @@ import {
   MessageDraftSendInput,
   MessageDraftSendResult,
 } from "./messageDrafts.ts";
+import { GitHubGetRefInput, GitHubRefContext } from "./githubRefs.ts";
 import { TextGenerationError } from "./git.ts";
 import {
   AuthAccessStreamError,
@@ -749,6 +750,7 @@ export const WS_METHODS = {
   messageDraftsTake: "messageDrafts.take",
   messageDraftsDelete: "messageDrafts.delete",
   messageDraftsSend: "messageDrafts.send",
+  githubRefsGet: "githubRefs.get",
   projectCloneStart: "projectClone.start",
   projectCloneCancel: "projectClone.cancel",
   projectCloneRetry: "projectClone.retry",
@@ -1249,6 +1251,12 @@ const WsGitHubIssuesGetRpc = Rpc.make(WS_METHODS.githubIssuesGet, {
 const WsGitHubIssuesGetSummaryRpc = Rpc.make(WS_METHODS.githubIssuesGetSummary, {
   payload: GitHubGetIssueInput,
   success: GitHubIssueSummary,
+  error: GitHubIssueRpcError,
+});
+
+const WsGitHubRefsGetRpc = Rpc.make(WS_METHODS.githubRefsGet, {
+  payload: GitHubGetRefInput,
+  success: GitHubRefContext,
   error: GitHubIssueRpcError,
 });
 
@@ -2641,6 +2649,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsGitHubIssuesListRpc,
   WsGitHubIssuesGetRpc,
   WsGitHubIssuesGetSummaryRpc,
+  WsGitHubRefsGetRpc,
   WsGitHubIssuesSubscribeThreadLinksRpc,
   WsGitHubIssuesLinkThreadRpc,
   WsGitHubIssuesUnlinkThreadRpc,
