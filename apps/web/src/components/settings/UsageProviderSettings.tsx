@@ -65,7 +65,7 @@ export function UsageProviderSettings({
         {...searchableSetting("usage-providers")}
         headerAction={
           !readOnly ? (
-            <Button size="xs" variant="outline" onClick={() => setAdding(true)}>
+            <Button size="xs" variant="ghost-muted" onClick={() => setAdding(true)}>
               <PlusIcon className="size-3" aria-hidden />
               Add hub
             </Button>

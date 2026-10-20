@@ -129,7 +129,6 @@ export function PullRequestCommentForm({
         )}
         <Button
           size="xs"
-          variant="outline"
           disabled={body.trim().length === 0 || submitting !== null || actionPending}
           onClick={() => void submit("comment")}
         >

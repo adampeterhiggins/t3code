@@ -299,10 +299,10 @@ function SavePlanToWorkspaceForm({
         </label>
       </DialogPanel>
       <DialogFooter>
-        <Button variant="outline" size="sm" onClick={onCancel} disabled={saving}>
+        <Button variant="outline" onClick={onCancel} disabled={saving}>
           Cancel
         </Button>
-        <Button size="sm" onClick={() => onSave(savePath)} disabled={!canWriteFiles || saving}>
+        <Button onClick={() => onSave(savePath)} disabled={!canWriteFiles || saving}>
           {saving ? "Saving..." : "Save"}
         </Button>
       </DialogFooter>

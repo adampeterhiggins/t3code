@@ -241,6 +241,19 @@ function NotionConnectionRows({
                   Change credentials
                 </Button>
               ) : null}
+              {editingCredentials ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setEditingCredentials(false);
+                    setClientIdDraft(null);
+                    setClientSecretDraft("");
+                  }}
+                >
+                  Cancel
+                </Button>
+              ) : null}
               <Button size="sm" disabled={pending || !canConnect} onClick={connect}>
                 {state.phase === "failed" ? "Reconnect Notion" : "Connect Notion"}
               </Button>
@@ -318,21 +331,6 @@ function NotionConnectionRows({
                 />
               </div>
             </div>
-            {editingCredentials ? (
-              <div className="flex justify-end">
-                <Button
-                  size="xs"
-                  variant="ghost"
-                  onClick={() => {
-                    setEditingCredentials(false);
-                    setClientIdDraft(null);
-                    setClientSecretDraft("");
-                  }}
-                >
-                  Cancel
-                </Button>
-              </div>
-            ) : null}
           </form>
         ) : null}
       </SettingsRow>

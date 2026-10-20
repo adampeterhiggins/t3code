@@ -21,7 +21,15 @@ import {
 } from "../../vscodeThemeImport";
 import { Alert } from "../ui/alert";
 import { Button } from "../ui/button";
-import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../ui/dialog";
+import {
+  Dialog,
+  DialogClose,
+  DialogFooter,
+  DialogHeader,
+  DialogPanel,
+  DialogPopup,
+  DialogTitle,
+} from "../ui/dialog";
 import { ThemeSearchSection } from "./ThemeSearchSection";
 
 /**
@@ -459,27 +467,11 @@ export function ThemeImportDialog({
             );
             if (conflicts) {
               return (
-                <div className="space-y-3">
-                  <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
-                    <p className="text-sm font-medium">Already installed</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {conflicts.map((theme) => theme.label).join(", ")}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button size="sm" onClick={() => resolveConflicts("update")}>
-                      Update existing
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => resolveConflicts("copy")}>
-                      Keep both
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => setConflicts(null)}>
-                      Back
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => onOpenChange(false)}>
-                      Cancel
-                    </Button>
-                  </div>
+                <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+                  <p className="text-sm font-medium">Already installed</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {conflicts.map((theme) => theme.label).join(", ")}
+                  </p>
                 </div>
               );
             }
@@ -502,15 +494,6 @@ export function ThemeImportDialog({
                   {fileInput}
                 </div>
                 {editorSection()}
-                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                  <Button variant="ghost" onClick={() => onOpenChange(false)}>
-                    Cancel
-                  </Button>
-                  <Button disabled={!json.trim() || isReading} onClick={handleSubmit}>
-                    <PlusIcon />
-                    Add theme
-                  </Button>
-                </div>
               </div>
             );
           })()}
@@ -521,6 +504,25 @@ export function ThemeImportDialog({
             </Alert>
           ) : null}
         </DialogPanel>
+        <DialogFooter>
+          <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+          {conflicts ? (
+            <>
+              <Button variant="ghost" onClick={() => setConflicts(null)}>
+                Back
+              </Button>
+              <Button variant="outline" onClick={() => resolveConflicts("copy")}>
+                Keep both
+              </Button>
+              <Button onClick={() => resolveConflicts("update")}>Update existing</Button>
+            </>
+          ) : (
+            <Button disabled={!json.trim() || isReading} onClick={handleSubmit}>
+              <PlusIcon />
+              Add theme
+            </Button>
+          )}
+        </DialogFooter>
       </DialogPopup>
     </Dialog>
   );

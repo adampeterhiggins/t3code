@@ -117,6 +117,7 @@ function EnvironmentCloneToasts({ environmentId }: { environmentId: EnvironmentI
               );
             },
           },
+          actionVariant: "outline",
           data: { hideCopyButton: true },
         });
         if (tracked) {

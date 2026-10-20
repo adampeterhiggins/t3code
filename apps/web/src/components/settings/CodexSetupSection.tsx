@@ -908,6 +908,7 @@ function ManagedCodexSetup({
               </Button>
             ) : authenticated ? (
               <>
+                <ChatGptUsageButton />
                 <Button
                   size="sm"
                   variant="outline"
@@ -960,11 +961,6 @@ function ManagedCodexSetup({
           </div>
         }
       />
-      {authenticated ? (
-        <div className="flex justify-end px-3 py-1 sm:px-4">
-          <ChatGptUsageButton />
-        </div>
-      ) : null}
       {logoutWarning ? (
         <p role="alert" className="px-3 py-2 text-xs text-muted-foreground sm:px-4">
           {logoutWarning}

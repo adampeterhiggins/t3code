@@ -435,7 +435,7 @@ function ConnectionStep({
           .
         </p>
         <Button
-          className="shrink-0 self-end"
+          className="shrink-0 self-end sm:self-auto"
           ref={continueRef}
           autoFocus={!expandPairingInitially}
           disabled={!ready || isPairing}

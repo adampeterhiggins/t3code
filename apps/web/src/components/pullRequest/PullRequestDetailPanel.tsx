@@ -2566,7 +2566,6 @@ export function PullRequestDetailPanel({
                         </Button>
                         <Button
                           size="xs"
-                          variant="outline"
                           disabled={
                             !canWriteSourceControl || titleSaving || titleDraft.trim().length === 0
                           }

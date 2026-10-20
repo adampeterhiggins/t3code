@@ -69,7 +69,7 @@ function NameDialog({ initial }: { initial: string | null }) {
             />
           </DialogPanel>
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => finish(undefined)}>
+            <Button type="button" variant="outline" onClick={() => finish(undefined)}>
               Cancel
             </Button>
             <Button type="submit">Save</Button>

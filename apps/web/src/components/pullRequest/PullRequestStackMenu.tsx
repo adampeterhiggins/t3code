@@ -202,7 +202,7 @@ export function PullRequestStackMenu({
             render={
               <span className="inline-flex">
                 <Button
-                  variant="default"
+                  variant="outline"
                   size="xs"
                   disabled={mergeDisabled}
                   onClick={() => setConfirmation("merge")}

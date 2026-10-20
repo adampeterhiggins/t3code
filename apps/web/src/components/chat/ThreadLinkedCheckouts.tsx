@@ -75,36 +75,35 @@ export function ThreadLinkedCheckouts(props: { environmentId: EnvironmentId; thr
                 <div className="truncate text-xs">{link.name}</div>
                 <div className="truncate text-muted-foreground text-xs">{detail}</div>
                 {missing ? (
-                  <div className="mt-1 flex items-center gap-1 text-warning text-xs">
-                    <span className="min-w-0 flex-1">Folder not found</span>
-                    <Button
-                      type="button"
-                      size="xs"
-                      variant="outline"
-                      onClick={() =>
-                        openCheckoutAttachPicker(threadRef, { relocateFrom: link.path })
-                      }
-                    >
-                      Locate
-                    </Button>
-                    <Button
-                      type="button"
-                      size="xs"
-                      variant="outline"
-                      onClick={() =>
-                        void unlink({
-                          environmentId: props.environmentId,
-                          input: { threadId: props.threadId, path: link.path },
-                        })
-                      }
-                    >
-                      Unlink
-                    </Button>
-                  </div>
+                  <div className="truncate text-warning text-xs">Folder not found</div>
                 ) : null}
               </div>
-              {missing ? null : (
-                <div className="flex opacity-0 group-hover:opacity-100">
+              {missing ? (
+                <div className="flex shrink-0 items-center gap-0.5">
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="ghost-muted"
+                    onClick={() => openCheckoutAttachPicker(threadRef, { relocateFrom: link.path })}
+                  >
+                    Locate
+                  </Button>
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="ghost-muted"
+                    onClick={() =>
+                      void unlink({
+                        environmentId: props.environmentId,
+                        input: { threadId: props.threadId, path: link.path },
+                      })
+                    }
+                  >
+                    Unlink
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
                   <Button
                     type="button"
                     size="icon-xs"

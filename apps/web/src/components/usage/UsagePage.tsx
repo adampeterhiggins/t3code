@@ -1273,8 +1273,8 @@ function CursorEnableLimits({
         />
         Cursor
       </h2>
-      <div className="flex flex-col items-start gap-3 rounded-lg border border-border/60 p-4">
-        <p className="text-xs text-muted-foreground">{CURSOR_KEYCHAIN_COPY}</p>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 p-4">
+        <p className="min-w-0 flex-1 text-xs text-muted-foreground">{CURSOR_KEYCHAIN_COPY}</p>
         <div className="flex flex-wrap gap-2">
           {environments.map((environment) => (
             <CursorEnableButton

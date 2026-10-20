@@ -287,18 +287,17 @@ export function CloudEnvironmentConnectRows({
     if (discoveryProblem !== null && !environmentsState.refreshing) {
       return (
         <div className={ITEM_ROW_CLASSNAME}>
-          <p className="text-sm font-medium text-destructive">
-            Could not load T3 Connect environments
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">{discoveryProblem}</p>
-          <Button
-            size="sm"
-            variant="outline"
-            className="mt-3"
-            onClick={() => void refreshRelayEnvironments()}
-          >
-            Try again
-          </Button>
+          <div className={ITEM_ROW_INNER_CLASSNAME}>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-destructive">
+                Could not load T3 Connect environments
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">{discoveryProblem}</p>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => void refreshRelayEnvironments()}>
+              Try again
+            </Button>
+          </div>
         </div>
       );
     }

@@ -137,6 +137,14 @@ function PendingSecretRequestForm(props: {
             onChange={(event) => setSecret(event.currentTarget.value)}
           />
         </div>
+        <Button
+          type="button"
+          variant="ghost-muted"
+          disabled={submitting}
+          onClick={() => void send({ type: "decline" })}
+        >
+          Decline
+        </Button>
         <Button type="submit" disabled={submitting || secret.trim().length === 0}>
           Save securely
         </Button>
@@ -146,24 +154,10 @@ function PendingSecretRequestForm(props: {
           {error}
         </p>
       ) : null}
-      <div className="flex min-w-0 items-center justify-between gap-2">
-        <p
-          id={privacyId}
-          className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground"
-        >
-          <ShieldCheckIcon className="size-3.5 shrink-0" aria-hidden />
-          {SECRET_REQUEST_PRIVACY_NOTE}
-        </p>
-        <Button
-          type="button"
-          size="xs"
-          variant="ghost-muted"
-          disabled={submitting}
-          onClick={() => void send({ type: "decline" })}
-        >
-          Decline
-        </Button>
-      </div>
+      <p id={privacyId} className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+        <ShieldCheckIcon className="size-3.5 shrink-0" aria-hidden />
+        {SECRET_REQUEST_PRIVACY_NOTE}
+      </p>
     </form>
   );
 }
