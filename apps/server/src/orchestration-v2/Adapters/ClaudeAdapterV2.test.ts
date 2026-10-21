@@ -9411,6 +9411,128 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       ),
   );
 
+  it.effect(
+    "a model call whose turn settles before message_delta stays without output, and the next turn's call is unaffected",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const harness = yield* makeWakeHarness;
+          const now = yield* DateTime.now;
+          const usage = {
+            input_tokens: 4,
+            cache_creation_input_tokens: 0,
+            cache_read_input_tokens: 10,
+            output_tokens: 1,
+          };
+          const assistantTool = (input: {
+            readonly id: string;
+            readonly toolUseId: string;
+            readonly uuid: string;
+          }) =>
+            claudeSdkFrame({
+              type: "assistant",
+              message: {
+                model: "claude-sonnet-4-6",
+                id: input.id,
+                type: "message",
+                role: "assistant",
+                content: [
+                  { type: "tool_use", id: input.toolUseId, name: "Bash", input: { command: "ls" } },
+                ],
+                stop_reason: null,
+                stop_sequence: null,
+                usage,
+              },
+              parent_tool_use_id: null,
+              uuid: input.uuid,
+              session_id: WAKE_NATIVE_SESSION,
+            });
+          const messageDelta = (uuid: string) =>
+            claudeSdkFrame({
+              type: "stream_event",
+              event: {
+                type: "message_delta",
+                delta: { stop_reason: "tool_use", stop_sequence: null },
+                usage: {
+                  ...usage,
+                  output_tokens: 40,
+                  output_tokens_details: { thinking_tokens: 7 },
+                },
+              },
+              parent_tool_use_id: null,
+              uuid,
+              session_id: WAKE_NATIVE_SESSION,
+            });
+          const startTurn = (attempt: string) =>
+            harness.runtime.startTurn(
+              makeClaudeTestTurnInput({
+                threadId: harness.threadId,
+                providerThread: harness.providerThread,
+                now,
+                attemptId: RunAttemptId.make(attempt),
+                text: "Run it.",
+                attachments: [],
+              }),
+            );
+
+          yield* startTurn("attempt-claude-step-usage-settled");
+          yield* harness.offerAndWait(
+            assistantTool({
+              id: "msg_01StepSettled",
+              toolUseId: "toolu_step_settled",
+              uuid: "00000000-0000-4000-8000-0000000007b0",
+            }),
+          );
+          yield* harness.offerAndWait(
+            makeResultFrame({ uuid: "00000000-0000-4000-8000-0000000007b1", result: "Stopped." }),
+          );
+          yield* awaitUntil(() => harness.terminalEvents().length === 1, "first turn terminal");
+
+          yield* startTurn("attempt-claude-step-usage-next");
+          yield* harness.offerAndWait(
+            assistantTool({
+              id: "msg_01StepNext",
+              toolUseId: "toolu_step_next",
+              uuid: "00000000-0000-4000-8000-0000000007b2",
+            }),
+          );
+          yield* harness.offerAndWait(messageDelta("00000000-0000-4000-8000-0000000007b3"));
+          yield* harness.offerAndWait(
+            makeResultFrame({ uuid: "00000000-0000-4000-8000-0000000007b4", result: "Done." }),
+          );
+          yield* awaitUntil(() => harness.terminalEvents().length === 2, "second turn terminal");
+
+          const toolItems = (nativeId: string) =>
+            harness.events.flatMap((event) =>
+              event.type === "turn_item.updated" &&
+              event.turnItem.nativeItemRef?.nativeId === nativeId
+                ? [event.turnItem]
+                : [],
+            );
+          const settled = toolItems("toolu_step_settled");
+          assert.isNotEmpty(settled);
+          assert.notEqual(settled.at(-1)?.status, "running");
+          assert.isTrue(
+            settled.every(
+              (item) =>
+                item.modelCallId === "msg_01StepSettled" &&
+                item.modelCallUsage?.outputTokens === undefined,
+            ),
+          );
+          assert.deepEqual(toolItems("toolu_step_next").at(-1)?.modelCallUsage, {
+            inputTokens: 14,
+            cachedInputTokens: 10,
+            outputTokens: 40,
+            reasoningOutputTokens: 7,
+          });
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+          ),
+        ),
+      ),
+  );
+
   it.effect("keeps an MCP result's content when its structured result is only metadata", () =>
     Effect.scoped(
       Effect.gen(function* () {

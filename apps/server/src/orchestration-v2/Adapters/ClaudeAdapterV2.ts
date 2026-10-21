@@ -3745,8 +3745,13 @@ interface ActiveClaudeTurnContext {
     requestedAt?: DateTime.Utc;
     usage: ClaudeMessageUsage | null;
     outputFinal: boolean;
+    reasoningOutputTokens?: number;
   } | null;
   readonly toolCalls: Map<string, ActiveClaudeToolCall>;
+  // The tool call that carries each model call's usage, by Anthropic message
+  // id, for this turn's root and native subagent frames. A workflow member's
+  // transcript tracks its own in `carriedModelCallId`.
+  readonly modelCallCarriers: Map<string, ActiveClaudeToolCall>;
   // A successful status can precede the boundary that supplies its token counts.
   compaction: Extract<OrchestrationV2TurnItem, { type: "compaction" }> | null;
   readonly ignoredTaskIds: Set<string>;
@@ -3874,6 +3879,9 @@ interface ClaudeSubagentProjectionTarget {
   readonly childRootNodeId: OrchestrationV2ExecutionNode["id"];
   readonly nextOrdinal: () => number;
   readonly toolCalls: Map<string, ActiveClaudeToolCall>;
+  // A transcript writes a message's blocks on consecutive lines, so only the
+  // latest message can still gain tool calls.
+  carriedModelCallId?: string;
 }
 
 /**
@@ -4441,6 +4449,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               readonly transcriptCursor: WorkflowAgentTranscriptCursor;
               readonly nextItemOrdinal: number;
               readonly toolCalls: Map<string, ActiveClaudeToolCall>;
+              readonly carriedModelCallId: string | undefined;
               readonly textShown: boolean;
               // The transcript reached the end of the member's last turn.
               readonly turnEnded: boolean;
@@ -4540,14 +4549,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
         // answer one, so a later steer waits on it rather than asking again.
         const backgroundMovesByToolUseId = new Map<string, Fiber.Fiber<void>>();
         const subagentToolCalls = new Map<string, ActiveClaudeToolCall>();
-        // The tool call that carries a model call's usage, by Anthropic message
-        // id. A resumed subagent keeps these: startClaudeSubagentRun clears the
-        // running tally only, and the next run's calls have new message ids.
-        const modelCallCarriers = new Map<string, ActiveClaudeToolCall>();
-        const lastModelCallTurnItem = new Map<string, OrchestrationV2TurnItem>();
-        const modelCallReasoningTokens = new Map<string, number>();
-        // Set while the carrier's first emit is in flight, before it is bound.
-        let pendingModelCallCarrierId: string | null = null;
+        // A root carrier's latest item while its message_delta is pending, by
+        // message id, re-emitted once output is final. Subagent calls never get
+        // a message_delta, so they have no run and never wait here.
+        const carriersAwaitingOutput = new Map<string, OrchestrationV2TurnItem>();
         // A subagent call stays here until its result arrives, including after a
         // settle or status update ended it, so a late result completes the call it
         // belongs to rather than an anonymous `tool` row that overwrites it.
@@ -5440,44 +5445,42 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             driver: CLAUDE_PROVIDER,
             turnItem: artifacts.turnItem,
           });
-          const nativeId = artifacts.turnItem.nativeItemRef?.nativeId;
-          if (typeof nativeId !== "string") return;
-          const carrier =
-            artifacts.turnItem.modelCallId === undefined
-              ? undefined
-              : modelCallCarriers.get(artifacts.turnItem.modelCallId);
-          // Only a root call can still receive message_delta. Keep its latest
-          // item until that output arrives, then drop it.
-          const awaitingOutput =
-            (carrier?.nativeItemId === nativeId || nativeId === pendingModelCallCarrierId) &&
-            artifacts.turnItem.runId !== null &&
-            artifacts.turnItem.modelCallUsage?.outputTokens === undefined;
-          if (awaitingOutput) {
-            lastModelCallTurnItem.set(nativeId, artifacts.turnItem);
-          } else if (carrier?.nativeItemId === nativeId || nativeId === pendingModelCallCarrierId) {
-            lastModelCallTurnItem.delete(nativeId);
+          // Only a carrier has usage, and only a root one has a run.
+          const item = artifacts.turnItem;
+          if (
+            item.runId === null ||
+            item.modelCallId === undefined ||
+            item.modelCallUsage === undefined
+          ) {
+            return;
+          }
+          if (item.modelCallUsage.outputTokens === undefined) {
+            carriersAwaitingOutput.set(item.modelCallId, item);
+          } else {
+            carriersAwaitingOutput.delete(item.modelCallId);
           }
         });
 
         const publishClaudeModelCallOutput = Effect.fnUntraced(function* (
+          context: ActiveClaudeTurnContext,
           messageId: string,
           usage: ClaudeMessageUsage,
+          reasoningOutputTokens: number | undefined,
         ) {
-          const carrier = modelCallCarriers.get(messageId);
+          const last = carriersAwaitingOutput.get(messageId);
+          carriersAwaitingOutput.delete(messageId);
+          const carrier = context.modelCallCarriers.get(messageId);
           if (carrier === undefined) return;
-          const next = claudeModelCallUsage(usage, true, modelCallReasoningTokens.get(messageId));
+          const next = claudeModelCallUsage(usage, true, reasoningOutputTokens);
           if (claudeModelCallUsageEqual(carrier.modelCallUsage, next)) return;
           carrier.modelCallUsage = next;
-          const last = lastModelCallTurnItem.get(carrier.nativeItemId);
           if (last === undefined) return;
           const updatedAt = yield* DateTime.now;
           const turnItem: OrchestrationV2TurnItem = {
             ...last,
-            modelCallId: carrier.modelCallId ?? messageId,
             modelCallUsage: next,
             updatedAt,
           };
-          lastModelCallTurnItem.delete(carrier.nativeItemId);
           yield* emitProviderEvent({
             type: "turn_item.updated",
             driver: CLAUDE_PROVIDER,
@@ -5825,6 +5828,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               childRootNodeId,
               nextOrdinal: () => ++nextItemOrdinal,
               toolCalls,
+              ...(restarted || previous?.carriedModelCallId === undefined
+                ? {}
+                : { carriedModelCallId: previous.carriedModelCallId }),
             };
             const endOpenToolCalls = Effect.fnUntraced(function* () {
               if (toolCalls.size === 0) return;
@@ -5963,6 +5969,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 transcriptCursor,
                 nextItemOrdinal,
                 toolCalls,
+                carriedModelCallId: target.carriedModelCallId,
                 textShown,
                 turnEnded,
                 resultShown,
@@ -6907,16 +6914,13 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             line.message.usage !== undefined
               ? claudeModelCallUsage(line.message.usage, false)
               : undefined;
-          let transcriptCarrierId =
-            transcriptModelCallId === undefined
-              ? undefined
-              : modelCallCarriers.get(transcriptModelCallId)?.nativeItemId;
           for (const toolUse of claudeToolUseBlocksFromAssistantMessage(line)) {
             if (target.toolCalls.has(toolUse.id)) continue;
             const carries =
-              transcriptModelCallId !== undefined && transcriptCarrierId === undefined;
-            if (carries) pendingModelCallCarrierId = toolUse.id;
-            const call = yield* startSubagentToolCall(target, {
+              transcriptModelCallId !== undefined &&
+              target.carriedModelCallId !== transcriptModelCallId;
+            if (carries) target.carriedModelCallId = transcriptModelCallId;
+            yield* startSubagentToolCall(target, {
               nativeItemId: toolUse.id,
               toolName: toolUse.name,
               toolInput: claudeNativeToolInputFromUnknown(toolUse.input),
@@ -6937,11 +6941,6 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                     },
                   }),
             });
-            pendingModelCallCarrierId = null;
-            if (carries && transcriptModelCallId !== undefined) {
-              modelCallCarriers.set(transcriptModelCallId, call);
-              transcriptCarrierId = call.nativeItemId;
-            }
           }
           for (const { toolResult, output } of claudeToolResultEntriesFromMessage(line)) {
             const toolCall =
@@ -7264,6 +7263,14 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           for (const toolCall of endingSubagentCalls) {
             subagentToolCalls.delete(toolCall.nativeItemId);
           }
+          // A subagent still running after the turn can stream more blocks of
+          // its current message, so its carrier stays until a later settle.
+          for (const [messageId, carrier] of input.context.modelCallCarriers) {
+            if (!subagentToolCalls.has(carrier.nativeItemId)) {
+              input.context.modelCallCarriers.delete(messageId);
+            }
+          }
+          carriersAwaitingOutput.clear();
 
           if (
             input.context.assistant.emittedNativeItemIds.size === 0 &&
@@ -8285,13 +8292,16 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               const stream = context.streamUsage;
               if (stream?.usage && usage !== undefined) {
                 const thinking = claudeThinkingOutputTokens(usage);
-                if (thinking !== undefined && thinking > 0) {
-                  modelCallReasoningTokens.set(stream.messageId, thinking);
-                }
+                if (thinking !== undefined && thinking > 0) stream.reasoningOutputTokens = thinking;
                 stream.usage = mergeClaudeStreamUsage(stream.usage, usage);
                 stream.outputFinal = true;
                 yield* emitContextUsage(context, stream.usage);
-                yield* publishClaudeModelCallOutput(stream.messageId, stream.usage);
+                yield* publishClaudeModelCallOutput(
+                  context,
+                  stream.messageId,
+                  stream.usage,
+                  stream.reasoningOutputTokens,
+                );
               }
             } else if (
               event.type === "content_block_start" &&
@@ -8983,14 +8993,14 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               modelCallUsage = claudeModelCallUsage(
                 source,
                 finalized,
-                finalized ? modelCallReasoningTokens.get(modelCallId) : undefined,
+                finalized ? stream.reasoningOutputTokens : undefined,
               );
             }
           }
           let carrierId =
             modelCallId === undefined
               ? undefined
-              : modelCallCarriers.get(modelCallId)?.nativeItemId;
+              : context.modelCallCarriers.get(modelCallId)?.nativeItemId;
           if (modelCallId !== undefined && carrierId === undefined) {
             let lowestOrdinal = Number.POSITIVE_INFINITY;
             for (const toolUse of claudeToolUseBlocksFromAssistantMessage(message)) {
@@ -9027,7 +9037,6 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             const carries =
               modelCallId !== undefined &&
               (carrierId === undefined ? assignNewCarrier : toolUse.id === carrierId);
-            if (carries) pendingModelCallCarrierId = toolUse.id;
             const call = yield* ensureToolCallStarted({
               context,
               nativeItemId: toolUse.id,
@@ -9048,9 +9057,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                     },
                   }),
             });
-            pendingModelCallCarrierId = null;
             if (carries && modelCallId !== undefined) {
-              modelCallCarriers.set(modelCallId, call);
+              context.modelCallCarriers.set(modelCallId, call);
               carrierId = call.nativeItemId;
               assignNewCarrier = false;
             }
@@ -10359,6 +10367,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               },
               streamUsage: null,
               toolCalls: new Map(),
+              modelCallCarriers: new Map(),
               compaction: null,
               ignoredTaskIds: new Set(),
               announcedUsageLimits: new Set(),
