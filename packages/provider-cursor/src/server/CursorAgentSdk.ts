@@ -497,13 +497,27 @@ export const makeCursorAgentSdkRunner = Effect.fn("makeCursorAgentSdkRunner")(fu
               (error) =>
                 Effect.gen(function* () {
                   abandonedRunRecoveryAvailable = false;
-                  const latestRun = yield* Effect.tryPromise({
-                    try: () => Agent.listRuns(agent.agentId, { ...runOptions, limit: 1 }),
+                  // The local store lists runs oldest first, so the abandoned run can be on any page.
+                  const activeRun = yield* Effect.tryPromise({
+                    try: async () => {
+                      let cursor: string | undefined;
+                      do {
+                        const page = await Agent.listRuns(agent.agentId, {
+                          ...runOptions,
+                          ...(cursor === undefined ? {} : { cursor }),
+                        });
+                        const running = page.items.find(
+                          (candidate) => candidate.status === "running",
+                        );
+                        if (running !== undefined) {
+                          return running;
+                        }
+                        cursor = page.nextCursor;
+                      } while (cursor !== undefined);
+                      return undefined;
+                    },
                     catch: (cause) => runnerError(cause, "agent.listRuns"),
                   });
-                  const activeRun = latestRun.items.find(
-                    (candidate) => candidate.status === "running",
-                  );
                   if (activeRun === undefined) {
                     return yield* error;
                   }

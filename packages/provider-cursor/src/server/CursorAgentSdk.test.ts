@@ -62,12 +62,20 @@ const cursorSdkMock = vi.hoisted(() => {
     send,
     close: agentClose,
   }));
-  const listRuns = vi.fn(async () => {
-    runOperations.push("agent.listRuns");
-    return {
-      items: staleRunActive ? [{ id: "run-stale", status: "running" }] : [],
-    };
-  });
+  // Like the local store, runs come back oldest first.
+  const listRuns = vi.fn(
+    async (
+      _agentId: string,
+      options?: { readonly limit?: number; readonly [key: string]: unknown },
+    ) => {
+      runOperations.push("agent.listRuns");
+      const items = [
+        { id: "run-finished", status: "finished" },
+        ...(staleRunActive ? [{ id: "run-stale", status: "running" }] : []),
+      ];
+      return { items: options?.limit === undefined ? items : items.slice(0, options.limit) };
+    },
+  );
   const cancelRun = vi.fn(async () => {
     runOperations.push("agent.cancelRun");
     staleRunActive = false;
@@ -161,7 +169,7 @@ describe("CursorAgentSdkRunner", () => {
       ]);
       assert.deepStrictEqual(cursorSdkMock.listRuns.mock.calls[0], [
         "agent-cursor-agent-sdk-test",
-        { runtime: "local", cwd: process.cwd(), limit: 1 },
+        { runtime: "local", cwd: process.cwd() },
       ]);
       assert.deepStrictEqual(cursorSdkMock.cancelRun.mock.calls[0], [
         "run-stale",
