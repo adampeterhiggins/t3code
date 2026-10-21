@@ -23,6 +23,17 @@ const thread: SlackThreadContext = {
   replyCount: 2,
   scope: "thread",
   markdown: "Alice: Deploy is blocked on the migration",
+  messages: [
+    {
+      index: 0,
+      authorName: "Alice",
+      avatarUrl: null,
+      postedAt: "2024-10-01T10:47:00.000Z",
+      text: "Deploy is blocked on the migration",
+      files: [],
+      linked: false,
+    },
+  ],
 };
 
 vi.mock("~/hooks/useSettings", async (importOriginal) => ({
@@ -102,9 +113,7 @@ describe("LinkedObjectLinkPreview", () => {
 
     await userEvent.hover(page.getByRole("link", { name: "the deploy thread" }));
 
-    await expect
-      .element(page.getByText("Alice: Deploy is blocked on the migration"))
-      .toBeInTheDocument();
+    await expect.element(page.getByText("Deploy is blocked on the migration")).toBeInTheDocument();
     await expect.element(page.getByRole("link", { name: "Open in Slack" })).toBeInTheDocument();
     expect(mocks.slackReads).toContainEqual(
       expect.objectContaining({

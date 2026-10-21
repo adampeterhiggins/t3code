@@ -137,6 +137,7 @@ export function slackThreadContextRecord(thread: SlackThreadContext): SlackThrea
     replyCount: thread.replyCount,
     scope: thread.scope,
     markdown: thread.markdown,
+    messages: thread.messages,
   };
 }
 
@@ -166,6 +167,7 @@ export function discordThreadContextRecord(
     replyCount: thread.replyCount,
     scope: thread.scope,
     markdown: thread.markdown,
+    messages: thread.messages,
   };
 }
 

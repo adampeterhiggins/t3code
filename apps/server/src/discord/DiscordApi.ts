@@ -14,6 +14,7 @@ import {
 } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -23,7 +24,7 @@ import * as Schema from "effect/Schema";
 import * as HttpClient from "effect/http/HttpClient";
 import * as KeyValueStore from "effect/persistence/KeyValueStore";
 
-import { renderChatThreadMarkdown } from "../chatThreadMarkdown.ts";
+import { renderChatThread } from "../chatThreadMarkdown.ts";
 import * as ServerConfig from "../config.ts";
 import { DiscordAuth } from "./DiscordAuth.ts";
 import {
@@ -50,6 +51,7 @@ const User = Schema.Struct({
   id: Schema.String,
   username: Schema.String,
   global_name: Schema.optional(Schema.NullOr(Schema.String)),
+  avatar: Schema.optional(Schema.NullOr(Schema.String)),
 });
 type User = typeof User.Type;
 
@@ -95,6 +97,12 @@ const collapse = (text: string, maxChars: number) => {
 };
 
 const authorName = (user: User) => user.global_name || user.username;
+
+/** Someone with no avatar of their own gets one of Discord's six defaults, picked from their id. */
+const avatarUrl = (user: User) =>
+  user.avatar
+    ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=64`
+    : `https://cdn.discordapp.com/embed/avatars/${(BigInt(user.id) >> 22n) % 6n}.png`;
 
 export const discordMessageUrl = (guildId: string, channelId: string, messageId: string) =>
   `https://discord.com/channels/${guildId}/${channelId}/${messageId}`;
@@ -415,6 +423,25 @@ export const make = Effect.gen(function* () {
       .split("\n")
       .map((line) => line.trim())
       .find((line) => line.length > 0);
+    const rendered = renderChatThread(
+      {
+        service: "Discord",
+        channelLabel: label,
+        url: input.url,
+        scope: input.scope,
+        linkedId: input.messageId,
+        messages: messages.map((message) => ({
+          id: message.id,
+          authorName: authorName(message.author),
+          avatarUrl: avatarUrl(message.author),
+          postedAt: discordTimeToDisplay(message.timestamp),
+          postedAtIso: DateTime.formatIso(DateTime.makeUnsafe(message.timestamp)),
+          text: discordContentToMarkdown(message.content, names),
+          files: (message.attachments ?? []).map((file) => file.filename),
+        })),
+      },
+      DISCORD_THREAD_MARKDOWN_MAX_CHARS,
+    );
     return {
       guildId: input.guildId,
       channelId: input.channelId,
@@ -426,23 +453,8 @@ export const make = Effect.gen(function* () {
       title: title === undefined ? "Discord message" : title.slice(0, TITLE_MAX_CHARS),
       replyCount: input.scope === "thread" ? messages.length - 1 : 0,
       scope: input.scope,
-      markdown: renderChatThreadMarkdown(
-        {
-          service: "Discord",
-          channelLabel: label,
-          url: input.url,
-          scope: input.scope,
-          linkedId: input.messageId,
-          messages: messages.map((message) => ({
-            id: message.id,
-            authorName: authorName(message.author),
-            postedAt: discordTimeToDisplay(message.timestamp),
-            text: discordContentToMarkdown(message.content, names),
-            files: (message.attachments ?? []).map((file) => file.filename),
-          })),
-        },
-        DISCORD_THREAD_MARKDOWN_MAX_CHARS,
-      ),
+      markdown: rendered.markdown,
+      messages: rendered.messages,
     } satisfies DiscordThreadContext;
   });
 

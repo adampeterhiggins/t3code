@@ -8,6 +8,7 @@ import {
   ThreadId,
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
+import { ChatThreadMessages } from "./chatThread.ts";
 import { CheckoutAccess } from "./checkouts.ts";
 import { ContextRepositoryDirectoryName, ContextRepositoryOutcome } from "./contextRepositories.ts";
 import { GITHUB_ISSUE_MARKDOWN_MAX_CHARS } from "./githubIssues.ts";
@@ -349,6 +350,8 @@ export const SlackThreadContextRecord = Schema.Struct({
   replyCount: NonNegativeInt,
   scope: Schema.Literals(["thread", "message"]),
   markdown: BoundedString(SLACK_THREAD_MARKDOWN_MAX_CHARS),
+  /** Absent on records captured before clients drew threads as messages. */
+  messages: Schema.optional(ChatThreadMessages),
 });
 export type SlackThreadContextRecord = typeof SlackThreadContextRecord.Type;
 
@@ -370,6 +373,8 @@ export const DiscordThreadContextRecord = Schema.Struct({
   replyCount: NonNegativeInt,
   scope: Schema.Literals(["thread", "message"]),
   markdown: BoundedString(DISCORD_THREAD_MARKDOWN_MAX_CHARS),
+  /** Absent on records captured before clients drew threads as messages. */
+  messages: Schema.optional(ChatThreadMessages),
 });
 export type DiscordThreadContextRecord = typeof DiscordThreadContextRecord.Type;
 

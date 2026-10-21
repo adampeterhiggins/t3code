@@ -1049,7 +1049,11 @@ permalink, the attach menu's picker (Slack search syntax, right-click for the me
 `#` menu tab shown once Slack is connected, the command palette, and the mobile attach menu. The
 server renders the thread to capped markdown when it is attached. That markdown always keeps the
 first message and the linked one, fills the rest newest first, and resolves mentions to names.
-The snapshot is inlined into the prompt for every provider.
+The snapshot is inlined into the prompt for every provider. The snapshot also carries the messages
+that markdown kept, with each author's avatar, so the web and desktop hover card
+([`ChatThreadDetails`](../apps/web/src/components/ChatThreadDetails.tsx)) draws the thread the way
+Slack does: avatars, a reply count under the parent, gaps where messages were left out, and the
+linked message highlighted. Chips captured before this show their markdown instead.
 
 A thread's chat-tab group can also be linked to one Slack thread, from the thread menu, the web
 command palette, or the mobile tab menu, which open the same picker in link mode. Picking a reply links its whole thread.
@@ -1114,8 +1118,9 @@ change, and unlink.
 Search uses Discord's guild message search in every server the bot is in; a server still being
 indexed is skipped. A message in or starting a Discord thread snapshots the thread (up to the newest
 200 messages plus the starter message, which lives in the parent channel for threads started from
-a message); a reply in a channel snapshots the message it answers. Rendering shares
-[`chatThreadMarkdown.ts`](../apps/server/src/chatThreadMarkdown.ts) with Slack.
+a message); a reply in a channel snapshots the message it answers. Rendering, including the
+messages and avatars the hover card draws, is shared with Slack through
+[`chatThreadMarkdown.ts`](../apps/server/src/chatThreadMarkdown.ts).
 
 The opt-in mention trigger (`discordMentionTrigger`) polls guild search once a minute with
 `mentions=<bot or chosen user>` and `min_id` from when it was enabled, filters by channel or

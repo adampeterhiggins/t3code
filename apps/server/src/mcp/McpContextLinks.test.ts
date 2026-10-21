@@ -46,6 +46,7 @@ const slackThread = (input: SlackGetThreadInput): SlackThreadContext => ({
   replyCount: 2,
   scope: input.scope,
   markdown: "Deploy is stuck\n\n> on it",
+  messages: [],
 });
 
 const GRANOLA_ID = "abd3f11c-e46a-4467-bfff-9a06519ef066";
@@ -68,6 +69,7 @@ const discordThread = (input: DiscordGetThreadInput): DiscordThreadContext => ({
   replyCount: 0,
   scope: input.scope,
   markdown: "Deploy is stuck",
+  messages: [],
 });
 
 let discordRequests: Array<DiscordGetThreadInput> = [];

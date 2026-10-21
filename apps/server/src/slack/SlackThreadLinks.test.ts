@@ -45,6 +45,7 @@ const apiLayer = Layer.mock(SlackApi)({
       replyCount: 0,
       scope: input.scope,
       markdown: message.text,
+      messages: [],
     } satisfies SlackThreadContext);
   },
 });

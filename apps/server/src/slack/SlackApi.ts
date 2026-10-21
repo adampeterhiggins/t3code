@@ -24,7 +24,7 @@ import * as ServerConfig from "../config.ts";
 import { SlackAuth } from "./SlackAuth.ts";
 import {
   mentionedUserIds,
-  renderSlackThreadMarkdown,
+  renderSlackThread,
   slackTextToMarkdown,
   slackTsToIso,
 } from "./slackMarkdown.ts";
@@ -64,7 +64,12 @@ const ThreadMessage = Schema.Struct({
   thread_ts: Schema.optional(Schema.String),
   user: Schema.optional(Schema.String),
   username: Schema.optional(Schema.String),
-  bot_profile: Schema.optional(Schema.Struct({ name: Schema.optional(Schema.String) })),
+  bot_profile: Schema.optional(
+    Schema.Struct({
+      name: Schema.optional(Schema.String),
+      icons: Schema.optional(Schema.Struct({ image_72: Schema.optional(Schema.String) })),
+    }),
+  ),
   text: Schema.optional(Schema.String),
   files: Schema.optional(
     Schema.Array(
@@ -87,6 +92,7 @@ const UserInfoData = Schema.Struct({
       Schema.Struct({
         display_name: Schema.optional(Schema.String),
         real_name: Schema.optional(Schema.String),
+        image_72: Schema.optional(Schema.String),
       }),
     ),
   }),
@@ -153,6 +159,7 @@ export const make = Effect.gen(function* () {
   // User id → display name. Names rarely change; the cap keeps a long-lived
   // server from growing it without bound.
   const names = new Map<string, string>();
+  const avatars = new Map<string, string>();
 
   const call = <S extends Schema.Top>(method: string, params: Record<string, string>, data: S) =>
     auth.accessToken.pipe(
@@ -169,11 +176,15 @@ export const make = Effect.gen(function* () {
       (id) =>
         call("users.info", { user: id }, UserInfoData).pipe(
           Effect.map(({ user }) => {
-            if (names.size > NAME_CACHE_MAX) names.clear();
+            if (names.size > NAME_CACHE_MAX) {
+              names.clear();
+              avatars.clear();
+            }
             names.set(
               id,
               user.profile?.display_name || user.profile?.real_name || user.real_name || user.name,
             );
+            if (user.profile?.image_72) avatars.set(id, user.profile.image_72);
           }),
           Effect.ignore,
         ),
@@ -267,6 +278,11 @@ export const make = Effect.gen(function* () {
     message.user ??
     "Slack";
 
+  const avatarUrl = (message: ThreadMessage) =>
+    (message.user ? avatars.get(message.user) : undefined) ??
+    message.bot_profile?.icons?.image_72 ??
+    null;
+
   const getThread = Effect.fn("slack.get_thread")(function* (input: SlackGetThreadInput) {
     const readReplies = (ts: string) =>
       call(
@@ -314,6 +330,22 @@ export const make = Effect.gen(function* () {
       .split("\n")
       .map((line) => line.trim())
       .find((line) => line.length > 0);
+    const rendered = renderSlackThread(
+      {
+        channelLabel: label,
+        url: input.url,
+        scope: input.scope,
+        linkedTs: input.ts,
+        messages: messages.map((message) => ({
+          ts: message.ts,
+          authorName: authorName(message),
+          avatarUrl: avatarUrl(message),
+          text: slackTextToMarkdown(message.text ?? "", names),
+          files: (message.files ?? []).map((file) => file.name ?? file.title ?? "file"),
+        })),
+      },
+      SLACK_THREAD_MARKDOWN_MAX_CHARS,
+    );
     return {
       teamId: account.teamId,
       channelId: input.channelId,
@@ -325,21 +357,8 @@ export const make = Effect.gen(function* () {
       title: title === undefined ? "Slack message" : title.slice(0, TITLE_MAX_CHARS),
       replyCount: input.scope === "thread" ? messages.length - 1 : 0,
       scope: input.scope,
-      markdown: renderSlackThreadMarkdown(
-        {
-          channelLabel: label,
-          url: input.url,
-          scope: input.scope,
-          linkedTs: input.ts,
-          messages: messages.map((message) => ({
-            ts: message.ts,
-            authorName: authorName(message),
-            text: slackTextToMarkdown(message.text ?? "", names),
-            files: (message.files ?? []).map((file) => file.name ?? file.title ?? "file"),
-          })),
-        },
-        SLACK_THREAD_MARKDOWN_MAX_CHARS,
-      ),
+      markdown: rendered.markdown,
+      messages: rendered.messages,
     } satisfies SlackThreadContext;
   });
 

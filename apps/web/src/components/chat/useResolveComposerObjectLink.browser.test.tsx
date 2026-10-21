@@ -105,6 +105,7 @@ const thread: SlackThreadContext = {
   replyCount: 0,
   scope: "thread",
   markdown: "Alice: A message",
+  messages: [],
 };
 
 const notionUrl =
