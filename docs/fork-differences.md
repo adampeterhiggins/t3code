@@ -419,21 +419,25 @@ title, state and branch from the thread's linked-PR snapshot when the result omi
 task tools as each task's title and schedule; browser preview actions as their target, page, and
 evaluated code and value; browser snapshots with a clickable saved screenshot and expandable captured
 page text (explicit `includeImage: false` still skips capture unless `save: true`); Slack thread reads
-and searches as messages; and Claude's ToolSearch,
-AskUserQuestion, SendMessage, Skill, Monitor and ScheduleWakeup and HTML pages by what they carry
+and searches as messages; thread links (`link_*_issue`, `list_thread_links`) as the items they
+open; Claude's ToolSearch, AskUserQuestion, SendMessage, Skill, Monitor, ScheduleWakeup,
+PushNotification (including when it was not delivered) and Workflow launches; Cursor's `await`,
+`getMcpTools` and `updateTodos`; and HTML pages by what they carry. A result Claude Code saved to a
+file for being too large says so and names the file
 (`resolveToolPreview`, [`ToolPreviewCard.tsx`](../apps/web/src/components/chat/ToolPreviewCard.tsx),
 [mobile](../apps/mobile/src/features/threads/ToolPreviewCard.tsx)). Third-party MCP tools get
 cards too: Notion page edits from what the call changed, fetched pages and queries; Datadog logs,
 aggregates and monitors with a link to Datadog; Calendar events and calendars; Slack sends, drafts,
 scheduled messages, new canvases, channel reads in either format, searches, profiles, channel and
-member lists, reactions and emojis; Granola meetings; Linear issues, lists, status updates and
+member lists, reactions and emojis; Granola meetings, including an empty range; Linear issues, lists, status updates and
 notifications; Drive files; the T3 history
 server's threads, turns, messages, activities, plans and usage; Forge questionnaires, projects,
 orders, respondents, quotas and weights; PostHog SQL and feature flags; LangSmith runs; Gmail
 threads with a link to each; and Codex's GitHub app, with its other connectors (`codex_apps.<app>.<tool>`) shown like
 the matching MCP server's. T3's own utility tools (capabilities, worktrees, queues, projects,
 devices, environment) have cards as well. Any other server's JSON result shows as records or
-properties picked from its title, status, time and link fields
+properties picked from its title, status, time and link fields, and a result that is only an empty
+list shows as no results
 ([`integrationToolPreview.ts`](../packages/client-runtime/src/work-log/integrationToolPreview.ts)).
 On web, results no card describes show as a collapsible JSON tree with long IDs shortened, and
 markdown results rendered. On every

@@ -9,9 +9,10 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import {
-  claudeUtilityToolPreview,
+  agentUtilityToolPreview,
   genericToolPreview,
   integrationToolPreview,
+  oversizedResultPreview,
 } from "./integrationToolPreview.ts";
 import { t3UtilityToolPreview } from "./t3UtilityToolPreview.ts";
 import { toolCallArgs, toolResultData, toolResultText } from "./itemDetail.ts";
@@ -1111,6 +1112,8 @@ export function resolveToolPreview(item: OrchestrationV2TurnItem): ToolPreview |
   const result = item.outputOmitted === true ? null : toolResultData(item.output);
   const resultRecord = isRecord(result) ? result : null;
   const text = item.outputOmitted === true ? null : toolResultText(item.output);
+  const oversized = oversizedResultPreview(text);
+  if (oversized) return oversized;
   const t3Tool = resolveT3McpToolId(item.toolName);
   // T3 tools without their own card still show their result as one.
   if (t3Tool) {
@@ -1127,7 +1130,7 @@ export function resolveToolPreview(item: OrchestrationV2TurnItem): ToolPreview |
   const toolName = item.toolName ?? "";
   return (
     claudeToolPreview(item, input, resultRecord) ??
-    claudeUtilityToolPreview(toolName, input, result, text) ??
+    agentUtilityToolPreview(toolName, input, result, text) ??
     integrationToolPreview(toolName, input, result, text)
   );
 }
