@@ -154,6 +154,7 @@ function runtime(input: {
         setShortcutSuppressed: () => Effect.void,
         isPanel: (webContentsId) => Effect.sync(() => webContentsId === PANEL_ID),
         setPanelReady: Effect.void,
+        setPresentation: () => Effect.void,
         dismiss: Effect.void,
         submit: () => Effect.void,
         setReceiverReady: () => Effect.void,

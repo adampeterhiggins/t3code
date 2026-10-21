@@ -72,6 +72,7 @@ const quickMessageLayer = (panelIds: ReadonlySet<number>) =>
       setShortcutSuppressed: () => Effect.void,
       isPanel: (webContentsId) => Effect.sync(() => panelIds.has(webContentsId)),
       setPanelReady: Effect.void,
+      setPresentation: () => Effect.void,
       dismiss: Effect.void,
       submit: () => Effect.void,
       setReceiverReady: () => Effect.void,
