@@ -645,10 +645,18 @@ function slackToolPreview(
   }
 }
 
-function granolaPreview(text: string | null): ToolPreview | null {
+function granolaPreview(text: string | null, result: unknown): ToolPreview | null {
   if (!text) return null;
   const meetings = [...text.matchAll(/<meeting ([^>]*)>([\s\S]*?)<\/meeting>/g)];
-  if (meetings.length === 0) return documentPreview(text);
+  if (meetings.length === 0) {
+    // An empty list still carries Granola's range note and data-handling preamble.
+    if (/<meetings_data [^>]*count="0"/.test(text)) {
+      return records([], {
+        summary: /<requested_range [^>]*>([^.<]+)/.exec(text)?.[1]?.trim() ?? null,
+      });
+    }
+    return (isRecord(result) ? inferredPreview(result) : null) ?? documentPreview(text);
+  }
   return records(
     meetings.map((match, index) => {
       const attribute = (name: string) =>
@@ -847,6 +855,18 @@ export function integrationToolPreview(
   );
 }
 
+/**
+ * Claude Code swaps a result too large for the model's context for a note naming the file it
+ * saved the result to; the card says so rather than showing the note as the result.
+ */
+export function oversizedResultPreview(text: string | null): ToolPreview | null {
+  const match =
+    /^Error: result \(([\d,]+) characters\) exceeds maximum allowed tokens\. Output has been saved to (\S+?)\.?\n/.exec(
+      text ?? "",
+    );
+  return match ? action(`Result too large to show (${match[1]} characters)`, [match[2]!]) : null;
+}
+
 /** Any tool's result as an inferred card, or its text as a document. */
 export function genericToolPreview(
   result: unknown,
@@ -854,6 +874,10 @@ export function genericToolPreview(
   summary: string | null = null,
 ): ToolPreview | null {
   const meaningful = text && !/^(\{\}|\[\])$/.test(text.trim()) ? text : null;
+  const values = isRecord(result) ? Object.values(result) : [];
+  if (values.length === 1 && Array.isArray(values[0]) && values[0].length === 0) {
+    return records([], { summary });
+  }
   return (
     inferredPreview(result, summary) ??
     (meaningful ? documentPreview(meaningful, { summary }) : null)
@@ -879,7 +903,7 @@ function serverToolPreview(
   if (server === "datadog") return datadogPreview(tool, input, text);
   if (server === "google_calendar") return calendarPreview(tool, result);
   if (server === "google_drive") return drivePreview(tool, input, result);
-  if (server === "granola") return granolaPreview(text);
+  if (server === "granola") return granolaPreview(text, result);
   if (server === "linear") return linearPreview(tool, input, result);
   if (server === "t3-code-history") return historyToolPreview(tool, input, result);
   if (server === "forge" || server === "forge-dev") return forgeToolPreview(tool, input, result);
@@ -889,8 +913,18 @@ function serverToolPreview(
   return null;
 }
 
-/** Claude Code's own tools outside the agent-message and question cards. */
-export function claudeUtilityToolPreview(
+/** `updateTodos` statuses such as `TODO_STATUS_IN_PROGRESS`. */
+function todoStatus(value: unknown): string | null {
+  return (
+    str(value)
+      ?.replace(/^TODO_STATUS_/, "")
+      .replaceAll("_", " ")
+      .toLowerCase() ?? null
+  );
+}
+
+/** Claude Code's and Cursor's own tools outside the agent-message and question cards. */
+export function agentUtilityToolPreview(
   toolName: string,
   input: Record_,
   result: unknown,
@@ -913,6 +947,55 @@ export function claudeUtilityToolPreview(
     case "ListAgents": {
       const listing = str(data?.listing) ?? text;
       return listing ? documentPreview(listing, { preformatted: true }) : null;
+    }
+    case "PushNotification": {
+      const delivered = data?.pushSent === true || data?.localSent === true;
+      return action(delivered ? "Sent a notification" : "Notification not delivered", [
+        str(input.message),
+        delivered ? null : (str(data?.disabledReason)?.replaceAll("_", " ") ?? null),
+      ]);
+    }
+    case "Workflow": {
+      const name = str(data?.workflowName) ?? str(input.name);
+      return data?.status === "async_launched"
+        ? action(name ? `Started the ${name} workflow` : "Started a workflow", [str(data.summary)])
+        : null;
+    }
+    case "cua_repl.js":
+      // Accessibility trees are tab-indented; images show in the raw output.
+      return text ? documentPreview(text, { preformatted: true }) : null;
+    // Cursor's tools.
+    case "await": {
+      const running = isRecord(data?.stillRunning) ? data.stillRunning : null;
+      const runtime = Number(running?.runtimeMs);
+      return running
+        ? action("Task still running", [
+            Number.isFinite(runtime) ? `after ${Math.round(runtime / 1000)}s` : null,
+          ])
+        : null;
+    }
+    case "getMcpTools": {
+      const name = str(input.toolName);
+      return name ? { kind: "loaded-tools", names: [name] } : null;
+    }
+    case "updateTodos": {
+      const raw = Array.isArray(data?.todos) ? data.todos : input.todos;
+      const todos = (Array.isArray(raw) ? raw : []).filter(isRecord);
+      const done = todos.filter((todo) => todoStatus(todo.status) === "completed").length;
+      return todos.length > 0
+        ? records(
+            todos.map((todo, index) => ({
+              key: str(todo.id) ?? String(index),
+              title: str(todo.content) ?? "Todo",
+              subtitle: todoStatus(todo.status),
+              meta: [],
+              url: null,
+              body: null,
+              threadId: null,
+            })),
+            { summary: `${done} of ${todos.length} done` },
+          )
+        : null;
     }
     case "ReadMcpResourceTool": {
       const contents = Array.isArray(data?.contents) ? data.contents.filter(isRecord) : [];

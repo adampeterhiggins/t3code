@@ -74,6 +74,28 @@ function projectCard(project: Record_): ToolPreview {
   );
 }
 
+const LINK_SOURCES: Record<string, string> = {
+  linear: "Linear",
+  github: "GitHub",
+  slack: "Slack",
+  discord: "Discord",
+  notion: "Notion",
+  granola: "Granola",
+};
+
+/** A thread's linked issue, message, page or note, opening where it came from. */
+function threadLinkRecord(source: string, link: Record_): PreviewRecord {
+  const number = typeof link.number === "number" ? `#${link.number}` : null;
+  const id = str(link.identifier) ?? (number ? `${str(link.repository) ?? ""}${number}` : null);
+  return record({
+    key: source,
+    title: present([id, str(link.title)]).join(" ") || (LINK_SOURCES[source] ?? source),
+    subtitle: LINK_SOURCES[source] ?? null,
+    meta: present([str(link.channelLabel), str(link.authorName)]),
+    url: str(link.url),
+  });
+}
+
 // The card names a few models per provider; the count says how many there are.
 const MAX_CAPABILITY_MODELS = 4;
 
@@ -394,6 +416,28 @@ export function t3UtilityToolPreview(
             {
               details: [str(data.worktreePath) ?? str(data.projectWorkspaceRoot)],
             },
+          )
+        : null;
+    case "link_linear_issue":
+    case "link_github_issue": {
+      const link = isRecord(data?.link) ? data.link : null;
+      if (!link) return null;
+      return records([threadLinkRecord(tool === "link_linear_issue" ? "linear" : "github", link)], {
+        notes: [str(data?.replacedUrl) ? `Replaced ${str(data?.replacedUrl)}` : null],
+      });
+    }
+    case "unlink_linear_issue":
+    case "unlink_github_issue":
+      return typeof data?.wasLinked === "boolean"
+        ? action(data.wasLinked ? "Unlinked the issue" : "No issue was linked")
+        : null;
+    case "list_thread_links":
+      return data
+        ? records(
+            Object.keys(LINK_SOURCES).flatMap((source) => {
+              const link = data[source];
+              return isRecord(link) ? [threadLinkRecord(source, link)] : [];
+            }),
           )
         : null;
     case "t3_worktree_list": {
