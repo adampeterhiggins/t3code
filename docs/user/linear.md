@@ -61,7 +61,7 @@ A linked issue stays with the thread and all of its chat tabs, so you can see wh
 is for and find that work again later. A thread links one issue at a time.
 
 - On web and desktop, choose **Link > Linear issue…** from the thread's menu (the sidebar row or
-  the chat header title), or run **Link Linear issue** from the command palette.
+  the chat header title), or run **Link Linear issue** from the command palette, or use **+** on the thread details panel's **Links** section.
 - Starting a new thread from an issue with the composer's **⋯** picker links that issue too.
 - On mobile, tap **Link issue** beside the tab switcher, or choose **Link > Link Linear issue** from the
   tab menu.

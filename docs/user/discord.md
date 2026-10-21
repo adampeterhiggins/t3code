@@ -58,7 +58,7 @@ A linked Discord thread stays with the thread and all of its chat tabs. A thread
 Discord thread at a time.
 
 - On web and desktop, choose **Link > Discord thread…** from the thread's menu (the sidebar row or
-  the chat header title), or run **Link Discord thread** from the command palette.
+  the chat header title), or run **Link Discord thread** from the command palette, or use **+** on the thread details panel's **Links** section.
 - On mobile, choose **Link > Link Discord thread** from the chat tab menu, or from **Link** beside **New
   tab** when the thread has one tab.
 

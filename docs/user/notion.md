@@ -32,7 +32,7 @@ T3 Code captures the title, source link, and page Markdown when you attach it. L
 
 A linked page stays with the thread and all of its chat tabs, so you can see which page the work is for. A thread links one page at a time.
 
-- On web and desktop, choose **Link > Notion page…** from the thread's menu (the sidebar row or the chat header title), or run **Link Notion page** from the command palette.
+- On web and desktop, choose **Link > Notion page…** from the thread's menu (the sidebar row or the chat header title), or run **Link Notion page** from the command palette, or use **+** on the thread details panel's **Links** section.
 - On mobile, choose **Link > Link Notion page** from the chat tab menu, or from **Link** beside **New tab** when the thread has one tab.
 
 On web and desktop, the thread details panel's **Links** section shows the page's title; on mobile a chip sits beside the tab switcher. Tap or click it to open the page in Notion, change it, or unlink it. The title is copied when you link and doesn't follow later renames. Connections without permission to change threads see the link but can only open it.

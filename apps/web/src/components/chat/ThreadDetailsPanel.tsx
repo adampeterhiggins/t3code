@@ -197,7 +197,7 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
           ) : null}
 
           {density === "full" && !props.draftId ? (
-            <ThreadLinks threadRef={activeThreadRef} />
+            <ThreadLinks threadRef={activeThreadRef} projectId={props.projectId} />
           ) : null}
 
           {density === "full" && !props.draftId ? (

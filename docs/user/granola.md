@@ -24,7 +24,7 @@ T3 Code captures the meeting's title, date, participants, summary, and your note
 
 A linked note stays with the thread and all of its chat tabs, so you can see which meeting the work came from. A thread links one note at a time.
 
-- On web and desktop, choose **Link > Granola note…** from the thread's menu (the sidebar row or the chat header title), or run **Link Granola note** from the command palette.
+- On web and desktop, choose **Link > Granola note…** from the thread's menu (the sidebar row or the chat header title), or run **Link Granola note** from the command palette, or use **+** on the thread details panel's **Links** section.
 - On mobile, choose **Link > Link Granola note** from the chat tab menu, or from **Link** beside **New tab** when the thread has one tab.
 
 On web and desktop, the thread details panel's **Links** section shows the meeting's title; on mobile a chip sits beside the tab switcher. Tap or click it to open the note in Granola, change it, or unlink it.
