@@ -1,6 +1,15 @@
+import { linearIssueReferences } from "@t3tools/shared/linearIssueReferences";
+import remarkGfm from "remark-gfm";
+import remarkParse from "remark-parse";
+import { unified } from "unified";
 import { describe, expect, it } from "vite-plus/test";
 
-import { formatLinearMarkdownForPreview, linearLinkLabel } from "./linearMarkdown";
+import type { MarkdownNode } from "~/vendor/mdast-find-and-replace";
+import {
+  formatLinearMarkdownForPreview,
+  linearLinkLabel,
+  remarkLinearIssueReferences,
+} from "./linearMarkdown";
 
 const ISSUE_URL = "https://linear.app/acme/issue/ENG-1/fix-login";
 
@@ -38,5 +47,28 @@ describe("formatLinearMarkdownForPreview", () => {
     const markdown =
       "[the bug](https://linear.app/acme/issue/ENG-7/x) and https://github.com/acme/app/pull/1";
     expect(formatLinearMarkdownForPreview(markdown, ISSUE_URL)).toBe(markdown);
+  });
+});
+
+describe("remarkLinearIssueReferences", () => {
+  const links = (markdown: string) => {
+    const tree = unified().use(remarkParse).use(remarkGfm).parse(markdown) as MarkdownNode;
+    remarkLinearIssueReferences(linearIssueReferences("acme", ["ENG"])!)(tree);
+    const found: string[] = [];
+    const visit = (node: MarkdownNode) => {
+      if (node.type === "link") found.push(`${node.children?.[0]?.value} ${node.url}`);
+      node.children?.forEach(visit);
+    };
+    visit(tree);
+    return found;
+  };
+
+  it("links bare identifiers but leaves code and existing links alone", () => {
+    expect(
+      links("Fixes ENG-12, not `ENG-1` or [ENG-2](https://linear.app/acme/issue/ENG-2/slug)."),
+    ).toEqual([
+      "ENG-12 https://linear.app/acme/issue/ENG-12",
+      "ENG-2 https://linear.app/acme/issue/ENG-2/slug",
+    ]);
   });
 });

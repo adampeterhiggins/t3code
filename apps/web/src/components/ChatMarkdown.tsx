@@ -206,6 +206,12 @@ import { serverEnvironment } from "../state/server";
 import { slackEnvironment } from "../state/slack";
 import { discordEnvironment } from "../state/discord";
 import { granolaEnvironment } from "../state/granola";
+import { linearEnvironment } from "../state/linear";
+import { remarkLinearIssueReferences } from "../lib/linearMarkdown";
+import {
+  type LinearIssueReferences,
+  mayHaveLinearIssueReference,
+} from "@t3tools/shared/linearIssueReferences";
 import { useEnvironmentQuery } from "../state/query";
 import { shellEnvironment } from "../state/shell";
 import { assetEnvironment } from "../state/assets";
@@ -342,6 +348,9 @@ export function shouldUseMarkdownFileBrowserPrimaryAction(input: {
 
 const EMPTY_MARKDOWN_SKILLS: ReadonlyArray<MessageSkill> = [];
 const EMPTY_REMARK_PLUGINS: NonNullable<ReactMarkdownOptions["remarkPlugins"]> = [];
+const NO_LINEAR_ISSUE_REFERENCES_ATOM = Atom.make<LinearIssueReferences | null>(null).pipe(
+  Atom.withLabel("chat-markdown:no-linear-issue-references"),
+);
 
 const ARTIFACT_TEMPLATE_ICON_BY_KIND = {
   document: FileTextIcon,
@@ -3823,9 +3832,20 @@ function ChatMarkdown({
   const bindMarkdownRef = (node: HTMLElement | null) => {
     markdownRef.current = node;
   };
+  const linearEnvironmentId = props.threadRef?.environmentId ?? props.environmentId ?? null;
+  const linearIssueReferences = useAtomValue(
+    linearEnvironmentId !== null && mayHaveLinearIssueReference(text)
+      ? linearEnvironment.issueReferences(linearEnvironmentId)
+      : NO_LINEAR_ISSUE_REFERENCES_ATOM,
+  );
+  const linearRemarkPlugins: NonNullable<ReactMarkdownOptions["remarkPlugins"]> =
+    linearIssueReferences === null
+      ? EMPTY_REMARK_PLUGINS
+      : [[remarkLinearIssueReferences, linearIssueReferences]];
   const remarkPlugins = [
     ...(lineBreaks ? CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS : CHAT_MARKDOWN_REMARK_PLUGINS),
     ...extraRemarkPlugins,
+    ...linearRemarkPlugins,
     ...(incrementalParsing ? [createIncrementalMarkdownPlugin()] : []),
   ];
   if (componentState.mathEnabled)

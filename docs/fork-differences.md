@@ -951,6 +951,14 @@ Linear through the environment's connection with `read_linear_issue` (the linked
 rendered as the same markdown a composer chip sends), `search_linear_issues`, and
 `list_linear_filter_options`. These work when the agent has no Linear MCP server of its own.
 
+Bare issue identifiers in chat text link to the connected workspace, so `ENG-123` reads like a
+pasted issue link, with its preview. Only the workspace's team keys (from
+`linear.getFilterOptions`) match, in capitals, and code and existing links are left alone
+([`linearIssueReferences.ts`](../packages/shared/src/linearIssueReferences.ts); web
+`remarkLinearIssueReferences`, mobile `markdownWithLinearIssueLinks`). The orchestration
+instructions also ask agents to link Linear issues, GitHub issues, and pull requests by full URL
+when they have it.
+
 `linearAssignmentTriggers` in server settings (off when empty) holds rules that start a thread
 when an issue is newly assigned to the connected account. The server polls the read-only API
 every 2 minutes, since a webhook would need a public address. It launches like a scheduled task

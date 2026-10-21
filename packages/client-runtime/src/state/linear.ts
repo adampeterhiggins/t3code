@@ -1,5 +1,15 @@
-import { type LinearThreadLink, type ThreadId, WS_METHODS } from "@t3tools/contracts";
-import { Atom } from "effect/reactivity";
+import {
+  type EnvironmentId,
+  type LinearThreadLink,
+  type ThreadId,
+  WS_METHODS,
+} from "@t3tools/contracts";
+import {
+  type LinearIssueReferences,
+  linearIssueReferences,
+} from "@t3tools/shared/linearIssueReferences";
+import * as Option from "effect/Option";
+import { AsyncResult, Atom } from "effect/reactivity";
 
 import {
   createEnvironmentRpcCommand,
@@ -13,12 +23,51 @@ export { linearIssueContextRecord } from "@t3tools/shared/integrationContextReco
 export function createLinearEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
 ) {
+  // The environment's Linear connection, including an in-progress login.
+  const connection = createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+    label: "environment-data:linear:connection",
+    tag: WS_METHODS.linearSubscribeState,
+  });
+  // Teams, statuses, projects, people, and labels for the picker's filter menus.
+  const filterOptions = createEnvironmentRpcQueryAtomFamily(runtime, {
+    label: "environment-data:linear:filter-options",
+    tag: WS_METHODS.linearGetFilterOptions,
+    staleTimeMs: 5 * 60_000,
+  });
+  // How chat text links bare issue identifiers; null until Linear is connected and its teams load.
+  const issueReferences = Atom.family((environmentId: EnvironmentId) => {
+    let previous: LinearIssueReferences | null = null;
+    return Atom.make((get) => {
+      const state = Option.getOrNull(
+        AsyncResult.value(get(connection({ environmentId, input: {} }))),
+      );
+      const account = state?.phase === "connected" ? state.account : null;
+      const teams =
+        account === null
+          ? undefined
+          : Option.getOrNull(AsyncResult.value(get(filterOptions({ environmentId, input: {} }))))
+              ?.teams;
+      const next =
+        account === null || teams === undefined
+          ? null
+          : linearIssueReferences(
+              account.workspaceUrlKey,
+              teams.map((team) => team.key),
+            );
+      // A refetch with the same teams keeps the same value, so rendered text is not re-linked.
+      if (
+        next === null ||
+        previous === null ||
+        next.workspaceUrlKey !== previous.workspaceUrlKey ||
+        next.pattern.source !== previous.pattern.source
+      ) {
+        previous = next;
+      }
+      return previous;
+    }).pipe(Atom.withLabel(`environment-data:linear:issue-references:${environmentId}`));
+  });
   return {
-    // The environment's Linear connection, including an in-progress login.
-    connection: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
-      label: "environment-data:linear:connection",
-      tag: WS_METHODS.linearSubscribeState,
-    }),
+    connection,
     startLogin: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:linear:start-login",
       tag: WS_METHODS.linearStartLogin,
@@ -42,12 +91,8 @@ export function createLinearEnvironmentAtoms<R, E>(
       tag: WS_METHODS.linearListIssues,
       staleTimeMs: 30_000,
     }),
-    // Teams, statuses, projects, people, and labels for the picker's filter menus.
-    filterOptions: createEnvironmentRpcQueryAtomFamily(runtime, {
-      label: "environment-data:linear:filter-options",
-      tag: WS_METHODS.linearGetFilterOptions,
-      staleTimeMs: 5 * 60_000,
-    }),
+    filterOptions,
+    issueReferences,
     // One issue's full snapshot, for hover previews; cached briefly so re-hovering is instant.
     issue: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:linear:issue",
