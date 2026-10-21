@@ -1,5 +1,4 @@
 import {
-  OrchestratorMcpFailure,
   OrchestratorMcpThreadListResult,
   OrchestratorMcpThreadReadResult,
   OrchestratorMcpThreadSendResult,
@@ -29,8 +28,17 @@ import { Argument, Command, Flag, GlobalFlag } from "effect/cli";
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import * as ServerConfig from "../config.ts";
 import { mcpToolSession, type McpToolSession } from "../mcp/AcpMcpStdioBridge.ts";
+import { OPERATE_MCP_PATH } from "../mcp/paths.ts";
 import { readPersistedServerRuntimeState } from "../serverRuntimeState.ts";
 import { projectLocationFlags, resolveCliAuthConfig } from "./config.ts";
+import {
+  contextLinksArgument,
+  issueOperateSession,
+  linkFlag,
+  orPullRequest,
+  pullRequestFlag,
+  ToolFailureText,
+} from "./threadForkHooks.ts";
 
 /**
  * Short enough that a run which stops to ask the user something is noticed
@@ -99,7 +107,7 @@ export class ThreadNeedsInputError extends Schema.TaggedError<ThreadNeedsInputEr
   override readonly [Runtime.errorExitCode] = 2;
 
   override get message(): string {
-    return `Thread ${this.threadId} is waiting for an answer. Open it in T3 Code to respond.`;
+    return `Thread ${this.threadId} is waiting for an answer. Run \`t3 thread answer ${this.threadId}\` to see it.`;
   }
 }
 
@@ -136,7 +144,7 @@ const reportThreadErrors = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     ),
   );
 
-const decodeFailureText = Schema.decodeUnknownOption(Schema.fromJsonString(OrchestratorMcpFailure));
+const decodeFailureText = Schema.decodeUnknownOption(Schema.fromJsonString(ToolFailureText));
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const printJson = (value: unknown) => Console.log(encodeJson(value));
 
@@ -167,7 +175,7 @@ const toolFailureDetail = (result: typeof ToolResult.Type) => {
   const text = result.content?.find((part) => part.text !== undefined)?.text ?? "";
   return Option.match(decodeFailureText(text), {
     onNone: () => text || "The tool call failed.",
-    onSome: (failure) => failure.message,
+    onSome: (failure) => failure.message ?? failure.detail ?? text,
   });
 };
 
@@ -205,6 +213,7 @@ export type ThreadTools = ReturnType<typeof makeThreadTools>;
 const withThreadTools = Effect.fn("cli.thread.withThreadTools")(function* <A, E, R>(
   flags: { readonly baseDir: Option.Option<string> },
   run: (tools: ThreadTools) => Effect.Effect<A, E, R>,
+  path: "/mcp" | typeof OPERATE_MCP_PATH = "/mcp",
 ) {
   const logLevel = yield* GlobalFlag.LogLevel;
   const config = yield* resolveCliAuthConfig(flags, logLevel);
@@ -216,18 +225,20 @@ const withThreadTools = Effect.fn("cli.thread.withThreadTools")(function* <A, E,
     const origin = runtimeState.value.origin;
     const environmentAuth = yield* EnvironmentAuth.EnvironmentAuth;
     const issued = yield* Effect.acquireRelease(
-      environmentAuth.issueMcpClientSession({
-        label: "t3 thread cli",
-        // The CLI runs as the machine's owner. New threads still start at
-        // the project's default mode, never at this ceiling by default.
-        access: "full-access",
-        client: { deviceType: "bot" },
-      }),
+      path === OPERATE_MCP_PATH
+        ? issueOperateSession(environmentAuth)
+        : environmentAuth.issueMcpClientSession({
+            label: "t3 thread cli",
+            // The CLI runs as the machine's owner. New threads still start at
+            // the project's default mode, never at this ceiling by default.
+            access: "full-access",
+            client: { deviceType: "bot" },
+          }),
       (session) =>
         environmentAuth.revokeSession(session.sessionId).pipe(Effect.ignore({ log: true })),
     );
     const session = yield* mcpToolSession({
-      endpoint: new URL("/mcp", origin).href,
+      endpoint: new URL(path, origin).href,
       authorization: `Bearer ${issued.token}`,
       clientName: "t3-thread-cli",
     }).pipe(Effect.mapError((cause) => new ThreadServerUnreachableError({ origin, cause })));
@@ -560,6 +571,8 @@ const threadStartCommand = Command.make("start", {
     Flag.withDescription("Branch name for the new worktree."),
     Flag.optional,
   ),
+  pr: pullRequestFlag,
+  link: linkFlag,
   wait: waitFlag,
   json: jsonFlag,
 }).pipe(
@@ -567,7 +580,9 @@ const threadStartCommand = Command.make("start", {
   Command.withHandler((flags) =>
     Effect.gen(function* () {
       const message = yield* readMessageArgument(flags.message);
-      const workspaceStrategy = yield* launchWorkspaceStrategy(flags);
+      const workspaceStrategy = yield* launchWorkspaceStrategy(flags).pipe(
+        orPullRequest(flags.pr, ThreadUsageError),
+      );
       if (Option.isSome(flags.provider) !== Option.isSome(flags.model)) {
         return yield* new ThreadUsageError({ detail: "--provider and --model go together." });
       }
@@ -584,6 +599,7 @@ const threadStartCommand = Command.make("start", {
               projectId: project.id,
               title,
               message,
+              ...contextLinksArgument(flags.link),
               ...(workspaceStrategy === undefined ? {} : { workspaceStrategy }),
               ...(Option.isSome(flags.provider) && Option.isSome(flags.model)
                 ? {
@@ -615,6 +631,7 @@ const threadSendCommand = Command.make("send", {
   ...projectLocationFlags,
   thread: threadArgument,
   message: messageArgument,
+  link: linkFlag,
   wait: waitFlag,
   json: jsonFlag,
 }).pipe(
@@ -630,7 +647,7 @@ const threadSendCommand = Command.make("send", {
         Effect.fn("cli.thread.send")(function* (tools) {
           const sent = yield* tools.call(
             "t3_thread_send",
-            { threadId, message, mode: "queue" },
+            { threadId, message, mode: "queue", ...contextLinksArgument(flags.link) },
             OrchestratorMcpThreadSendResult,
           );
           if (flags.wait) {
@@ -708,3 +725,27 @@ export const threadCommand = Command.make("thread").pipe(
     threadShowCommand,
   ]),
 );
+
+// Fork: shared with the fork-only commands in threadFork.ts and draft.ts.
+export {
+  decodeThreadId,
+  decodeTitle,
+  finishRun,
+  jsonFlag,
+  launchWorkspaceStrategy,
+  listAllProjects,
+  messageArgument,
+  printJson,
+  readFullText,
+  readMessageArgument,
+  readTimeline,
+  reportThreadErrors,
+  resolveProject,
+  threadArgument,
+  threadListCommand,
+  threadSendCommand,
+  threadShowCommand,
+  threadStartCommand,
+  waitFlag,
+  withThreadTools,
+};
