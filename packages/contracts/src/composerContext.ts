@@ -13,6 +13,7 @@ import { ContextRepositoryDirectoryName, ContextRepositoryOutcome } from "./cont
 import { GITHUB_ISSUE_MARKDOWN_MAX_CHARS } from "./githubIssues.ts";
 import { GITHUB_REF_MARKDOWN_MAX_CHARS, GitHubRefType } from "./githubRefs.ts";
 import { LINEAR_ISSUE_MARKDOWN_MAX_CHARS } from "./linear.ts";
+import { ProviderInstanceId } from "./providerInstance.ts";
 import { GRANOLA_NOTE_MARKDOWN_MAX_CHARS } from "./granola.ts";
 import { NOTION_PAGE_MARKDOWN_MAX_CHARS } from "./notion.ts";
 import { SLACK_THREAD_MARKDOWN_MAX_CHARS } from "./slack.ts";
@@ -45,6 +46,7 @@ export const COMPOSER_CONTEXT_KINDS = [
   "prompt-link",
   "github-ref",
   "unread-link",
+  "model",
 ] as const;
 export type KnownComposerContextKind = (typeof COMPOSER_CONTEXT_KINDS)[number];
 
@@ -529,6 +531,34 @@ export const UnreadLinkContextRecord = Schema.Struct({
 });
 export type UnreadLinkContextRecord = typeof UnreadLinkContextRecord.Type;
 
+/** One trait the user chose for a model chip, with the labels it had when chosen. */
+export const ModelContextOption = Schema.Struct({
+  id: TrimmedNonEmptyString.check(Schema.isMaxLength(64)),
+  value: Schema.Union([TrimmedNonEmptyString.check(Schema.isMaxLength(64)), Schema.Boolean]),
+  label: ShortString,
+  valueLabel: ShortString,
+});
+export type ModelContextOption = typeof ModelContextOption.Type;
+
+/**
+ * Fork: a model the user named for the agent to use, such as for subagents it starts. A record of
+ * what was asked for when the chip was written, so it is never updated afterwards. Options the
+ * user did not set are absent and inherit.
+ */
+export const ModelContextRecord = Schema.Struct({
+  ...recordBase,
+  kind: Schema.Literal("model"),
+  providerInstanceId: ProviderInstanceId,
+  driver: TrimmedNonEmptyString.check(Schema.isMaxLength(64)),
+  instanceName: ShortString,
+  model: TrimmedNonEmptyString.check(Schema.isMaxLength(255)),
+  modelName: ShortString,
+  options: Schema.Array(ModelContextOption).check(Schema.isMaxLength(32)),
+  /** When the chip was written, as an ISO timestamp. */
+  writtenAt: ShortString,
+});
+export type ModelContextRecord = typeof ModelContextRecord.Type;
+
 export const KnownComposerContextRecord = Schema.Union([
   ImageContextRecord,
   FileContextRecord,
@@ -552,6 +582,7 @@ export const KnownComposerContextRecord = Schema.Union([
   PromptLinkContextRecord,
   GitHubRefContextRecord,
   UnreadLinkContextRecord,
+  ModelContextRecord,
 ]);
 export type KnownComposerContextRecord = typeof KnownComposerContextRecord.Type;
 

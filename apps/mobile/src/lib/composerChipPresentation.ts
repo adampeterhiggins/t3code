@@ -24,6 +24,7 @@ const CONTEXT_CHIP_PRESENTATIONS = {
   repository: { accent: "#009c9c", symbol: "folder" },
   checkout: { accent: "#0096af", symbol: "laptopcomputer" },
   "unread-link": { accent: "#d55665", symbol: "link" },
+  model: { accent: "#d06217", symbol: "cpu" },
 } as const;
 
 export function composerChipSizeSuffix(record?: {
