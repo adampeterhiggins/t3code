@@ -1,3 +1,10 @@
+import {
+  type LinearIssueReferences,
+  linearIssueReferenceUrl,
+} from "@t3tools/shared/linearIssueReferences";
+
+import { findAndReplaceText, type MarkdownNode } from "~/vendor/mdast-find-and-replace";
+
 const LINEAR_URL = String.raw`https?://linear\.app/[\w-]+/(?:issue|project|document)/[^\s)\]>]+`;
 const MARKDOWN_LINK = new RegExp(String.raw`\[([^\]]*)\]\((${LINEAR_URL})\)`, "g");
 const AUTOLINK = new RegExp(String.raw`<(${LINEAR_URL})>`, "g");
@@ -42,4 +49,25 @@ export function formatLinearMarkdownForPreview(markdown: string, issueUrl: strin
     )
     .replace(AUTOLINK, (match, url: string) => label(url, match))
     .replace(BARE_URL, (match, url: string) => label(url, match));
+}
+
+const ISSUE_REFERENCE_IGNORED_TYPES = new Set(["link", "linkReference"]);
+
+/**
+ * Fork: links bare issue identifiers (`ENG-123`) to the workspace, so they render the way a
+ * pasted issue link does. Code and existing links keep their text.
+ */
+export function remarkLinearIssueReferences(references: LinearIssueReferences) {
+  return (tree: MarkdownNode) => {
+    findAndReplaceText(
+      tree,
+      references.pattern,
+      (identifier) => ({
+        type: "link",
+        url: linearIssueReferenceUrl(references.workspaceUrlKey, identifier),
+        children: [{ type: "text", value: identifier }],
+      }),
+      ISSUE_REFERENCE_IGNORED_TYPES,
+    );
+  };
 }
