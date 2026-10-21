@@ -798,6 +798,42 @@ export function nestedToolCallFromEnvelope(
           })),
         } as unknown as ToolCall,
       };
+    case "readLintsToolCall":
+      return {
+        callId: nestedCallId,
+        toolCall: {
+          type: "readLints",
+          args: {
+            paths: Array.isArray(args.paths)
+              ? args.paths.filter((entry): entry is string => typeof entry === "string")
+              : [],
+          },
+          // Subagent steps are protobuf JSON, which omits empty repeated fields: a clean file
+          // arrives as `{ path }` with no `diagnostics`.
+          result: nestedToolResult(call.result, (value) => {
+            const fileDiagnostics = (
+              Array.isArray(value.fileDiagnostics) ? value.fileDiagnostics : []
+            ).flatMap((rawFile) => {
+              const file = unknownRecord(rawFile);
+              if (typeof file?.path !== "string") {
+                return [];
+              }
+              const diagnostics = Array.isArray(file.diagnostics)
+                ? file.diagnostics.filter((entry) => unknownRecord(entry) !== undefined)
+                : [];
+              return [{ path: file.path, diagnostics, diagnosticsCount: diagnostics.length }];
+            });
+            return {
+              fileDiagnostics,
+              totalFiles: fileDiagnostics.length,
+              totalDiagnostics: fileDiagnostics.reduce(
+                (total, file) => total + file.diagnosticsCount,
+                0,
+              ),
+            };
+          }),
+        } as unknown as ToolCall,
+      };
     case "shellToolCall": {
       const rawResult = unknownRecord(call.result);
       const permissionDenied = unknownRecord(rawResult?.permissionDenied);
