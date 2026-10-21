@@ -25,6 +25,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
 import {
   CircleDotIcon,
+  CpuIcon,
   EllipsisIcon,
   FileIcon,
   FolderGit2Icon,
@@ -75,7 +76,11 @@ import {
 } from "~/state/environments";
 import { projectEnvironment } from "~/state/projects";
 import { useAtomCommand } from "~/state/use-atom-command";
-import { EMPTY_SERVER_PROVIDERS, serverEnvironment } from "~/state/server";
+import {
+  EMPTY_SERVER_PROVIDERS,
+  primaryServerKeybindingsAtom,
+  serverEnvironment,
+} from "~/state/server";
 import { useEnvironmentScope } from "~/state/session";
 import { allReachableShellsLiveAtom } from "~/state/shell";
 
@@ -89,6 +94,7 @@ import {
   openComposerAttachPicker,
 } from "../chat/ComposerAttachMenu";
 import { ComposerAttachRedirect } from "../chat/composerAttachRedirect";
+import { ComposerModelChipPicker } from "../chat/ComposerModelChipPicker";
 import { CheckoutAttachPickerHost } from "../chat/CheckoutAttachPicker";
 import { DiscordMessagePickerHost } from "../chat/DiscordMessagePicker";
 import { GitHubIssuePickerHost } from "../chat/GitHubIssuePicker";
@@ -152,6 +158,7 @@ function QuickMessageAttachMenu(props: {
   readonly pullRequestsAvailable: boolean;
   readonly onAttachFiles: () => void;
   readonly onPick: (picker: ComposerAttachPicker) => void;
+  readonly onPickModel?: (() => void) | undefined;
 }) {
   const checkouts = useComposerCheckoutItems(props.environmentId, { enabled: false, query: "" });
   return (
@@ -162,6 +169,7 @@ function QuickMessageAttachMenu(props: {
       checkoutsAvailable={checkouts.hasLocalCandidates}
       onAttachFiles={props.onAttachFiles}
       onPick={props.onPick}
+      onPickModel={props.onPickModel}
     />
   );
 }
@@ -183,6 +191,7 @@ const ATTACHMENT_ICONS = {
   "pull-request": PullRequestGlyph.pullRequest,
   checkout: LaptopIcon,
   repository: FolderGit2Icon,
+  model: CpuIcon,
 } satisfies Record<DesktopQuickMessageAttachment["type"], unknown>;
 
 function startFromChip(startFrom: DesktopQuickMessageStartFrom) {
@@ -289,6 +298,8 @@ export function QuickMessagePanel() {
     ReadonlyArray<{ readonly id: string; readonly attachment: DesktopQuickMessageAttachment }>
   >([]);
   const [startFromOpen, setStartFromOpen] = useState(false);
+  const [modelChipPickerOpen, setModelChipPickerOpen] = useState(false);
+  const [attachMenuAnchor, setAttachMenuAnchor] = useState<HTMLSpanElement | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerQuery, setPickerQuery] = useState("");
   const [sending, setSending] = useState(false);
@@ -356,6 +367,7 @@ export function QuickMessagePanel() {
     serverSettings ?? DEFAULT_SERVER_SETTINGS,
     clientSettings,
   );
+  const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const providers =
     (environmentId ? providersByEnvironment.get(environmentId) : undefined) ??
     EMPTY_SERVER_PROVIDERS;
@@ -614,6 +626,7 @@ export function QuickMessagePanel() {
                           setChosenModel(null);
                           setStartFrom(null);
                           setAttachments([]);
+                          setModelChipPickerOpen(false);
                           inputRef.current?.focus();
                         }}
                       >
@@ -842,20 +855,65 @@ export function QuickMessagePanel() {
                   </div>
                   <div className="flex shrink-0 flex-nowrap items-center justify-end gap-2">
                     {project && environmentId ? (
-                      <QuickMessageAttachMenu
-                        environmentId={environmentId}
-                        project={project}
-                        pullRequestsAvailable={
-                          environment?.serverConfig?.environment.capabilities.pullRequests === true
-                        }
-                        onAttachFiles={() => fileInputRef.current?.click()}
-                        onPick={(picker) =>
-                          openComposerAttachPicker(
-                            picker,
-                            scopeThreadRef(environmentId, PICKER_THREAD_ID),
-                          )
-                        }
-                      />
+                      <span ref={setAttachMenuAnchor} className="inline-flex">
+                        <QuickMessageAttachMenu
+                          environmentId={environmentId}
+                          project={project}
+                          pullRequestsAvailable={
+                            environment?.serverConfig?.environment.capabilities.pullRequests ===
+                            true
+                          }
+                          onAttachFiles={() => fileInputRef.current?.click()}
+                          onPick={(picker) =>
+                            openComposerAttachPicker(
+                              picker,
+                              scopeThreadRef(environmentId, PICKER_THREAD_ID),
+                            )
+                          }
+                          onPickModel={
+                            modelSelection ? () => setModelChipPickerOpen(true) : undefined
+                          }
+                        />
+                        {modelSelection ? (
+                          <ComposerModelChipPicker
+                            open={modelChipPickerOpen}
+                            onOpenChange={setModelChipPickerOpen}
+                            anchor={attachMenuAnchor}
+                            environmentId={environmentId}
+                            activeInstanceId={modelSelection.instanceId}
+                            model={modelSelection.model}
+                            instanceEntries={instanceEntries}
+                            modelOptionsByInstance={modelOptionsByInstance}
+                            keybindings={keybindings}
+                            terminalOpen={false}
+                            onPick={(instanceId, model) => {
+                              const entry = instanceEntries.find(
+                                (candidate) => candidate.instanceId === instanceId,
+                              );
+                              if (!entry) return;
+                              const name =
+                                modelOptionsByInstance
+                                  .get(instanceId)
+                                  ?.find((candidate) => candidate.slug === model)?.name ?? model;
+                              setAttachments((current) => [
+                                ...current,
+                                {
+                                  id: randomUUID(),
+                                  attachment: {
+                                    type: "model",
+                                    providerInstanceId: instanceId,
+                                    driver: entry.driverKind,
+                                    instanceName: entry.displayName,
+                                    model,
+                                    label: name,
+                                  },
+                                },
+                              ]);
+                              inputRef.current?.focus();
+                            }}
+                          />
+                        ) : null}
+                      </span>
                     ) : null}
                     <ComposerPrimaryActions
                       compact={false}

@@ -1,6 +1,7 @@
 import type {
   ModelContextOption,
   ModelContextRecord,
+  ProviderInstanceId,
   ProviderOptionSelection,
   ScopedThreadRef,
   ServerProviderModel,
@@ -58,15 +59,48 @@ export function attachModelToChat(
   },
 ): ModelContextRecord {
   const model = input.entry.models.find((candidate) => candidate.slug === input.slug) ?? null;
-  const record = modelContextRecord({
-    // Each chip gets its own record, so editing one chip's traits leaves the others alone.
-    chipId: randomUUID(),
+  return insertModelChip(composerRef, {
     providerInstanceId: input.entry.instanceId,
     driver: input.entry.driverKind,
     instanceName: input.entry.displayName,
     model: input.slug,
     modelName: input.name,
     options: modelContextOptions(model, input.selections ?? []),
+  });
+}
+
+/**
+ * Puts a chip for a model chosen before the draft existed, such as in the quick message panel.
+ * Traits are left unset; the draft's chip can still be edited after it lands.
+ */
+export function attachStoredModelToChat(
+  composerRef: ScopedThreadRef,
+  input: {
+    providerInstanceId: ProviderInstanceId;
+    driver: string;
+    instanceName: string;
+    model: string;
+    modelName: string;
+  },
+): ModelContextRecord {
+  return insertModelChip(composerRef, { ...input, options: [] });
+}
+
+function insertModelChip(
+  composerRef: ScopedThreadRef,
+  input: {
+    providerInstanceId: ProviderInstanceId;
+    driver: string;
+    instanceName: string;
+    model: string;
+    modelName: string;
+    options: ReadonlyArray<ModelContextOption>;
+  },
+): ModelContextRecord {
+  const record = modelContextRecord({
+    // Each chip gets its own record, so editing one chip's traits leaves the others alone.
+    chipId: randomUUID(),
+    ...input,
     writtenAt: new Date().toISOString(),
   });
   useIssueContextStore.getState().upsert(composerRef.threadId, record);

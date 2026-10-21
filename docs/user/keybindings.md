@@ -206,9 +206,9 @@ Press Escape or click away to close the composer; what you typed is still there 
 
 The composer opens on the project you used most recently, with that project's default model,
 effort and access mode. Paste, drop or attach files there, or attach a thread, an issue, a pull
-request and the rest of the attach menu. Use **⋯** to start from a PR, branch or issue. Picks show
-above your message and are applied to the new thread when you send. On Linux the shortcut does not
-work in a Wayland session.
+request, a model, and the rest of the attach menu. Use **⋯** to start from a PR, branch or issue.
+Picks show above your message and are applied to the new thread when you send. On Linux the
+shortcut does not work in a Wayland session.
 
 ## Desktop quit shortcut
 
