@@ -6,6 +6,7 @@ import { useEffect, useEffectEvent, useRef } from "react";
 import { composerDraftHasUserContent, useComposerDraftStore } from "../../composerDraftStore";
 import { useComposerSubmitRequestStore } from "../../composerSubmitRequestStore";
 import { useSidebarPendingFileDropStore } from "../../sidebarPendingFileDropStore";
+import { MainDestinationCoordinator } from "./MainDestinationCoordinator";
 import { applyQuickMessageToDraft } from "./QuickMessageDraftApplier";
 import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
 import { usePrimaryEnvironment } from "../../state/environments";
@@ -119,5 +120,5 @@ export function QuickMessageCoordinator() {
     };
   }, [ready, quickMessage]);
 
-  return null;
+  return <MainDestinationCoordinator />;
 }

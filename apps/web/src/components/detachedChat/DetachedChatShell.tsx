@@ -20,6 +20,7 @@ import {
 } from "../quickMessage/detachedChatPresentation";
 import { isDetachedChatWindow } from "../quickMessage/quickMessageWindow";
 import { SidebarProvider } from "../ui/sidebar";
+import { FloatingNavigationGuard } from "./FloatingNavigationGuard";
 import { AnchoredToastProvider, ToastProvider } from "../ui/toast";
 
 /**
@@ -35,8 +36,18 @@ export function DetachedChatShell(props: { readonly children?: ReactNode }) {
         {props.children}
         <PanelAnimationSuppressionProvider value={false}>
           <DetachedChatFrame>
-            <ChatDialogHosts />
-            <Outlet />
+            {/*
+             * W3b's frame (presentation checkout) owns compact/expanded chrome,
+             * the detached-chat dataset, and onShow/setPanelReady. Keep that
+             * work on the frame. This guard wraps only the routed children, so
+             * a non-chat URL can drop the chat without dropping panel readiness.
+             * Restack: leave the frame body intact and keep this wrapper around
+             * ChatDialogHosts and Outlet.
+             */}
+            <FloatingNavigationGuard>
+              <ChatDialogHosts />
+              <Outlet />
+            </FloatingNavigationGuard>
           </DetachedChatFrame>
         </PanelAnimationSuppressionProvider>
       </AnchoredToastProvider>
