@@ -72,9 +72,11 @@ const isProviderTurnStartError = Schema.is(ProviderTurnStartError);
 
 /**
  * Claude refuses these before it reads the prompt: replacing a process running background work,
- * or launch arguments whose appended system prompt cannot be read.
+ * or launch arguments whose appended system prompt cannot be read. Any guarded provider refuses a
+ * turn at its subscription limit.
  */
 const PROMPT_REFUSAL_TAGS = [
+  "SubscriptionLimitStopError",
   "ClaudeBackgroundWorkBlocksQueryReplacementError",
   "ClaudeAppendSystemPromptFileError",
   "ClaudeAppendSystemPromptMissingValueError",

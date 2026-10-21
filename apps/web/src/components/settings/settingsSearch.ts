@@ -356,7 +356,9 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "stop-at-subscription-limit",
     title: "Stop at subscription limit",
     to: "/settings/general",
-    searchTerms: ["Claude extra usage overage paid spending overnight unattended quota"],
+    searchTerms: [
+      "Claude Codex Cursor extra usage overage credits on-demand paid spending overnight unattended quota",
+    ],
   },
   {
     id: "auto-resume-limited-threads",

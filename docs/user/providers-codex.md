@@ -117,6 +117,9 @@ The thread keeps its work and offers a way to pick it back up:
   another account or model, carrying this conversation over. See
   [Switch accounts in an existing thread](#switch-accounts-in-an-existing-thread).
 
+To stop at the allowance instead of continuing on credits, use **Stop at
+subscription limit**. See [Stop at subscription limits](./usage.md#stop-at-subscription-limits).
+
 Scheduling and cancelling an automatic resume are noted in the stopped turn.
 Sending any new message also moves the thread past the stop. See
 [Inspect agent work](./thread-sidebar.md#inspect-agent-work) for the settings

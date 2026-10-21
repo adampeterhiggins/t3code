@@ -1,5 +1,6 @@
-import type { ServerProviderUpdateRequiredModel } from "@t3tools/contracts";
+import type { ServerProviderModel, ServerProviderUpdateRequiredModel } from "@t3tools/contracts";
 import * as ModelCatalog from "@t3tools/provider-core/server/ModelCatalog";
+import { withSubscriptionLimitOption } from "@t3tools/provider-core/server/SubscriptionLimitPolicy";
 import type { ServerProviderDraft } from "@t3tools/provider-core/server/snapshotProbe";
 import { codexModelFamily } from "@t3tools/shared/model";
 import { compareSemverVersions, parseSemver } from "@t3tools/shared/semver";
@@ -47,8 +48,17 @@ export function applyCodexModelCatalog(
   catalog: ModelCatalog.ProviderCatalog | undefined,
 ): ServerProviderDraft {
   const updateRequiredModels = codexUpdateRequiredModels(catalog, draft);
+  const applied = ModelCatalog.applyModelCatalog(draft, catalog, CODEX_MATCHING);
   return {
-    ...ModelCatalog.applyModelCatalog(draft, catalog, CODEX_MATCHING),
+    ...applied,
+    models: applied.models.map(withCodexSubscriptionLimitOption),
     ...(updateRequiredModels.length > 0 ? { updateRequiredModels } : {}),
   };
+}
+
+export function withCodexSubscriptionLimitOption(model: ServerProviderModel): ServerProviderModel {
+  return withSubscriptionLimitOption(
+    model,
+    "Stop when Codex reports a usage limit used up, even if credits could continue the work. Reports can lag; this is not a billing cap.",
+  );
 }

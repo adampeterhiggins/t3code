@@ -179,6 +179,7 @@ import {
   makeProviderFailure,
   makeProviderRetryTurnItem,
 } from "@t3tools/provider-core/server/failure";
+import * as SubscriptionLimitPolicy from "@t3tools/provider-core/server/SubscriptionLimitPolicy";
 import { turnScopedSelectionTransition } from "@t3tools/provider-core/server/selectionTransition";
 import { providerMessageTextWithAttachmentPaths } from "@t3tools/provider-core/server/attachmentPrompt";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
@@ -1726,6 +1727,9 @@ const getNativeThreadId = Effect.fnUntraced(function* (
   }
   return nativeThreadId;
 });
+
+// Extra usage starts once the session or weekly allowance runs out.
+const CLAUDE_SUBSCRIPTION_WINDOW_IDS = ["five_hour", "seven_day"];
 
 const isSyntheticClaudeTurnId = (nativeTurnId: string): boolean => nativeTurnId.startsWith("turn:");
 
@@ -4193,41 +4197,12 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
   });
   const subscriptionLimitFailure = Effect.fn("ClaudeAdapterV2.checkSubscriptionLimit")(
     function* () {
-      const limits = yield* adapterOptions.checkUsageLimits ?? Effect.succeed(undefined);
-      const nowMs = DateTime.toEpochMillis(yield* DateTime.now);
-      const subscriptionWindows =
-        limits?.windows.filter(
-          (window) => window.id === "five_hour" || window.id === "seven_day",
-        ) ?? [];
-      const exhausted = subscriptionWindows.filter(
-        (window) =>
-          window.usedPercent >= 100 &&
-          (window.resetsAt === undefined || Date.parse(window.resetsAt) > nowMs),
-      );
-      if (
-        limits !== undefined &&
-        limits.unavailable === undefined &&
-        subscriptionWindows.length > 0 &&
-        exhausted.length === 0
-      )
-        return null;
-      const resetTimes = exhausted.map((window) => window.resetsAt);
-      const resetAt =
-        resetTimes.length > 0 && resetTimes.every((time) => time !== undefined)
-          ? resetTimes.reduce((latest, time) => (time! > latest ? time! : latest), "")
-          : null;
-      return {
-        ...makeProviderFailure({
-          class: exhausted.length > 0 ? "usage_limit" : "provider_error",
-          retryable: false,
-          code: "subscription_limit_guard",
-          message:
-            exhausted.length > 0
-              ? "Claude subscription limit reached. This thread stopped because Stop at subscription limit is enabled."
-              : "Claude subscription usage could not be checked. Retry the turn, or disable Stop at subscription limit in application and thread settings to continue without this check.",
-        }),
-        resetAt,
-      };
+      return SubscriptionLimitPolicy.subscriptionLimitFailure({
+        limits: yield* adapterOptions.checkUsageLimits ?? Effect.succeed(undefined),
+        nowMs: DateTime.toEpochMillis(yield* DateTime.now),
+        provider: "Claude",
+        windowIds: CLAUDE_SUBSCRIPTION_WINDOW_IDS,
+      });
     },
   );
 

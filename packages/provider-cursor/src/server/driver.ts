@@ -20,9 +20,14 @@ import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as HttpClient from "effect/http/HttpClient";
-import { readCursorUsageLimits } from "./usageLimits.ts";
+import { readCursorUsageLimits, type CursorSdkCredential } from "./usageLimits.ts";
 
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
+import * as SubscriptionLimitGuards from "@t3tools/provider-core/server/SubscriptionLimitGuards";
+import {
+  makeSubscriptionLimitPolicy,
+  withSubscriptionLimitOption,
+} from "@t3tools/provider-core/server/SubscriptionLimitPolicy";
 import { makeCursorTextGeneration } from "./textGeneration.ts";
 import { makeCursorAdapterV2, type CursorAdapterV2DriverEnv } from "./adapter.ts";
 import { ProviderDriverError } from "@t3tools/provider-core/server/errors";
@@ -170,6 +175,12 @@ export const CursorDriver: ProviderDriver<
     const stampSnapshot: typeof stampIdentity = (draft) =>
       stampIdentity({
         ...draft,
+        models: draft.models.map((model) =>
+          withSubscriptionLimitOption(
+            model,
+            "Stop when Cursor reports an included usage pool used up, even if on-demand usage is enabled. Usage is checked about once a minute; this is not a billing cap.",
+          ),
+        ),
         setup: { canAuthenticate: !auth.usesApiKey, canInstall: false },
         auth: {
           ...draft.auth,
@@ -211,12 +222,40 @@ export const CursorDriver: ProviderDriver<
         ),
     });
 
+    // Each instance reads its own account's limits with its own key; only the default
+    // instance may fall back to the host's shared CLI login.
+    const readUsageLimits = (credential: CursorSdkCredential | undefined) =>
+      host.settings.get.pipe(
+        Effect.flatMap((settings) =>
+          readCursorUsageLimits(effectiveConfig, processEnv, {
+            allowKeychain: settings.cursorKeychainUsageEnabled,
+            sdkCredential: credential,
+            sharedLogin: instanceId === defaultInstanceIdForDriver(DRIVER_KIND),
+          }),
+        ),
+        Effect.provideService(HttpClient.HttpClient, httpClient),
+        Effect.provideService(FileSystem.FileSystem, fileSystem),
+        Effect.provideService(Path.Path, path),
+        Effect.provideService(CursorKeychain.CursorKeychain, keychain),
+      );
+
     let catalogModels: ReadonlyArray<ServerProviderModel> = [];
     const orchestrationAdapter = yield* makeCursorAdapterV2({
       instanceId,
       settings: effectiveConfig,
       environment: processEnv,
       getModels: () => catalogModels,
+      subscriptionLimit: {
+        policy: makeSubscriptionLimitPolicy({
+          settings: host.settings,
+          guards: yield* Effect.serviceOption(SubscriptionLimitGuards.SubscriptionLimitGuards),
+        }),
+        checkUsage: auth.readCredential.pipe(
+          Effect.orElseSucceed(() => undefined),
+          Effect.flatMap(readUsageLimits),
+          Effect.orElseSucceed(() => undefined),
+        ),
+      },
     }).pipe(
       Effect.provideService(CursorAgentSdk.CursorAgentSdkRunner, {
         ...sdkRunner,
@@ -279,16 +318,7 @@ export const CursorDriver: ProviderDriver<
             effectiveConfig.enabled &&
             snapshot.installed &&
             snapshot.auth.status === "authenticated"
-              ? host.settings.get.pipe(
-                  Effect.flatMap((settings) =>
-                    // Each instance reads its own account's limits with its own key; only the
-                    // default instance may fall back to the host's shared CLI login.
-                    readCursorUsageLimits(effectiveConfig, processEnv, {
-                      allowKeychain: settings.cursorKeychainUsageEnabled,
-                      sdkCredential: credential,
-                      sharedLogin: instanceId === defaultInstanceIdForDriver(DRIVER_KIND),
-                    }),
-                  ),
+              ? readUsageLimits(credential).pipe(
                   Effect.map((usageLimits) => ({ ...snapshot, usageLimits })),
                 )
               : Effect.succeed(snapshot),

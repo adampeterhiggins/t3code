@@ -5,6 +5,7 @@ import type {
   ServerProviderModel,
 } from "@t3tools/contracts";
 import { getProviderOptionCurrentValue } from "@t3tools/shared/model";
+import { SUBSCRIPTION_LIMIT_OPTION_ID } from "@t3tools/provider-core/server/SubscriptionLimitPolicy";
 
 const CURSOR_SDK_PARAMETER_TO_PROVIDER_OPTION: Readonly<Record<string, string>> = {
   context: "contextWindow",
@@ -60,12 +61,16 @@ export function cursorContextWindowTokens(
 }
 
 export function cursorSdkModelSelection(modelSelection: ModelSelection): CursorSdkModelSelection {
+  // A T3 thread option, not a Cursor model parameter: T3 enforces the guard itself.
+  const options = (modelSelection.options ?? []).filter(
+    (option) => option.id !== SUBSCRIPTION_LIMIT_OPTION_ID,
+  );
   return {
     id: modelSelection.model === "auto" ? "default" : modelSelection.model,
-    ...(modelSelection.options === undefined || modelSelection.options.length === 0
+    ...(options.length === 0
       ? {}
       : {
-          params: modelSelection.options.map((option): ModelParameterValue => ({
+          params: options.map((option): ModelParameterValue => ({
             id: cursorSdkParameterId(option.id),
             value: String(option.value),
           })),
@@ -87,6 +92,7 @@ export function withCursorDefaultParameters(
   const params = selection.params ?? [];
   const present = new Set(params.map((parameter) => parameter.id));
   const defaults = (descriptors ?? []).flatMap((descriptor): Array<ModelParameterValue> => {
+    if (descriptor.id === SUBSCRIPTION_LIMIT_OPTION_ID) return [];
     const id = cursorSdkParameterId(descriptor.id);
     const value = descriptor.id === "fastMode" ? false : getProviderOptionCurrentValue(descriptor);
     return present.has(id) || value === undefined ? [] : [{ id, value: String(value) }];

@@ -29,6 +29,7 @@ import {
   type OrchestrationV2TurnItem,
   type ProviderInstanceId,
   type ServerProviderModel,
+  type ServerProviderUsageLimits,
   type ThreadId,
 } from "@t3tools/contracts";
 import { CursorSettings } from "../settings.ts";
@@ -59,6 +60,7 @@ import { t3OrchestrationPromptForFirstRun } from "@t3tools/provider-core/server/
 import { buildRuntimeInstructions } from "@t3tools/provider-core/server/runtimeInstructions";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
+import * as SubscriptionLimitPolicy from "@t3tools/provider-core/server/SubscriptionLimitPolicy";
 import { turnScopedSelectionTransition } from "@t3tools/provider-core/server/selectionTransition";
 import {
   isProviderNativeImageAttachment,
@@ -940,6 +942,8 @@ interface ActiveCursorTurn {
   interrupted: boolean;
   finalized: boolean;
   usage?: TokenUsage;
+  /** Set when the subscription-limit guard cancels this run, which then fails with it. */
+  subscriptionLimitStop?: OrchestrationV2ProviderFailure;
 }
 
 interface CursorLiveAgent {
@@ -952,7 +956,15 @@ export interface CursorAdapterV2Options {
   readonly settings: CursorSettings;
   readonly environment: NodeJS.ProcessEnv;
   readonly getModels?: () => ReadonlyArray<ServerProviderModel>;
+  readonly subscriptionLimit?: {
+    readonly policy: SubscriptionLimitPolicy.SubscriptionLimitPolicy;
+    /** A fresh read: the provider snapshot's limits can be minutes old. */
+    readonly checkUsage: Effect.Effect<ServerProviderUsageLimits | undefined>;
+  };
 }
+
+// Cursor reports no usage while a run streams, so a guarded run polls for it.
+const CURSOR_SUBSCRIPTION_LIMIT_POLL_INTERVAL = "1 minute";
 
 export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
   options: CursorAdapterV2Options,
@@ -2115,7 +2127,7 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
           completedAt: input.completedAt,
         });
 
-        const finalizeTurn = Effect.fnUntraced(function* (input: {
+        const finalizeTurn = Effect.fnUntraced(function* (requested: {
           readonly context: ActiveCursorTurn;
           readonly status: Extract<
             OrchestrationV2ProviderTurn["status"],
@@ -2126,6 +2138,12 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
           /** The finished run's summed usage; absent when the run returned no result. */
           readonly usage?: TokenUsage;
         }) {
+          const stop = requested.context.subscriptionLimitStop;
+          // The guard's cancel ends the run as cancelled or failed; report why it stopped.
+          const input =
+            stop === undefined || requested.status === "completed"
+              ? requested
+              : { ...requested, status: "failed" as const, failure: stop };
           if (input.context.finalized) {
             return;
           }
@@ -2380,6 +2398,42 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
               } satisfies SDKUserMessage);
         });
 
+        const subscriptionLimit = adapterOptions.subscriptionLimit;
+        const readSubscriptionLimit = Effect.fnUntraced(function* () {
+          if (subscriptionLimit === undefined) return null;
+          return SubscriptionLimitPolicy.subscriptionLimitFailure({
+            limits: yield* subscriptionLimit.checkUsage,
+            nowMs: DateTime.toEpochMillis(yield* DateTime.now),
+            provider: "Cursor",
+          });
+        });
+        if (subscriptionLimit !== undefined) {
+          const stopGuardedRun = Effect.fnUntraced(function* () {
+            const context = yield* Ref.get(activeTurn);
+            if (
+              context === null ||
+              context.finalized ||
+              context.subscriptionLimitStop !== undefined ||
+              !(yield* subscriptionLimit.policy.enabled(
+                context.input.threadId,
+                context.input.modelSelection,
+              ))
+            ) {
+              return;
+            }
+            const failure = yield* readSubscriptionLimit();
+            // The run already passed the check before it started, so a failed read leaves it
+            // running until a later poll can tell.
+            if (failure?.class !== "usage_limit" || context.finalized) return;
+            context.subscriptionLimitStop = failure;
+            yield* context.run.cancel.pipe(Effect.ignore);
+          });
+          yield* Stream.merge(
+            Stream.tick(CURSOR_SUBSCRIPTION_LIMIT_POLL_INTERVAL),
+            subscriptionLimit.policy.enabledChanges(input.threadId),
+          ).pipe(Stream.runForEach(stopGuardedRun), Effect.forkIn(sessionScope));
+        }
+
         const startTurn = Effect.fn("CursorAdapterV2.startTurn")(
           function* (turnInput: ProviderAdapter.ProviderAdapterV2TurnInput) {
             const current = yield* Ref.get(activeTurn);
@@ -2389,6 +2443,18 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
                 detail: `Cursor provider turn ${current.providerTurnId} is still active.`,
                 reason: "previous_turn_active",
               });
+            }
+            if (
+              subscriptionLimit !== undefined &&
+              (yield* subscriptionLimit.policy.enabled(
+                turnInput.threadId,
+                turnInput.modelSelection,
+              ))
+            ) {
+              const failure = yield* readSubscriptionLimit();
+              if (failure !== null) {
+                return yield* new SubscriptionLimitPolicy.SubscriptionLimitStopError({ failure });
+              }
             }
             const agentId = nativeThreadId(turnInput.providerThread);
             const agent = yield* openAgent({

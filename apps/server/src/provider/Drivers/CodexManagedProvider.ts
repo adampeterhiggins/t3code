@@ -7,6 +7,9 @@ import * as Option from "effect/Option";
 import { ChildProcessSpawner } from "effect/process";
 import { makeCodexTextGeneration } from "../../textGeneration/CodexTextGeneration.ts";
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
+import * as SubscriptionLimitGuards from "@t3tools/provider-core/server/SubscriptionLimitGuards";
+import { makeSubscriptionLimitPolicy } from "@t3tools/provider-core/server/SubscriptionLimitPolicy";
+import { withCodexSubscriptionLimitOption } from "../codexModelCatalog.ts";
 import { chatGptModels } from "../CodexChatGptModels.ts";
 import { makeCodexManagedRuntime } from "../CodexManagedRuntime.ts";
 import { ProviderDriverError } from "../Errors.ts";
@@ -141,19 +144,21 @@ export const makeManagedCodexProvider = Effect.fn("makeManagedCodexProvider")(fu
           auth: managedAuth,
           version: draft.version ?? executable.value.version,
           usageLimits,
-          models: draft.models.map((model) => ({
-            ...model,
-            ...(model.capabilities
-              ? {
-                  capabilities: {
-                    ...model.capabilities,
-                    optionDescriptors: (model.capabilities.optionDescriptors ?? []).filter(
-                      (option) => option.id !== "serviceTier",
-                    ),
-                  },
-                }
-              : {}),
-          })),
+          models: draft.models.map((model) =>
+            withCodexSubscriptionLimitOption({
+              ...model,
+              ...(model.capabilities
+                ? {
+                    capabilities: {
+                      ...model.capabilities,
+                      optionDescriptors: (model.capabilities.optionDescriptors ?? []).filter(
+                        (option) => option.id !== "serviceTier",
+                      ),
+                    },
+                  }
+                : {}),
+            }),
+          ),
           setup,
           runtimePaths,
           ...(draft.slashCommands
@@ -230,6 +235,10 @@ export const makeManagedCodexProvider = Effect.fn("makeManagedCodexProvider")(fu
   const orchestrationAdapter = yield* createCodexAdapterV2(input, {
     onUsageLimits: (update) => snapshot.applyUsageLimits(update),
     resolveRuntime: runtime.resolve,
+    subscriptionLimitPolicy: makeSubscriptionLimitPolicy({
+      settings: host.settings,
+      guards: yield* Effect.serviceOption(SubscriptionLimitGuards.SubscriptionLimitGuards),
+    }),
   }).pipe(
     Effect.mapError(
       (cause) =>

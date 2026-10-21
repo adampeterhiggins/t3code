@@ -137,6 +137,33 @@ or endpoint configurations do not report subscription limits.
 API-key accounts may not report subscription limits. This also applies to Claude connections
 using a proxy through `ANTHROPIC_AUTH_TOKEN`.
 
+## Stop at subscription limits
+
+Claude, Codex, and Cursor can keep working past a used-up subscription allowance on paid usage:
+Claude's extra usage, Codex credits, or Cursor on-demand usage. For unattended work, **Stop at
+subscription limit** stops a thread at the allowance instead.
+
+- To protect every Claude, Codex, and Cursor thread on the selected environments, including
+  delegated threads, enable it in **Settings > General** (**Settings > Threads > Usage limits** on
+  mobile). It overrides a thread's own Off, and enabling it checks running sessions immediately.
+- For selected threads only, leave that setting off and enable **Stop at subscription limit** in the
+  thread's model options or its right-click menu (long-press on mobile). Changing it also applies
+  to a turn that is already running. Agents can set `stopAtSubscriptionLimit: true` through model
+  options; delegated threads inherit it under the normal same-provider-and-model rules.
+
+T3 checks fresh usage before each protected turn and refuses to send the prompt if an allowance is
+used up or usage cannot be read. While a turn runs, it stops the turn when the provider reports the
+allowance used up: Claude and Codex report this as they work, and Cursor is rechecked about once a
+minute. A stopped turn appears as **Limited** with the usual **Resume now**, **Resume at reset**, and
+**Snooze until reset** controls. Resuming keeps the guard; switch provider or turn the guard off to
+allow paid usage.
+
+The guard needs subscription usage from the account, so API-key connections that do not report
+limits cannot use it. For Cursor, that includes a configured `CURSOR_API_KEY`; on macOS a CLI login
+also needs Cursor usage enabled. Cursor stops when either its Auto or API pool is used up, even if
+the other has room. Provider reports can arrive late, so this guards against unattended spending
+but does not guarantee zero paid usage.
+
 ## Connect a CLIProxyAPI hub
 
 To see pooled accounts, open **Settings → Providers → Usage providers → Add hub**. Choose the
