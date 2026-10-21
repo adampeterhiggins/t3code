@@ -29,7 +29,11 @@ import {
   DetachedChatShell,
   DetachedLocalEnvironmentNotice,
 } from "../components/detachedChat/DetachedChatShell";
-import { isDetachedChatWindow } from "../components/quickMessage/quickMessageWindow";
+import {
+  isDetachedChatWindow,
+  isQuickMessageWindow,
+} from "../components/quickMessage/quickMessageWindow";
+import { redirectLegacyQuickMessageWindow } from "./legacyQuickMessageRootGuard";
 import { KeybindingsConfigWarning } from "../components/KeybindingsConfigWarning";
 import { FirstRunGate } from "../components/onboarding/FirstRunGate";
 import { ConnectOnboardingDialog } from "../components/cloud/ConnectOnboardingDialog";
@@ -100,6 +104,14 @@ import { shouldResumeSnapShotSetupOnStartup } from "../lib/snapShotSetupResume";
 
 export const Route = createRootRoute({
   beforeLoad: async ({ location }) => {
+    // Before pair, auth, snapshot resume, and child routes. Hiding Outlet in the
+    // renderer would still let those run, and ChatView writes drafts on mount.
+    redirectLegacyQuickMessageWindow({
+      isQuickMessageWindow,
+      isDetachedChatWindow,
+      pathname: location.pathname,
+    });
+
     if (location.pathname === "/pair" && hasHostedPairingRequest(new URL(window.location.href))) {
       return {
         authGateState: {
@@ -123,6 +135,9 @@ export const Route = createRootRoute({
       shouldResumeSnapShotSetupOnStartup() &&
       location.pathname !== "/settings/snap-shot" &&
       location.pathname !== "/quick-message" &&
+      // Role, not the hash. A legacy panel and an isolated window both stay out
+      // of the main window's snapshot resume; main still uses the path checks.
+      !isQuickMessageWindow &&
       !isDetachedChatWindow
     ) {
       throw redirect({ to: "/settings/snap-shot", replace: true });
