@@ -47,6 +47,7 @@ import {
   useThreadReadTarget,
   threadReadLabel,
   ThreadReadLabel,
+  QuestionAnswerLabel,
   ReasoningTraceContent,
   SimpleWorkEntryRow,
 } from "./TimelineWorkEntryRow";
@@ -385,6 +386,7 @@ function LiveActivityRow({
   failed = false,
   active = false,
   shimmer = false,
+  wrapLabel = false,
 }: {
   label: ReactNode;
   iconName?: WorkEntryIconName;
@@ -392,6 +394,7 @@ function LiveActivityRow({
   failed?: boolean;
   active?: boolean;
   shimmer?: boolean;
+  wrapLabel?: boolean;
 }) {
   const animated = active && !failed;
   const showShimmer = animated && shimmer;
@@ -402,6 +405,7 @@ function LiveActivityRow({
     >
       <LiveActivityContent
         label={label}
+        wrapLabel={wrapLabel}
         iconName={iconName}
         toolIcon={toolIcon}
         failed={failed}
@@ -410,7 +414,13 @@ function LiveActivityRow({
       />
       {showShimmer ? (
         <ActivityShimmerOverlay>
-          <LiveActivityContent label={label} iconName={iconName} toolIcon={toolIcon} highlighted />
+          <LiveActivityContent
+            label={label}
+            wrapLabel={wrapLabel}
+            iconName={iconName}
+            toolIcon={toolIcon}
+            highlighted
+          />
         </ActivityShimmerOverlay>
       ) : null}
     </div>
@@ -425,6 +435,7 @@ function LiveActivityContent({
   announceFailure = false,
   active = false,
   highlighted = false,
+  wrapLabel = false,
 }: {
   label: ReactNode;
   iconName: WorkEntryIconName | undefined;
@@ -433,12 +444,14 @@ function LiveActivityContent({
   announceFailure?: boolean;
   active?: boolean;
   highlighted?: boolean;
+  wrapLabel?: boolean;
 }) {
   const showTrailingFailureMark =
     failed && iconName !== undefined && !toolIconAcceptsTint(toolIcon);
 
   return (
     <WorkLogRow
+      wrapLabel={wrapLabel}
       icon={
         iconName ? (
           <span
@@ -465,7 +478,7 @@ function LiveActivityContent({
       label={
         <span
           className={cn(
-            "block truncate",
+            wrapLabel ? "block break-words" : "block truncate",
             highlighted && "text-foreground",
             active && "live-tool-shine",
           )}
@@ -549,12 +562,10 @@ export function LiveWorkEntryTimelineRow({
               "Thought"
             )
           ) : row.entry.questionAnswer && hasQuestionAnswer(row.entry.questionAnswer) ? (
-            <span className="flex min-w-0 gap-1.5">
-              <span className="min-w-0 truncate">{label}</span>
-              <span className="min-w-0 truncate text-foreground">
-                {getQuestionAnswerPreview(row.entry.questionAnswer)}
-              </span>
-            </span>
+            <QuestionAnswerLabel
+              question={label}
+              answer={getQuestionAnswerPreview(row.entry.questionAnswer)}
+            />
           ) : row.entry.itemType === "reasoning" ? (
             <ChatMarkdown
               inline
@@ -573,6 +584,7 @@ export function LiveWorkEntryTimelineRow({
             label
           )
         }
+        wrapLabel={Boolean(row.entry.questionAnswer && hasQuestionAnswer(row.entry.questionAnswer))}
         iconName={workEntryIconName(row.entry)}
         toolIcon={row.entry.toolIcon ?? row.entry.toolSource?.icon}
         failed={failed}

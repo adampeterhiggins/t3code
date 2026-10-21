@@ -22,7 +22,7 @@ import {
   turnItemNeedsDetailFetch,
 } from "@t3tools/client-runtime/work-log/item-detail";
 import { claudeSkillInvocation } from "@t3tools/shared/toolActivity";
-import { memo, use, useState, type KeyboardEvent } from "react";
+import { memo, use, useState, type KeyboardEvent, type ReactNode } from "react";
 import {
   workEntryDisplayIndicatesToolFailure,
   workEntrySignalsSevereFailure,
@@ -30,7 +30,13 @@ import {
 } from "../../session-logic";
 import ChatMarkdown from "../ChatMarkdown";
 import { ChatMarkdownAssetImage } from "./ChatMarkdownMedia";
-import { ChevronRightIcon, CircleAlertIcon, XIcon, RotateCcwIcon } from "lucide-react";
+import {
+  ChevronRightIcon,
+  CircleAlertIcon,
+  CornerDownRightIcon,
+  RotateCcwIcon,
+  XIcon,
+} from "lucide-react";
 import { Button, InlineButton } from "../ui/button";
 import { useAssetUrls } from "../../assets/assetUrls";
 import { useQuietThreadShell, useThreadShell } from "../../state/entities";
@@ -436,6 +442,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
     <WorkLogRow
       data-v2-item-type={workEntry.projectedItem?.item.type}
       data-v2-item-visibility={workEntry.projectedItem?.visibility}
+      wrapLabel={answerPreview !== null}
       {...rowToggleProps}
       icon={
         <span
@@ -452,55 +459,48 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
         </span>
       }
       label={
-        <div className="min-w-0 flex-1 overflow-hidden">
-          <p className="flex min-w-0 w-full items-baseline gap-1.5 text-sm leading-relaxed">
-            <span
-              className={cn(answerPreview ? "min-w-0" : "min-w-0 flex-1", "truncate", headingClass)}
-            >
-              {isReasoning && !expanded ? (
-                <ChatMarkdown
-                  inline
-                  text={workEntry.detail ?? previewText}
-                  cwd={ctx.markdownCwd}
-                  parseRawHtml={false}
-                  extraRemarkPlugins={[
-                    [
-                      remarkThoughtPreview,
-                      workEntry.toolLifecycleStatus === "inProgress" ? "Thinking" : "Thought",
-                    ],
-                  ]}
-                />
-              ) : pullRequestLabel ? (
-                <PullRequestNotificationLabel
-                  label={pullRequestLabel}
-                  environmentId={ctx.activeThreadEnvironmentId}
-                />
-              ) : threadLabel ? (
-                <ThreadReadLabel
-                  label={threadLabel}
-                  environmentId={ctx.activeThreadEnvironmentId}
-                  linked
-                />
-              ) : (
-                previewText
-              )}
-            </span>
-            {answerPreview ? (
-              <span
-                className={cn(
-                  "min-w-0 truncate",
-                  !expanded &&
-                    workEntry.questionAnswer &&
-                    hasQuestionAnswer(workEntry.questionAnswer)
-                    ? "text-foreground"
-                    : "text-muted-foreground",
+        answerPreview !== null ? (
+          <QuestionAnswerLabel
+            question={previewText}
+            answer={answerPreview}
+            className={headingClass}
+            answerMuted={expanded}
+          />
+        ) : (
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <p className="flex min-w-0 w-full items-baseline gap-1.5 text-sm leading-relaxed">
+              <span className={cn("min-w-0 flex-1 truncate", headingClass)}>
+                {isReasoning && !expanded ? (
+                  <ChatMarkdown
+                    inline
+                    text={workEntry.detail ?? previewText}
+                    cwd={ctx.markdownCwd}
+                    parseRawHtml={false}
+                    extraRemarkPlugins={[
+                      [
+                        remarkThoughtPreview,
+                        workEntry.toolLifecycleStatus === "inProgress" ? "Thinking" : "Thought",
+                      ],
+                    ]}
+                  />
+                ) : pullRequestLabel ? (
+                  <PullRequestNotificationLabel
+                    label={pullRequestLabel}
+                    environmentId={ctx.activeThreadEnvironmentId}
+                  />
+                ) : threadLabel ? (
+                  <ThreadReadLabel
+                    label={threadLabel}
+                    environmentId={ctx.activeThreadEnvironmentId}
+                    linked
+                  />
+                ) : (
+                  previewText
                 )}
-              >
-                {answerPreview}
               </span>
-            ) : null}
-          </p>
-        </div>
+            </p>
+          </div>
+        )
       }
       trailing={
         <>
@@ -606,6 +606,33 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
         </WorkLogDetails>
       ) : null}
     </WorkLogRow>
+  );
+}
+
+export function QuestionAnswerLabel({
+  question,
+  answer,
+  className,
+  answerMuted = false,
+}: {
+  question: ReactNode;
+  answer: string;
+  className?: string;
+  answerMuted?: boolean;
+}) {
+  return (
+    <span className="flex min-w-0 flex-col">
+      <span className={cn("line-clamp-2 break-words", className)}>{question}</span>
+      <span
+        className={cn(
+          "flex min-w-0 items-center gap-1.5",
+          answerMuted ? "text-muted-foreground" : "text-foreground",
+        )}
+      >
+        <CornerDownRightIcon aria-hidden className="size-3.5 shrink-0 text-icon-muted" />
+        <span className="min-w-0 truncate">{answer}</span>
+      </span>
+    </span>
   );
 }
 

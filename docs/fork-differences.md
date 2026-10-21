@@ -2199,6 +2199,16 @@ has them. Mobile follows upstream.
 Code: the `panel` variant of `WorkLogDetails` in
 [WorkLog.tsx](../apps/web/src/components/chat/WorkLog.tsx).
 
+## Answered questions in the activity log
+
+An answered question in the web, desktop, and mobile activity log shows the question on up to two
+lines and the answer on the next line, marked with a corner arrow. Upstream keeps the question and
+the answer on one truncated line.
+
+Code: [`QuestionAnswerLabel`](../apps/web/src/components/chat/TimelineWorkEntryRow.tsx), live rows
+in [`TimelineWorkGroupRows.tsx`](../apps/web/src/components/chat/TimelineWorkGroupRows.tsx), and
+[`thread-work-log.tsx`](../apps/mobile/src/features/threads/thread-work-log.tsx).
+
 ## Refresh the open file
 
 The file viewer header has a refresh button, and `mod+r` (command `file.refresh`, when
