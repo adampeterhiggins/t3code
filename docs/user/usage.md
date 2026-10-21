@@ -160,9 +160,10 @@ allow paid usage.
 
 The guard needs subscription usage from the account, so API-key connections that do not report
 limits cannot use it. For Cursor, that includes a configured `CURSOR_API_KEY`; on macOS a CLI login
-also needs Cursor usage enabled. Cursor stops when either its Auto or API pool is used up, even if
-the other has room. Provider reports can arrive late, so this guards against unattended spending
-but does not guarantee zero paid usage.
+also needs Cursor usage enabled. Cursor checks only the allowance the thread's model draws from:
+Grok and Composer stop when the Cursor Models allowance is used up, other models when the API
+allowance is used up, and Auto when either is used up. Provider reports can arrive late, so this
+guards against unattended spending but does not guarantee zero paid usage.
 
 ## Connect a CLIProxyAPI hub
 

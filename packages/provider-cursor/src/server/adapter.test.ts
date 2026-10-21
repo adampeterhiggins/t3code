@@ -1690,9 +1690,12 @@ describe("CursorAdapterV2", () => {
 });
 
 describe("CursorAdapterV2 subscription-limit guard", () => {
+  const usage = (percents: Readonly<Record<string, number>>) => Ref.make(percents);
+
   const makeGuardedSession = Effect.fn(function* (input: {
     readonly name: string;
-    readonly usedPercent: Ref.Ref<number>;
+    readonly model?: string;
+    readonly usedPercent: Ref.Ref<Readonly<Record<string, number>>>;
     readonly guardSwitchedOn: Queue.Queue<void>;
     readonly cancelled: Deferred.Deferred<void>;
   }) {
@@ -1700,7 +1703,7 @@ describe("CursorAdapterV2 subscription-limit guard", () => {
     const workspace = yield* fileSystem.makeTempDirectoryScoped({ prefix: "cursor-v2-guard-" });
     const instanceId = ProviderInstanceId.make("cursor");
     const threadId = ThreadId.make(`cursor-guard-${input.name}`);
-    const modelSelection = { instanceId, model: "composer-2.5" };
+    const modelSelection = { instanceId, model: input.model ?? "composer-2.5" };
     const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
       runtimeMode: "full-access",
       interactionMode: "default",
@@ -1719,15 +1722,13 @@ describe("CursorAdapterV2 subscription-limit guard", () => {
         checkUsage: Effect.gen(function* () {
           return {
             checkedAt: "2026-10-21T08:00:00.000Z",
-            windows: [
-              {
-                id: "apiPercentUsed",
-                kind: "monthly" as const,
-                label: "API",
-                usedPercent: yield* Ref.get(input.usedPercent),
-                resetsAt: "2033-05-19T07:20:00.000Z",
-              },
-            ],
+            windows: Object.entries(yield* Ref.get(input.usedPercent)).map(([id, usedPercent]) => ({
+              id,
+              kind: "monthly" as const,
+              label: id,
+              usedPercent,
+              resetsAt: "2033-05-19T07:20:00.000Z",
+            })),
           };
         }),
       },
@@ -1817,7 +1818,7 @@ describe("CursorAdapterV2 subscription-limit guard", () => {
     Effect.gen(function* () {
       const session = yield* makeGuardedSession({
         name: "refused",
-        usedPercent: yield* Ref.make(100),
+        usedPercent: yield* usage({ autoPercentUsed: 100, apiPercentUsed: 20 }),
         guardSwitchedOn: yield* Queue.unbounded<void>(),
         cancelled: yield* Deferred.make<void>(),
       });
@@ -1836,7 +1837,7 @@ describe("CursorAdapterV2 subscription-limit guard", () => {
 
   it.effect("cancels a running guarded turn once a recheck finds the allowance used up", () =>
     Effect.gen(function* () {
-      const usedPercent = yield* Ref.make(40);
+      const usedPercent = yield* usage({ autoPercentUsed: 40 });
       const guardSwitchedOn = yield* Queue.unbounded<void>();
       const session = yield* makeGuardedSession({
         name: "live",
@@ -1845,7 +1846,7 @@ describe("CursorAdapterV2 subscription-limit guard", () => {
         cancelled: yield* Deferred.make<void>(),
       });
       yield* session.startTurn;
-      yield* Ref.set(usedPercent, 100);
+      yield* Ref.set(usedPercent, { autoPercentUsed: 100 });
       yield* Queue.offer(guardSwitchedOn, undefined);
       const terminal = yield* session.runtime.events.pipe(
         Stream.filter((event) => event.type === "turn.terminal"),
@@ -1856,6 +1857,77 @@ describe("CursorAdapterV2 subscription-limit guard", () => {
       if (event?.type !== "turn.terminal" || event.status !== "failed") return;
       assert.equal(event.failure.class, "usage_limit");
       assert.equal(event.failure.code, "subscription_limit_guard");
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(NodeServices.layer, IdAllocator.layer, McpProviderSessions.layer),
+      ),
+    ),
+  );
+
+  it.effect("runs a Composer turn while only the API allowance is used up", () =>
+    Effect.gen(function* () {
+      const session = yield* makeGuardedSession({
+        name: "composer-api-spent",
+        usedPercent: yield* usage({
+          totalPercentUsed: 100,
+          autoPercentUsed: 30,
+          apiPercentUsed: 100,
+        }),
+        guardSwitchedOn: yield* Queue.unbounded<void>(),
+        cancelled: yield* Deferred.make<void>(),
+      });
+      yield* session.startTurn;
+      assert.equal(yield* Ref.get(session.sends), 1);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(NodeServices.layer, IdAllocator.layer, McpProviderSessions.layer),
+      ),
+    ),
+  );
+
+  it.effect("checks other models against the API allowance only", () =>
+    Effect.gen(function* () {
+      const runs = yield* makeGuardedSession({
+        name: "api-model-auto-spent",
+        model: "claude-4.5-sonnet",
+        usedPercent: yield* usage({ autoPercentUsed: 100, apiPercentUsed: 30 }),
+        guardSwitchedOn: yield* Queue.unbounded<void>(),
+        cancelled: yield* Deferred.make<void>(),
+      });
+      yield* runs.startTurn;
+      assert.equal(yield* Ref.get(runs.sends), 1);
+
+      const refused = yield* makeGuardedSession({
+        name: "api-model-api-spent",
+        model: "claude-4.5-sonnet",
+        usedPercent: yield* usage({ autoPercentUsed: 30, apiPercentUsed: 100 }),
+        guardSwitchedOn: yield* Queue.unbounded<void>(),
+        cancelled: yield* Deferred.make<void>(),
+      });
+      const error = yield* refused.startTurn.pipe(Effect.flip);
+      assert.equal(findSubscriptionLimitStop(error)?.class, "usage_limit");
+      assert.equal(yield* Ref.get(refused.sends), 0);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(NodeServices.layer, IdAllocator.layer, McpProviderSessions.layer),
+      ),
+    ),
+  );
+
+  it.effect("refuses a guarded turn when its model's allowance is missing from usage", () =>
+    Effect.gen(function* () {
+      const session = yield* makeGuardedSession({
+        name: "pool-unreported",
+        usedPercent: yield* usage({ totalPercentUsed: 10, apiPercentUsed: 10 }),
+        guardSwitchedOn: yield* Queue.unbounded<void>(),
+        cancelled: yield* Deferred.make<void>(),
+      });
+      const error = yield* session.startTurn.pipe(Effect.flip);
+      assert.equal(findSubscriptionLimitStop(error)?.class, "provider_error");
+      assert.equal(yield* Ref.get(session.sends), 0);
     }).pipe(
       Effect.scoped,
       Effect.provide(

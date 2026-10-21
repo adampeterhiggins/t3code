@@ -84,6 +84,18 @@ const CursorUsageResponse = Schema.Struct({
   ),
 });
 
+/**
+ * The usage pools a turn on `model` can draw from. Grok and Composer spend the Cursor
+ * Models allowance and every other model the API allowance. Auto can use either pool, so it
+ * stops when either runs out. Overall combines both pools rather than being a quota itself.
+ */
+export function cursorModelUsageWindowIds(
+  model: string,
+): ReadonlyArray<(typeof CURSOR_USAGE_WINDOWS)[number]["id"]> {
+  if (model === "auto" || model === "default") return ["autoPercentUsed", "apiPercentUsed"];
+  return /grok|composer/i.test(model) ? ["autoPercentUsed"] : ["apiPercentUsed"];
+}
+
 /** Cursor's dashboard percentages include bonus usage; spend / limit does not. */
 export function cursorUsageResponseToLimits(
   response: typeof CursorUsageResponse.Type,
