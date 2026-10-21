@@ -12,7 +12,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type {
-  DesktopQuickMessageStartFrom,
+  ComposerStartFromSelection,
   EnvironmentId,
   GitHubIssueStateFilter,
   GitHubIssueSummary,
@@ -212,7 +212,7 @@ export function useApplyStartFrom(props: {
   const attachGitHubIssue = useAttachGitHubIssue();
   const linkGitHubIssue = useLinkGitHubIssue();
 
-  return async (pick: DesktopQuickMessageStartFrom): Promise<boolean> => {
+  return async (pick: ComposerStartFromSelection): Promise<boolean> => {
     switch (pick.type) {
       case "branch":
         onCheckout({ branch: pick.branch, worktreePath: pick.worktreePath, envMode: pick.envMode });
@@ -277,7 +277,7 @@ interface StartFromPickerDialogProps {
    * Resolves whether the pick took. The picker stays open until then, so nothing is sent from
    * the old checkout in the meantime.
    */
-  readonly onPick: (pick: DesktopQuickMessageStartFrom) => Promise<boolean>;
+  readonly onPick: (pick: ComposerStartFromSelection) => Promise<boolean>;
   /** Opens an app path, such as a thread already working on the pick. */
   readonly onOpen: (href: string) => void;
   /** Starts a new automation from the composer; returns whether it did. */
@@ -394,7 +394,7 @@ export function StartFromPickerDialog(props: StartFromPickerDialogProps) {
     if (!busy) onClose();
   };
 
-  const pick = async (next: DesktopQuickMessageStartFrom) => {
+  const pick = async (next: ComposerStartFromSelection) => {
     setBusy(true);
     const applied = await props.onPick(next);
     setBusy(false);

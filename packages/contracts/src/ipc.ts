@@ -14,7 +14,8 @@ import type {
 } from "./browserImport.ts";
 import { AuthAccessTokenResult, AuthSessionState, AuthWebSocketTicketResult } from "./auth.ts";
 import { AdvertisedEndpoint } from "./remoteAccess.ts";
-import { ExecutionEnvironmentDescriptor, ThreadEnvMode } from "./environment.ts";
+import { ComposerStartFromSelection } from "./composerStartFrom.ts";
+import { ExecutionEnvironmentDescriptor } from "./environment.ts";
 import {
   type ClientSettings,
   ClientSettingsSchema,
@@ -221,44 +222,15 @@ export const DesktopQuickMessageState = Schema.Struct({
 });
 export type DesktopQuickMessageState = typeof DesktopQuickMessageState.Type;
 
+export const DesktopQuickMessagePresentation = Schema.Literals(["compact", "expanded"]);
+export type DesktopQuickMessagePresentation = typeof DesktopQuickMessagePresentation.Type;
+
 export const DesktopQuickMessageFile = Schema.Struct({
   name: Schema.String,
   mimeType: Schema.String,
   bytes: Schema.Uint8Array,
 });
 export type DesktopQuickMessageFile = typeof DesktopQuickMessageFile.Type;
-
-/**
- * Where a new thread starts, picked in a start-from picker. The labels are only for showing the
- * pick; the main window checks out or attaches from the reference.
- */
-export const DesktopQuickMessageStartFrom = Schema.Union([
-  Schema.Struct({
-    type: Schema.Literal("pull-request"),
-    url: Schema.String,
-    number: Schema.Number,
-    title: Schema.String,
-  }),
-  Schema.Struct({
-    type: Schema.Literal("branch"),
-    branch: Schema.String,
-    worktreePath: Schema.NullOr(Schema.String),
-    envMode: ThreadEnvMode,
-  }),
-  Schema.Struct({
-    type: Schema.Literal("github-issue"),
-    url: Schema.String,
-    number: Schema.Number,
-    title: Schema.String,
-  }),
-  Schema.Struct({
-    type: Schema.Literal("linear-issue"),
-    issueId: Schema.String,
-    identifier: Schema.String,
-    title: Schema.String,
-  }),
-]);
-export type DesktopQuickMessageStartFrom = typeof DesktopQuickMessageStartFrom.Type;
 
 /**
  * Context picked in the panel's attach pickers. The main window fetches and attaches each one to
@@ -331,7 +303,7 @@ export const DesktopQuickMessageSubmission = Schema.Union([
     modelSelection: ModelSelection,
     runtimeMode: RuntimeMode,
     interactionMode: ProviderInteractionMode,
-    startFrom: Schema.optional(DesktopQuickMessageStartFrom),
+    startFrom: Schema.optional(ComposerStartFromSelection),
     attachments: Schema.Array(DesktopQuickMessageAttachment),
   }),
   Schema.Struct({
@@ -1179,11 +1151,19 @@ export const DesktopPreviewRecordingSaveInputSchema = Schema.Struct({
 export const SystemSettingsPaneSchema = Schema.Literals(["full-disk-access"]);
 export type SystemSettingsPane = typeof SystemSettingsPaneSchema.Type;
 
+export const DesktopWindowRole = Schema.Literals(["main", "quick-message"]);
+export type DesktopWindowRole = typeof DesktopWindowRole.Type;
+
 export interface DesktopBridge {
   getAppBranding: () => DesktopAppBranding | null;
   getRelayTelemetryEnabled?: () => boolean;
   getPathForFile?: (file: File) => string;
   getClientPlatform?: () => string;
+  /**
+   * Set from a construction-time window argument, so navigation and reload
+   * cannot change it. Older shells omit it.
+   */
+  getWindowRole?: () => DesktopWindowRole;
   setNotificationBadge?: (badge: { count: number; image: string | null }) => Promise<void>;
   onNotificationBadgeClear?: (listener: () => void) => () => void;
   onTrackpadScrollEnd?: (listener: () => void) => () => void;

@@ -1,15 +1,20 @@
 import { assert, describe, it } from "vite-plus/test";
 
+import { QUICK_MESSAGE_WINDOW_ROLE_ARGUMENT } from "../src/windowRole.ts";
 import { verifyPreloadBundle } from "./verify-preload-bundle.mjs";
 
 const validPreload = `
   const electron = require("electron");
   const PICK_FOLDER_CHANNEL = "desktop:pick-folder";
+  const windowRole = (process.argv ?? []).includes(${JSON.stringify(QUICK_MESSAGE_WINDOW_ROLE_ARGUMENT)})
+    ? "quick-message"
+    : "main";
   electron.contextBridge.exposeInMainWorld("__clerk_internal_electron_passkeys", {});
   electron.contextBridge.exposeInMainWorld("desktopBridge", {
     getClientPlatform: () => process.platform,
     getLocalEnvironmentBootstraps: () => [],
     getPathForFile: () => "",
+    getWindowRole: () => windowRole,
     pickFolder: (options) => electron.ipcRenderer.invoke(PICK_FOLDER_CHANNEL, options),
   });
 `;
@@ -101,5 +106,19 @@ describe("desktop preload bundle verifier", () => {
         // require("node:path")
       `),
     );
+  });
+
+  it("returns main when the executed preload argv has no quick-message marker", () => {
+    const bridge = verifyPreloadBundle(validPreload, {
+      argv: ["/app/electron", "--type=renderer", "--t3code-window-role=main"],
+    });
+    assert.equal(bridge.getWindowRole(), "main");
+  });
+
+  it("returns quick-message when the executed preload argv contains the marker", () => {
+    const bridge = verifyPreloadBundle(validPreload, {
+      argv: ["/app/electron", "--type=renderer", QUICK_MESSAGE_WINDOW_ROLE_ARGUMENT],
+    });
+    assert.equal(bridge.getWindowRole(), "quick-message");
   });
 });

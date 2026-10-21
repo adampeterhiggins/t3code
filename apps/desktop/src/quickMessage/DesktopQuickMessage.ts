@@ -21,6 +21,7 @@ import {
 import * as DesktopClientSettings from "../settings/DesktopClientSettings.ts";
 import { isWaylandSession, toElectronAccelerator } from "../snapShot/snapShot.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
+import { QUICK_MESSAGE_WINDOW_ROLE_ARGUMENT } from "../windowRole.ts";
 
 // 52rem composer at the default 16px interface font, the frame's 3rem of
 // horizontal padding, and 36px of slack so the card is not flush with the window.
@@ -131,6 +132,7 @@ export const make = Effect.gen(function* () {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
+        additionalArguments: [QUICK_MESSAGE_WINDOW_ROLE_ARGUMENT],
       },
     });
     ElectronWindow.markAuxiliaryWindow(window);
