@@ -68,7 +68,7 @@ is for and find that work again later. A thread links one issue at a time.
 - Agents can link or unlink the issue for their thread themselves, for example when you ask them
   to pick up `ENG-123`.
 
-The chat header (on mobile, the tab switcher) then shows the issue's identifier and its current
+The thread details panel's **Links** section (on mobile, the tab switcher) then shows the issue's identifier and its current
 Linear status. Click or tap it to open the issue, change it, or unlink it. The status is read
 from Linear, so it can lag for up to a minute after a change there.
 

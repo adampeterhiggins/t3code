@@ -62,8 +62,8 @@ Discord thread at a time.
 - On mobile, choose **Link > Link Discord thread** from the chat tab menu, or from **Link** beside **New
   tab** when the thread has one tab.
 
-The chat header shows the linked thread's channel; on mobile the chip sits beside the tab
-switcher. Tap or click it to open the message in Discord, change it, or unlink it. The channel,
+On web and desktop, the thread details panel's **Links** section shows the linked message and its channel; on
+mobile a chip sits beside the tab switcher. Tap or click it to open the message in Discord, change it, or unlink it. The channel,
 author, and first line are copied when you link and don't update.
 
 ## Turn off or disconnect

@@ -199,8 +199,8 @@ comments from the issue's author and the repository's maintainers are marked. Lo
 trimmed, dropping the oldest comments first. The issue is copied when you attach it, so later edits
 on GitHub don't change a message you already sent.
 
-Starting a thread from an issue links the issue to the thread and its chat tabs. The chat header (on
-mobile, the tab switcher) shows its number and whether it is open or closed; click or tap it to open
+Starting a thread from an issue links the issue to the thread and its chat tabs. The thread details panel's **Links** section
+(on mobile, the tab switcher) shows its number and whether it is open or closed; click or tap it to open
 the issue on GitHub, change it, or unlink it. To link an issue to a thread you already have,
 choose **Link > GitHub issue…** from the thread's menu, run **Link GitHub issue** from the command
 palette, or on mobile use the tab menu or the **Link issue** button. Pickers mark an issue that

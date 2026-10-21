@@ -1,6 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { discordLinkForThread } from "@t3tools/client-runtime/state/discord";
-import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import type { EnvironmentId, ScopedThreadRef, DiscordThreadLink } from "@t3tools/contracts";
 import { ExternalLinkIcon, PencilIcon, UnlinkIcon } from "lucide-react";
 
 import { useLinkClickHandler } from "~/browser/useOpenLink";
@@ -9,8 +9,8 @@ import { useEnvironmentQuery } from "~/state/query";
 import { discordEnvironment } from "~/state/discord";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { DiscordIcon } from "../Icons";
-import { Button } from "../ui/button";
-import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
+import { MenuItem, MenuSeparator } from "../ui/menu";
+import { ThreadLinkRow } from "./ThreadLinkRow";
 import { openDiscordMessagePicker } from "./DiscordMessagePicker";
 
 /** Every Discord link in the environment. Null until the server answers, or on servers without links. */
@@ -36,12 +36,14 @@ export function useUnlinkDiscordThread() {
 }
 
 /**
- * The chat header's chip for the thread's linked Discord thread: its channel, with the linked
- * message's first line on hover. Discord threads have no status, so nothing is read live.
+ * The thread details row for the thread's linked Discord thread: the linked message's first line
+ * and its channel. Discord threads have no status, so nothing is read live.
  */
-export function DiscordThreadLinkChip(props: { threadRef: ScopedThreadRef }) {
-  const { threadRef } = props;
-  const link = useThreadDiscordLink(threadRef);
+export function DiscordThreadLinkRow(props: {
+  threadRef: ScopedThreadRef;
+  link: DiscordThreadLink;
+}) {
+  const { threadRef, link } = props;
   const discordEnabled = useEnvironmentSettings(
     threadRef.environmentId,
     (s) => s.enableDiscordIntegration,
@@ -51,48 +53,42 @@ export function DiscordThreadLinkChip(props: { threadRef: ScopedThreadRef }) {
   );
   const openLink = useLinkClickHandler(threadRef);
   const unlink = useUnlinkDiscordThread();
-  if (link === null) return null;
   const description = `${link.authorName}: ${link.title}`;
 
   return (
-    <Menu>
-      <MenuTrigger
-        render={
-          <Button
-            size="compact"
-            variant="ghost-muted"
-            aria-label={`Linked Discord thread in ${link.channelLabel}: ${description}`}
-            title={description}
-          />
-        }
+    <ThreadLinkRow
+      icon={<DiscordIcon className="size-4 shrink-0" />}
+      label={link.title}
+      accessibleLabel={`Linked Discord thread in ${link.channelLabel}: ${description}`}
+      title={description}
+      trailing={
+        <span className="max-w-24 shrink-0 truncate text-2xs text-muted-foreground">
+          {link.channelLabel}
+        </span>
+      }
+    >
+      <MenuItem
+        render={<a href={link.url} target="_blank" rel="noreferrer" />}
+        onClick={(event) => openLink(event, link.url)}
       >
-        <DiscordIcon />
-        <span className="max-w-32 truncate">{link.channelLabel}</span>
-      </MenuTrigger>
-      <MenuPopup align="end">
-        <MenuItem
-          render={<a href={link.url} target="_blank" rel="noreferrer" />}
-          onClick={(event) => openLink(event, link.url)}
-        >
-          <ExternalLinkIcon />
-          Open in Discord
+        <ExternalLinkIcon />
+        Open in Discord
+      </MenuItem>
+      {discordEnabled && canEdit ? (
+        <MenuItem onClick={() => openDiscordMessagePicker(threadRef, "link")}>
+          <PencilIcon />
+          Change Discord thread…
         </MenuItem>
-        {discordEnabled && canEdit ? (
-          <MenuItem onClick={() => openDiscordMessagePicker(threadRef, "link")}>
-            <PencilIcon />
-            Change Discord thread…
+      ) : null}
+      {canEdit ? (
+        <>
+          <MenuSeparator />
+          <MenuItem onClick={() => void unlink(threadRef)}>
+            <UnlinkIcon />
+            Unlink Discord thread
           </MenuItem>
-        ) : null}
-        {canEdit ? (
-          <>
-            <MenuSeparator />
-            <MenuItem onClick={() => void unlink(threadRef)}>
-              <UnlinkIcon />
-              Unlink Discord thread
-            </MenuItem>
-          </>
-        ) : null}
-      </MenuPopup>
-    </Menu>
+        </>
+      ) : null}
+    </ThreadLinkRow>
   );
 }
