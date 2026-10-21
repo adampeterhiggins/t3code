@@ -942,8 +942,8 @@ Links section (`apps/web/src/components/chat/ThreadLinks.tsx`) reads its status 
 open, change, and unlink. The section's **+** menu links any kind the group does not have yet,
 with the same permission and integration checks as the command palette. Mobile shows a chip beside the tab
 switcher (`apps/mobile/src/features/threads/ThreadLinearLink.tsx`). Agents link and unlink it
-through the thread MCP's `link_linear_issue` / `unlink_linear_issue`, and read the thread's Linear
-and GitHub issue links with `list_thread_issues`
+through the thread MCP's `link_linear_issue` / `unlink_linear_issue`, and read every link the
+thread's group has (Linear, GitHub, Slack, Discord, Notion, Granola) with `list_thread_links`
 ([`toolkits/issueLinks/`](../apps/server/src/mcp/toolkits/issueLinks/)). Like the pull request
 tools, they default to the caller's thread, need the `pull-requests` MCP capability, and write
 through the same thread access checks. A link carries only the issue's identity, so agents read
@@ -1734,8 +1734,11 @@ if a user had pasted the links: a link already in the message text becomes its c
 are appended. Repositories are cloned before the message lands. An unrecognized link, a pull
 request link, a disconnected or turned-off integration, or an unreadable object fails the call with
 the reason; nothing is sent. Links are read only once the caller is allowed to send, and a
-`clientRequestId` retry of a message that already landed does not read them again. Agents cannot
-search Slack or Notion over MCP; they attach links they already have.
+`clientRequestId` retry of a message that already landed does not read them again.
+`read_context_link` reads one of those links (not repositories) through the same integrations and
+returns the text a chip would give the agent, without sending anything, so an agent can read a
+linked Slack thread or Notion page with no MCP server of its own. Agents cannot search Slack or
+Notion over MCP; they read and attach links they already have.
 
 Code: [`McpContextLinks.ts`](../apps/server/src/mcp/McpContextLinks.ts), the link parser in
 [`composerObjectLinks.ts`](../packages/shared/src/composerObjectLinks.ts), and the chip records in

@@ -1,4 +1,6 @@
 import {
+  ComposerContextKind,
+  DiscordThreadLink,
   GitHubIssueError,
   GitHubIssueThreadLink,
   GitHubIssueUrl,
@@ -9,8 +11,11 @@ import {
   LinearIssueSort,
   LinearListIssuesResult,
   LinearThreadLink,
+  GranolaThreadLink,
   McpCapabilityUnavailableError,
+  NotionThreadLink,
   OrchestratorMcpFailure,
+  SlackThreadLink,
   ThreadId,
   TrimmedNonEmptyString,
 } from "@t3tools/contracts";
@@ -19,18 +24,28 @@ import * as Struct from "effect/Struct";
 import * as Tool from "effect/ai/Tool";
 import * as Toolkit from "effect/ai/Toolkit";
 
+import * as McpContextLinks from "../../McpContextLinks.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
+import * as DiscordThreadLinks from "../../../discord/DiscordThreadLinks.ts";
 import * as GitHubIssueThreadLinks from "../../../githubIssues/GitHubIssueThreadLinks.ts";
+import * as GranolaThreadLinks from "../../../granola/GranolaThreadLinks.ts";
 import * as LinearApi from "../../../linear/LinearApi.ts";
 import * as LinearThreadLinks from "../../../linear/LinearThreadLinks.ts";
+import * as NotionThreadLinks from "../../../notion/NotionThreadLinks.ts";
+import * as SlackThreadLinks from "../../../slack/SlackThreadLinks.ts";
 
 const dependencies = [
   McpInvocationContext.McpInvocationContext,
   ThreadManagementService.ThreadManagementService,
   LinearThreadLinks.LinearThreadLinks,
   GitHubIssueThreadLinks.GitHubIssueThreadLinks,
+  SlackThreadLinks.SlackThreadLinks,
+  DiscordThreadLinks.DiscordThreadLinks,
+  NotionThreadLinks.NotionThreadLinks,
+  GranolaThreadLinks.GranolaThreadLinks,
   LinearApi.LinearApi,
+  McpContextLinks.McpContextLinks,
 ];
 
 // Agents often have no Linear MCP server of their own, or one that is not authorised.
@@ -73,7 +88,9 @@ export class IssueLinkThreadNotFoundError extends Schema.TaggedError<IssueLinkTh
 
 export const IssueLinkToolError = Schema.Union([
   OrchestratorMcpFailure,
+  GranolaThreadLink,
   McpCapabilityUnavailableError,
+  NotionThreadLink,
   IssueLinkThreadRequiredError,
   IssueLinkThreadNotFoundError,
   NoLinkedLinearIssueError,
@@ -105,11 +122,24 @@ export const UnlinkIssueResult = Schema.Struct({
 });
 export type UnlinkIssueResult = typeof UnlinkIssueResult.Type;
 
-export const ListThreadIssuesResult = Schema.Struct({
+export const ListThreadLinksResult = Schema.Struct({
   linear: Schema.NullOr(LinearThreadLink),
   github: Schema.NullOr(GitHubIssueThreadLink),
+  slack: Schema.NullOr(SlackThreadLink),
+  discord: Schema.NullOr(DiscordThreadLink),
+  notion: Schema.NullOr(NotionThreadLink),
+  granola: Schema.NullOr(GranolaThreadLink),
 });
-export type ListThreadIssuesResult = typeof ListThreadIssuesResult.Type;
+export type ListThreadLinksResult = typeof ListThreadLinksResult.Type;
+
+export const ReadContextLinkResult = Schema.Struct({
+  kind: ComposerContextKind,
+  url: Schema.String,
+  text: Schema.String.annotate({
+    description: "What an agent receives when a user attaches this link to a message.",
+  }),
+});
+export type ReadContextLinkResult = typeof ReadContextLinkResult.Type;
 
 const LinkLinearIssueTool = Tool.make("link_linear_issue", {
   description: `Link a Linear issue to a thread so T3 Code shows it beside the thread with its live status. ${ONE_PER_THREAD} Returns only the issue's identity; use read_linear_issue for its contents. ${T3_LINEAR_CONNECTION}`,
@@ -175,22 +205,39 @@ const UnlinkGitHubIssueTool = Tool.make("unlink_github_issue", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
-const ListThreadIssuesTool = Tool.make("list_thread_issues", {
-  description: `Read the Linear and GitHub issues linked to a thread (omit threadId for this thread); null where none is linked. Returns only each issue's identity: use read_linear_issue for a Linear issue's description, comments, and status. ${ONE_PER_THREAD} For pull requests use list_thread_pull_requests.`,
+const ListThreadLinksTool = Tool.make("list_thread_links", {
+  description: `Read what a thread is linked to (omit threadId for this thread): at most one Linear issue, GitHub issue, Slack thread, Discord thread, Notion page, and Granola note, null where none is linked. Returns each link's identity; pass its url to read_context_link for the contents. For pull requests use list_thread_pull_requests.`,
   parameters: Schema.Struct({
     threadId: Schema.optional(
       ThreadId.annotate({ description: "Thread to read. Omit for this thread." }),
     ),
   }),
-  success: ListThreadIssuesResult,
+  success: ListThreadLinksResult,
   failure: IssueLinkToolError,
   dependencies,
 })
-  .annotate(Tool.Title, "List thread issues")
+  .annotate(Tool.Title, "List thread links")
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
+
+const ReadContextLinkTool = Tool.make("read_context_link", {
+  description: `Read a Slack or Discord message (with its thread), Notion page, Granola note, Linear issue, GitHub issue, or GitHub release, tag, branch, or commit link through T3 Code's own connections, and return the same text a user attaching it to a message would send. Works without a separate MCP server for that service. Fails when the integration is disconnected or turned off, or cannot see the object. To give the link to another thread, use contextLinks on t3_thread_send instead.`,
+  parameters: Schema.Struct({
+    url: TrimmedNonEmptyString.check(Schema.isMaxLength(4_096)).annotate({
+      description: "The object's web link, as a user would paste it.",
+    }),
+  }),
+  success: ReadContextLinkResult,
+  failure: IssueLinkToolError,
+  dependencies,
+})
+  .annotate(Tool.Title, "Read context link")
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, true);
 
 const ReadLinearIssueTool = Tool.make("read_linear_issue", {
   description: `Read a Linear issue in full: status, priority, assignee, team, project, labels, parent, sub-issues, attached links, description, and comments, as markdown. Omit issue to read the issue linked to the thread. Long issues are trimmed, oldest comments first. ${T3_LINEAR_CONNECTION}`,
@@ -268,7 +315,8 @@ export const IssueLinksToolkit = Toolkit.make(
   UnlinkLinearIssueTool,
   LinkGitHubIssueTool,
   UnlinkGitHubIssueTool,
-  ListThreadIssuesTool,
+  ListThreadLinksTool,
+  ReadContextLinkTool,
   ReadLinearIssueTool,
   SearchLinearIssuesTool,
   ListLinearFilterOptionsTool,

@@ -215,7 +215,8 @@ function formatElementDetails(element: ElementContextDetails): string[] {
   return lines;
 }
 
-function formatComposerContextProviderPayload(record: KnownComposerContextRecord): string {
+/** The text a provider receives for a context record, without its marker. */
+export function formatComposerContextProviderPayload(record: KnownComposerContextRecord): string {
   switch (record.kind) {
     case "image":
     case "file":

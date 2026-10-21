@@ -4,6 +4,7 @@ import {
   type LinearIssueContext,
   type LinearListIssuesInput,
   type LinearThreadLink,
+  type NotionThreadLink,
   ProviderInstanceId,
   ThreadId,
 } from "@t3tools/contracts";
@@ -13,9 +14,14 @@ import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import type { Tool } from "effect/ai";
 
+import * as DiscordThreadLinks from "../../../discord/DiscordThreadLinks.ts";
 import * as GitHubIssueThreadLinks from "../../../githubIssues/GitHubIssueThreadLinks.ts";
+import * as GranolaThreadLinks from "../../../granola/GranolaThreadLinks.ts";
 import * as LinearApi from "../../../linear/LinearApi.ts";
 import * as LinearThreadLinks from "../../../linear/LinearThreadLinks.ts";
+import * as NotionThreadLinks from "../../../notion/NotionThreadLinks.ts";
+import * as SlackThreadLinks from "../../../slack/SlackThreadLinks.ts";
+import * as McpContextLinks from "../../McpContextLinks.ts";
 import * as ThreadManagement from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
@@ -55,7 +61,31 @@ const makeHarness = () => {
   const github = new Map<ThreadId, GitHubIssueThreadLink>();
   const issueReads: Array<string> = [];
   const searches: Array<LinearListIssuesInput> = [];
+  const notion = new Map<ThreadId, NotionThreadLink>();
   const layerDependencies = Layer.mergeAll(
+    Layer.mock(SlackThreadLinks.SlackThreadLinks)({ forThread: () => Effect.succeed(undefined) }),
+    Layer.mock(DiscordThreadLinks.DiscordThreadLinks)({
+      forThread: () => Effect.succeed(undefined),
+    }),
+    Layer.mock(NotionThreadLinks.NotionThreadLinks)({
+      forThread: (threadId) => Effect.sync(() => notion.get(threadId)),
+    }),
+    Layer.mock(GranolaThreadLinks.GranolaThreadLinks)({
+      forThread: () => Effect.succeed(undefined),
+    }),
+    Layer.mock(McpContextLinks.McpContextLinks)({
+      read: (url) =>
+        Effect.succeed({
+          version: 1,
+          kind: "notion-page",
+          contextId: "notion-page_page-1",
+          label: "Plan",
+          pageId: "page-1",
+          title: "Plan",
+          url,
+          markdown: "The plan.",
+        } as never),
+    }),
     Layer.mock(LinearApi.LinearApi)({
       getIssue: ({ id }) =>
         Effect.sync((): LinearIssueContext => {
@@ -161,7 +191,7 @@ const makeHarness = () => {
       Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
       Effect.provide(layerDependencies),
     );
-  return { linear, github, issueReads, searches, call };
+  return { linear, github, notion, issueReads, searches, call };
 };
 
 describe("issue link toolkit handlers", () => {
@@ -197,7 +227,7 @@ describe("issue link toolkit handlers", () => {
         replacedUrl: "https://linear.app/acme/issue/ENG-1",
       });
 
-      expect(yield* harness.call("list_thread_issues", {})).toMatchObject({
+      expect(yield* harness.call("list_thread_links", {})).toMatchObject({
         linear: { identifier: "ENG-2" },
         github: null,
       });
@@ -235,11 +265,18 @@ describe("issue link toolkit handlers", () => {
   it.effect("needs threadId from a client outside a thread", () =>
     Effect.gen(function* () {
       const harness = makeHarness();
-      const error = yield* harness.call("list_thread_issues", {}, outsideClient).pipe(Effect.flip);
+      const error = yield* harness.call("list_thread_links", {}, outsideClient).pipe(Effect.flip);
       expect(error).toMatchObject({ _tag: "IssueLinkThreadRequiredError" });
       expect(
-        yield* harness.call("list_thread_issues", { threadId: THREAD_ID }, outsideClient),
-      ).toEqual({ linear: null, github: null });
+        yield* harness.call("list_thread_links", { threadId: THREAD_ID }, outsideClient),
+      ).toEqual({
+        linear: null,
+        github: null,
+        slack: null,
+        discord: null,
+        notion: null,
+        granola: null,
+      });
     }),
   );
 
@@ -307,6 +344,30 @@ describe("issue link toolkit handlers", () => {
         .pipe(Effect.flip);
       expect(error).toMatchObject({ _tag: "McpCapabilityUnavailableError" });
       expect(harness.searches).toHaveLength(2);
+    }),
+  );
+
+  it.effect("lists every kind of thread link and reads one by its url", () =>
+    Effect.gen(function* () {
+      const harness = makeHarness();
+      const url = "https://www.notion.so/acme/Plan-0123456789abcdef0123456789abcdef";
+      harness.notion.set(THREAD_ID, {
+        groupId: THREAD_ID,
+        threadIds: [THREAD_ID],
+        pageId: "page-1",
+        title: "Plan",
+        url,
+        linkedAt: LINKED_AT,
+      });
+      const links = yield* harness.call("list_thread_links", {});
+      expect(links.notion).toMatchObject({ title: "Plan", url });
+
+      const read = yield* harness.call("read_context_link", { url: links.notion!.url });
+      expect(read).toEqual({
+        kind: "notion-page",
+        url,
+        text: `notion page: Plan\nurl: ${url}\nThe plan.`,
+      });
     }),
   );
 });

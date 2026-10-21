@@ -246,3 +246,31 @@ it.effect("rejects links it cannot attach", () =>
     assert.include(pullRequest.message, "Pull request links cannot be attached");
   }).pipe(Effect.provide(layer())),
 );
+
+const read = (url: string) =>
+  McpContextLinks.McpContextLinks.pipe(Effect.flatMap((service) => service.read(url)));
+
+it.effect("reads a link into its chip record without a message", () =>
+  Effect.gen(function* () {
+    slackRequests = [];
+    const record = yield* read(SLACK_URL);
+    assert.strictEqual(record.kind, "slack-thread");
+    assert.deepStrictEqual(
+      slackRequests.map((request) => request.scope),
+      ["thread"],
+    );
+    const notion = yield* Effect.flip(read(NOTION_URL));
+    assert.match(notion.message, /^Could not read /u);
+  }).pipe(Effect.provide(layer())),
+);
+
+it.effect("refuses to read repositories, pull requests, and unknown links", () =>
+  Effect.gen(function* () {
+    const repository = yield* Effect.flip(read("https://github.com/acme/app"));
+    assert.include(repository.message, "cloned rather than read");
+    const pullRequest = yield* Effect.flip(read("https://github.com/acme/app/pull/7"));
+    assert.include(pullRequest.message, "cannot be read here");
+    const ordinary = yield* Effect.flip(read("https://example.com/page"));
+    assert.include(ordinary.message, "is not a link T3 Code can read");
+  }).pipe(Effect.provide(layer())),
+);
