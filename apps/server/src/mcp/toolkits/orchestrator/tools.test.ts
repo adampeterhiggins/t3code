@@ -1,13 +1,13 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Tool } from "effect/ai";
 
-import {
-  CreateThreadsTool,
-  DelegateTaskTool,
-  OrchestratorToolkit,
-  ScheduleTaskTool,
-  ThreadUpdateTool,
-} from "./tools.ts";
+import { OrchestratorToolkit } from "./tools.ts";
+const {
+  create_threads: CreateThreadsTool,
+  delegate_task: DelegateTaskTool,
+  schedule_task: ScheduleTaskTool,
+  t3_thread_update: ThreadUpdateTool,
+} = OrchestratorToolkit.tools;
 
 describe("orchestrator MCP tool guidance", () => {
   it("directs subagent requests to delegation instead of ordinary threads", () => {

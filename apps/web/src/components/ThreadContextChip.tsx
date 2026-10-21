@@ -1,10 +1,12 @@
+import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import type { ThreadContextRecord } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
 import { MessagesSquareIcon } from "lucide-react";
 import type { ComponentProps } from "react";
 
-import { useThreadShell } from "~/state/entities";
+import { useProject, useThreadShell } from "~/state/entities";
 import { ContextChip, ContextChipLabel } from "./ContextChip";
+import { ProjectFavicon } from "./ProjectFavicon";
 
 /** A referenced thread's chip, titled as the thread is now. The thread preview is its hover. */
 export function ThreadChipTrigger({
@@ -19,6 +21,7 @@ export function ThreadChipTrigger({
 }) {
   const { environmentId, threadId } = record;
   const shell = useThreadShell({ environmentId, threadId });
+  const project = useProject(shell ? scopeProjectRef(environmentId, shell.projectId) : null);
   const title = shell?.title?.trim() || record.title;
   return (
     <ContextChip
@@ -30,8 +33,14 @@ export function ThreadChipTrigger({
       className="no-underline"
       {...props}
     >
-      <MessagesSquareIcon />
+      {project ? (
+        <ProjectFavicon project={project} className="size-[1.17em] self-center" />
+      ) : (
+        <MessagesSquareIcon />
+      )}
       <ContextChipLabel>{title}</ContextChipLabel>
     </ContextChip>
   );
 }
+
+export const ThreadContextChip = ThreadChipTrigger;

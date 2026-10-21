@@ -12,6 +12,9 @@ import { RowPressable } from "../../components/ui/RowPressable";
 import { CustomSnoozeSheet } from "./CustomSnoozeSheet";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { threadArrangementOpenAtom } from "../../state/thread-order";
+import { threadEnvironment } from "../../state/threads";
+import { useAtomCommand } from "../../state/use-atom-command";
+import { useVisibleSecondClock } from "./use-visible-second-clock";
 import type { ThreadMoveDestination } from "./threadOrder";
 import type {
   EnvironmentProject,
@@ -23,7 +26,11 @@ import {
   type EnvironmentMachineKind,
   ProjectId,
 } from "@t3tools/contracts";
-import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
+import {
+  formatWorkingDurationLabel,
+  resolveThreadWorkingStartedAt,
+  threadRuntimeCanArchive,
+} from "@t3tools/client-runtime/state/models";
 import { threadMoveTargets } from "@t3tools/client-runtime/state/projects";
 import { resolveThreadSubscriptionLimitGuard } from "@t3tools/client-runtime/state/subscription-limit-guard";
 import { useProjects, useServerConfigs } from "../../state/entities";
@@ -123,6 +130,13 @@ const DONE_STATUS_LABEL: StatusLabel = {
   className: "text-adaptive-emerald-700-300",
   iconTintClassName: "accent-adaptive-emerald-700-300",
 };
+
+function ThreadListV2Duration(props: { readonly startedAt: string | null }) {
+  const startedAtMs = Date.parse(props.startedAt ?? "");
+  const nowMs = useVisibleSecondClock(Number.isFinite(startedAtMs));
+  if (!Number.isFinite(startedAtMs)) return null;
+  return ` ${formatWorkingDurationLabel(nowMs - startedAtMs)}`;
+}
 
 const CARD_MENU_ACTIONS: MenuAction[] = [
   { id: "settle", title: "Settle", image: "checkmark" },
@@ -532,6 +546,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly pinned?: boolean;
   /** Hidden-page row: offers Unhide in place of the lifecycle actions. */
   readonly hidden?: boolean;
+  readonly wokeAt: string | null;
   /** Preformatted against the parent minute tick so this memoized row's
       countdown keeps moving. */
   readonly snoozeWakeLabelText?: string;
@@ -650,10 +665,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const handleOpenPullRequests = () => {
     if (pr) onOpenThreadPullRequests(thread, pr);
   };
-  // VoiceOver cannot focus the badge inside the accessible row, so the row
-  // exposes the same action.
-  const rowAccessibilityActions = (() =>
-    prBadgeLabel ? [{ name: "openPullRequests", label: prBadgeLabel }] : undefined)();
 
   const theme = useUniwindTheme();
   const sidebarPane = props.pane === "sidebar";
@@ -663,6 +674,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const status = resolveThreadListV2Status(thread);
   const isUnread = status === "ready" && threadHasUnseenCompletion(thread);
   const workingLabel = STATUS_LABEL_BY_STATUS[status];
+  const showsWoke = status === "ready" && props.wokeAt !== null;
   const statusLabel =
     (status === "working" && workingLabel !== undefined && thread.goal?.status === "active"
       ? { ...workingLabel, label: "Goal" }
@@ -670,6 +682,19 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const recede = shouldRecedeThreadRow({ status, selected });
   const timeLabel = props.timeLabel;
 
+  const visitThread = useAtomCommand(threadEnvironment.visit, { reportFailure: false });
+  const handleAcknowledgeWoke = () => {
+    if (props.wokeAt === null) return;
+    void visitThread({
+      environmentId: thread.environmentId,
+      input: { threadId: thread.id, visitedAt: props.wokeAt },
+    });
+  };
+  // VoiceOver cannot focus buttons inside the accessible row.
+  const rowAccessibilityActions = [
+    ...(prBadgeLabel ? [{ name: "openPullRequests", label: prBadgeLabel }] : []),
+    ...(showsWoke ? [{ name: "dismissWoke", label: "Dismiss Woke notification" }] : []),
+  ];
   const handleDelete = () => onDeleteThread(thread);
   const handleRename = () => onRenameThread(thread);
   const canOperateThread = useEnvironmentScope(thread.environmentId, AuthOrchestrationOperateScope);
@@ -889,6 +914,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     ...groupMenuItems,
     ...projectMenuItems,
     ...hideMenuItems,
+    LEGACY_MENU_ACTIONS[0]!,
     { id: "delete", title: "Delete", image: "trash", attributes: { destructive: true } },
   ])() as MenuAction[];
   const cardMenuActions = (() => [
@@ -900,6 +926,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     ...groupMenuItems,
     ...projectMenuItems,
     ...hideMenuItems,
+    LEGACY_MENU_ACTIONS[0]!,
     ...CARD_MENU_ACTIONS.slice(1),
   ])() as MenuAction[];
   const slimMenuActions = (() => [
@@ -913,6 +940,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     ...groupMenuItems,
     ...projectMenuItems,
     ...hideMenuItems,
+    LEGACY_MENU_ACTIONS[0]!,
     SLIM_MENU_ACTIONS[1]!,
   ])() as MenuAction[];
   const snoozedMenuActions = (() => [
@@ -923,6 +951,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     ...groupMenuItems,
     ...projectMenuItems,
     ...hideMenuItems,
+    LEGACY_MENU_ACTIONS[0]!,
     SNOOZED_MENU_ACTIONS[1]!,
   ])() as MenuAction[];
   // Hidden rows offer Unhide instead of lifecycle verbs; the thread keeps
@@ -934,6 +963,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     ...subscriptionLimitMenuItems,
     ...groupMenuItems,
     ...projectMenuItems,
+    LEGACY_MENU_ACTIONS[0]!,
     HIDDEN_MENU_ACTIONS[1]!,
   ])() as MenuAction[];
   const legacyMenuActions = (() => [
@@ -1088,7 +1118,34 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
             type="monochrome"
           />
         ) : null}
-        {statusLabel ? (
+        {showsWoke ? (
+          <Pressable
+            className="-m-2.5 flex-row items-center gap-1 p-2.5"
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss Woke notification"
+            onPress={handleAcknowledgeWoke}
+            onLongPress={() => undefined}
+            style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+          >
+            <SymbolView
+              name="bell.badge"
+              size={13}
+              tintColorClassName={
+                selected ? selectedThreadRowColors.iconTintClassName : "accent-warning-foreground"
+              }
+              type="monochrome"
+              weight="semibold"
+            />
+            <Text
+              className={cn(
+                "text-xs font-t3-bold",
+                selected ? selectedThreadRowColors.foregroundClassName : "text-warning-foreground",
+              )}
+            >
+              Woke
+            </Text>
+          </Pressable>
+        ) : statusLabel ? (
           <View className="flex-row items-center gap-1">
             <SymbolView
               name={statusLabel.icon}
@@ -1102,10 +1159,16 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
             <Text
               className={cn(
                 "text-xs font-t3-bold",
+                (status === "working" || status === "waiting") && "tabular-nums",
                 selected ? selectedThreadRowColors.foregroundClassName : statusLabel.className,
               )}
             >
               {statusLabel.label}
+              {status === "working" ? (
+                <ThreadListV2Duration startedAt={resolveThreadWorkingStartedAt(thread)} />
+              ) : status === "waiting" ? (
+                <ThreadListV2Duration startedAt={thread.latestRun?.completedAt ?? null} />
+              ) : null}
             </Text>
           </View>
         ) : (
@@ -1299,6 +1362,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         accessibilityActions={rowAccessibilityActions}
         onAccessibilityAction={(event) => {
           if (event.nativeEvent.actionName === "openPullRequests") handleOpenPullRequests();
+          if (event.nativeEvent.actionName === "dismissWoke") handleAcknowledgeWoke();
         }}
         onPress={() => {
           close();

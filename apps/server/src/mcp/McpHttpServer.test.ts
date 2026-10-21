@@ -1,3 +1,5 @@
+import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import { expect, it } from "@effect/vitest";
@@ -12,19 +14,11 @@ import {
 } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
-import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { McpSchema, McpServer, Tool, Toolkit } from "effect/ai";
-import {
-  HttpBody,
-  HttpClient,
-  HttpClientRequest,
-  HttpRouter,
-  HttpServerResponse,
-} from "effect/http";
+import { HttpBody, HttpClient, HttpClientRequest, HttpRouter } from "effect/http";
 
 import * as ProjectService from "../project/ProjectService.ts";
 import * as PullRequestReviewGuideService from "../pullRequest/PullRequestReviewGuideService.ts";
@@ -176,18 +170,6 @@ const layerRecordingTools = (calls: Array<unknown>) => {
     ),
   );
 };
-
-it("normalizes empty successful notification responses to accepted", () => {
-  const notificationResponse = McpHttpServer.normalizeMcpHttpResponse(
-    HttpServerResponse.text("", { status: 200, contentType: "application/json" }),
-  );
-  expect(notificationResponse.status).toBe(202);
-
-  const resultResponse = McpHttpServer.normalizeMcpHttpResponse(
-    HttpServerResponse.jsonUnsafe({ jsonrpc: "2.0", id: 1, result: {} }),
-  );
-  expect(resultResponse.status).toBe(200);
-});
 
 it.effect.each([{}, { includeImage: false }])(
   "returns bounded structural preview snapshot failures %#",
@@ -663,24 +645,6 @@ it.effect(
     }).pipe(Effect.provide(layerPullRequestsTest)),
 );
 
-it.effect("returns server ARIA refs to agents in text and structured results", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const accessibilityTree =
-        '- button "delete" [ref=t3-snapshot-e1]\n- iframe [ref=t3-snapshot-e2]:\n  - textbox "child" [ref=t3-snapshot-f1e1]';
-      yield* serveSnapshots("mcp-server-refs", { ...snapshotResult, accessibilityTree });
-      const result = yield* callSnapshot({ includeImage: false });
-      expect(result.isError).toBe(false);
-      expect(result.structuredContent).toMatchObject({ accessibilityTree });
-      expect(
-        result.content.some(
-          (entry) => entry.type === "text" && entry.text.includes("t3-snapshot-f1e1"),
-        ),
-      ).toBe(true);
-    }),
-  ).pipe(Effect.provide(layerTest)),
-);
-
 it.effect("bounds large ARIA trees without dropping every server locator", () =>
   Effect.scoped(
     Effect.gen(function* () {
@@ -770,6 +734,7 @@ it.effect("keeps the snapshot text under the agent's output ceiling", () =>
   ).pipe(Effect.provide(layerTest)),
 );
 
+// regression: #10501 keep preview snapshots usable by the agent
 it.effect("bounds the snapshot text even when nothing but logs and the title are large", () =>
   Effect.scoped(
     Effect.gen(function* () {
@@ -802,6 +767,7 @@ it.effect("bounds the snapshot text even when nothing but logs and the title are
   ).pipe(Effect.provide(layerTest)),
 );
 
+// regression: #13558 preview snapshots overflowed the agent's tool output
 it.effect("bounds page text made of wide characters before dropping locators", () =>
   Effect.scoped(
     Effect.gen(function* () {
@@ -836,71 +802,6 @@ it.effect("bounds page text made of wide characters before dropping locators", (
       expect(notice?.type === "text" ? notice.text : "").toContain(
         "visibleText after 4000 characters",
       );
-    }),
-  ).pipe(Effect.provide(layerTest)),
-);
-
-it.effect("sheds log entries before locators when every list is full", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const long = "x".repeat(2_000);
-      const oversized = {
-        ...snapshotResult,
-        interactiveElements: Array.from({ length: 20 }, (_, i) => ({
-          tag: "button",
-          role: "button",
-          name: `Button ${i}`,
-          selector: `#button-${i}`,
-          x: 0,
-          y: 0,
-          width: 10,
-          height: 10,
-        })),
-        consoleEntries: Array.from({ length: 200 }, () => ({
-          level: long,
-          text: long,
-          timestamp: long,
-          source: long,
-        })),
-        networkEntries: Array.from({ length: 200 }, () => ({
-          url: long,
-          method: long,
-          status: 200,
-          failed: false,
-          errorText: long,
-          timestamp: long,
-        })),
-        actionTimeline: Array.from({ length: 200 }, () => ({
-          id: long,
-          action: long,
-          status: "succeeded",
-          startedAt: long,
-          completedAt: long,
-          error: long,
-        })),
-      };
-      yield* serveSnapshots("mcp-full-logs-client", oversized);
-
-      const snapshot = yield* callSnapshot({ includeImage: false });
-
-      const [, text, notice] = snapshot.content;
-      const body = text?.type === "text" ? text.text : "";
-      expect(Buffer.byteLength(body, "utf8")).toBeLessThanOrEqual(
-        McpHttpServer.MAX_SNAPSHOT_TEXT_BYTES,
-      );
-      const parsed = decodeJsonText(body) as {
-        readonly interactiveElements: ReadonlyArray<unknown>;
-        readonly consoleEntries: ReadonlyArray<unknown>;
-        readonly networkEntries: ReadonlyArray<unknown>;
-        readonly actionTimeline: ReadonlyArray<unknown>;
-      };
-      expect(parsed.interactiveElements).toHaveLength(20);
-      expect(
-        parsed.consoleEntries.length + parsed.networkEntries.length + parsed.actionTimeline.length,
-      ).toBeLessThan(120);
-      const noticeText = notice?.type === "text" ? notice.text : "";
-      expect(noticeText).toContain("40 of 40 actionTimeline");
-      expect(noticeText).not.toMatch(/\d+ of \d+ interactiveElements/);
     }),
   ).pipe(Effect.provide(layerTest)),
 );

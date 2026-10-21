@@ -10,7 +10,7 @@ import { MessageSquareTextIcon } from "lucide-react";
 
 import { useProject, useThreadRefs, useThreadShell } from "../../state/entities";
 import { ProjectFavicon } from "../ProjectFavicon";
-import { ContextPreviewHover } from "../contextPresentationRegistry";
+import { ContextPreviewHover } from "../contextPreviewRegistry";
 
 export function MarkdownThreadLink(props: {
   readonly environmentId: EnvironmentId;

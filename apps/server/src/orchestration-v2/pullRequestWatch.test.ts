@@ -1,3 +1,4 @@
+import { pullRequestWatchMessage } from "./pullRequestWatch.ts";
 import type {
   PullRequestCheck,
   PullRequestComment,
@@ -6,11 +7,7 @@ import type {
 import { assert, describe, it } from "@effect/vitest";
 import { PULL_REQUEST_WATCH_FOLLOW_UP_LIMIT } from "@t3tools/shared/pullRequestWatch";
 
-import {
-  PULL_REQUEST_WATCH_WAKE_LIMIT,
-  evaluatePullRequestWatch,
-  pullRequestWatchMessage,
-} from "./pullRequestWatch.ts";
+import { PULL_REQUEST_WATCH_WAKE_LIMIT, evaluatePullRequestWatch } from "./pullRequestWatch.ts";
 
 const STARTED = "2026-10-02T12:00:00.000Z";
 
@@ -129,6 +126,7 @@ describe("evaluatePullRequestWatch", () => {
     ]);
   });
 
+  // regression: #16208 PR watches burned GitHub's rate limit and gave up
   it("does not report passed again for a new passed check where none is required", () => {
     const first = evaluatePullRequestWatch(
       watch(),

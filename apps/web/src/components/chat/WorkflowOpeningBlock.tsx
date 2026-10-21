@@ -15,7 +15,7 @@ import { useState } from "react";
 
 import { cn } from "../../lib/utils";
 import ChatMarkdown from "../ChatMarkdown";
-import { ContextPreviewHover } from "../contextPresentationRegistry";
+import { ContextPreviewHover } from "../contextPreviewRegistry";
 import { Button } from "../ui/button";
 import { AgentElapsed } from "./AgentElapsed";
 import { findRevealRef } from "./markdownFindContext";

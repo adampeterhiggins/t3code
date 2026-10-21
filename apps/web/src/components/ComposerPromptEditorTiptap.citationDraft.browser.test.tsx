@@ -3,21 +3,13 @@ import {
   serializeAssistantCitation,
   withAssistantCitationComment,
 } from "@t3tools/shared/assistantCitations";
-import { act, createRef, useState, type ReactNode } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
+import { createRef, useState } from "react";
+import { expect, it, vi } from "vite-plus/test";
 
 import { page, userEvent } from "vite-plus/test/browser";
 
 import { findAssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
-
-// No router is mounted; the citation chip only needs navigation to exist.
-vi.mock(import("@tanstack/react-router"), async (original) => ({
-  ...(await original()),
-  useNavigate: () => async () => {},
-  Link: (({ children }: { children: ReactNode }) => <a>{children}</a>) as never,
-}));
-
+import { act, render } from "../../test/render";
 import { ComposerPromptEditor, type ComposerPromptEditorHandle } from "./ComposerPromptEditor";
 
 const citation = {
@@ -32,20 +24,6 @@ const citation = {
   suffix: "",
 };
 const promptBefore = `See ${serializeAssistantCitation(citation)} `;
-
-let root: Root;
-let container: HTMLDivElement;
-
-beforeEach(() => {
-  container = document.createElement("div");
-  document.body.append(container);
-  root = createRoot(container);
-});
-
-afterEach(async () => {
-  await act(async () => root.unmount());
-  container.remove();
-});
 
 function Composer({
   question,
@@ -91,9 +69,9 @@ function Composer({
 
 it("keeps an unsaved citation comment when a question takes the composer", async () => {
   const editorRef = createRef<ComposerPromptEditorHandle>();
-  const drafts = () => container.querySelector("output")?.dataset;
+  await using screen = await render(<Composer question={false} editorRef={editorRef} />);
+  const drafts = () => screen.container.querySelector("output")?.dataset;
 
-  await act(async () => root.render(<Composer question={false} editorRef={editorRef} />));
   const sourceAnchor = findAssistantCitationSourceAnchor(document, citation);
   if (!sourceAnchor) throw new Error("Citation source did not resolve");
   await act(async () =>
@@ -110,9 +88,9 @@ it("keeps an unsaved citation comment when a question takes the composer", async
   await comment.click();
   await userEvent.keyboard("check this");
 
-  await act(async () => root.render(<Composer question editorRef={editorRef} />));
+  await screen.rerender(<Composer question editorRef={editorRef} />);
   expect(drafts()?.answer).toBe("");
-  await act(async () => root.render(<Composer question={false} editorRef={editorRef} />));
+  await screen.rerender(<Composer question={false} editorRef={editorRef} />);
 
   expect(drafts()?.prompt).toBe(
     `See ${serializeAssistantCitation(withAssistantCitationComment(citation, "check this"))} `,
@@ -142,8 +120,8 @@ it("sends only the citation and leaves the rest of the composer", async () => {
   localStorage.removeItem("t3code:citation-comment-submit:v1");
   const editorRef = createRef<ComposerPromptEditorHandle>();
   const send = vi.fn(async (_citationText: string) => true);
-  await act(async () =>
-    root.render(<Composer question={false} editorRef={editorRef} onCitationSubmitAndSend={send} />),
+  await using screen = await render(
+    <Composer question={false} editorRef={editorRef} onCitationSubmitAndSend={send} />,
   );
   await openCitationComment(editorRef);
 
@@ -152,22 +130,22 @@ it("sends only the citation and leaves the rest of the composer", async () => {
   expect(send).toHaveBeenCalledExactlyOnceWith(
     serializeAssistantCitation(withAssistantCitationComment(citation, "check this")),
   );
-  await expect.poll(() => container.querySelector("output")?.dataset.prompt).toBe("See ");
+  await expect.poll(() => screen.container.querySelector("output")?.dataset.prompt).toBe("See ");
 });
 
 it("keeps the commented citation in the composer when its send fails", async () => {
   localStorage.removeItem("t3code:citation-comment-submit:v1");
   const editorRef = createRef<ComposerPromptEditorHandle>();
   const send = vi.fn(async (_citationText: string) => false);
-  await act(async () =>
-    root.render(<Composer question={false} editorRef={editorRef} onCitationSubmitAndSend={send} />),
+  await using screen = await render(
+    <Composer question={false} editorRef={editorRef} onCitationSubmitAndSend={send} />,
   );
   await openCitationComment(editorRef);
 
   await act(async () => userEvent.keyboard("{Enter}"));
 
   expect(send).toHaveBeenCalledOnce();
-  expect(container.querySelector("output")?.dataset.prompt).toBe(
+  expect(screen.container.querySelector("output")?.dataset.prompt).toBe(
     `See ${serializeAssistantCitation(withAssistantCitationComment(citation, "check this"))} `,
   );
 });

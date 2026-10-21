@@ -13,7 +13,7 @@ import { ChevronDownIcon, LoaderCircleIcon, SquareIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { AgentElapsed } from "./AgentElapsed";
-import { ContextPreviewHover } from "../contextPresentationRegistry";
+import { ContextPreviewHover } from "../contextPreviewRegistry";
 import { ThreadRelationshipIcon } from "./ThreadRelationshipIcon";
 import { cn } from "../../lib/utils";
 import { ThreadDetailsControl } from "./ThreadDetailsControl";

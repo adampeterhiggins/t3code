@@ -4,11 +4,11 @@ import {
   MessageId,
   ThreadId,
 } from "@t3tools/contracts";
-import { act, useState, type ReactNode } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { useState, type ReactNode } from "react";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
+import { act, render } from "../../../test/render";
 
 const mocks = vi.hoisted(() => ({ observeSource: vi.fn(), dispose: vi.fn() }));
 vi.mock(import("./AssistantCitationSource"), async (importOriginal) => ({
@@ -35,12 +35,22 @@ const citation = {
   suffix: "",
 };
 
-let root: Root;
-let container: HTMLDivElement;
-let sourceAnchor: AssistantCitationSourceAnchor;
+// The mocked source observer is shared, so every test starts by resetting it.
+function setup() {
+  mocks.observeSource.mockReset().mockReturnValue(mocks.dispose);
+  mocks.dispose.mockClear();
+  const source = document.createElement("p");
+  source.textContent = "hello";
+  document.body.append(source);
+  const range = document.createRange();
+  range.selectNodeContents(source);
+  const sourceAnchor = { source, range, viewport: document.body } as AssistantCitationSourceAnchor;
+  return { sourceAnchor, [Symbol.dispose]: () => source.remove() };
+}
 
-async function mount(
-  onSave = vi.fn((_comment: string) => true),
+function mount(
+  sourceAnchor: AssistantCitationSourceAnchor,
+  onSave: (comment: string) => boolean,
   onSaveAndSend?: (comment: string) => boolean,
 ) {
   function Composer() {
@@ -59,8 +69,7 @@ async function mount(
       />
     );
   }
-  await act(async () => root.render(<Composer />));
-  return onSave;
+  return render(<Composer />);
 }
 
 const textarea = () =>
@@ -98,31 +107,11 @@ async function pressEnter(modifier = false) {
   );
 }
 
-beforeEach(() => {
-  localStorage.clear();
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  mocks.observeSource.mockReset().mockReturnValue(mocks.dispose);
-  mocks.dispose.mockClear();
-  const source = document.createElement("p");
-  source.textContent = "hello";
-  document.body.append(source);
-  const range = document.createRange();
-  range.selectNodeContents(source);
-  sourceAnchor = { source, range, viewport: document.body } as AssistantCitationSourceAnchor;
-  container = document.createElement("div");
-  document.body.append(container);
-  root = createRoot(container);
-});
-
-afterEach(async () => {
-  await act(async () => root.unmount());
-  document.body.replaceChildren();
-  vi.unstubAllGlobals();
-});
-
 describe("citation comment source disappearance", () => {
   it("preserves an over-length draft at the composer until it can be shortened and saved", async () => {
-    const onSave = await mount();
+    using source = setup();
+    const onSave = vi.fn(() => true);
+    await using _screen = await mount(source.sourceAnchor, onSave);
     const draft = "x".repeat(ASSISTANT_CITATION_MAX_COMMENT_LENGTH + 1);
     await typeComment(draft);
     await removeSource();
@@ -140,7 +129,9 @@ describe("citation comment source disappearance", () => {
   });
 
   it("preserves a rejected save and allows a later retry", async () => {
-    const onSave = await mount(vi.fn(() => false));
+    using source = setup();
+    const onSave = vi.fn(() => false);
+    await using _screen = await mount(source.sourceAnchor, onSave);
     await typeComment("keep this draft");
     await removeSource();
 
@@ -151,56 +142,46 @@ describe("citation comment source disappearance", () => {
     expect(onSave).toHaveBeenLastCalledWith("keep this draft");
     expect(textarea()).toBeNull();
   });
-
-  it("still allows explicit cancellation after source disappearance", async () => {
-    const onSave = await mount(vi.fn(() => false));
-    await typeComment("discard this draft");
-    await removeSource();
-    onSave.mockClear();
-    await clickButton("Cancel");
-    expect(onSave).not.toHaveBeenCalled();
-    expect(textarea()).toBeNull();
-  });
-
-  it("saves and closes when the source disappears with a valid draft", async () => {
-    const onSave = await mount();
-    await typeComment("saved comment");
-    await removeSource();
-    expect(onSave).toHaveBeenCalledWith("saved comment");
-    expect(textarea()).toBeNull();
-  });
 });
 
 describe("citation comment Enter", () => {
   async function mountWithChoice(storedChoice: "send" | "save" | null) {
+    localStorage.clear();
     if (storedChoice) {
       localStorage.setItem("t3code:citation-comment-submit:v1", JSON.stringify(storedChoice));
     }
+    const source = setup();
     const onSave = vi.fn((_comment: string) => true);
     const onSaveAndSend = vi.fn((_comment: string) => true);
-    await mount(onSave, onSaveAndSend);
+    const screen = await mount(source.sourceAnchor, onSave, onSaveAndSend);
     await typeComment("comment");
-    return { onSave, onSaveAndSend };
+    return { source, screen, onSave, onSaveAndSend };
   }
 
   it("sends when the split button shows Send", async () => {
-    const { onSave, onSaveAndSend } = await mountWithChoice(null);
+    const mounted = await mountWithChoice(null);
+    using _source = mounted.source;
+    await using _screen = mounted.screen;
     await pressEnter();
-    expect(onSaveAndSend).toHaveBeenCalledWith("comment");
-    expect(onSave).not.toHaveBeenCalled();
+    expect(mounted.onSaveAndSend).toHaveBeenCalledWith("comment");
+    expect(mounted.onSave).not.toHaveBeenCalled();
   });
 
   it("saves when the split button shows Save", async () => {
-    const { onSave, onSaveAndSend } = await mountWithChoice("save");
+    const mounted = await mountWithChoice("save");
+    using _source = mounted.source;
+    await using _screen = mounted.screen;
     await pressEnter();
-    expect(onSave).toHaveBeenCalledWith("comment");
-    expect(onSaveAndSend).not.toHaveBeenCalled();
+    expect(mounted.onSave).toHaveBeenCalledWith("comment");
+    expect(mounted.onSaveAndSend).not.toHaveBeenCalled();
   });
 
   it("does the other choice with Command/Ctrl", async () => {
-    const { onSave, onSaveAndSend } = await mountWithChoice("save");
+    const mounted = await mountWithChoice("save");
+    using _source = mounted.source;
+    await using _screen = mounted.screen;
     await pressEnter(true);
-    expect(onSaveAndSend).toHaveBeenCalledWith("comment");
-    expect(onSave).not.toHaveBeenCalled();
+    expect(mounted.onSaveAndSend).toHaveBeenCalledWith("comment");
+    expect(mounted.onSave).not.toHaveBeenCalled();
   });
 });

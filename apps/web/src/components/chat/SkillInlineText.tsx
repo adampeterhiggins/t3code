@@ -7,8 +7,9 @@ import {
   buttonContextChip,
   ContextPreviewHover,
   type ContextChipSpec,
-} from "../contextPresentationRegistry";
+} from "../contextPreviewRegistry";
 import { skillPreviewDescription } from "../contextPreviews";
+export { SkillChipIcon } from "./SkillChipIcon";
 import { SkillChipIcon } from "./SkillChipIcon";
 
 /** What a skill chip in message text reads: the provider's skill, as the timeline holds it. */

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @effect-diagnostics nodeBuiltinImport:off globalConsole:off -- Standalone synchronous filesystem maintenance script, outside the Effect runtime.
 // Mirrors .agents/skills into each tool's skills directory as one symlink per
 // skill (../../.agents/skills/<name>). .agents/skills is the source of truth.
 //

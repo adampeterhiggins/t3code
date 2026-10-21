@@ -1083,6 +1083,8 @@ or typed message links, the attach menu picker, a `#` menu tab, the command pale
 attach menu, MCP `contextLinks`, bare-link previews in rendered messages
 (`discord.getLinkPreview`, cached under `discord-link-previews`), and a tab-group thread link in
 the fork-owned `fork_discord_thread_links` table, streamed over `discord.subscribeThreadLinks`.
+The web thread details panel's Links row shows the linked message and its channel, and offers open,
+change, and unlink.
 Search uses Discord's guild message search in every server the bot is in; a server still being
 indexed is skipped. A message in or starting a Discord thread snapshots the thread (up to the newest
 200 messages plus the starter message, which lives in the parent channel for threads started from
@@ -1465,7 +1467,7 @@ shows its URL. Rows in the thread details panel's Links section preview the same
 thread links keep their own previews. Mobile has no hover.
 
 The composer, sent-message chips, and these links take each kind's card from the context
-presentation registry ([`contextPresentationRegistry.tsx`](../apps/web/src/components/contextPresentationRegistry.tsx))
+preview registry ([`contextPreviewRegistry.tsx`](../apps/web/src/components/contextPreviewRegistry.tsx))
 and its icon and label from
 [`linkedObjectPresentation.tsx`](../apps/web/src/components/linkedObjectPresentation.tsx). Links
 are read by
@@ -1531,7 +1533,7 @@ references have explicit fallback text. Clicking still opens the referenced thre
 hover.
 
 Code: [`ThreadPreviewHoverCard`](../apps/web/src/components/ThreadHoverCard.tsx), the `thread`
-preview in [`contextPresentationRegistry.tsx`](../apps/web/src/components/contextPresentationRegistry.tsx).
+preview in [`contextPreviewRegistry.tsx`](../apps/web/src/components/contextPreviewRegistry.tsx).
 
 On web and desktop, hovering an image attachment chip in the composer or a sent message shows the
 image above its name and size. Hovering a text file's chip in the composer previews its opening
@@ -1558,7 +1560,7 @@ them. A `$skill` typed into a message, such as a scheduled task's prompt, previe
 description and its instructions link exactly as the composer's skill chip does. Mobile has no
 hover.
 
-Code: [`contextPresentationRegistry.tsx`](../apps/web/src/components/contextPresentationRegistry.tsx)
+Code: [`contextPreviewRegistry.tsx`](../apps/web/src/components/contextPreviewRegistry.tsx)
 and the preview bodies in [`contextPreviews.tsx`](../apps/web/src/components/contextPreviews.tsx).
 
 ## Terminal excerpts keep their colors

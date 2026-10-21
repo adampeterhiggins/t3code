@@ -27,7 +27,7 @@ import {
 } from "../../lib/toolCallPreview";
 import { formatSecondsTimestamp } from "../../timestampFormat";
 import { ToolCallBody } from "../ToolCallBody";
-import { ChatMarkdownAssetImage } from "../ChatMarkdown";
+import { ChatMarkdownAssetImage } from "./ChatMarkdownMedia";
 import { ToolPathText } from "./ToolPathText";
 import { CommandToolPreview } from "./CommandToolPreview";
 import { PreviewCornerAction } from "./PreviewCornerAction";

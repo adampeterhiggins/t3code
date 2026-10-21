@@ -60,7 +60,7 @@ export interface FileContextMenuCapabilities {
   readonly editorLabels?: ReadonlyMap<EditorId, string>;
 }
 
-export function buildFileContextMenuItems(input: {
+function buildFileContextMenuItems(input: {
   readonly hasAbsolutePath: boolean;
   readonly capabilities: FileContextMenuCapabilities;
 }): readonly ContextMenuItem<FileContextMenuAction>[] {

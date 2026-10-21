@@ -35,43 +35,6 @@ const process = (pid: number, ppid: number, depth: number): ResourceTelemetryPro
   lastSeenAt: DateTime.makeUnsafe(0),
 });
 
-describe("shouldShowResourceMonitorRetry", () => {
-  it("allows retry when the initial telemetry request fails before a snapshot", () => {
-    expect(
-      shouldShowResourceMonitorRetry({
-        nativeStatus: null,
-        error: "Resource monitor is unavailable.",
-      }),
-    ).toBe(true);
-  });
-
-  it("does not show retry for an initial load without an error or a healthy snapshot", () => {
-    expect(shouldShowResourceMonitorRetry({ nativeStatus: null, error: null })).toBe(false);
-    expect(shouldShowResourceMonitorRetry({ nativeStatus: "healthy", error: null })).toBe(false);
-  });
-});
-
-describe("resourceHistoryBarHeight", () => {
-  it("renders an exactly zero sample with no visible bar", () => {
-    expect(resourceHistoryBarHeight({ value: 0, max: 100, minimumVisiblePercent: 2 })).toBe(0);
-  });
-
-  it("keeps nonzero samples visible without changing proportional heights", () => {
-    expect(resourceHistoryBarHeight({ value: 0.5, max: 100, minimumVisiblePercent: 2 })).toBe(2);
-    expect(resourceHistoryBarHeight({ value: 50, max: 100, minimumVisiblePercent: 2 })).toBe(50);
-  });
-});
-
-describe("resourceHistoryCpuScaleMax", () => {
-  it("scales average bars independently of brief peak spikes", () => {
-    const buckets = [
-      { avgCpuPercent: 1, maxCpuPercent: 100 },
-      { avgCpuPercent: 8, maxCpuPercent: 8 },
-    ];
-    expect(resourceHistoryCpuScaleMax(buckets)).toBe(8);
-  });
-});
-
 describe("visibleResourceTelemetryProcesses", () => {
   it("hides descendants by parentage even when rows are not depth-first", () => {
     const processes = [

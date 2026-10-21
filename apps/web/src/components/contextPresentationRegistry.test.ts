@@ -10,7 +10,7 @@ import {
   ContextPreviewHover,
   createContextPresentationRegistry,
   type ContextPresentationHandlers,
-} from "./contextPresentationRegistry";
+} from "./contextPreviewRegistry";
 
 const fallback = (kind: string) => createElement("span", { "data-fallback": kind });
 

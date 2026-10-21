@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react";
 
 import { useLinkClickHandler } from "~/browser/useOpenLink";
 import { cn } from "~/lib/utils";
-import { ContextPreviewBody } from "../contextPresentationRegistry";
+import { ContextPreviewBody } from "../contextPreviewRegistry";
 import { Menu, MenuPopup, MenuTrigger } from "../ui/menu";
 import { CursorPreviewCard } from "./CursorPreviewCard";
 import {

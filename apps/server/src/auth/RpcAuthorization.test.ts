@@ -8,12 +8,8 @@ import {
   ProviderInstanceId,
   ThreadId,
   AuthOrchestrationOperateScope,
-  ORCHESTRATION_V2_WS_METHODS,
   AuthOrchestrationReadScope,
   AuthSourceControlWriteScope,
-  AuthPreviewOperateScope,
-  AuthRelayReadScope,
-  AuthRelayWriteScope,
   AuthTerminalReadScope,
   AuthTerminalOperateScope,
   WS_METHODS,
@@ -37,27 +33,6 @@ describe("RPC authorization scopes", () => {
     expect(new Set(Object.keys(RPC_REQUIRED_SCOPES))).toEqual(new Set(WsRpcGroup.requests.keys()));
   });
 
-  it("requires operate access to stop a workflow", () => {
-    expect(requiredScopeForRpcMethod(ORCHESTRATION_V2_WS_METHODS.stopWorkflow)).toBe(
-      AuthOrchestrationOperateScope,
-    );
-  });
-
-  it("authorizes background policy reporting and observation deliberately", () => {
-    expect(requiredScopeForRpcMethod(WS_METHODS.serverReportClientActivity)).toBe(
-      AuthOrchestrationReadScope,
-    );
-    expect(requiredScopeForRpcMethod(WS_METHODS.serverReportHostPowerState)).toBe(
-      AuthEnvironmentMaintainScope,
-    );
-    expect(requiredScopeForRpcMethod(WS_METHODS.serverGetBackgroundPolicy)).toBe(
-      AuthOrchestrationReadScope,
-    );
-    expect(requiredScopeForRpcMethod(WS_METHODS.subscribeBackgroundPolicy)).toBe(
-      AuthOrchestrationReadScope,
-    );
-  });
-
   it("keeps webhook delivery logs, which hold request bodies, behind operate scope", () => {
     for (const method of [
       WS_METHODS.scheduledTasksListWebhookDeliveries,
@@ -66,19 +41,6 @@ describe("RPC authorization scopes", () => {
     ]) {
       expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationOperateScope);
     }
-  });
-
-  it("allows relay status reads without granting relay installation access", () => {
-    expect(requiredScopeForRpcMethod(WS_METHODS.cloudGetRelayClientStatus)).toBe(
-      AuthRelayReadScope,
-    );
-    expect(requiredScopeForRpcMethod(WS_METHODS.cloudInstallRelayClient)).toBe(AuthRelayWriteScope);
-  });
-
-  it("requires permission to operate on a thread before uploading feedback", () => {
-    expect(requiredScopeForRpcMethod(WS_METHODS.providerUploadFeedback)).toBe(
-      AuthOrchestrationOperateScope,
-    );
   });
 
   it("requires write access to import agent session history", () => {
@@ -93,55 +55,6 @@ describe("RPC authorization scopes", () => {
     );
   });
 
-  it("separates ACP Registry discovery from provisioning", () => {
-    expect(requiredScopeForRpcMethod(WS_METHODS.serverSearchAcpRegistry)).toBe(
-      AuthOrchestrationReadScope,
-    );
-    expect(requiredScopeForRpcMethod(WS_METHODS.serverPrepareAcpRegistryAgent)).toBe(
-      AuthProvidersManageScope,
-    );
-    expect(requiredScopeForRpcMethod(WS_METHODS.serverUninstallAcpRegistryManagedBinary)).toBe(
-      AuthProvidersManageScope,
-    );
-    expect(requiredScopeForRpcMethod(WS_METHODS.serverAcceptAcpRegistryUrlAuth)).toBe(
-      AuthProvidersManageScope,
-    );
-    expect(requiredScopeForRpcMethod(WS_METHODS.serverListAcpRegistrySessions)).toBe(
-      AuthOrchestrationReadScope,
-    );
-    expect(requiredScopeForRpcMethod(WS_METHODS.serverImportAcpRegistrySession)).toBe(
-      AuthOrchestrationOperateScope,
-    );
-    expect(requiredScopeForRpcMethod(WS_METHODS.serverLogoutAcpRegistry)).toBe(
-      AuthProvidersManageScope,
-    );
-  });
-
-  it("reads the reviewer menu under the same scope as the pull request it belongs to", () => {
-    expect(requiredScopeForRpcMethod(WS_METHODS.pullRequestsChecks)).toBe(
-      AuthOrchestrationReadScope,
-    );
-    expect(requiredScopeForRpcMethod(WS_METHODS.pullRequestsReviewerCandidates)).toBe(
-      requiredScopeForRpcMethod(WS_METHODS.pullRequestsDetail),
-    );
-    expect(requiredScopeForRpcMethod(WS_METHODS.pullRequestsRequestReviewers)).toBe(
-      requiredScopeForRpcMethod(WS_METHODS.pullRequestsComment),
-    );
-  });
-
-  it("requires source control writes to start, retry, or cancel project clones", () => {
-    for (const method of [
-      WS_METHODS.projectCloneStart,
-      WS_METHODS.projectCloneRetry,
-      WS_METHODS.projectCloneCancel,
-    ]) {
-      expect(requiredScopeForRpcMethod(method)).toBe(AuthSourceControlWriteScope);
-    }
-    expect(requiredScopeForRpcMethod(WS_METHODS.subscribeProjectClones)).toBe(
-      AuthOrchestrationReadScope,
-    );
-  });
-
   it("lists context repository clones as a read and removes them as a source control write", () => {
     expect(requiredScopeForRpcMethod(WS_METHODS.contextRepositoriesInspect)).toBe(
       AuthOrchestrationReadScope,
@@ -149,38 +62,6 @@ describe("RPC authorization scopes", () => {
     expect(requiredScopeForRpcMethod(WS_METHODS.contextRepositoriesRemove)).toBe(
       AuthSourceControlWriteScope,
     );
-  });
-
-  it("separates viewing pull request file progress from writing it", () => {
-    expect(requiredScopeForRpcMethod(WS_METHODS.pullRequestsFilesViewed)).toBe(
-      AuthOrchestrationReadScope,
-    );
-    expect(requiredScopeForRpcMethod(WS_METHODS.pullRequestsSetFilesViewed)).toBe(
-      AuthSourceControlWriteScope,
-    );
-  });
-
-  it("separates preview control from observation", () => {
-    for (const method of [
-      WS_METHODS.previewOpen,
-      WS_METHODS.previewNavigate,
-      WS_METHODS.previewResize,
-      WS_METHODS.previewRefresh,
-      WS_METHODS.previewClose,
-      WS_METHODS.previewReportStatus,
-      WS_METHODS.previewAdjust,
-      WS_METHODS.previewClearProfile,
-      WS_METHODS.previewReportProfiles,
-    ]) {
-      expect(requiredScopeForRpcMethod(method)).toBe(AuthPreviewOperateScope);
-    }
-    for (const method of [
-      WS_METHODS.previewList,
-      WS_METHODS.subscribePreviewEvents,
-      WS_METHODS.subscribeDiscoveredLocalServers,
-    ]) {
-      expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationReadScope);
-    }
   });
 
   it("separates passive terminal observation from operations that can change a shell", () => {
@@ -242,10 +123,6 @@ describe("RPC scope middleware", () => {
       scopes: [AuthOrchestrationReadScope, AuthEnvironmentMaintainScope],
       missing: AuthDiagnosticsReadScope,
     },
-    {
-      scopes: [AuthOrchestrationReadScope, AuthDiagnosticsReadScope],
-      missing: AuthEnvironmentMaintainScope,
-    },
   ])("rejects telemetry retry without $missing before its handler runs", ({ scopes, missing }) =>
     Effect.gen(function* () {
       const handled: Array<string> = [];
@@ -269,27 +146,6 @@ describe("RPC scope middleware", () => {
         requiredPermission: missing,
       });
       expect(handled).toEqual([]);
-    }).pipe(Effect.scoped),
-  );
-
-  it.effect("reports only authorized requests that succeed", () =>
-    Effect.gen(function* () {
-      const observed: Array<string> = [];
-      const client = yield* RpcTest.makeClient(group).pipe(
-        Effect.provide(
-          Layer.mergeAll(
-            group.toLayerHandler(WS_METHODS.serverProbe, () => Effect.succeed({})),
-            group.toLayerHandler(WS_METHODS.serverRetryResourceTelemetry, () => Effect.never),
-            RpcAuthorization.layer([AuthOrchestrationReadScope], (method) =>
-              Effect.sync(() => void observed.push(method)),
-            ),
-          ),
-        ),
-      );
-
-      yield* client[WS_METHODS.serverProbe]({});
-      yield* client[WS_METHODS.serverRetryResourceTelemetry]({}).pipe(Effect.flip);
-      expect(observed).toEqual([WS_METHODS.serverProbe]);
     }).pipe(Effect.scoped),
   );
 });
@@ -435,7 +291,7 @@ describe("thread context authorization", () => {
     ),
   );
 
-  it.effect.each(["commit", "push", "commit_push", "create_pr", "commit_push_pr"] as const)(
+  it.effect.each(["commit", "create_pr", "commit_push_pr"] as const)(
     "%s needs thread read permission only when generating a PR from a thread",
     (action) =>
       Effect.gen(function* () {

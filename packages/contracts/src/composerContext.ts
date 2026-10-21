@@ -559,7 +559,9 @@ export const ModelContextRecord = Schema.Struct({
 });
 export type ModelContextRecord = typeof ModelContextRecord.Type;
 
-export const KnownComposerContextRecord = Schema.Union([
+// Schema.Union inference falls over once this list passes about twenty members, and the
+// failure shows up far away as `unknown` layer requirements. Two smaller unions keep it precise.
+const KnownComposerContextRecordGroupA = Schema.Union([
   ImageContextRecord,
   FileContextRecord,
   TerminalContextRecord,
@@ -572,6 +574,8 @@ export const KnownComposerContextRecord = Schema.Union([
   LinearIssueContextRecord,
   GitHubIssueContextRecord,
   RepositoryContextRecord,
+]);
+const KnownComposerContextRecordGroupB = Schema.Union([
   CheckoutContextRecord,
   SlackThreadContextRecord,
   DiscordThreadContextRecord,
@@ -584,10 +588,15 @@ export const KnownComposerContextRecord = Schema.Union([
   UnreadLinkContextRecord,
   ModelContextRecord,
 ]);
+export const KnownComposerContextRecord = Schema.Union([
+  KnownComposerContextRecordGroupA,
+  KnownComposerContextRecordGroupB,
+]);
 export type KnownComposerContextRecord = typeof KnownComposerContextRecord.Type;
 
 export const ComposerContextRecord = Schema.Union([
-  ...KnownComposerContextRecord.members,
+  ...KnownComposerContextRecordGroupA.members,
+  ...KnownComposerContextRecordGroupB.members,
   UnknownContextRecord,
 ]);
 export type ComposerContextRecord = typeof ComposerContextRecord.Type;

@@ -740,6 +740,7 @@ export function HomeScreen(props: HomeScreenProps) {
         snoozed={item.item.snoozed}
         pinned={item.item.pinned}
         hidden={item.item.hidden}
+        wokeAt={item.item.wokeAt}
         snoozePresetMinute={item.snoozePresetMinute ?? ""}
         snoozeWakeLabelText={item.snoozeWakeLabelText}
         timeLabel={item.timeLabel}
