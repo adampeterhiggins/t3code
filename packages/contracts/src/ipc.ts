@@ -32,6 +32,10 @@ import type {
   DesktopAppActivationRequest,
   DesktopAppActivationResponse,
 } from "./desktopAppActivation.ts";
+import type {
+  DesktopMainDestinationRequest,
+  DesktopMainDestinationResult,
+} from "./desktopMainDestination.ts";
 
 export interface ContextMenuItem<T extends string = string> {
   id: T;
@@ -1350,6 +1354,16 @@ export interface DesktopBridge {
     complete: (response: DesktopAppActivationResponse) => Promise<void>;
     onRequest: (listener: (request: DesktopAppActivationRequest) => void) => () => void;
   };
+  /**
+   * Isolated floating window asks the main window to show a thread or an
+   * in-app page, then waits until that window has settled. Older shells omit it.
+   */
+  openMainDestination?: (
+    request: DesktopMainDestinationRequest,
+  ) => Promise<DesktopMainDestinationResult>;
+  onMainDestination?: (listener: (request: DesktopMainDestinationRequest) => void) => () => void;
+  setMainDestinationReceiverReady?: (ready: boolean) => Promise<void>;
+  completeMainDestination?: (result: DesktopMainDestinationResult) => Promise<void>;
   preview?: DesktopPreviewBridge;
 }
 

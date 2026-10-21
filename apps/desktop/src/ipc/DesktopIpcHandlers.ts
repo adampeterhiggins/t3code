@@ -78,6 +78,7 @@ import * as PreviewIpc from "./methods/preview.ts";
 import * as AppActivationIpc from "./methods/appActivation.ts";
 import * as WebLinksIpc from "./methods/webLinks.ts";
 import * as QuickMessageIpc from "./methods/quickMessage.ts";
+import * as MainDestinationIpc from "./methods/mainDestination.ts";
 import {
   completeLegacyLocalStorage,
   takeLegacyLocalStorage,
@@ -136,6 +137,9 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   yield* ipc.handle(QuickMessageIpc.submitQuickMessage);
   yield* ipc.handle(QuickMessageIpc.dismissQuickMessage);
   yield* ipc.handle(QuickMessageIpc.setQuickMessagePresentation);
+  yield* ipc.handle(MainDestinationIpc.openMainDestination);
+  yield* ipc.handle(MainDestinationIpc.setMainDestinationReceiverReady);
+  yield* ipc.handle(MainDestinationIpc.completeMainDestination);
   yield* ipc.handle(setConnectionCatalog);
   yield* ipc.handle(clearConnectionCatalog);
 

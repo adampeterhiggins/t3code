@@ -141,3 +141,8 @@ export const SUBMIT_QUICK_MESSAGE_CHANNEL = "desktop:submit-quick-message";
 export const DISMISS_QUICK_MESSAGE_CHANNEL = "desktop:dismiss-quick-message";
 export const SET_QUICK_MESSAGE_PRESENTATION_CHANNEL = "desktop:set-quick-message-presentation";
 export const QUICK_MESSAGE_SHOW_EVENT_CHANNEL = "desktop:quick-message-show-event";
+export const OPEN_MAIN_DESTINATION_CHANNEL = "desktop:open-main-destination";
+export const MAIN_DESTINATION_EVENT_CHANNEL = "desktop:main-destination-event";
+export const SET_MAIN_DESTINATION_RECEIVER_READY_CHANNEL =
+  "desktop:set-main-destination-receiver-ready";
+export const COMPLETE_MAIN_DESTINATION_CHANNEL = "desktop:complete-main-destination";
