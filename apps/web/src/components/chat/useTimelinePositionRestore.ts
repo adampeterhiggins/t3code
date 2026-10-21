@@ -2,7 +2,10 @@ import { useLayoutEffect, useRef } from "react";
 import type { LegendListRef } from "@legendapp/list/react";
 import type { AssistantCitationRequest } from "./AssistantCitationSource";
 import type { MessagesTimelineRow } from "./MessagesTimeline.logic";
-import type { RememberedTimelinePosition } from "./timelineScrollAnchoring";
+import {
+  type RememberedTimelinePosition,
+  resolveRestoredTimelineRowOffset,
+} from "./timelineScrollAnchoring";
 
 /**
  * Scrolls a newly shown thread back to where the user left it, or to its end,
@@ -115,13 +118,19 @@ export function useTimelinePositionRestore({
         const row = rowIndex === undefined ? undefined : state.elementAtIndex(rowIndex);
         const element = list.getScrollableNode();
         if (!row || !element) return;
+        const rowBounds = row.getBoundingClientRect();
+        const offsetWithinRow = resolveRestoredTimelineRowOffset(
+          position,
+          rowBounds.height,
+          element.clientWidth,
+        );
         const offset = Math.max(
           0,
           Math.min(
             element.scrollTop +
-              row.getBoundingClientRect().top -
+              rowBounds.top -
               element.getBoundingClientRect().top +
-              position.offsetWithinRow,
+              offsetWithinRow,
             element.scrollHeight - element.clientHeight,
           ),
         );

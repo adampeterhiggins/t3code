@@ -17,11 +17,11 @@ import {
   resolveViewedImageAsset,
   workEntryViewedImagePath,
 } from "@t3tools/client-runtime/work-log/presentation";
+import { turnItemHasDetail } from "@t3tools/client-runtime/work-log/item-detail";
 import {
-  turnItemHasDetail,
-  turnItemNeedsDetailFetch,
-} from "@t3tools/client-runtime/work-log/item-detail";
-import { claudeSkillInvocation } from "@t3tools/shared/toolActivity";
+  toolEntryShowsPathBreadcrumbs,
+  toolPathTargets,
+} from "@t3tools/client-runtime/work-log/tool-paths";
 import { memo, use, useState, type KeyboardEvent, type ReactNode } from "react";
 import {
   workEntryDisplayIndicatesToolFailure,
@@ -46,13 +46,16 @@ import {
   threadReadLabelPrefix,
   threadReadTargetId,
   threadReadTargetTitle,
-  toolGroupAction,
   workEntryDisplayLabel,
-  workEntryReadOutput,
 } from "./MessagesTimeline.logic";
 import { cn } from "~/lib/utils";
-import { formatUpcomingTimestamp } from "../../timestampFormat";
-import { FetchedToolOutput, V2ItemInspector } from "./V2ItemInspector";
+import { formatSecondsTimestamp, formatUpcomingTimestamp } from "../../timestampFormat";
+import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
+import { useCursorAnchor } from "./CursorPreviewCard";
+import { workEntryHasToolCallPreview } from "../../lib/toolCallPreview";
+import { ToolPathText } from "./ToolPathText";
+import { ThoughtPreviewContent } from "./ThoughtPreviewContent";
+import { ToolCallDetails, toolCallDetailOutput } from "./ToolCallDetail";
 import { SubagentNotificationLink } from "./V2LifecycleRow";
 import {
   TimelineRowCtx,
@@ -118,9 +121,6 @@ export function ThreadReadLabel({
   );
 }
 
-const toolCallExpandedBodyClassName =
-  "max-h-64 cursor-text overflow-auto whitespace-pre-wrap break-words font-mono text-secondary-label text-(length:--font-size-code,var(--text-2xs)) leading-relaxed select-text";
-
 const stopRowToggle = (e: { stopPropagation: () => void }) => e.stopPropagation();
 
 function PullRequestNotificationLabel({
@@ -157,29 +157,65 @@ function PullRequestNotificationLabel({
   );
 }
 
-export function ReasoningTraceContent({ entries }: { entries: ReadonlyArray<TimelineWorkEntry> }) {
-  const ctx = use(TimelineRowCtx);
+function useReasoningIsStreaming() {
   const { isWorking, latestRunId } = use(TimelineRowActivityCtx);
-  const isStreaming = (entry: TimelineWorkEntry) =>
+  return (entry: TimelineWorkEntry) =>
     isWorking && entry.runId === latestRunId && entry.toolLifecycleStatus === "inProgress";
+}
+
+function ThoughtMarkdown({
+  entry,
+  streaming,
+  className,
+}: {
+  entry: TimelineWorkEntry;
+  streaming: boolean;
+  className: string;
+}) {
+  const ctx = use(TimelineRowCtx);
+  return (
+    <ChatMarkdown
+      className={className}
+      text={entry.detail ?? ""}
+      cwd={ctx.markdownCwd}
+      threadRef={ctx.threadRef ?? undefined}
+      skills={ctx.skills}
+      isStreaming={streaming}
+      headingLevelOffset={MESSAGE_HEADING_LEVEL}
+      onUseArtifactTemplate={ctx.onUseArtifactTemplate}
+      onImageExpand={ctx.onImageExpand}
+      lineBreaks
+    />
+  );
+}
+
+export function ReasoningTraceContent({ entries }: { entries: ReadonlyArray<TimelineWorkEntry> }) {
+  const isStreaming = useReasoningIsStreaming();
   return (
     <WorkLogDetails followLive={entries.some(isStreaming)}>
       {entries.map((entry) => (
-        <ChatMarkdown
+        <ThoughtMarkdown
           key={entry.id}
+          entry={entry}
+          streaming={isStreaming(entry)}
           className="text-foreground"
-          text={entry.detail ?? ""}
-          cwd={ctx.markdownCwd}
-          threadRef={ctx.threadRef ?? undefined}
-          skills={ctx.skills}
-          isStreaming={isStreaming(entry)}
-          headingLevelOffset={MESSAGE_HEADING_LEVEL}
-          onUseArtifactTemplate={ctx.onUseArtifactTemplate}
-          onImageExpand={ctx.onImageExpand}
-          lineBreaks
         />
       ))}
     </WorkLogDetails>
+  );
+}
+
+/** Mounted only while the row's hover card is open. */
+function ThoughtPreview({ entry }: { entry: TimelineWorkEntry }) {
+  const { timestampFormat } = use(TimelineRowCtx);
+  const streaming = useReasoningIsStreaming()(entry);
+  return (
+    <ThoughtPreviewContent
+      streaming={streaming}
+      timestamp={formatSecondsTimestamp(entry.createdAt, timestampFormat)}
+    >
+      <ThoughtMarkdown entry={entry} streaming={streaming} className="text-xs" />
+    </ThoughtPreviewContent>
   );
 }
 
@@ -236,7 +272,10 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
   const [expanded, setExpanded] = useState(
     () => groupView?.state.expandedEntries.has(workEntry.id) ?? false,
   );
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const previewAnchor = useCursorAnchor();
   const toggleExpanded = () => {
+    setPreviewOpen(false);
     const next = !expanded;
     if (groupView) {
       groupView.onToggleEntry(!next);
@@ -279,11 +318,25 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
           </span>
         }
         trailing={
-          <TimelineRowTimestamp
-            createdAt={workEntry.createdAt}
-            timestampFormat={timestampFormat}
-            alwaysVisible
-          />
+          // Matches the timestamp's size and centres on the first label line, since wrapLabel top-aligns the row.
+          <span className="flex min-h-6 shrink-0 items-center gap-2 text-xs">
+            <InlineButton
+              tone="muted"
+              render={
+                <Link
+                  to="/settings/diagnostics"
+                  search={{ machine: ctx.activeThreadEnvironmentId }}
+                />
+              }
+            >
+              View diagnostics
+            </InlineButton>
+            <TimelineRowTimestamp
+              createdAt={workEntry.createdAt}
+              timestampFormat={timestampFormat}
+              alwaysVisible
+            />
+          </span>
         }
       >
         {!warning ? (
@@ -336,17 +389,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
       ? getQuestionAnswerPreview(workEntry.questionAnswer)
       : null;
   const viewedImagePath = workEntryViewedImagePath(workEntry);
-  const payload = workEntry.structuredPayload;
-  const skill =
-    payload?.type === "dynamic_tool"
-      ? claudeSkillInvocation(payload.toolName, payload.input)
-      : undefined;
-  const plainOutput =
-    toolGroupAction(workEntry) === "read"
-      ? workEntryReadOutput(workEntry, workspaceRoot)
-      : skill
-        ? (skill.args ?? null)
-        : undefined;
+  const { plainOutput, plainOutputFetches } = toolCallDetailOutput(workEntry, workspaceRoot);
   const viewedImage =
     viewedImagePath && threadRef
       ? resolveViewedImageAsset(viewedImagePath, {
@@ -375,10 +418,6 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
             viewedImage ? viewedImagePath : null,
           )
       : null;
-  const plainOutputFetches =
-    plainOutput !== undefined &&
-    workEntry.projectedItem !== undefined &&
-    turnItemNeedsDetailFetch(workEntry.projectedItem.item);
   const canExpandProjectedItem =
     plainOutput !== undefined
       ? Boolean(plainOutput || viewedImage || workEntry.questionAnswer || plainOutputFetches)
@@ -410,6 +449,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
       : workLogEntryIsToolLike(workEntry)
         ? "text-secondary-label"
         : "text-foreground/80";
+  const showsPaths = toolEntryShowsPathBreadcrumbs(workEntry);
   const threadLabel = isReasoning ? null : threadReadLabel(previewText, threadTarget);
   const pullRequestLabel = pullRequestNotificationLabel(
     workEntry,
@@ -438,7 +478,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
       }
     : {};
 
-  return (
+  const row = (
     <WorkLogRow
       data-v2-item-type={workEntry.projectedItem?.item.type}
       data-v2-item-visibility={workEntry.projectedItem?.visibility}
@@ -469,7 +509,13 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
         ) : (
           <div className="min-w-0 flex-1 overflow-hidden">
             <p className="flex min-w-0 w-full items-baseline gap-1.5 text-sm leading-relaxed">
-              <span className={cn("min-w-0 flex-1 truncate", headingClass)}>
+              <span
+                className={cn(
+                  "min-w-0 flex-1",
+                  showsPaths ? "overflow-hidden" : "truncate",
+                  headingClass,
+                )}
+              >
                 {isReasoning && !expanded ? (
                   <ChatMarkdown
                     inline
@@ -493,6 +539,14 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
                     label={threadLabel}
                     environmentId={ctx.activeThreadEnvironmentId}
                     linked
+                  />
+                ) : showsPaths ? (
+                  <ToolPathText
+                    targets={toolPathTargets(workEntry)}
+                    text={previewText}
+                    environmentId={ctx.activeThreadEnvironmentId}
+                    workspaceRoot={workspaceRoot}
+                    singleLine
                   />
                 ) : (
                   previewText
@@ -578,34 +632,61 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
         plainOutputFetches ||
         (workEntry.projectedItem && plainOutput === undefined)) ? (
         <WorkLogDetails kind="panel">
-          {workEntry.projectedItem && plainOutput === undefined ? (
-            <V2ItemInspector
-              projectedItem={workEntry.projectedItem}
-              environmentId={ctx.activeThreadEnvironmentId}
-              cwd={ctx.markdownCwd}
-              workspaceRoot={workspaceRoot}
-              onOpenThread={ctx.onOpenThread}
-              onOpenTurnDiff={ctx.onOpenTurnDiff}
-              onRollbackCheckpoint={ctx.onRollbackCheckpoint}
-              onImageExpand={ctx.onImageExpand}
-            />
-          ) : (
-            <>
-              {expandedBody ? (
-                <pre className={toolCallExpandedBodyClassName}>{expandedBody}</pre>
-              ) : null}
-              {plainOutputFetches && workEntry.projectedItem ? (
-                <FetchedToolOutput
-                  projectedItem={workEntry.projectedItem}
-                  environmentId={ctx.activeThreadEnvironmentId}
-                  onImageExpand={onImageExpand}
-                />
-              ) : null}
-            </>
-          )}
+          <ToolCallDetails
+            {...ctx}
+            workEntry={workEntry}
+            workspaceRoot={workspaceRoot}
+            textBody={expandedBody}
+            previewText={previewText}
+            icon={null}
+          />
         </WorkLogDetails>
       ) : null}
     </WorkLogRow>
+  );
+
+  const hasThoughtPreview = isReasoning && Boolean(workEntry.detail?.trim());
+  // The card stays mounted while expanded so toggling never remounts the row.
+  if (!hasThoughtPreview && !workEntryHasToolCallPreview(workEntry, canExpandProjectedItem))
+    return row;
+  return (
+    <PreviewCard
+      open={!expanded && previewOpen}
+      onOpenChange={(open) => {
+        if (open) previewAnchor.pin();
+        setPreviewOpen(!expanded && open);
+      }}
+    >
+      <PreviewCardTrigger
+        render={row}
+        delay={300}
+        closeDelay={150}
+        {...previewAnchor.triggerProps}
+      />
+      <PreviewCardPopup {...previewAnchor.popupProps} className="w-md max-w-[calc(100vw-2rem)]">
+        {hasThoughtPreview ? (
+          <ThoughtPreview entry={workEntry} />
+        ) : (
+          <ToolCallDetails
+            preview
+            {...ctx}
+            workEntry={workEntry}
+            workspaceRoot={workspaceRoot}
+            previewText={previewText}
+            icon={
+              <span className={cn(iconWrapperClass, "mt-px size-3.5 shrink-0")}>
+                <ToolActivityIconView
+                  icon={entryToolIcon}
+                  fallbackName={entryIconName}
+                  className="block size-3.5 shrink-0 stroke-2"
+                  muted
+                />
+              </span>
+            }
+          />
+        )}
+      </PreviewCardPopup>
+    </PreviewCard>
   );
 }
 

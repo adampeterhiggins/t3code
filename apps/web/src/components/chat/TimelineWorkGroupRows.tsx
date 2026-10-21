@@ -7,6 +7,11 @@ import {
 } from "@t3tools/client-runtime/work-log/user-input";
 import { type ToolActivityIcon } from "@t3tools/contracts";
 import { liveThoughtLine } from "@t3tools/client-runtime/work-log/presentation";
+import {
+  toolEntryShowsPathBreadcrumbs,
+  toolPathTargets,
+} from "@t3tools/client-runtime/work-log/tool-paths";
+import { ToolPathText } from "./ToolPathText";
 import { resolveWorkGroupScrollAnchor } from "@t3tools/client-runtime/work-log/scroll-anchor";
 import { observeResize } from "~/lib/observeResize";
 import { observeVisibleAnimation } from "../../lib/visibleAnimation";
@@ -509,12 +514,15 @@ export function LiveWorkEntryTimelineRow({
   const threadLabel = threadReadLabel(label, threadTarget);
 
   const failed = workEntryDisplayIndicatesToolFailure(row.entry);
+  const showsPaths = toolEntryShowsPathBreadcrumbs(row.entry);
   const thoughtLine = row.thought && !row.expanded ? liveThoughtLine(row.thought.detail ?? "") : "";
   const thoughtIsStatus = thoughtLine !== "" && row.entry === row.thought;
 
+  // Not a <button>: path breadcrumbs in the label are buttons themselves.
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       className={cn(
         "group/live-work flex w-full max-w-full cursor-pointer rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70",
         thoughtLine ? "flex-col items-start" : "min-h-6 items-center",
@@ -526,6 +534,12 @@ export function LiveWorkEntryTimelineRow({
       }
       aria-expanded={row.expanded}
       onClick={() => ctx.onToggleWorkGroup(row.groupId, row.id)}
+      onKeyDown={(event) => {
+        if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
+          event.preventDefault();
+          ctx.onToggleWorkGroup(row.groupId, row.id);
+        }
+      }}
     >
       {thoughtLine ? (
         <WorkLogRow
@@ -580,6 +594,14 @@ export function LiveWorkEntryTimelineRow({
               environmentId={ctx.activeThreadEnvironmentId}
               linked={false}
             />
+          ) : showsPaths ? (
+            <ToolPathText
+              text={label}
+              targets={toolPathTargets(row.entry)}
+              environmentId={ctx.activeThreadEnvironmentId}
+              workspaceRoot={ctx.workspaceRoot}
+              singleLine
+            />
           ) : (
             label
           )
@@ -590,7 +612,7 @@ export function LiveWorkEntryTimelineRow({
         failed={failed}
         active={row.active}
       />
-    </button>
+    </div>
   );
 }
 

@@ -15,7 +15,7 @@ import {
   isVideoAttachment,
 } from "../../types";
 import ChatMarkdown from "../ChatMarkdown";
-import { DownloadIcon, EyeIcon, Redo2Icon, Undo2Icon } from "lucide-react";
+import { DownloadIcon, EyeIcon, GitForkIcon, Redo2Icon, Undo2Icon } from "lucide-react";
 import { Link as LinkIconNode } from "lucide";
 import { Button, InlineButton } from "../ui/button";
 import { useAssetUrlRefresh, useAssetUrls, useAssetUrlState } from "../../assets/assetUrls";
@@ -433,6 +433,9 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
             {typeof revertTurnCount === "number" && (
               <RevertUserMessageButton turnCount={revertTurnCount} messageId={row.message.id} />
             )}
+            {ctx.onForkFromMessage && (
+              <ForkMessageButton messageId={row.message.id} onFork={ctx.onForkFromMessage} />
+            )}
             {resolvedContext.text && (
               <MessageCopyButton
                 text={contextClipboardFragment ? resolvedContext.text : plainText}
@@ -513,6 +516,33 @@ function RevertUserMessageButton({
         <Undo2Icon className="size-3" />
       </TooltipTrigger>
       <TooltipPopup side="top">Edit from here</TooltipPopup>
+    </Tooltip>
+  );
+}
+
+function ForkMessageButton({
+  messageId,
+  onFork,
+}: {
+  messageId: MessageId;
+  onFork: (messageId: MessageId) => void;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            size="xs"
+            variant="ghost"
+            onClick={() => onFork(messageId)}
+            aria-label="Fork into new tab"
+          />
+        }
+      >
+        <GitForkIcon className="size-3" />
+      </TooltipTrigger>
+      <TooltipPopup side="top">Fork into new tab</TooltipPopup>
     </Tooltip>
   );
 }

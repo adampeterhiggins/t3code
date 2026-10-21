@@ -43,7 +43,14 @@ import {
 import { type TimelineEntry } from "../../session-logic";
 import type { CodexArtifactTemplate } from "@t3tools/shared/codexArtifactTemplates";
 import { type ChatFileAttachment, type TurnDiffSummary } from "../../types";
-import { ArrowRightIcon, BotIcon, Minimize2Icon } from "lucide-react";
+import { ArrowRightIcon, AtSignIcon, BotIcon, FolderGit2Icon, Minimize2Icon } from "lucide-react";
+import {
+  isWorkspaceChangeNotice,
+  WORKSPACE_CHANGED_NOTICE_TITLE,
+} from "@t3tools/shared/workspaceChangeNotice";
+import { isAbsolutePath } from "@t3tools/shared/path";
+import { MiddleTruncate } from "../ui/middle-truncate";
+import ChatMarkdown from "../ChatMarkdown";
 import { ChevronDown, ChevronRight } from "lucide";
 import { MorphIcon } from "~/components/MorphIcon";
 import { ExpandedImagePreview } from "./ExpandedImagePreview";
@@ -73,7 +80,9 @@ import {
 import { type ThreadFindMatch } from "./threadFind";
 import { useThreadFindNavigation } from "./useThreadFindNavigation";
 import type { ThreadFindPositionReader } from "./threadFind";
-import { TooltipScrollDismissArea } from "../ui/tooltip";
+import { Tooltip, TooltipPopup, TooltipScrollDismissArea, TooltipTrigger } from "../ui/tooltip";
+import { Button } from "../ui/button";
+import { AgentHandle } from "./AgentHandle";
 import { WorktreeSetupCard } from "./WorktreeSetupCard";
 import { useOpenPrLink } from "~/lib/openPullRequestLink";
 import { useClientSettings } from "~/hooks/useSettings";
@@ -208,6 +217,10 @@ interface MessagesTimelineProps {
   parentThreadLink?: {
     readonly threadId: ThreadId;
     readonly title: string;
+    /** Fork: this subagent thread's `@handle` among its parent's agents. */
+    readonly handle?: string | null;
+    /** Fork: attaches this agent to the parent's chat and opens the parent. */
+    readonly onAttach?: (() => void) | null;
   } | null;
   /** Set on a workflow coordinator's thread: its script message renders as this opening. */
   workflowOpening?: WorkflowOpening | null;
@@ -223,6 +236,8 @@ interface MessagesTimelineProps {
   threadStartCheckpointReady?: boolean;
   availableRevertTurnCounts?: ReadonlySet<number> | undefined;
   onRevertToTurnCount: (targetTurnCount: number, messageId: MessageId) => void;
+  /** Opens a new tab seeded from a user message; omitted where the chat cannot have tabs. */
+  onForkFromMessage?: (messageId: MessageId) => void;
   onUseArtifactTemplate?: (template: CodexArtifactTemplate) => void;
   onSendAppMessage?: (text: string) => Promise<void>;
   onRunShellCommand?: (command: string) => void;
@@ -323,6 +338,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   threadStartCheckpointReady = false,
   availableRevertTurnCounts,
   onRevertToTurnCount,
+  onForkFromMessage,
   onUseArtifactTemplate = NOOP_USE_ARTIFACT_TEMPLATE,
   onSendAppMessage,
   onRunShellCommand,
@@ -809,6 +825,8 @@ const ConversationTimeline = memo(function ConversationTimeline({
           {
             ...position,
             offsetWithinRow: element.getBoundingClientRect().top - row.getBoundingClientRect().top,
+            rowHeight: row.getBoundingClientRect().height,
+            viewportWidth: element.clientWidth,
             scrollOffset: element.scrollTop,
             atEnd: isAtEnd,
             disclosures: {
@@ -904,6 +922,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     resolvedTheme,
     workspaceRoot,
     skills,
+    onForkFromMessage: onForkFromMessage ?? null,
     runs,
     activeThreadEnvironmentId,
     onRevertToTurnCount,
@@ -967,6 +986,31 @@ const ConversationTimeline = memo(function ConversationTimeline({
             icon={BotIcon}
             actionLabel="Open parent thread"
             onAction={() => onOpenThread(parentThreadLink.threadId)}
+            trailing={
+              (parentThreadLink.handle ?? null) === null ? null : (
+                <span className="flex shrink-0 items-center gap-1">
+                  <AgentHandle handle={parentThreadLink.handle!} copyable />
+                  {parentThreadLink.onAttach ? (
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            type="button"
+                            size="icon-xs"
+                            variant="ghost-muted"
+                            aria-label="Attach to parent chat"
+                            onClick={parentThreadLink.onAttach}
+                          />
+                        }
+                      >
+                        <AtSignIcon />
+                      </TooltipTrigger>
+                      <TooltipPopup side="top">Attach to parent chat</TooltipPopup>
+                    </Tooltip>
+                  ) : null}
+                </span>
+              )
+            }
           />
         </div>
       </div>
@@ -1191,6 +1235,21 @@ function getItemType(item: MessagesTimelineRow) {
 }
 
 const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: TimelineRow }) {
+  const workspaceChangeNotice =
+    row.kind === "work" && row.groupedEntries.length === 1
+      ? row.groupedEntries[0]!.structuredPayload
+      : undefined;
+  if (workspaceChangeNotice && isWorkspaceChangeNotice(workspaceChangeNotice)) {
+    return (
+      <div data-timeline-row-id={row.id} data-timeline-row-kind={row.kind}>
+        <TimelineSystemDivider
+          label={WORKSPACE_CHANGED_NOTICE_TITLE}
+          icon={FolderGit2Icon}
+          detail={<WorkspaceChangeNoticeDetail notice={workspaceChangeNotice} />}
+        />
+      </div>
+    );
+  }
   const isExpandedToolGroup = row.kind === "work" && row.isExpandedToolGroup;
   const isSubagentGroup = row.kind === "event" && row.projectedItem.item.type === "subagent";
   const isWorkLogRow =
@@ -1272,6 +1331,29 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
     </div>
   );
 });
+
+const CONTINUING_IN_PREFIX = "Continuing in ";
+
+/** The worktree a moved thread continues in, as the same file chip agent messages use. */
+function WorkspaceChangeNoticeDetail(props: {
+  notice: Extract<OrchestrationV2TurnItem, { type: "system_notice" }>;
+}) {
+  const ctx = use(TimelineRowCtx);
+  const { message } = props.notice;
+  const path = message.startsWith(CONTINUING_IN_PREFIX)
+    ? message.slice(CONTINUING_IN_PREFIX.length)
+    : "";
+  // Moving back to the project checkout names no path.
+  if (!isAbsolutePath(path)) return <MiddleTruncate value={message} />;
+  return (
+    <ChatMarkdown
+      text={`${CONTINUING_IN_PREFIX}[${path}](<${path}>)`}
+      cwd={ctx.markdownCwd}
+      threadRef={ctx.threadRef ?? undefined}
+      className="w-auto text-2xs text-current"
+    />
+  );
+}
 
 function WorktreeSetupTimelineRow({
   row,
