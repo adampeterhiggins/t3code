@@ -6,8 +6,10 @@ import {
   type DesktopQuickMessageState,
   type DesktopQuickMessageSubmission,
 } from "@t3tools/contracts";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Electron from "electron";
@@ -35,6 +37,17 @@ const PANEL_WIDTH = 916;
 // Taller than the composer so its project and model menus can open below it.
 const COMPACT_PANEL_HEIGHT = 520;
 const EXPANDED_PANEL_HEIGHT = 760;
+// Same bound as the main window. A renderer that dies on boot must not reload
+// forever; a later shortcut can still load after the cap is spent.
+const RENDERER_RECOVERY_RELOAD_DELAY_MS = 500;
+const RENDERER_RECOVERY_MAX_ATTEMPTS = 3;
+const RENDERER_RECOVERY_WINDOW_MS = 60_000;
+const RECOVERABLE_RENDERER_GONE_REASONS = new Set<Electron.RenderProcessGoneDetails["reason"]>([
+  "crashed",
+  "oom",
+  "killed",
+  "abnormal-exit",
+]);
 
 export const QUICK_MESSAGE_PARTITION = "persist:t3code-quick-message";
 
@@ -77,6 +90,26 @@ function clampBounds(bounds: Electron.Rectangle, workArea: Electron.Rectangle): 
     width,
     height,
   };
+}
+
+/**
+ * Keeps the user's position and derives 916×760 from the display it lands on.
+ * Remembering the clamped rect would pin a panel that first opened on a small
+ * monitor to that smaller size.
+ */
+function expandedBoundsAt(
+  origin: Electron.Point,
+  workArea: Electron.Rectangle,
+): Electron.Rectangle {
+  return clampBounds(
+    {
+      x: origin.x,
+      y: origin.y,
+      width: Math.min(PANEL_WIDTH, workArea.width),
+      height: Math.min(EXPANDED_PANEL_HEIGHT, workArea.height),
+    },
+    workArea,
+  );
 }
 
 export interface QuickMessagePanelWindowConfig {
@@ -206,20 +239,27 @@ export const make = Effect.gen(function* () {
   const electronShell = yield* ElectronShell.ElectronShell;
   const context = yield* Effect.context<ElectronMenu.ElectronMenu | ElectronShell.ElectronShell>();
   const runPromise = Effect.runPromiseWith(context);
+  const runFork = Effect.runForkWith(context);
   const isMac = environment.platform === "darwin";
   const applicationUrl = ElectronProtocol.getDesktopUrl(environment.isDevelopment);
 
   let settings = DEFAULT_CLIENT_SETTINGS;
   let state: DesktopQuickMessageState = { shortcutRegistered: false, message: null };
   let presentation: DesktopQuickMessagePresentation = "compact";
-  // Kept across hide and show. Compact placement is recomputed; this is not.
-  let expandedBounds: Electron.Rectangle | null = null;
+  // User-moved position only. Compact stays on the cursor display; this does not.
+  let expandedOrigin: Electron.Point | null = null;
   let registeredAccelerator: string | null = null;
   let suppressed = false;
   let panel: Electron.BrowserWindow | null = null;
   let panelReady = false;
   let showWhenReady = false;
   let appQuitting = false;
+  // True from a renderer death until reload() or loadURL actually runs. Ready
+  // signals in between belong to the dead page.
+  let rendererUnloaded = false;
+  let rendererRecoveryPending = false;
+  let rendererRecoveryTimestamps: Array<number> = [];
+  const rendererRecoveryFibers = new Set<Fiber.Fiber<void, never>>();
   const pending: Array<DesktopQuickMessageSubmission> = [];
   let receiver: Electron.WebContents | null = null;
   let detachReceiver: (() => void) | null = null;
@@ -232,25 +272,49 @@ export const make = Effect.gen(function* () {
 
   const livePanel = () => (panel !== null && !panel.isDestroyed() ? panel : null);
 
+  const interruptRendererRecovery = () => {
+    for (const fiber of rendererRecoveryFibers) runFork(Fiber.interrupt(fiber));
+    rendererRecoveryFibers.clear();
+    rendererRecoveryPending = false;
+  };
+
   const destroyPanel = () => {
+    interruptRendererRecovery();
     const window = livePanel();
     panel = null;
     panelReady = false;
     showWhenReady = false;
+    rendererUnloaded = false;
     window?.destroy();
   };
 
-  const currentWorkArea = () =>
+  const cursorWorkArea = () =>
     Electron.screen.getDisplayNearestPoint(Electron.screen.getCursorScreenPoint()).workArea;
 
+  const rememberExpandedOrigin = (window: Electron.BrowserWindow) => {
+    if (window.isDestroyed()) return;
+    // `move` does not carry the rect, and a drag may not have emitted one yet.
+    const bounds = window.getBounds();
+    expandedOrigin = { x: bounds.x, y: bounds.y };
+  };
+
   const applyPresentationBounds = (window: Electron.BrowserWindow) => {
-    const area = currentWorkArea();
-    if (presentation === "expanded") {
-      expandedBounds ??= quickMessageExpandedPanelBounds(area);
-      window.setBounds(clampBounds(expandedBounds, area));
+    if (presentation !== "expanded") {
+      window.setBounds(quickMessagePanelBounds(cursorWorkArea()));
       return;
     }
-    window.setBounds(quickMessagePanelBounds(area));
+    // Prefer the display that held the panel. The cursor display is only the
+    // first placement. A removed monitor resolves to the nearest one.
+    const area =
+      expandedOrigin === null
+        ? cursorWorkArea()
+        : Electron.screen.getDisplayNearestPoint(expandedOrigin).workArea;
+    window.setBounds(
+      expandedOrigin === null
+        ? quickMessageExpandedPanelBounds(area)
+        : expandedBoundsAt(expandedOrigin, area),
+    );
+    rememberExpandedOrigin(window);
   };
 
   const showPanel = (window: Electron.BrowserWindow) => {
@@ -266,6 +330,63 @@ export const make = Effect.gen(function* () {
 
   const resetPanelReady = () => {
     panelReady = false;
+  };
+
+  const reloadPanel = (window: Electron.BrowserWindow) => {
+    if (appQuitting || window.isDestroyed() || window.webContents.isDestroyed()) return;
+    rendererUnloaded = false;
+    panelReady = false;
+    const contents = window.webContents;
+    // Keep this BrowserWindow. reload repeats its committed route; loadURL is
+    // only there when the renderer died before the first navigation stuck.
+    if (contents.getURL() === "") {
+      void window
+        .loadURL(quickMessagePanelEntryUrl(environment.isDevelopment, false))
+        .catch(() => undefined);
+      return;
+    }
+    contents.reload();
+  };
+
+  const scheduleRendererRecovery = (window: Electron.BrowserWindow, force: boolean) => {
+    if (rendererRecoveryPending || appQuitting || window.isDestroyed()) return;
+    rendererRecoveryPending = true;
+    const fiber = runFork(
+      Effect.gen(function* () {
+        const now = yield* Clock.currentTimeMillis;
+        if (!force) {
+          rendererRecoveryTimestamps = rendererRecoveryTimestamps.filter(
+            (timestamp) => now - timestamp < RENDERER_RECOVERY_WINDOW_MS,
+          );
+          if (rendererRecoveryTimestamps.length >= RENDERER_RECOVERY_MAX_ATTEMPTS) return;
+          rendererRecoveryTimestamps.push(now);
+        }
+        yield* Effect.sleep(RENDERER_RECOVERY_RELOAD_DELAY_MS);
+        reloadPanel(window);
+      }).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            rendererRecoveryPending = false;
+          }),
+        ),
+      ),
+    );
+    rendererRecoveryFibers.add(fiber);
+    fiber.addObserver(() => {
+      rendererRecoveryFibers.delete(fiber);
+    });
+  };
+
+  const onRenderProcessGone = (
+    window: Electron.BrowserWindow,
+    details: Electron.RenderProcessGoneDetails | undefined,
+  ) => {
+    panelReady = false;
+    rendererUnloaded = true;
+    if (window.isVisible() || showWhenReady) showWhenReady = true;
+    if (details !== undefined && RECOVERABLE_RENDERER_GONE_REASONS.has(details.reason)) {
+      scheduleRendererRecovery(window, false);
+    }
   };
 
   const installExternalNavigation = (window: Electron.BrowserWindow) => {
@@ -292,6 +413,7 @@ export const make = Effect.gen(function* () {
   };
 
   const createPanel = () => {
+    rendererUnloaded = false;
     // Legacy shortcut until the detached shell is activated. Both arguments
     // flip together; there is no user-facing switch.
     const detached = false;
@@ -337,7 +459,13 @@ export const make = Effect.gen(function* () {
     window.on("focus", () => {
       compactBlurEpoch += 1;
     });
+    window.on("move", () => {
+      if (presentation === "expanded") rememberExpandedOrigin(window);
+    });
     window.on("hide", () => {
+      // Dismissed while a reload is in flight: do not show again when it lands.
+      showWhenReady = false;
+      if (presentation === "expanded") rememberExpandedOrigin(window);
       if (!window.isDestroyed()) window.webContents.setBackgroundThrottling(true);
     });
     // Hide keeps the renderer and its route. Preventing close while the app
@@ -350,14 +478,16 @@ export const make = Effect.gen(function* () {
     window.webContents.on("did-start-navigation", (event) => {
       if (event.isMainFrame && !event.isSameDocument) resetPanelReady();
     });
-    window.webContents.on("render-process-gone", () => {
-      resetPanelReady();
+    window.webContents.on("render-process-gone", (_event, details) => {
+      onRenderProcessGone(window, details);
     });
     window.once("closed", () => {
+      interruptRendererRecovery();
       if (panel === window) {
         panel = null;
         panelReady = false;
         showWhenReady = false;
+        rendererUnloaded = false;
       }
     });
     if (!isMac) {
@@ -381,8 +511,13 @@ export const make = Effect.gen(function* () {
     }
     const window = existing ?? createPanel();
     panel = window;
-    if (panelReady) showPanel(window);
-    else showWhenReady = true;
+    if (panelReady) {
+      showPanel(window);
+      return;
+    }
+    showWhenReady = true;
+    // The automatic cap must not leave this shortcut waiting on a dead page.
+    if (rendererUnloaded) scheduleRendererRecovery(window, true);
   };
 
   const releaseShortcut = () => {
@@ -513,7 +648,7 @@ export const make = Effect.gen(function* () {
     isPanel: (webContentsId) => Effect.sync(() => livePanel()?.webContents.id === webContentsId),
     setPanelReady: Effect.sync(() => {
       const window = livePanel();
-      if (window === null) return;
+      if (window === null || rendererUnloaded) return;
       panelReady = true;
       if (showWhenReady) {
         showWhenReady = false;
@@ -522,8 +657,11 @@ export const make = Effect.gen(function* () {
     }).pipe(Effect.withSpan("DesktopQuickMessage.setPanelReady")),
     setPresentation: Effect.fn("DesktopQuickMessage.setPresentation")(function* (next) {
       yield* Effect.sync(() => {
-        presentation = next;
         const window = livePanel();
+        if (window !== null && presentation === "expanded" && next !== "expanded") {
+          rememberExpandedOrigin(window);
+        }
+        presentation = next;
         if (window !== null) applyPresentationBounds(window);
       });
     }),

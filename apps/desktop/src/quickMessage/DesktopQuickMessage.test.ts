@@ -13,6 +13,7 @@ import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Scope from "effect/Scope";
+import * as TestClock from "effect/testing/TestClock";
 import type * as Electron from "electron";
 import { beforeEach, vi } from "vite-plus/test";
 
@@ -45,6 +46,8 @@ interface FakeWebContents {
   setBackgroundThrottling(): void;
   focus(): void;
   isDestroyed(): boolean;
+  getURL(): string;
+  reload(): void;
 }
 
 interface FakePanel {
@@ -52,6 +55,9 @@ interface FakePanel {
   visible: boolean;
   destroyed: boolean;
   focused: boolean;
+  reloads: number;
+  readonly loads: string[];
+  rect: Electron.Rectangle;
   readonly bounds: Electron.Rectangle[];
   readonly additionalArguments: readonly string[];
   readonly session: unknown;
@@ -70,6 +76,7 @@ interface FakePanel {
   isVisible(): boolean;
   isDestroyed(): boolean;
   destroy(): void;
+  getBounds(): Electron.Rectangle;
 }
 
 const electron = vi.hoisted(() => {
@@ -112,6 +119,12 @@ const electron = vi.hoisted(() => {
     takenAccelerators: new Set<string>(),
     panels: [] as FakePanel[],
     workArea: { x: 0, y: 0, width: 1440, height: 900 },
+    cursor: { x: 0, y: 0 },
+    displays: null as Array<{
+      id: number;
+      bounds: Electron.Rectangle;
+      workArea: Electron.Rectangle;
+    }> | null,
     fromPartition: vi.fn((partition: string) => ({ partition })),
     appListeners: new Map<string, Array<() => void>>(),
   };
@@ -132,6 +145,8 @@ const fakeWebContents = (id: number): FakeWebContents => {
     setBackgroundThrottling() {},
     focus() {},
     isDestroyed: () => false,
+    getURL: () => "",
+    reload() {},
     removeListener(event: string, listener: (...args: unknown[]) => void) {
       emitter.off(event, listener);
     },
@@ -144,6 +159,9 @@ vi.mock("electron", () => {
     visible = false;
     destroyed = false;
     focused = false;
+    reloads = 0;
+    readonly loads: string[] = [];
+    rect: Electron.Rectangle = { x: 0, y: 0, width: 0, height: 0 };
     readonly bounds: Electron.Rectangle[] = [];
     readonly additionalArguments: readonly string[];
     readonly session: unknown;
@@ -157,6 +175,10 @@ vi.mock("electron", () => {
       this.additionalArguments = options?.webPreferences?.additionalArguments ?? [];
       this.session = options?.webPreferences?.session;
       this.webContents = fakeWebContents(100 + electron.panels.length);
+      this.webContents.getURL = () => this.loadedUrl ?? "";
+      this.webContents.reload = () => {
+        this.reloads += 1;
+      };
       electron.panels.push(this);
     }
 
@@ -169,6 +191,7 @@ vi.mock("electron", () => {
     setAlwaysOnTop() {}
     setVisibleOnAllWorkspaces() {}
     loadURL(url: string) {
+      this.loads.push(url);
       this.loadedUrl = url;
       this.loadSnapshot = {
         auxiliary: ElectronWindow.isAuxiliaryWindow(this as unknown as Electron.BrowserWindow),
@@ -178,7 +201,11 @@ vi.mock("electron", () => {
       };
       return Promise.resolve();
     }
+    getBounds() {
+      return { ...this.rect };
+    }
     setBounds(bounds: Electron.Rectangle) {
+      this.rect = { ...bounds };
       this.bounds.push({ ...bounds });
     }
     show() {
@@ -187,6 +214,7 @@ vi.mock("electron", () => {
     hide() {
       this.visible = false;
       this.focused = false;
+      this.emit("hide");
     }
     focus() {
       this.focused = true;
@@ -234,8 +262,36 @@ vi.mock("electron", () => {
       },
     },
     screen: {
-      getCursorScreenPoint: () => ({ x: 0, y: 0 }),
-      getDisplayNearestPoint: () => ({ workArea: electron.workArea }),
+      getCursorScreenPoint: () => electron.cursor,
+      getDisplayNearestPoint: (point: { x: number; y: number }) => {
+        const displays = electron.displays ?? [
+          {
+            id: 1,
+            bounds: electron.workArea,
+            workArea: electron.workArea,
+          },
+        ];
+        const containing = displays.find(
+          (display) =>
+            point.x >= display.bounds.x &&
+            point.x < display.bounds.x + display.bounds.width &&
+            point.y >= display.bounds.y &&
+            point.y < display.bounds.y + display.bounds.height,
+        );
+        if (containing !== undefined) return containing;
+        let nearest = displays[0]!;
+        let nearestDistance = Number.POSITIVE_INFINITY;
+        for (const display of displays) {
+          const dx = display.bounds.x + display.bounds.width / 2 - point.x;
+          const dy = display.bounds.y + display.bounds.height / 2 - point.y;
+          const distance = dx * dx + dy * dy;
+          if (distance < nearestDistance) {
+            nearest = display;
+            nearestDistance = distance;
+          }
+        }
+        return nearest;
+      },
     },
   };
 });
@@ -249,6 +305,8 @@ beforeEach(() => {
   electron.takenAccelerators.clear();
   electron.panels.length = 0;
   electron.workArea = { x: 0, y: 0, width: 1440, height: 900 };
+  electron.cursor = { x: 0, y: 0 };
+  electron.displays = null;
   electron.fromPartition.mockReset();
   electron.fromPartition.mockImplementation((partition: string) => ({ partition }));
   electron.appListeners.clear();
@@ -260,6 +318,22 @@ beforeEach(() => {
 const ACCELERATOR = "Alt+/";
 const enabled: ClientSettings = { ...DEFAULT_CLIENT_SETTINGS, quickMessageEnabled: true };
 const settle = Effect.promise(() => Promise.resolve());
+
+const screenDisplay = (id: number, x: number, y: number, width: number, height: number) => {
+  const area = { x, y, width, height };
+  return { id, bounds: area, workArea: area };
+};
+
+const PRIMARY_DISPLAY = screenDisplay(1, 0, 0, 1440, 900);
+const SECONDARY_DISPLAY = screenDisplay(2, 2000, 0, 1440, 900);
+
+type RendererExitReason = "clean-exit" | "abnormal-exit" | "killed" | "crashed" | "oom";
+
+const emitRendererGone = (panel: FakePanel, reason: RendererExitReason) => {
+  panel.webContents.emit("render-process-gone", {}, { reason, exitCode: 1 });
+};
+
+const showCount = (panel: FakePanel) => panel.webContents.sent.length;
 
 const reportedState = (
   shortcutRegistered: boolean,
@@ -464,6 +538,8 @@ it.effect("shows the panel once its page is ready, and the shortcut toggles a fo
 it.effect("focuses a visible unfocused panel and reopens the same presentation", () =>
   Effect.scoped(
     Effect.gen(function* () {
+      electron.displays = [PRIMARY_DISPLAY, SECONDARY_DISPLAY];
+      electron.cursor = { x: 10, y: 10 };
       const service = yield* DesktopQuickMessage.make;
       yield* service.initialize;
       const panel = yield* openReadyPanel(service);
@@ -480,13 +556,15 @@ it.effect("focuses a visible unfocused panel and reopens the same presentation",
 
       toggle();
       assert.isFalse(panel.visible);
-      electron.workArea = { x: 2000, y: 0, width: 1440, height: 900 };
+      electron.cursor = { x: 2100, y: 10 };
       toggle();
       assert.isTrue(panel.visible);
       assert.equal(electron.panels.length, 1);
       assert.equal(panel.loadedUrl, DesktopQuickMessage.quickMessagePanelEntryUrl(false, false));
       assert.equal(panel.bounds.at(-1)?.height, 760);
-      assert.equal(panel.bounds.at(-1)?.x, 2000);
+      assert.equal(panel.bounds.at(-1)?.width, 916);
+      // Expanded stays on the display where it was placed, not the cursor's.
+      assert.equal(panel.bounds.at(-1)?.x, 262);
       assert.deepEqual(panel.webContents.sent.at(-1), showEvent("expanded"));
       assert.deepEqual(yield* service.state, reportedState(true, null, "expanded"));
 
@@ -495,7 +573,8 @@ it.effect("focuses a visible unfocused panel and reopens the same presentation",
       assert.equal(panel.bounds.at(-1)?.x, 2262);
       yield* service.setPresentation("expanded");
       assert.equal(panel.bounds.at(-1)?.height, 760);
-      assert.equal(panel.bounds.at(-1)?.x, 2000);
+      assert.equal(panel.bounds.at(-1)?.width, 916);
+      assert.equal(panel.bounds.at(-1)?.x, 262);
     }),
   ).pipe(Effect.provide(layerTest(null, []))),
 );
@@ -547,7 +626,7 @@ it.effect("hides compact on blur, keeps expanded, and ignores menu-close focus o
   ).pipe(Effect.provide(layerTest(null, []))),
 );
 
-it.effect("resets readiness on reload and crash without replaying show or submit", () => {
+it.effect("reloads a crashed panel before it is ready and does not replay show or submit", () => {
   const main = { webContents: fakeWebContents(1) };
   const revealed: Array<unknown> = [];
   return Effect.scoped(
@@ -557,8 +636,26 @@ it.effect("resets readiness on reload and crash without replaying show or submit
       const waiting = electron.shortcuts.get(ACCELERATOR)!;
       waiting();
       const panel = electron.panels[0]!;
-      panel.webContents.emit("render-process-gone");
+      const entry = DesktopQuickMessage.quickMessagePanelEntryUrl(false, false);
+      assert.equal(panel.loads.length, 1);
+      assert.equal(panel.loadedUrl, entry);
+
+      emitRendererGone(panel, "crashed");
+      yield* service.setPanelReady;
       assert.isFalse(panel.visible);
+      assert.equal(showCount(panel), 0);
+      yield* TestClock.adjust(499);
+      assert.equal(panel.reloads, 0);
+      yield* TestClock.adjust(1);
+      assert.equal(panel.reloads, 1);
+      assert.equal(panel.loads.length, 1);
+      assert.equal(panel.loadedUrl, entry);
+      assert.equal(electron.panels.length, 1);
+      panel.webContents.emit("did-start-navigation", {
+        isMainFrame: true,
+        isSameDocument: false,
+      });
+      assert.equal(showCount(panel), 0);
       yield* service.setPanelReady;
       assert.isTrue(panel.visible);
       assert.deepEqual(panel.webContents.sent, [showEvent()]);
@@ -582,21 +679,239 @@ it.effect("resets readiness on reload and crash without replaying show or submit
       assert.isFalse(panel.visible);
       electron.shortcuts.get(ACCELERATOR)!();
       assert.isTrue(panel.visible);
-      assert.equal(panel.webContents.sent.length, 2);
+      assert.equal(showCount(panel), 2);
 
-      panel.webContents.emit("render-process-gone");
+      electron.shortcuts.get(ACCELERATOR)!();
+      assert.isFalse(panel.visible);
+      const hiddenReloads = panel.reloads;
+      emitRendererGone(panel, "crashed");
+      yield* TestClock.adjust(500);
+      assert.equal(panel.reloads, hiddenReloads + 1);
       yield* service.setPanelReady;
-      assert.equal(panel.webContents.sent.length, 2);
+      assert.isFalse(panel.visible);
+      assert.equal(showCount(panel), 2);
 
       yield* service.submit(submission);
-      panel.webContents.emit("render-process-gone");
+      const submitReloads = panel.reloads;
+      emitRendererGone(panel, "crashed");
+      yield* TestClock.adjust(500);
+      assert.equal(panel.reloads, submitReloads + 1);
       yield* service.setReceiverReady(main.webContents as unknown as Electron.WebContents, true);
       assert.deepEqual(main.webContents.sent, [[QUICK_MESSAGE_SUBMIT_EVENT_CHANNEL, submission]]);
       yield* service.setReceiverReady(main.webContents as unknown as Electron.WebContents, true);
       assert.equal(main.webContents.sent.length, 1);
+      assert.equal(
+        panel.webContents.sent.filter(([channel]) => channel === QUICK_MESSAGE_SUBMIT_EVENT_CHANNEL)
+          .length,
+        0,
+      );
     }),
   ).pipe(Effect.provide(layerTest(main, revealed)));
 });
+
+it.effect("shows a visible panel once after reload and stays hidden if dismissed first", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const service = yield* DesktopQuickMessage.make;
+      yield* service.initialize;
+      const panel = yield* openReadyPanel(service);
+      const toggle = electron.shortcuts.get(ACCELERATOR)!;
+      const entry = DesktopQuickMessage.quickMessagePanelEntryUrl(false, false);
+      const shows = showCount(panel);
+
+      emitRendererGone(panel, "crashed");
+      yield* service.setPanelReady;
+      assert.equal(showCount(panel), shows);
+      yield* TestClock.adjust(499);
+      assert.equal(panel.reloads, 0);
+      yield* TestClock.adjust(1);
+      assert.equal(panel.reloads, 1);
+      assert.equal(panel.loads.length, 1);
+      assert.equal(panel.loadedUrl, entry);
+      assert.equal(electron.panels.length, 1);
+      panel.webContents.emit("did-start-navigation", {
+        isMainFrame: true,
+        isSameDocument: false,
+      });
+      assert.equal(showCount(panel), shows);
+      yield* service.setPanelReady;
+      assert.isTrue(panel.visible);
+      assert.equal(showCount(panel), shows + 1);
+      yield* service.setPanelReady;
+      assert.equal(showCount(panel), shows + 1);
+
+      emitRendererGone(panel, "abnormal-exit");
+      toggle();
+      assert.isFalse(panel.visible);
+      yield* TestClock.adjust(500);
+      assert.equal(panel.reloads, 2);
+      yield* service.setPanelReady;
+      assert.isFalse(panel.visible);
+      assert.equal(showCount(panel), shows + 1);
+    }),
+  ).pipe(Effect.provide(layerTest(null, []))),
+);
+
+it.effect("caps automatic crash recovery and still reloads once for a later shortcut", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const service = yield* DesktopQuickMessage.make;
+      yield* service.initialize;
+      const panel = yield* openReadyPanel(service);
+      const toggle = electron.shortcuts.get(ACCELERATOR)!;
+      assert.equal(panel.loads.length, 1);
+      assert.equal(showCount(panel), 1);
+
+      emitRendererGone(panel, "clean-exit");
+      yield* TestClock.adjust(500);
+      assert.equal(panel.reloads, 0);
+      yield* service.setPanelReady;
+      assert.equal(showCount(panel), 1);
+
+      for (const reason of ["killed", "oom", "crashed"] as const) {
+        const reloads = panel.reloads;
+        emitRendererGone(panel, reason);
+        yield* TestClock.adjust(500);
+        assert.equal(panel.reloads, reloads + 1);
+        assert.equal(showCount(panel), 1);
+        assert.equal(panel.loads.length, 1);
+      }
+
+      const capped = panel.reloads;
+      emitRendererGone(panel, "killed");
+      yield* service.setPanelReady;
+      yield* TestClock.adjust(500);
+      assert.equal(panel.reloads, capped);
+      assert.equal(showCount(panel), 1);
+      assert.equal(electron.panels.length, 1);
+
+      toggle();
+      assert.isFalse(panel.visible);
+      toggle();
+      yield* TestClock.adjust(499);
+      assert.equal(panel.reloads, capped);
+      yield* TestClock.adjust(1);
+      assert.equal(panel.reloads, capped + 1);
+      assert.equal(panel.loads.length, 1);
+      assert.equal(panel.loadedUrl, DesktopQuickMessage.quickMessagePanelEntryUrl(false, false));
+      assert.equal(showCount(panel), 1);
+      yield* service.setPanelReady;
+      assert.isTrue(panel.visible);
+      assert.equal(showCount(panel), 2);
+      yield* service.setPanelReady;
+      assert.equal(showCount(panel), 2);
+
+      emitRendererGone(panel, "crashed");
+      yield* TestClock.adjust(500);
+      assert.equal(panel.reloads, capped + 1);
+
+      yield* TestClock.adjust(60_000);
+      emitRendererGone(panel, "killed");
+      yield* TestClock.adjust(500);
+      assert.equal(panel.reloads, capped + 2);
+      assert.equal(showCount(panel), 2);
+      yield* service.setPanelReady;
+      assert.equal(showCount(panel), 3);
+      yield* service.setPanelReady;
+      assert.equal(showCount(panel), 3);
+    }),
+  ).pipe(Effect.provide(layerTest(null, []))),
+);
+
+it.effect("restores a dragged expanded panel from getBounds across hide and show", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      electron.displays = [PRIMARY_DISPLAY, SECONDARY_DISPLAY];
+      electron.cursor = { x: 10, y: 10 };
+      const service = yield* DesktopQuickMessage.make;
+      yield* service.initialize;
+      const panel = yield* openReadyPanel(service);
+      const toggle = electron.shortcuts.get(ACCELERATOR)!;
+      yield* service.setPresentation("expanded");
+      assert.deepEqual(panel.getBounds(), { x: 262, y: 140, width: 916, height: 760 });
+
+      panel.rect = { x: 80, y: 40, width: 916, height: 760 };
+      panel.emit("move");
+      electron.cursor = { x: 2100, y: 20 };
+      yield* service.setPresentation("expanded");
+      assert.deepEqual(panel.getBounds(), { x: 80, y: 40, width: 916, height: 760 });
+
+      toggle();
+      assert.isFalse(panel.visible);
+      toggle();
+      assert.deepEqual(panel.getBounds(), { x: 80, y: 40, width: 916, height: 760 });
+      assert.equal(electron.panels.length, 1);
+    }),
+  ).pipe(Effect.provide(layerTest(null, []))),
+);
+
+it.effect("reads expanded getBounds on hide and before leaving expanded", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      electron.displays = [PRIMARY_DISPLAY, SECONDARY_DISPLAY];
+      electron.cursor = { x: 10, y: 10 };
+      const service = yield* DesktopQuickMessage.make;
+      yield* service.initialize;
+      const panel = yield* openReadyPanel(service);
+      const toggle = electron.shortcuts.get(ACCELERATOR)!;
+      yield* service.setPresentation("expanded");
+
+      panel.rect = { x: 64, y: 88, width: 916, height: 760 };
+      electron.cursor = { x: 2100, y: 20 };
+      toggle();
+      toggle();
+      assert.deepEqual(panel.getBounds(), { x: 64, y: 88, width: 916, height: 760 });
+
+      panel.rect = { x: 18, y: 44, width: 916, height: 760 };
+      yield* service.setPresentation("compact");
+      assert.equal(panel.getBounds().x, 2262);
+      assert.equal(panel.getBounds().height, 520);
+      panel.emit("move");
+      yield* service.setPresentation("expanded");
+      assert.deepEqual(panel.getBounds(), { x: 18, y: 44, width: 916, height: 760 });
+    }),
+  ).pipe(Effect.provide(layerTest(null, []))),
+);
+
+it.effect("grows back to the canonical expanded size when the display gets larger", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      electron.workArea = { x: 0, y: 0, width: 1000, height: 600 };
+      const service = yield* DesktopQuickMessage.make;
+      yield* service.initialize;
+      const panel = yield* openReadyPanel(service);
+      const toggle = electron.shortcuts.get(ACCELERATOR)!;
+      yield* service.setPresentation("expanded");
+      assert.deepEqual(panel.getBounds(), { x: 42, y: 0, width: 916, height: 600 });
+
+      electron.workArea = { x: 0, y: 0, width: 1600, height: 1200 };
+      toggle();
+      toggle();
+      assert.deepEqual(panel.getBounds(), { x: 42, y: 0, width: 916, height: 760 });
+    }),
+  ).pipe(Effect.provide(layerTest(null, []))),
+);
+
+it.effect("clamps expanded bounds onto a remaining display when the saved one is gone", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      electron.displays = [PRIMARY_DISPLAY, SECONDARY_DISPLAY];
+      electron.cursor = { x: 2100, y: 100 };
+      const service = yield* DesktopQuickMessage.make;
+      yield* service.initialize;
+      const panel = yield* openReadyPanel(service);
+      const toggle = electron.shortcuts.get(ACCELERATOR)!;
+      yield* service.setPresentation("expanded");
+      assert.equal(panel.getBounds().x, 2262);
+      assert.equal(panel.getBounds().height, 760);
+
+      electron.displays = [PRIMARY_DISPLAY];
+      toggle();
+      toggle();
+      assert.deepEqual(panel.getBounds(), { x: 524, y: 140, width: 916, height: 760 });
+    }),
+  ).pipe(Effect.provide(layerTest(null, []))),
+);
 
 it.effect("hides on close, lets quit close, and destroys from the service finalizer", () => {
   let panel: FakePanel | undefined;
