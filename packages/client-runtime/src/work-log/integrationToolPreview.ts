@@ -1,3 +1,4 @@
+import * as DateTime from "effect/DateTime";
 import type { DocumentToolPreview, PreviewRecord, ToolPreview } from "./toolPreview.ts";
 import { forgeToolPreview } from "./forgeToolPreview.ts";
 import { historyToolPreview } from "./historyToolPreview.ts";
@@ -350,6 +351,7 @@ function slackSendPreview(input: Record_, result: unknown): DocumentToolPreview 
   const data = isRecord(result) ? result : null;
   const channel = isRecord(data?.channel_info) ? data.channel_info : null;
   const isDraft = str(data?.draft_id) !== null || str(data?.result)?.startsWith("Draft") === true;
+  const postAt = typeof input.post_at === "number" ? input.post_at : null;
   return documentPreview(message, {
     summary: str(channel?.name) ? `#${str(channel?.name)}` : str(input.channel_id),
     link: link(
@@ -358,6 +360,9 @@ function slackSendPreview(input: Record_, result: unknown): DocumentToolPreview 
     ),
     notes: [
       isDraft ? "Saved as a draft, not sent" : null,
+      postAt === null
+        ? null
+        : `Scheduled for ${DateTime.formatIso(DateTime.makeUnsafe(postAt * 1000))}`,
       str(input.thread_ts) ? "In a thread" : null,
     ],
   });
@@ -365,10 +370,14 @@ function slackSendPreview(input: Record_, result: unknown): DocumentToolPreview 
 
 // `=== Message from Name (U123) at 2026-10-09 09:46:09 BST ===` sections.
 const SLACK_CHANNEL_MESSAGE = /^=== Message from (.+?)(?: \([A-Z0-9]+\))? at (.+?) === ?$/m;
+// Concise reads: `Name: text [2026-10-21 16:32:08 BST]` blocks, where the text may hold blank lines.
+const SLACK_CONCISE_MESSAGE =
+  /(?:^|\n\n)([^:\n]{1,80}): ([\s\S]*?) \[(\d{4}-\d\d-\d\d \d\d:\d\d(?::\d\d)? [A-Z]{2,5})\](?=\n\n|\s*$)/g;
 
 function slackChannelPreview(text: string | null): ToolPreview | null {
   if (!text) return null;
-  const channel = /^Channel: (.+?)(?: \([A-Z0-9]+\))?$/m.exec(text)?.[1] ?? null;
+  const header = /^Channel: (.+?)(?: \([A-Z0-9]+\))?$/m.exec(text);
+  const channel = header?.[1] ?? null;
   const parts = text.split(SLACK_CHANNEL_MESSAGE);
   const items: PreviewRecord[] = [];
   for (let index = 1; index + 2 < parts.length; index += 3) {
@@ -378,19 +387,29 @@ function slackChannelPreview(text: string | null): ToolPreview | null {
       .join("\n")
       .trim();
     if (!parts[index]) continue;
-    items.push({
-      key: `${parts[index + 1]}:${index}`,
-      title: parts[index]!,
-      subtitle: null,
-      meta: [parts[index + 1]!],
-      url: null,
-      body: slackPlainText(body),
-      threadId: null,
-    });
+    items.push(slackMessageRecord(parts[index]!, parts[index + 1]!, body, index));
+  }
+  if (items.length === 0) {
+    const messages = header ? text.slice(header.index + header[0].length).trim() : text;
+    for (const match of messages.matchAll(SLACK_CONCISE_MESSAGE)) {
+      items.push(slackMessageRecord(match[1]!, match[3]!, match[2]!, match.index));
+    }
   }
   return items.length > 0
     ? records(items, { summary: channel })
     : documentPreview(slackPlainText(text), { summary: channel });
+}
+
+function slackMessageRecord(author: string, time: string, body: string, index: number) {
+  return {
+    key: `${time}:${index}`,
+    title: author.trim(),
+    subtitle: null,
+    meta: [time],
+    url: null,
+    body: slackPlainText(body),
+    threadId: null,
+  } satisfies PreviewRecord;
 }
 
 function slackPlainText(text: string): string {
@@ -405,25 +424,48 @@ function slackPlainText(text: string): string {
     .trim();
 }
 
-/** Slack's `### Result n of m` user sections and `1. #channel (C1) - type - …` lines. */
+/** A `Name: value` line of a Slack MCP section, or null when it is missing or blank. */
+function slackField(section: string, name: string): string | null {
+  return new RegExp(`^${name}: ?(.*)$`, "m").exec(section)?.[1]?.trim() || null;
+}
+
+function slackPermalink(section: string): string | null {
+  return /\((https?:[^)]+)\)/.exec(slackField(section, "Permalink") ?? "")?.[1] ?? null;
+}
+
+/** Slack's `### Result n of m` user and channel sections and `1. #channel (C1) - type - …` lines. */
 function slackDirectoryPreview(tool: string, text: string | null): ToolPreview | null {
   if (!text) return null;
+  const sections = text.split(/^### Result \d+ of \d+$/m).slice(1);
   if (tool === "slack_search_users") {
-    const sections = text.split(/^### Result \d+ of \d+$/m).slice(1);
     return records(
-      sections.map((section, index) => {
-        const field = (name: string) =>
-          new RegExp(`^${name}: ?(.*)$`, "m").exec(section)?.[1]?.trim() || null;
-        return {
-          key: field("User ID") ?? String(index),
-          title: field("Name") ?? "User",
-          subtitle: field("Title"),
-          meta: [field("Email"), field("Timezone")].filter((meta): meta is string => meta !== null),
-          url: /\((https?:[^)]+)\)/.exec(field("Permalink") ?? "")?.[1] ?? null,
-          body: null,
-          threadId: null,
-        };
-      }),
+      sections.map((section, index) => ({
+        key: slackField(section, "User ID") ?? String(index),
+        title: slackField(section, "Name") ?? "User",
+        subtitle: slackField(section, "Title"),
+        meta: [slackField(section, "Email"), slackField(section, "Timezone")].filter(
+          (meta): meta is string => meta !== null,
+        ),
+        url: slackPermalink(section),
+        body: null,
+        threadId: null,
+      })),
+    );
+  }
+  if (sections.length > 0) {
+    return records(
+      sections.map((section, index) => ({
+        key: String(index),
+        title: slackField(section, "Name") ?? "Channel",
+        subtitle: slackField(section, "Is Archived") === "true" ? "archived" : null,
+        meta: [
+          slackField(section, "Creator")?.replace(/ \(<@[A-Z0-9]+>?\)$/, "") ?? null,
+          slackField(section, "Created"),
+        ].filter((meta): meta is string => meta !== null),
+        url: slackPermalink(section),
+        body: slackField(section, "Purpose"),
+        threadId: null,
+      })),
     );
   }
   const channels = [...text.matchAll(/^\d+\. (#\S+) \(([A-Z0-9]+)\) - (\S+)(?: - (.*))?$/gm)];
@@ -442,12 +484,159 @@ function slackDirectoryPreview(tool: string, text: string | null): ToolPreview |
     : documentPreview(text);
 }
 
+/** `### #name` sections of `- **Type:** Public Channel` bullets. */
+function slackUserChannelsPreview(text: string | null): ToolPreview | null {
+  if (!text) return null;
+  const sections = text.split(/^### /m).slice(1);
+  if (sections.length === 0) return documentPreview(text, { preformatted: true });
+  return records(
+    sections.map((section, index) => {
+      const field = (name: string) =>
+        new RegExp(`^- \\*\\*${name}:\\*\\* (.+)$`, "m").exec(section)?.[1]?.trim() ?? null;
+      return {
+        key: field("ID") ?? String(index),
+        title: section.split("\n")[0]!.trim(),
+        subtitle: field("Type"),
+        meta: field("Archived") === "Yes" ? ["archived"] : [],
+        url: null,
+        body: field("Topic") ?? field("Purpose"),
+        threadId: null,
+      };
+    }),
+    { notes: [/^Pagination: More results/m.test(text) ? "More channels on the next page" : null] },
+  );
+}
+
+/** Detailed `## Member n` sections, or concise `@handle (Display Name)` lines. */
+function slackMembersPreview(text: string | null): ToolPreview | null {
+  if (!text) return null;
+  const sections = text.split(/^## Member \d+$/m).slice(1);
+  if (sections.length > 0) {
+    return records(
+      sections.map((section, index) => ({
+        key: slackField(section, "User ID") ?? String(index),
+        title: slackField(section, "Real Name") ?? slackField(section, "Display Name") ?? "Member",
+        subtitle: slackField(section, "Username"),
+        meta: [slackField(section, "Email"), slackField(section, "Title")].filter(
+          (meta): meta is string => meta !== null,
+        ),
+        url: null,
+        body: null,
+        threadId: null,
+      })),
+    );
+  }
+  const handles = [...text.matchAll(/^(@\S+) \((.+)\)$/gm)];
+  return handles.length > 0
+    ? records(
+        handles.map((match) => ({
+          key: match[1]!,
+          title: match[2]!,
+          subtitle: match[1]!,
+          meta: [],
+          url: null,
+          body: null,
+          threadId: null,
+        })),
+      )
+    : documentPreview(text, { preformatted: true });
+}
+
+function slackProfilePreview(text: string | null): ToolPreview | null {
+  if (!text) return null;
+  // Concise profiles are unlabelled lines; detailed ones are `Field: value`, with `No` flags.
+  const rows = [...text.matchAll(/^([A-Z][A-Za-z ]*): ?(.*)$/gm)].flatMap((match) => {
+    const value = match[2]!.trim();
+    return value && value !== "No" ? [[match[1]!, value] as const] : [];
+  });
+  if (rows.length < 2) return documentPreview(text, { preformatted: true });
+  const field = (name: string) => rows.find(([key]) => key === name)?.[1] ?? null;
+  return properties(rows, { title: field("Real Name") ?? field("Display Name") });
+}
+
+/** `:emoji: × 2 — Name (U1), Name (U2)` lines. */
+function slackReactionsPreview(text: string | null): ToolPreview | null {
+  if (!text) return null;
+  const rows = [...text.matchAll(/^(:\S+:) × (\d+) — (.+)$/gm)].map(
+    (match) => [`${match[1]} × ${match[2]}`, match[3]!.replace(/ \([A-Z0-9]+\)/g, "")] as const,
+  );
+  return rows.length > 0 ? properties(rows) : documentPreview(text);
+}
+
+/** `Found 3 custom emojis matching "x":` then `:a:, :b: (alias for :c:)`. */
+function slackEmojisPreview(text: string | null): ToolPreview | null {
+  if (!text) return null;
+  const found = /^(.*):\n([\s\S]+)$/.exec(text.trim());
+  if (!found) return documentPreview(text);
+  return records(
+    found[2]!.split(/,\s*/).map((emoji) => {
+      const alias = /^(:\S+:) \(alias for (:\S+:)\)$/.exec(emoji.trim());
+      return {
+        key: alias?.[1] ?? emoji.trim(),
+        title: alias?.[1] ?? emoji.trim(),
+        subtitle: alias ? `alias for ${alias[2]}` : null,
+        meta: [],
+        url: null,
+        body: null,
+        threadId: null,
+      };
+    }),
+    { summary: found[1]! },
+  );
+}
+
 function slackFilePreview(text: string | null): ToolPreview | null {
   if (!text) return null;
   const rows = [...text.matchAll(/^(Title|MIME Type|Size|Created): (.+)$/gm)].map(
     (match) => [match[1]!, match[2]!.trim()] as const,
   );
   return rows.length > 0 ? properties(rows) : null;
+}
+
+function slackToolPreview(
+  tool: string,
+  input: Record_,
+  result: unknown,
+  text: string | null,
+): ToolPreview | null {
+  const data = isRecord(result) ? result : null;
+  // Slack's MCP wraps its text in one JSON field, named for what the tool returns.
+  const body = str(data?.messages) ?? str(data?.results) ?? str(data?.members) ?? str(data?.result);
+  const output = body ?? text;
+  switch (tool) {
+    case "slack_send_message":
+    case "slack_send_message_draft":
+    case "slack_schedule_message":
+      return slackSendPreview(input, result);
+    case "slack_create_canvas": {
+      const content = str(input.content);
+      return content
+        ? documentPreview(content, {
+            title: str(input.title),
+            link: link("Open canvas", str(data?.canvas_url)),
+          })
+        : null;
+    }
+    case "slack_read_channel":
+      return slackChannelPreview(output);
+    case "slack_search_users":
+    case "slack_search_channels":
+      return slackDirectoryPreview(tool, output);
+    case "slack_list_user_channels":
+      return slackUserChannelsPreview(output);
+    case "slack_list_channel_members":
+      return slackMembersPreview(output);
+    case "slack_read_user_profile":
+      return slackProfilePreview(output);
+    case "slack_get_reactions":
+      return slackReactionsPreview(output);
+    case "slack_search_emojis":
+      return slackEmojisPreview(output);
+    case "slack_read_file":
+      return slackFilePreview(text);
+    default:
+      return null;
+  }
 }
 
 function granolaPreview(text: string | null): ToolPreview | null {
@@ -644,6 +833,14 @@ function serverToolPreview(
   result: unknown,
   text: string | null,
 ): ToolPreview | null {
+  if (server === "codex_apps") {
+    // Codex names connector tools `codex_apps.<app>.<tool>`; GitHub's have their own card below.
+    const app = /^([\w-]+)\.(.+)$/.exec(tool);
+    const preview = app
+      ? serverToolPreview(app[1]!.toLowerCase(), app[2]!, input, result, text)
+      : null;
+    if (preview) return preview;
+  }
   if (server === "notion") return notionPreview(tool, input, result);
   if (server === "datadog") return datadogPreview(tool, input, text);
   if (server === "google_calendar") return calendarPreview(tool, result);
@@ -654,18 +851,7 @@ function serverToolPreview(
   if (server === "forge" || server === "forge-dev") return forgeToolPreview(tool, input, result);
   const service = serviceToolPreview(server, tool, input, result, text);
   if (service) return service;
-  if (server === "slack") {
-    if (tool === "slack_send_message" || tool === "slack_send_message_draft") {
-      return slackSendPreview(input, result);
-    }
-    if (tool === "slack_read_channel") {
-      return slackChannelPreview(isRecord(result) ? str(result.messages) : text);
-    }
-    if (tool === "slack_search_users" || tool === "slack_search_channels") {
-      return slackDirectoryPreview(tool, isRecord(result) ? str(result.results) : text);
-    }
-    if (tool === "slack_read_file") return slackFilePreview(text);
-  }
+  if (server === "slack") return slackToolPreview(tool, input, result, text);
   return null;
 }
 
