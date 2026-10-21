@@ -38,10 +38,14 @@ function notionPreview(tool: string, input: Record_, result: unknown): ToolPrevi
         });
       }
       if (Array.isArray(input.content_updates)) {
-        const updates = input.content_updates.filter(isRecord).flatMap((update) => {
+        const edits = input.content_updates.filter(isRecord);
+        const updates = edits.flatMap((update) => {
           const next = str(update.new_str);
           return next ? [next] : [];
         });
+        if (updates.length === 0) {
+          return action(`Removed ${edits.length} passage${edits.length === 1 ? "" : "s"}`, []);
+        }
         return documentPreview(updates.join("\n\n---\n\n"), {
           summary: `Updated ${updates.length} passage${updates.length === 1 ? "" : "s"}`,
           link: pageLink,
@@ -75,6 +79,8 @@ function notionPreview(tool: string, input: Record_, result: unknown): ToolPrevi
         { summary: `Created ${pages.length} page${pages.length === 1 ? "" : "s"}` },
       );
     }
+    // Codex's Notion app names it `fetch`.
+    case "fetch":
     case "notion-fetch": {
       const text = str(data?.text);
       return text
@@ -720,6 +726,30 @@ function linearRecord(kind: string, item: Record_, index: number): PreviewRecord
         meta: [str(item.email), str(item.status)].filter((meta): meta is string => meta !== null),
         body: null,
       };
+    case "statusUpdates":
+      return {
+        ...base,
+        title: nameOf(item.project) ?? nameOf(item.initiative) ?? "Status update",
+        subtitle:
+          str(item.health)
+            ?.replace(/([a-z])([A-Z])/g, "$1 $2")
+            .toLowerCase() ?? null,
+        meta: [nameOf(item.user), str(item.createdAt)?.slice(0, 10) ?? null].filter(
+          (meta): meta is string => meta !== null,
+        ),
+        body: str(item.body),
+      };
+    case "notifications":
+      return {
+        ...base,
+        title: str(item.title) ?? "Notification",
+        subtitle: str(item.subtitle),
+        meta: [
+          item.readAt === null ? "unread" : null,
+          str(item.createdAt)?.slice(0, 16).replace("T", " ") ?? null,
+        ].filter((meta): meta is string => meta !== null),
+        body: null,
+      };
     case "comments":
       return {
         ...base,
@@ -740,8 +770,11 @@ function linearRecord(kind: string, item: Record_, index: number): PreviewRecord
 function linearPreview(tool: string, input: Record_, result: unknown): ToolPreview | null {
   const data = isRecord(result) ? result : null;
   if (!data) return inferredPreview(result);
-  if ((tool === "get_issue" || tool === "save_issue") && str(data.title)) {
-    return linearIssueDocument(data);
+  if (
+    (tool === "get_issue" || tool === "save_issue") &&
+    (str(data.title) ?? str(data.description))
+  ) {
+    return linearIssueDocument({ identifier: str(input.id), ...data });
   }
   if (
     (tool === "get_project" || tool === "save_project" || tool === "get_document") &&
@@ -765,6 +798,7 @@ function linearPreview(tool: string, input: Record_, result: unknown): ToolPrevi
     "milestones",
     "notifications",
     "statusUpdates",
+    "threads",
   ].find((key) => Array.isArray(data[key]));
   if (listKey) {
     const raw = data[listKey];
