@@ -9178,6 +9178,239 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     ),
   );
 
+  it.effect(
+    "attributes tool calls to their model call, with final output only after message_delta",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const harness = yield* makeWakeHarness;
+          const now = yield* DateTime.now;
+          const mainMessageId = "msg_01StepMain";
+          const subMessageId = "msg_01StepSub";
+          const toolA = "toolu_step_a";
+          const toolB = "toolu_step_b";
+          const subToolA = "toolu_step_sub_a";
+          const subToolB = "toolu_step_sub_b";
+          const openingUsage = {
+            input_tokens: 2,
+            cache_creation_input_tokens: 100,
+            cache_read_input_tokens: 50,
+            output_tokens: 6,
+          };
+          // Same shape as a subagent snapshot in fixtures/subagent: input is the
+          // request, output_tokens is the opening count (stop_reason stays null).
+          const subagentUsage = {
+            input_tokens: 3,
+            cache_creation_input_tokens: 1139,
+            cache_read_input_tokens: 7492,
+            output_tokens: 8,
+          };
+          const assistantTool = (input: {
+            readonly id: string;
+            readonly toolUseId: string;
+            readonly command: string;
+            readonly uuid: string;
+            readonly parentToolUseId: string | null;
+            readonly usage: typeof openingUsage;
+          }) =>
+            claudeSdkFrame({
+              type: "assistant",
+              message: {
+                model: "claude-sonnet-4-6",
+                id: input.id,
+                type: "message",
+                role: "assistant",
+                content: [
+                  {
+                    type: "tool_use",
+                    id: input.toolUseId,
+                    name: "Bash",
+                    input: { command: input.command },
+                  },
+                ],
+                stop_reason: null,
+                stop_sequence: null,
+                usage: input.usage,
+              },
+              parent_tool_use_id: input.parentToolUseId,
+              uuid: input.uuid,
+              session_id: WAKE_NATIVE_SESSION,
+            });
+
+          yield* harness.runtime.startTurn(
+            makeClaudeTestTurnInput({
+              threadId: harness.threadId,
+              providerThread: harness.providerThread,
+              now,
+              attemptId: RunAttemptId.make("attempt-claude-step-usage"),
+              text: "Run both.",
+              attachments: [],
+            }),
+          );
+          yield* harness.offerAndWait(
+            assistantTool({
+              id: mainMessageId,
+              toolUseId: toolA,
+              command: "echo a",
+              uuid: "00000000-0000-4000-8000-0000000007a0",
+              parentToolUseId: null,
+              usage: openingUsage,
+            }),
+          );
+          yield* harness.offerAndWait(
+            assistantTool({
+              id: mainMessageId,
+              toolUseId: toolB,
+              command: "echo b",
+              uuid: "00000000-0000-4000-8000-0000000007a1",
+              parentToolUseId: null,
+              usage: openingUsage,
+            }),
+          );
+          yield* harness.offerAndWait(
+            claudeSdkFrame({
+              type: "user",
+              message: {
+                role: "user",
+                content: [{ type: "tool_result", tool_use_id: toolA, content: "a" }],
+              },
+              parent_tool_use_id: null,
+              uuid: "00000000-0000-4000-8000-0000000007a2",
+              session_id: WAKE_NATIVE_SESSION,
+              tool_use_result: {
+                stdout: "step-a-out",
+                stderr: "",
+                interrupted: false,
+                isImage: false,
+              },
+            }),
+          );
+          yield* harness.offerAndWait(
+            claudeSdkFrame({
+              type: "stream_event",
+              event: {
+                type: "message_delta",
+                delta: { stop_reason: "tool_use", stop_sequence: null },
+                usage: {
+                  input_tokens: 2,
+                  cache_creation_input_tokens: 100,
+                  cache_read_input_tokens: 50,
+                  output_tokens: 229,
+                  output_tokens_details: { thinking_tokens: 88 },
+                },
+              },
+              parent_tool_use_id: null,
+              uuid: "00000000-0000-4000-8000-0000000007a3",
+              session_id: WAKE_NATIVE_SESSION,
+            }),
+          );
+          yield* harness.offerAndWait(
+            makeSubagentTaskStartedFrame({
+              taskId: "task-step-usage",
+              toolUseId: "toolu_step_agent",
+              uuid: "00000000-0000-4000-8000-0000000007a4",
+            }),
+          );
+          yield* harness.offerAndWait(
+            assistantTool({
+              id: subMessageId,
+              toolUseId: subToolA,
+              command: "echo sub-a",
+              uuid: "00000000-0000-4000-8000-0000000007a5",
+              parentToolUseId: "toolu_step_agent",
+              usage: subagentUsage,
+            }),
+          );
+          yield* harness.offerAndWait(
+            assistantTool({
+              id: subMessageId,
+              toolUseId: subToolB,
+              command: "echo sub-b",
+              uuid: "00000000-0000-4000-8000-0000000007a6",
+              parentToolUseId: "toolu_step_agent",
+              usage: subagentUsage,
+            }),
+          );
+          yield* harness.offerAndWait(
+            makeResultFrame({
+              uuid: "00000000-0000-4000-8000-0000000007a7",
+              result: "Done.",
+            }),
+          );
+          yield* awaitUntil(() => harness.terminalEvents().length === 1, "turn terminal");
+
+          const toolItems = (nativeId: string) =>
+            harness.events.flatMap((event) =>
+              event.type === "turn_item.updated" &&
+              event.turnItem.nativeItemRef?.nativeId === nativeId
+                ? [event.turnItem]
+                : [],
+            );
+          const mainA = toolItems(toolA);
+          const mainB = toolItems(toolB);
+          const settledBeforeDelta = mainA.find(
+            (item) =>
+              item.status === "completed" && item.modelCallUsage?.outputTokens === undefined,
+          );
+          const finalized = mainA.findLast((item) => item.modelCallUsage?.outputTokens === 229);
+          if (settledBeforeDelta === undefined || finalized === undefined) {
+            return yield* Effect.die("expected a settled model call and its finalized usage");
+          }
+          assert.isTrue(mainA.indexOf(finalized) > mainA.indexOf(settledBeforeDelta));
+          assert.equal(finalized.modelCallId, mainMessageId);
+          assert.deepEqual(finalized.modelCallUsage, {
+            inputTokens: 152,
+            cachedInputTokens: 50,
+            outputTokens: 229,
+            reasoningOutputTokens: 88,
+          });
+          assert.equal(
+            finalized.type === "command_execution" ? finalized.output : undefined,
+            "step-a-out",
+          );
+          assert.isTrue(mainA.every((item) => item.modelCallId === mainMessageId));
+          assert.isTrue(mainB.every((item) => item.modelCallId === mainMessageId));
+          assert.isTrue(mainB.every((item) => item.modelCallUsage === undefined));
+          const mainAOrdinal = mainA[0]?.ordinal;
+          const mainBOrdinal = mainB[0]?.ordinal;
+          assert.isDefined(mainAOrdinal);
+          assert.isDefined(mainBOrdinal);
+          assert.isTrue(
+            mainAOrdinal !== undefined && mainBOrdinal !== undefined && mainAOrdinal < mainBOrdinal,
+          );
+
+          const childThreadId = harness.events.find((event) => event.type === "subagent.updated")
+            ?.subagent.childThreadId;
+          assert.isDefined(childThreadId);
+          const subA = toolItems(subToolA);
+          const subB = toolItems(subToolB);
+          assert.isNotEmpty(subA);
+          assert.isNotEmpty(subB);
+          assert.isTrue(subA.every((item) => item.threadId === childThreadId));
+          assert.isTrue(subB.every((item) => item.threadId === childThreadId));
+          assert.deepEqual(subA.at(-1)?.modelCallUsage, {
+            inputTokens: 8634,
+            cachedInputTokens: 7492,
+          });
+          assert.equal(subA.at(-1)?.modelCallId, subMessageId);
+          assert.isUndefined(subA.at(-1)?.modelCallUsage?.outputTokens);
+          assert.isTrue(subB.every((item) => item.modelCallId === subMessageId));
+          assert.isTrue(subB.every((item) => item.modelCallUsage === undefined));
+          const subAOrdinal = subA[0]?.ordinal;
+          const subBOrdinal = subB[0]?.ordinal;
+          assert.isDefined(subAOrdinal);
+          assert.isDefined(subBOrdinal);
+          assert.isTrue(
+            subAOrdinal !== undefined && subBOrdinal !== undefined && subAOrdinal < subBOrdinal,
+          );
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+          ),
+        ),
+      ),
+  );
+
   it.effect("keeps an MCP result's content when its structured result is only metadata", () =>
     Effect.scoped(
       Effect.gen(function* () {
