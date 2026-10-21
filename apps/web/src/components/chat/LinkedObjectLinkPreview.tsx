@@ -46,7 +46,7 @@ export function isPreviewableObjectLink(
  * card is the chip's card. `available` is false when nothing will be read: its integration is
  * turned off.
  */
-function useLinkedObjectRecord(
+export function useLinkedObjectRecord(
   environmentId: EnvironmentId,
   link: PreviewableObjectLink,
   open: boolean,

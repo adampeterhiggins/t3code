@@ -55,7 +55,8 @@ export function SlackThreadLinkRow(props: { threadRef: ScopedThreadRef; link: Sl
       icon={<SlackIcon className="size-4 shrink-0" />}
       label={link.title}
       accessibleLabel={`Linked Slack thread in ${link.channelLabel}: ${description}`}
-      title={description}
+      threadRef={threadRef}
+      url={link.url}
       trailing={
         <span className="max-w-24 shrink-0 truncate text-2xs text-muted-foreground">
           {link.channelLabel}

@@ -68,7 +68,8 @@ export function GitHubIssueThreadLinkRow(props: {
       icon={<GitHubIcon className="size-4 shrink-0" />}
       label={`#${link.number} ${title}`}
       accessibleLabel={`Linked GitHub issue ${link.repository}#${link.number}: ${title}`}
-      title={`${link.repository}#${link.number}: ${title}`}
+      threadRef={threadRef}
+      url={url}
       trailing={
         state ? (
           <span className={cn("shrink-0 text-2xs", state.toneClassName)}>{state.label}</span>

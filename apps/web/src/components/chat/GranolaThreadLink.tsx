@@ -56,7 +56,8 @@ export function GranolaThreadLinkRow(props: {
       icon={<GranolaIcon className="size-4 shrink-0" />}
       label={link.title}
       accessibleLabel={`Linked Granola note: ${link.title}`}
-      title={link.title}
+      threadRef={threadRef}
+      url={link.url}
     >
       <MenuItem
         render={<a href={link.url} target="_blank" rel="noreferrer" />}
