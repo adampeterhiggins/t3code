@@ -322,6 +322,15 @@ export function formatSubagentTokenCount(totalTokens: number): string {
   return `${(totalTokens / 1_000_000).toFixed(1)}M`;
 }
 
+/**
+ * Empty usage-footer copy. Cursor reports subagent usage once, on turn end, and
+ * other providers can wait until progress or completion, so a still-active agent
+ * has not failed to report.
+ */
+export function subagentUsageUnreportedLabel(active: boolean): string {
+  return active ? "Usage not reported yet" : "Usage not reported";
+}
+
 // Workflow scripts open with their `meta` export, after any leading comments.
 const WORKFLOW_SCRIPT_START = /^\s*(?:(?:\/\/[^\n]*|\/\*[\s\S]*?\*\/)\s*)*export\s+const\s+meta\b/;
 

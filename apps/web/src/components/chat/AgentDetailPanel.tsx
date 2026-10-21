@@ -1117,7 +1117,7 @@ export function AgentDetailPanel(props: {
         </div>
       )}
       {body}
-      <AgentUsageFooter usage={subagent.usage ?? null} extra={runUsageRows} />
+      <AgentUsageFooter usage={subagent.usage ?? null} active={live} extra={runUsageRows} />
     </div>
   );
 }

@@ -324,8 +324,9 @@ thread details panel, one row each, newest first, and removed the right-panel Ag
   [`subagentProjection.ts`](../packages/provider-core/src/server/subagentProjection.ts)),
   `outputFile` (Claude's task output file), and `sessionUrl` (the http(s) remote session link a
   Claude Workflow tool result names for its task). Every agent view (detail footer, rows, hover
-  cards, fleet footer) reads this one field. A running delegated task shows usage once it finishes,
-  and tasks that finished before this existed show none. Other native subagents leave these empty.
+  cards, fleet footer) reads this one field. A running delegated task shows usage once it finishes;
+  until then its footer says usage is not reported yet. Tasks that finished before this existed
+  show none. Other native subagents leave these empty.
   A Claude workflow member's usage is the tokens, tool calls and duration from its progress entry,
   because those agents never appear on the event stream (`claudeWorkflowMemberUsage` in
   [`ClaudeAdapterV2.ts`](../apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts)).

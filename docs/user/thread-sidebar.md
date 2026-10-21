@@ -463,7 +463,9 @@ the agent itself.
 
 Claude and Codex report each agent's token usage. A delegated task's usage appears once it
 finishes, on any provider that reports usage for its own turns (Claude, Codex, Cursor, and
-OpenCode). Agents built into other providers show the usage as not reported.
+OpenCode). While that task is still working, its footer says the usage is not reported yet.
+Agents built into other providers, and finished tasks that never reported usage, show it as not
+reported.
 When a provider doesn't report an agent's tool calls, **Tools** says so and shows the agent's
 latest progress while it works.
 

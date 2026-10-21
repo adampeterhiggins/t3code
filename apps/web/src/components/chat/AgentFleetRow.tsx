@@ -273,7 +273,7 @@ export function AgentPreviewContent(props: {
           </PreviewSection>
         ) : null}
       </div>
-      <AgentUsageFooter usage={agent.usage} extra={subagentRunUsageRows(runStats)} />
+      <AgentUsageFooter usage={agent.usage} active={live} extra={subagentRunUsageRows(runStats)} />
     </div>
   );
 }

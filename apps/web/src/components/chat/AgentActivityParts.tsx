@@ -15,7 +15,10 @@ import type {
   SubagentToolCall,
   SubagentToolCallListEntry,
 } from "@t3tools/client-runtime/state/agent-list-view";
-import { formatSubagentTokenCount } from "@t3tools/client-runtime/state/subagentRuntime";
+import {
+  formatSubagentTokenCount,
+  subagentUsageUnreportedLabel,
+} from "@t3tools/client-runtime/state/subagentRuntime";
 import type {
   EnvironmentId,
   OrchestrationV2ModelCallUsage,
@@ -380,10 +383,13 @@ function UsageStat(props: { icon: LucideIcon; label: string; value: string }) {
 /**
  * A subagent's usage as icon + number with each label in its tooltip, and
  * `Σ total` opening the full breakdown. `leading` sits at the start; `extra`
- * appends rows to the breakdown (runs, attempt).
+ * appends rows to the breakdown (runs, attempt). `active` is the subject's
+ * work state (`isActiveSubagentStatus`), so missing usage stays provisional
+ * until the agent settles.
  */
 export function AgentUsageFooter(props: {
   usage: OrchestrationV2SubagentUsage | null;
+  active: boolean;
   leading?: ReactNode;
   extra?: ReadonlyArray<readonly [string, string]>;
 }) {
@@ -469,7 +475,7 @@ export function AgentUsageFooter(props: {
           </TooltipPopup>
         </Tooltip>
       ) : (
-        <span className="shrink-0">Usage not reported</span>
+        <span className="shrink-0">{subagentUsageUnreportedLabel(props.active)}</span>
       )}
     </footer>
   );
