@@ -336,8 +336,14 @@ thread details panel, one row each, newest first, and removed the right-panel Ag
   agents it started (click one to drill a level further; Back returns one level). Below it is the
   agent's activity from its child thread: its **Tools** (the default), with status and kind
   filters and sorting, or a live **Transcript** of its messages, reasoning summaries, tool calls,
-  and notices in order, each with its time. Both can be searched, and a narrowed view says
-  **Showing N of M**. Paths in both read relative to the checkout the agent works in: a Claude
+  and notices in order, each with its time. Tool calls a provider attributes to one model call
+  sit under a numbered step with that call's input and output tokens
+  (`groupSubagentToolCallSteps` in
+  [`agentListView.ts`](../packages/client-runtime/src/state/agentListView.ts)). The header
+  toggle hides the steps; the choice is a client setting, on by default. Calls with no model
+  call, such as Cursor's, stay a flat list and the toggle is not shown. Both views can be
+  searched, and a narrowed view says **Showing N of M**. Paths in both read relative to the
+  checkout the agent works in: a Claude
   `.claude/worktrees/agent-<id>` worktree or a sibling checkout its calls use
   (`subagentWorkspaceRoot`). An empty Tools view says whether the agent made no calls or its
   provider records none, showing progress while it works (`subagentEmptyToolCallsText`). The usage

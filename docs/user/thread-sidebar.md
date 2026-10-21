@@ -431,7 +431,10 @@ the agent's tool calls (click the heading to switch to **Transcript**); hover or
 follows the agent live: its messages, the reasoning it shares, and each tool call as it runs, each
 with its time. Click a call or thought to expand its command, output, or diff. While you are at
 the bottom, new activity scrolls into view; scroll up to read and it stays put. **Tools** lists
-calls newest first; filter them by status or tool, or sort oldest first or by duration. Search either view; a search or filter shows how many entries it kept. Paths read
+calls newest first; filter them by status or tool, or sort oldest first or by duration. When a
+provider reports which response made each call, those calls are grouped into steps with that
+response's token use, and a button in the header hides the steps. Search either view; a search
+or filter shows how many entries it kept. Paths read
 relative to the checkout the agent works in, including a separate worktree it was given. The
 footer shows the agent's token usage, and its runs and retries when there were several; hover a
 number for its label, or the total for the full breakdown.

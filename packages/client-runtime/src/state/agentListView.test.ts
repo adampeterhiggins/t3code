@@ -9,6 +9,7 @@ import {
   DEFAULT_AGENT_LIST_VIEW,
   DEFAULT_SUBAGENT_TOOL_CALL_VIEW,
   deriveSubagentToolCalls,
+  groupSubagentToolCallSteps,
   latestSubagentToolCall,
   subagentContinuationContext,
   subagentEmptyToolCallsText,
@@ -16,6 +17,7 @@ import {
   subagentWorkspaceRoot,
   type AgentListSubject,
   type SubagentToolCall,
+  type SubagentToolCallListEntry,
 } from "./agentListView.ts";
 
 const at = (iso: string) => DateTime.makeUnsafe(iso);
@@ -449,6 +451,35 @@ describe("deriveSubagentToolCalls", () => {
     expect(latestSubagentToolCall(items.slice(0, 1), root)).toBeNull();
   });
 
+  it("keeps a model call id and the one row that carries its usage", () => {
+    const calls = deriveSubagentToolCalls(
+      [
+        item({
+          id: "a",
+          type: "command_execution",
+          ordinal: 0,
+          input: "ls",
+          modelCallId: "m1",
+          modelCallUsage: { inputTokens: 10, outputTokens: 2 },
+        }),
+        item({
+          id: "b",
+          type: "command_execution",
+          ordinal: 1,
+          input: "pwd",
+          modelCallId: "m1",
+        }),
+        item({ id: "c", type: "command_execution", ordinal: 2, input: "echo" }),
+      ],
+      root,
+    );
+    expect(calls.map((call) => [call.id, call.modelCallId, call.modelCallUsage])).toEqual([
+      ["a", "m1", { inputTokens: 10, outputTokens: 2 }],
+      ["b", "m1", undefined],
+      ["c", undefined, undefined],
+    ]);
+  });
+
   it("filters, searches, and sorts the log", () => {
     const calls = deriveSubagentToolCalls(items, root);
     expect(
@@ -473,6 +504,136 @@ describe("deriveSubagentToolCalls", () => {
         query: "limit: 40",
       }).map((call) => call.id),
     ).toEqual(["read"]);
+  });
+});
+
+describe("groupSubagentToolCallSteps", () => {
+  const tool = (
+    id: string,
+    modelCallId?: string,
+    modelCallUsage?: SubagentToolCall["modelCallUsage"],
+  ): SubagentToolCall => ({
+    item: item({ id, type: "command_execution", ordinal: 0, input: id }),
+    id: TurnItemId.make(id),
+    title: "Command",
+    detail: id,
+    kind: "command",
+    status: "completed",
+    startedAt: null,
+    completedAt: null,
+    exitCode: null,
+    preview: null,
+    detailRevision: null,
+    ...(modelCallId === undefined ? {} : { modelCallId }),
+    ...(modelCallUsage === undefined ? {} : { modelCallUsage }),
+  });
+  const calls = [
+    tool("a", "m1", {
+      inputTokens: 1200,
+      cachedInputTokens: 300,
+      outputTokens: 40,
+      reasoningOutputTokens: 8,
+    }),
+    tool("b", "m1"),
+    tool("c"),
+    tool("d", "m2"),
+    tool("e", "m2", { outputTokens: 7 }),
+    tool("f", "m3", { inputTokens: 5 }),
+  ];
+  const outline = (entries: ReadonlyArray<SubagentToolCallListEntry>) =>
+    entries.map((entry) =>
+      entry.kind === "step" ? { step: entry.step, usage: entry.usage ?? null } : entry.call.id,
+    );
+
+  it("groups consecutive calls and numbers model calls in chronological order", () => {
+    expect(outline(groupSubagentToolCallSteps(calls, calls))).toEqual([
+      {
+        step: 1,
+        usage: {
+          inputTokens: 1200,
+          cachedInputTokens: 300,
+          outputTokens: 40,
+          reasoningOutputTokens: 8,
+        },
+      },
+      "a",
+      "b",
+      "c",
+      { step: 2, usage: { outputTokens: 7 } },
+      "d",
+      "e",
+      { step: 3, usage: { inputTokens: 5 } },
+      "f",
+    ]);
+  });
+
+  it("gives a one-call step a divider and reads usage from a later row", () => {
+    const only = [tool("solo", "m9", { inputTokens: 4 })];
+    expect(outline(groupSubagentToolCallSteps(only, only))).toEqual([
+      { step: 1, usage: { inputTokens: 4 } },
+      "solo",
+    ]);
+    const step = groupSubagentToolCallSteps(calls, calls).find(
+      (entry) => entry.kind === "step" && entry.step === 2,
+    );
+    expect(step?.kind === "step" ? step.usage : null).toEqual({ outputTokens: 7 });
+  });
+
+  it("keeps step numbers when the list is reversed and puts each divider above its rows", () => {
+    // Hermes has no toReversed; this copy is local, so reversing it cannot touch `calls`.
+    const reversed = calls.slice();
+    reversed.reverse();
+    expect(outline(groupSubagentToolCallSteps(calls, reversed))).toEqual([
+      { step: 3, usage: { inputTokens: 5 } },
+      "f",
+      { step: 2, usage: { outputTokens: 7 } },
+      "e",
+      "d",
+      "c",
+      {
+        step: 1,
+        usage: {
+          inputTokens: 1200,
+          cachedInputTokens: 300,
+          outputTokens: 40,
+          reasoningOutputTokens: 8,
+        },
+      },
+      "b",
+      "a",
+    ]);
+  });
+
+  it("drops steps a filter hides and still numbers the ones that remain", () => {
+    const visible = calls.filter((call) => call.id === "b" || call.id === "c" || call.id === "f");
+    expect(outline(groupSubagentToolCallSteps(calls, visible))).toEqual([
+      {
+        step: 1,
+        usage: {
+          inputTokens: 1200,
+          cachedInputTokens: 300,
+          outputTokens: 40,
+          reasoningOutputTokens: 8,
+        },
+      },
+      "b",
+      "c",
+      { step: 3, usage: { inputTokens: 5 } },
+      "f",
+    ]);
+  });
+
+  it("leaves rows with no model call ungrouped, even between two calls of one step", () => {
+    const split = [tool("a", "m1"), tool("gap"), tool("b", "m1", { outputTokens: 1 })];
+    expect(outline(groupSubagentToolCallSteps(split, split))).toEqual([
+      { step: 1, usage: { outputTokens: 1 } },
+      "a",
+      "gap",
+      { step: 1, usage: { outputTokens: 1 } },
+      "b",
+    ]);
+    const plain = [tool("x"), tool("y")];
+    expect(outline(groupSubagentToolCallSteps(plain, plain))).toEqual(["x", "y"]);
   });
 });
 

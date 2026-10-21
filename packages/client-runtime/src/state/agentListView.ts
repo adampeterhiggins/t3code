@@ -8,7 +8,11 @@
  *   compact rows' latest call and the agent tab's searchable log.
  * - The text that carries an agent's work into chat (attach, continue).
  */
-import type { OrchestrationV2TurnItem, TurnItemId } from "@t3tools/contracts";
+import type {
+  OrchestrationV2ModelCallUsage,
+  OrchestrationV2TurnItem,
+  TurnItemId,
+} from "@t3tools/contracts";
 import { isWindowsAbsolutePath } from "@t3tools/shared/path";
 import * as DateTime from "effect/DateTime";
 import { copySorted } from "@t3tools/shared/Array";
@@ -221,6 +225,13 @@ export interface SubagentToolCall {
    * null when there is none.
    */
   readonly detailRevision: string | null;
+  /**
+   * The model call that produced this tool call, when the provider attributed it.
+   * Absent calls stay ungrouped.
+   */
+  readonly modelCallId?: string;
+  /** That model call's own usage, present on one tool call of the step. */
+  readonly modelCallUsage?: OrchestrationV2ModelCallUsage;
 }
 
 function toolCallStatus(status: OrchestrationV2TurnItem["status"]): SubagentToolCall["status"] {
@@ -504,6 +515,8 @@ function toolCallFromItem(
         : null,
     startedAt: item.startedAt === null ? null : DateTime.formatIso(item.startedAt),
     completedAt: item.completedAt === null ? null : DateTime.formatIso(item.completedAt),
+    ...(item.modelCallId === undefined ? {} : { modelCallId: item.modelCallId }),
+    ...(item.modelCallUsage === undefined ? {} : { modelCallUsage: item.modelCallUsage }),
   };
 }
 
@@ -683,6 +696,73 @@ export function applySubagentToolCallView(
     case "duration":
       return copySorted(visible, (left, right) => durationMs(right) - durationMs(left));
   }
+}
+
+/** One model call's divider, or a tool call, in display order. */
+export type SubagentToolCallListEntry =
+  | {
+      readonly kind: "step";
+      readonly step: number;
+      readonly modelCallId: string;
+      readonly usage?: OrchestrationV2ModelCallUsage;
+      /** First visible call of this run. One model call can render more than one divider. */
+      readonly firstCallId: SubagentToolCall["id"];
+    }
+  | { readonly kind: "call"; readonly call: SubagentToolCall };
+
+/**
+ * Groups a tool-call list into model-call steps.
+ *
+ * `chronological` is the full log, oldest first. Step numbers follow the first
+ * appearance of each `modelCallId` there, so reversing or filtering `visible`
+ * does not renumber them. Consecutive visible rows that share an id are one
+ * step; a row without one is not grouped. Usage is whichever row of that model
+ * call carries it, including a row the current filter hid.
+ */
+export function groupSubagentToolCallSteps(
+  chronological: ReadonlyArray<SubagentToolCall>,
+  visible: ReadonlyArray<SubagentToolCall>,
+): ReadonlyArray<SubagentToolCallListEntry> {
+  const steps = new Map<string, { readonly step: number; usage?: OrchestrationV2ModelCallUsage }>();
+  let nextStep = 1;
+  for (const call of chronological) {
+    const id = call.modelCallId;
+    if (id === undefined) continue;
+    const existing = steps.get(id);
+    if (existing === undefined) {
+      steps.set(id, {
+        step: nextStep,
+        ...(call.modelCallUsage === undefined ? {} : { usage: call.modelCallUsage }),
+      });
+      nextStep += 1;
+    } else if (existing.usage === undefined && call.modelCallUsage !== undefined) {
+      steps.set(id, { step: existing.step, usage: call.modelCallUsage });
+    }
+  }
+
+  const entries: Array<SubagentToolCallListEntry> = [];
+  let openId: string | undefined;
+  for (const call of visible) {
+    const id = call.modelCallId;
+    const step = id === undefined ? undefined : steps.get(id);
+    if (id === undefined || step === undefined) {
+      openId = undefined;
+      entries.push({ kind: "call", call });
+      continue;
+    }
+    if (id !== openId) {
+      openId = id;
+      entries.push({
+        kind: "step",
+        step: step.step,
+        modelCallId: id,
+        firstCallId: call.id,
+        ...(step.usage === undefined ? {} : { usage: step.usage }),
+      });
+    }
+    entries.push({ kind: "call", call });
+  }
+  return entries;
 }
 
 /** What the chat-context helpers read from an agent. */

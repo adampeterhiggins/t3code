@@ -207,6 +207,18 @@ describe("storage cleanup settings", () => {
   });
 });
 
+describe("subagent tool call steps", () => {
+  it("shows step dividers until the device hides them", () => {
+    expect(decodeClientSettings({}).showSubagentToolCallSteps).toBe(true);
+    for (const showSubagentToolCallSteps of [true, false]) {
+      const preference = { showSubagentToolCallSteps };
+      expect(decodeClientSettingsPatch(preference)).toEqual(preference);
+      expect(encodeClientSettings(decodeClientSettings(preference))).toMatchObject(preference);
+    }
+    expect(() => decodeClientSettingsPatch({ showSubagentToolCallSteps: "yes" })).toThrow();
+  });
+});
+
 describe("ClientSettings rich text composer", () => {
   it("keeps math opt-in and preserves its preference through patches and persistence", () => {
     expect(decodeClientSettings({}).mathRenderingEnabled).toBe(false);
