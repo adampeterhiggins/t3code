@@ -8,7 +8,7 @@ import * as NodePath from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
-import type { DesktopAppActivationRequest } from "@t3tools/contracts";
+import type { DesktopAppActivationRequest, DesktopAppControlRequest } from "@t3tools/contracts";
 import { resolveDesktopAppControlAddress } from "@t3tools/shared/desktopAppControl";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as NetService from "@t3tools/shared/Net";
@@ -64,7 +64,7 @@ async function startFakeDesktop(input: {
   readonly stateSubdirectory?: "userdata" | "dev";
   readonly platform: NodeJS.Platform;
   readonly userId: number | undefined;
-  readonly reply?: (request: DesktopAppActivationRequest) => unknown;
+  readonly reply?: (request: DesktopAppControlRequest) => unknown;
 }) {
   const target = resolveDesktopAppControlAddress({
     stateDir: NodePath.join(input.baseDir, input.stateSubdirectory ?? "userdata"),
@@ -80,7 +80,7 @@ async function startFakeDesktop(input: {
     });
   }
 
-  const received: DesktopAppActivationRequest[] = [];
+  const received: DesktopAppControlRequest[] = [];
   const server = NodeNet.createServer((socket) => {
     socket.setEncoding("utf8");
     let buffer = "";
@@ -88,7 +88,7 @@ async function startFakeDesktop(input: {
       buffer += chunk;
       const newline = buffer.indexOf("\n");
       if (newline === -1) return;
-      const request = JSON.parse(buffer.slice(0, newline)) as DesktopAppActivationRequest;
+      const request = JSON.parse(buffer.slice(0, newline)) as DesktopAppControlRequest;
       received.push(request);
       const response = input.reply
         ? input.reply(request)
@@ -227,11 +227,16 @@ describe("t3 app", () => {
         yield* runCli(["app"], { T3CODE_HOME: baseDir });
         yield* runCli(["app", explicitPath, "--base-dir", baseDir]);
 
-        expect(desktop.received.map((request) => request.workspaceRoot)).toEqual([
-          workingDirectory,
-          explicitPath,
-        ]);
-        expect(desktop.received.every((request) => request.platform === platform)).toBe(true);
+        expect(
+          desktop.received.map((request) =>
+            request.type === "open-workspace" ? request.workspaceRoot : request.type,
+          ),
+        ).toEqual([workingDirectory, explicitPath]);
+        expect(
+          desktop.received.every(
+            (request) => (request as DesktopAppActivationRequest).platform === platform,
+          ),
+        ).toBe(true);
       }).pipe(Effect.scoped),
     ),
   );
@@ -328,5 +333,66 @@ describe("t3 app", () => {
           }
         }).pipe(Effect.provideService(HostProcess.HomeDirectory, root), Effect.scoped),
       ),
+  );
+});
+
+describe("t3 app network-access", () => {
+  const networkAccessReply = (restarting: boolean) => (request: DesktopAppControlRequest) => ({
+    version: 1,
+    requestId: request.requestId,
+    ok: true,
+    mode: request.type === "network-access" ? (request.mode ?? "local-only") : "local-only",
+    endpointUrl:
+      request.type === "network-access" && request.mode === "network-accessible"
+        ? "http://192.168.1.20:3773"
+        : null,
+    restarting,
+  });
+
+  it.effect("sends the requested mode, or none to read the current one", () =>
+    withTempDirectory("t3-app-network-test-", (root) =>
+      Effect.gen(function* () {
+        const baseDir = NodePath.join(root, "t3-home");
+        const desktop = yield* fakeDesktop({ baseDir, reply: networkAccessReply(true) });
+
+        yield* runCli(["app", "network-access", "on"], { T3CODE_HOME: baseDir });
+        yield* runCli(["app", "network-access", "off"], { T3CODE_HOME: baseDir });
+        yield* runCli(["app", "network-access"], { T3CODE_HOME: baseDir });
+
+        expect(
+          desktop.received.map((request) =>
+            request.type === "network-access" ? (request.mode ?? "read") : request.type,
+          ),
+        ).toEqual(["network-accessible", "local-only", "read"]);
+      }).pipe(Effect.scoped),
+    ),
+  );
+
+  it.effect.each([
+    ["invalid-request", "Update the desktop app"],
+    ["network-address-unavailable", "no network address"],
+  ] as const)("explains a %s failure", ([code, explanation]) =>
+    withTempDirectory("t3-app-network-failure-test-", (root) =>
+      Effect.gen(function* () {
+        const baseDir = NodePath.join(root, "t3-home");
+        yield* fakeDesktop({
+          baseDir,
+          reply: (request) => ({
+            version: 1,
+            requestId: request.requestId,
+            ok: false,
+            code,
+            message: "Rejected.",
+          }),
+        });
+
+        const error = yield* runCli(["app", "network-access", "on"], {
+          T3CODE_HOME: baseDir,
+        }).pipe(Effect.flip);
+
+        expect(error).toMatchObject({ _tag: "DesktopAppNetworkAccessFailedError", code });
+        expect(String(error)).toContain(explanation);
+      }).pipe(Effect.scoped),
+    ),
   );
 });

@@ -65,6 +65,15 @@ that project's override. Secrets are never printed.
 `t3 provider refresh` checks them again, and `enable` or `disable <instance>`
 turns one on or off.
 
+## Desktop network access
+
+`t3 app network-access on` lets other devices on your network reach the desktop
+app's server, as **Settings → Connections → Network access** does; `off` limits
+it to this machine again, and no argument shows the current state. Changing it
+restarts the desktop app. Then run `t3 pair` for a link to open on the other
+device. This talks to the desktop app on this machine, not the server, so it
+needs the desktop app running and does not work over SSH.
+
 ## Integrations
 
 `t3 integration status` shows which integrations are connected.

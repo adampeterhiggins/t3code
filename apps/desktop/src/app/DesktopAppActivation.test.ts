@@ -8,7 +8,8 @@ import {
   ProjectId,
   ThreadId,
   type DesktopAppActivationRequest,
-  type DesktopAppActivationResponse,
+  type DesktopAppControlRequest,
+  type DesktopAppControlResponse,
 } from "@t3tools/contracts";
 import { resolveDesktopAppControlAddress } from "@t3tools/shared/desktopAppControl";
 import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -63,8 +64,8 @@ function startOkServer(target: ReturnType<typeof makeTarget>, userId: number | u
   });
 }
 
-function exchange(address: string, payload: DesktopAppActivationRequest) {
-  return new Promise<DesktopAppActivationResponse>((resolve, reject) => {
+function exchange(address: string, payload: DesktopAppControlRequest) {
+  return new Promise<DesktopAppControlResponse>((resolve, reject) => {
     const socket = NodeNet.createConnection(address);
     socket.setEncoding("utf8");
     let buffer = "";
@@ -75,7 +76,7 @@ function exchange(address: string, payload: DesktopAppActivationRequest) {
       const newline = buffer.indexOf("\n");
       if (newline === -1) return;
       socket.destroy();
-      resolve(JSON.parse(buffer.slice(0, newline)) as DesktopAppActivationResponse);
+      resolve(JSON.parse(buffer.slice(0, newline)) as DesktopAppControlResponse);
     });
   });
 }
@@ -159,6 +160,48 @@ describe("desktop app control server", () => {
           ok: true,
           requestId: "reclaimed",
         });
+        await NodeFSP.rm(root, { recursive: true, force: true });
+      });
+    }),
+  );
+
+  it.effect("passes each sent response to onResponseSent", () =>
+    Effect.gen(function* () {
+      const platform = yield* HostProcess.Platform;
+      const userId = yield* HostProcess.UserId;
+      yield* Effect.promise(async () => {
+        const root = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "t3-app-network-test-"));
+        const target = makeTarget(NodePath.join(root, "userdata"), platform, userId);
+        let resolveSent: (response: DesktopAppControlResponse) => void = () => undefined;
+        const sent = new Promise<DesktopAppControlResponse>((resolve) => {
+          resolveSent = resolve;
+        });
+        const server = await startDesktopAppControlServer({
+          ...target,
+          userId,
+          handle: async (input) => ({
+            version: 1,
+            requestId: input.requestId,
+            ok: true,
+            mode: "network-accessible",
+            endpointUrl: "http://192.168.1.20:3773",
+            restarting: true,
+          }),
+          cancel: () => undefined,
+          onResponseSent: resolveSent,
+          onReclaimError: () => undefined,
+        });
+        openServers.push(server);
+
+        const response = await exchange(target.address, {
+          version: 1,
+          requestId: "network-on",
+          type: "network-access",
+          mode: "network-accessible",
+        });
+
+        expect(response).toMatchObject({ ok: true, restarting: true });
+        await expect(sent).resolves.toEqual(response);
         await NodeFSP.rm(root, { recursive: true, force: true });
       });
     }),

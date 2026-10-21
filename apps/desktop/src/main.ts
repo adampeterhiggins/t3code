@@ -186,6 +186,7 @@ const layerDesktopQuickMessage = DesktopQuickMessage.layer.pipe(
   Layer.provideMerge(layerDesktopFoundation),
 );
 const layerDesktopAppActivation = DesktopAppActivation.layer.pipe(
+  Layer.provide(DesktopLifecycle.layer),
   Layer.provide(layerDesktopWindow),
 );
 
