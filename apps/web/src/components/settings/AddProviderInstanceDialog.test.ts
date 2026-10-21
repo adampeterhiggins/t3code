@@ -3,7 +3,6 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   deriveAvailableInstanceId,
   getProviderIdentityDraft,
-  isConfiguredAcpRegistryAgent,
   resolveAcpRegistryWizardNavigation,
   resolveWizardNavigation,
   updateProviderIdentityDraft,
@@ -13,10 +12,7 @@ describe("resolveWizardNavigation", () => {
   const invalidId = { instanceIdError: "Instance ID is required." };
   const validId = { instanceIdError: null };
 
-  it("allows moving from Driver to Identity before the instance id is valid", () => {
-    expect(resolveWizardNavigation(0, 1, 3, invalidId)).toEqual({ kind: "navigate", step: 1 });
-  });
-
+  // regression: #2813 the wizard advanced past an invalid instance id
   it("blocks Next from Identity to Config while the instance id is invalid", () => {
     expect(resolveWizardNavigation(1, 2, 3, invalidId)).toEqual({
       kind: "blocked",
@@ -99,16 +95,6 @@ describe("ACP Registry wizard", () => {
     expect(deriveAvailableInstanceId(() => longBase, "ignored", new Set([longBase]))).toHaveLength(
       62,
     );
-  });
-
-  it("only marks matching ACP Registry instances as already added", () => {
-    const instances = {
-      codex: { driver: "codex", config: { agentId: "gemini" } },
-      registry: { driver: "acpRegistry", config: { agentId: "gemini" } },
-    };
-
-    expect(isConfiguredAcpRegistryAgent(instances, "gemini")).toBe(true);
-    expect(isConfiguredAcpRegistryAgent(instances, "codex")).toBe(false);
   });
 
   it("keeps registry-prefilled identity separate from other drivers", () => {

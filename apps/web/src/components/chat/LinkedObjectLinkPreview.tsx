@@ -26,7 +26,7 @@ import { notionEnvironment } from "~/state/notion";
 import { useEnvironmentQuery } from "~/state/query";
 import { slackEnvironment } from "~/state/slack";
 
-import { ContextPreviewBody } from "../contextPresentationRegistry";
+import { ContextPreviewBody } from "../contextPreviewRegistry";
 import type { LinkedObjectContextRecord } from "../linkedObjectPresentation";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";

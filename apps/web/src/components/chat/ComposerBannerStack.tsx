@@ -384,9 +384,7 @@ function ComposerBannerStackAlert({
         <ComposerBanner.Icon className="h-(--composer-banner-icon-column) self-start">
           {item.icon}
         </ComposerBanner.Icon>
-        <ComposerBanner.Content
-          className={descriptionBelow ? "flex-col items-stretch gap-0" : "whitespace-nowrap"}
-        >
+        <ComposerBanner.Content className="whitespace-nowrap">
           <NoticeText
             detailsLabel="Show title details"
             className="font-medium leading-7 sm:leading-6"
@@ -413,7 +411,7 @@ function ComposerBannerStackAlert({
           ) : null}
         </ComposerBanner.Content>
         {item.actions || item.onDismiss ? (
-          <ComposerBanner.Actions className={descriptionBelow ? "self-start" : undefined}>
+          <ComposerBanner.Actions>
             {item.actions}
             {item.onDismiss ? (
               <ComposerBanner.Dismiss

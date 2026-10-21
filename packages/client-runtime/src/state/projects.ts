@@ -7,7 +7,7 @@ import {
   normalizeProjectPathForDispatch,
 } from "@t3tools/shared/path";
 
-export { normalizeProjectPathForComparison, normalizeProjectPathForDispatch };
+export { normalizeProjectPathForComparison };
 
 export const isWindowsPlatform = (platform: string): boolean => {
   return /^win(dows)?/i.test(platform);
@@ -228,3 +228,4 @@ export function threadMoveTargets<Project extends { readonly id: string; readonl
 
 export * from "./projectCommands.ts";
 export * from "./projectEntities.ts";
+export * from "./projectRemoval.ts";

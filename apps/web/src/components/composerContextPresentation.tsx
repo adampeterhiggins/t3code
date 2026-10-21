@@ -77,7 +77,7 @@ import {
   buttonContextChip,
   createContextPresentationRegistry,
   type ContextPresentationHandler,
-} from "./contextPresentationRegistry";
+} from "./contextPreviewRegistry";
 import {
   isLinkedObjectContextKind,
   linkedObjectIcon,

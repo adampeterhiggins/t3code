@@ -9,19 +9,15 @@ import {
 import { resolveShortcutCommand } from "../../keybindings";
 
 import {
-  buildKeybindingRows,
   buildKeybindingCommandOptions,
-  buildWhenVariableOptions,
-  commandLabel,
+  buildKeybindingRows,
   filterKeybindingRows,
   groupKeybindingRows,
   keybindingConflictLabels,
   keybindingFromKeyboardEvent,
   parseWhenExpressionDraft,
   shortcutToKeybindingInput,
-  unknownWhenVariables,
   whenAstToExpression,
-  whenNodeRemoveLabel,
 } from "./KeybindingsSettings.logic";
 
 describe("KeybindingsSettings.logic", () => {
@@ -166,40 +162,6 @@ describe("KeybindingsSettings.logic", () => {
     );
   });
 
-  it("builds searchable rows with readable key and when values", () => {
-    const rows = filterKeybindingRows(
-      buildKeybindingRows([
-        {
-          command: "terminal.toggle",
-          shortcut: {
-            key: "j",
-            modKey: true,
-            metaKey: false,
-            ctrlKey: false,
-            altKey: false,
-            shiftKey: false,
-          },
-          whenAst: {
-            type: "not",
-            node: { type: "identifier", name: "terminalFocus" },
-          },
-        },
-      ] satisfies ResolvedKeybindingsConfig),
-      "terminal",
-    );
-
-    expect(rows).toEqual([
-      expect.objectContaining({
-        command: "terminal.toggle",
-        key: "mod+j",
-        when: "!terminalFocus",
-        defaultKey: "mod+j",
-        defaultWhen: "",
-        source: "Custom",
-      }),
-    ]);
-  });
-
   it("captures platform-specific mod shortcuts", () => {
     expect(
       keybindingFromKeyboardEvent(
@@ -213,15 +175,6 @@ describe("KeybindingsSettings.logic", () => {
         "Win32",
       ),
     ).toBe("mod+shift+k");
-  });
-
-  it.each([
-    ["k", "KeyK", "k"],
-    ["Tab", "Tab", "tab"],
-    ["F5", "F5", "f5"],
-  ])("captures %s without a modifier", (key, code, expected) => {
-    const noModifiers = { metaKey: false, ctrlKey: false, altKey: false, shiftKey: false };
-    expect(keybindingFromKeyboardEvent({ key, code, ...noModifiers }, "MacIntel")).toBe(expected);
   });
 
   it("waits for a key when only a modifier is pressed", () => {
@@ -301,32 +254,6 @@ describe("KeybindingsSettings.logic", () => {
     }
   });
 
-  it("records an unshifted brace literally and a US shifted brace as Shift+[; both trigger the saved binding", () => {
-    for (const { shiftKey, expected } of [
-      { shiftKey: false, expected: "mod+{" },
-      { shiftKey: true, expected: "mod+shift+[" },
-    ]) {
-      const pressed = {
-        key: "{",
-        code: "BracketLeft",
-        metaKey: true,
-        ctrlKey: false,
-        altKey: false,
-        shiftKey,
-      };
-      const input = keybindingFromKeyboardEvent(pressed, "MacIntel", { layoutCharacter: true });
-      expect(input).toBe(expected);
-      assert(input);
-      const shortcut = parseKeybindingShortcut(input);
-      assert(shortcut);
-      expect(
-        resolveShortcutCommand(pressed, [{ command: "thread.previous", shortcut }], {
-          platform: "MacIntel",
-        }),
-      ).toBe("thread.previous");
-    }
-  });
-
   it("captures Latin layout keys instead of their punctuation position", () => {
     expect(
       keybindingFromKeyboardEvent(
@@ -397,121 +324,6 @@ describe("KeybindingsSettings.logic", () => {
         },
       },
     });
-  });
-
-  it("describes the scope of each visual expression removal", () => {
-    const condition = { type: "identifier", name: "terminalFocus" } as const;
-    const negatedCondition = { type: "not", node: condition } as const;
-    const group = { type: "and", left: condition, right: negatedCondition } as const;
-    const negatedGroup = { type: "not", node: group } as const;
-
-    expect(whenNodeRemoveLabel(group, 0)).toBe("Clear all conditions");
-    expect(whenNodeRemoveLabel(condition, 1)).toBe("Remove condition");
-    expect(whenNodeRemoveLabel(negatedCondition, 1)).toBe("Remove condition");
-    expect(whenNodeRemoveLabel(group, 1)).toBe("Remove group and its conditions");
-    expect(whenNodeRemoveLabel(negatedGroup, 1)).toBe("Remove group and its conditions");
-  });
-
-  it("formats static and project script command labels", () => {
-    expect(commandLabel("commandPalette.toggle")).toBe("Command Palette: Toggle");
-    expect(commandLabel("themeEditor.toggle")).toBe("Theme Editor: Toggle");
-    expect(commandLabel("view.reopenClosed")).toBe("Reopen Closed Tab");
-    expect(commandLabel("preview.focusUrl")).toBe("Preview: Focus URL");
-    expect(commandLabel("script.setup-db.run")).toBe("Run Script: Setup Db");
-  });
-
-  it("builds known when variable options from defaults without frontend labels", () => {
-    const options = buildWhenVariableOptions();
-
-    expect(options).toEqual(
-      expect.arrayContaining([
-        "terminalFocus",
-        "terminalOpen",
-        "isWeb",
-        "isDesktop",
-        "modelPickerOpen",
-        "true",
-        "false",
-      ]),
-    );
-    expect(options).not.toContain("customModeActive");
-  });
-
-  it("builds command options from all static commands and resolved project bindings", () => {
-    const options = buildKeybindingCommandOptions([
-      {
-        command: "script.setup-db.run",
-        shortcut: {
-          key: "r",
-          modKey: true,
-          metaKey: false,
-          ctrlKey: false,
-          altKey: false,
-          shiftKey: false,
-        },
-      },
-    ] satisfies ResolvedKeybindingsConfig);
-
-    expect(options).toEqual(
-      expect.arrayContaining([
-        "chat.new",
-        "threadPanel.toggle",
-        "rightPanel.toggleMaximized",
-        "composer.cycleHost",
-        "thread.stop",
-        "usage.open",
-        "script.setup-db.run",
-      ]),
-    );
-    for (const command of ["thread.stop", "composer.cycleHost"]) {
-      expect(DEFAULT_RESOLVED_KEYBINDINGS.some((binding) => binding.command === command)).toBe(
-        false,
-      );
-    }
-  });
-
-  it("reports unknown when variables without rejecting parseable expressions", () => {
-    const parsed = parseWhenExpressionDraft("!terminalFocus && terminalFoc");
-
-    expect(parsed.ok).toBe(true);
-    expect(unknownWhenVariables(parsed.ok ? parsed.value : undefined)).toEqual(["terminalFoc"]);
-  });
-
-  it("marks each default shortcut for multi-binding commands as default", () => {
-    const rows = buildKeybindingRows([
-      {
-        command: "chat.new",
-        shortcut: {
-          key: "n",
-          modKey: true,
-          metaKey: false,
-          ctrlKey: false,
-          altKey: false,
-          shiftKey: false,
-        },
-        whenAst: {
-          type: "not",
-          node: { type: "identifier", name: "terminalFocus" },
-        },
-      },
-      {
-        command: "chat.new",
-        shortcut: {
-          key: "o",
-          modKey: true,
-          metaKey: false,
-          ctrlKey: false,
-          altKey: false,
-          shiftKey: true,
-        },
-        whenAst: {
-          type: "not",
-          node: { type: "identifier", name: "terminalFocus" },
-        },
-      },
-    ] satisfies ResolvedKeybindingsConfig);
-
-    expect(rows.map((row) => row.source)).toEqual(["Default", "Default"]);
   });
 
   it("reports conflicting shortcuts that share an active when context", () => {

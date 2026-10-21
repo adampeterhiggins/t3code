@@ -641,7 +641,6 @@ export function StartFromPickerDialog(props: StartFromPickerDialogProps) {
       </CommandGroup>,
     );
   } else if (tab === "automations") {
-    const timeZone = tasksQuery.data?.timeZone;
     const status =
       automations.length > 0
         ? null
@@ -689,7 +688,7 @@ export function StartFromPickerDialog(props: StartFromPickerDialogProps) {
                   >
                     <AutomationHoverPreview
                       task={task}
-                      timeZone={timeZone}
+                      timeZone={undefined}
                       trigger={
                         <span className="flex min-w-0 flex-1 items-center gap-2">
                           <CalendarClockIcon className="size-4 shrink-0 text-muted-foreground" />
@@ -709,7 +708,7 @@ export function StartFromPickerDialog(props: StartFromPickerDialogProps) {
                             </Badge>
                           ) : null}
                           <span className="w-40 shrink-0 truncate text-end text-muted-foreground/70 text-xs">
-                            {blocker ?? scheduleLabel(task.schedule, timeZone)}
+                            {blocker ?? scheduleLabel(task.schedule)}
                           </span>
                         </span>
                       }

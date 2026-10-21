@@ -7,7 +7,6 @@ import {
   filterTerminalContextsWithText,
   formatTerminalContextLabel,
   formatTerminalContextReference,
-  hasTerminalContextText,
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
   isTerminalContextExpired,
   keepTerminalContextStyledText,
@@ -37,6 +36,7 @@ describe("terminalContext", () => {
     expect(reference).toBeDefined();
     expect(reference?.contextId).toBe(terminalContextRecord(context).contextId);
   });
+
   it("formats terminal labels with line ranges", () => {
     expect(formatTerminalContextLabel(makeContext())).toBe("Terminal 1 lines 12-13");
     expect(
@@ -72,9 +72,7 @@ describe("terminalContext", () => {
       text: "",
     });
 
-    expect(hasTerminalContextText(liveContext)).toBe(true);
     expect(isTerminalContextExpired(liveContext)).toBe(false);
-    expect(hasTerminalContextText(expiredContext)).toBe(false);
     expect(isTerminalContextExpired(expiredContext)).toBe(true);
     expect(filterTerminalContextsWithText([expiredContext, liveContext])).toEqual([liveContext]);
   });

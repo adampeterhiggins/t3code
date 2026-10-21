@@ -188,7 +188,11 @@ function EnvironmentNotifications({
       ) {
         candidates.push(status);
       }
-      if (completion !== null && (prior.completion === null || completion > prior.completion)) {
+      if (
+        !rawThread.latestRunStopRequested &&
+        completion !== null &&
+        (prior.completion === null || completion > prior.completion)
+      ) {
         candidates.push("completed");
       }
       if (hasNewPullRequestNews(prior.pullRequestNews, pullRequestNews)) {

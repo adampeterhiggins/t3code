@@ -1,3 +1,4 @@
+import { ThreadUndoNotice } from "../home/ThreadUndoNotice";
 import { useAndroidControlSizing } from "../../components/ui/useAndroidControlSizing";
 import { resolveScratchProjectScopeKey } from "@t3tools/client-runtime/state/project-grouping";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
@@ -754,6 +755,7 @@ function ThreadNavigationSidebarPane(
             snoozed={item.item.snoozed}
             pinned={item.item.pinned}
             hidden={item.item.hidden}
+            wokeAt={item.item.wokeAt}
             snoozePresetMinute={item.snoozePresetMinute ?? ""}
             snoozeWakeLabelText={item.snoozeWakeLabelText}
             timeLabel={item.timeLabel}
@@ -982,6 +984,7 @@ function ThreadNavigationSidebarPane(
               />
             </GestureDetector>
           </SwipeableScrollGateProvider>
+          <ThreadUndoNotice visible={props.visible} />
         </View>
       </>
     );
@@ -1116,6 +1119,7 @@ function ThreadNavigationSidebarPane(
           </View>
         </View>
       )}
+      <ThreadUndoNotice visible={props.visible} />
     </View>
   );
 }

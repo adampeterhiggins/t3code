@@ -69,7 +69,7 @@ export function keepTerminalContextStyledText(styledText: string | undefined): s
     : undefined;
 }
 
-export function hasTerminalContextText(context: { text: string }): boolean {
+function hasTerminalContextText(context: { text: string }): boolean {
   return normalizeTerminalContextText(context.text).length > 0;
 }
 

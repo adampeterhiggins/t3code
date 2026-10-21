@@ -79,7 +79,10 @@ import { EMPTY_SERVER_PROVIDERS, serverEnvironment } from "~/state/server";
 import { useEnvironmentScope } from "~/state/session";
 import { allReachableShellsLiveAtom } from "~/state/shell";
 
-import { ComposerFooterModeControls, composerRuntimeModeOptions } from "../chat/ChatComposer";
+import {
+  ComposerFooterModeControls,
+  composerRuntimeModeOptions,
+} from "../chat/ComposerFooterControls";
 import {
   ComposerAttachMenu,
   type ComposerAttachPicker,

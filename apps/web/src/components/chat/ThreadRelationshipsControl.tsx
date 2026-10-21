@@ -1,6 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
-import { ContextPreviewHover, type ContextPreviewPlacement } from "../contextPresentationRegistry";
+import { ContextPreviewHover, type ContextPreviewPlacement } from "../contextPreviewRegistry";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
 import { CollapsibleSectionHeader, SectionHeaderStatus } from "../ui/collapsible-section-header";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
@@ -423,16 +423,13 @@ export function ThreadRelationshipsPanel(props: {
 
   const stopSubagent = async (
     childThreadId: ThreadId,
-    agent: Pick<OrchestrationV2Subagent, "id" | "origin" | "threadId">,
+    agent: Pick<OrchestrationV2Subagent, "id" | "threadId">,
   ) => {
     if (stoppingId !== null) return;
     setStoppingId(childThreadId);
     const result = await interruptTurn({
       environmentId: props.environmentId,
-      input:
-        agent.origin === "provider_native"
-          ? { threadId: agent.threadId, subagentId: agent.id }
-          : { threadId: childThreadId },
+      input: { threadId: agent.threadId, subagentId: agent.id },
     });
     setStoppingId(null);
     if (result._tag === "Failure") {

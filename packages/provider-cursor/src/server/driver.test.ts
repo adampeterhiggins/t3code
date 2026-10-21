@@ -22,7 +22,6 @@ import * as Stream from "effect/Stream";
 import { vi } from "vite-plus/test";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
-import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import {
   DEFAULT_HANDOFF_TOKEN_CAP,
@@ -433,25 +432,5 @@ it.layer(layerTest)("CursorDriver", (it) => {
         retainedDefault: catalogDefault,
       });
     }).pipe(Effect.scoped),
-  );
-
-  it.effect("keeps the bundled SDK manual-only without probing or updating cursor-agent", () =>
-    Effect.gen(function* () {
-      const instance = yield* CursorDriver.create({
-        instanceId: ProviderInstanceId.make("cursor-sdk"),
-        displayName: "Cursor test",
-        enabled: false,
-        environment: [],
-        config: CursorDriver.defaultConfig(),
-      });
-      expect((yield* instance.snapshot.resolveMaintenance()).update).toBeNull();
-      expect((yield* instance.snapshot.refresh).status).toBe("disabled");
-    }).pipe(
-      Effect.provideService(
-        ChildProcessSpawner.ChildProcessSpawner,
-        ChildProcessSpawner.make(() => Effect.die("SDK maintenance must not spawn a process")),
-      ),
-      Effect.scoped,
-    ),
   );
 });

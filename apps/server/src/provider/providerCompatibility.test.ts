@@ -110,6 +110,9 @@ describe("provider compatibility", () => {
   });
 
   it("bundles a compatibility policy for every built-in harness", () => {
+    const driverKinds = BUILT_IN_DRIVERS.map((builtIn) => builtIn.driverKind);
+    assert.ok(driverKinds.some((kind) => kind === "devin"));
+    assert.ok(driverKinds.some((kind) => kind === "customAcp"));
     for (const builtIn of BUILT_IN_DRIVERS) {
       // Registry and custom ACP entries are arbitrary external agents, not one
       // versioned harness.
@@ -298,6 +301,10 @@ describe("provider compatibility", () => {
       "grok",
       "opencode",
       "antigravity",
+      "devin",
+      "customAcp",
+      "pi",
+      "muse",
       "customDriver",
     ]) {
       const adapter = ProviderDriverKind.make(kind);

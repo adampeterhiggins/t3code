@@ -506,3 +506,24 @@ export function reviewCommentCodeLines(
   }
   return lines;
 }
+
+export function buildReviewCommentRenderablePatch(comment: ReviewCommentContext): string {
+  if ((comment.fenceLanguage ?? "diff") !== "diff") {
+    return "";
+  }
+  const diff = comment.diff.trim();
+  if (diff.length === 0) {
+    return "";
+  }
+  if (diff.startsWith("diff --git ")) {
+    return diff;
+  }
+
+  const normalizedPath = comment.filePath.replaceAll("\\", "/");
+  return [
+    `diff --git a/${normalizedPath} b/${normalizedPath}`,
+    `--- a/${normalizedPath}`,
+    `+++ b/${normalizedPath}`,
+    diff,
+  ].join("\n");
+}

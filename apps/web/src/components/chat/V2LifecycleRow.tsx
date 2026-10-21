@@ -1,4 +1,4 @@
-import { ContextPreviewHover } from "../contextPresentationRegistry";
+import { ContextPreviewHover } from "../contextPreviewRegistry";
 import { AgentElapsed } from "./AgentElapsed";
 import type { ReactNode } from "react";
 import { showAgentInPanel, useAgentContextMenu } from "./agentContextMenu";

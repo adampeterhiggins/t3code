@@ -28,7 +28,7 @@ import {
 import { useEnvironmentQuery } from "~/state/query";
 import { useThreadRunningTerminalIds } from "~/state/terminalSessions";
 import { vcsEnvironment } from "~/state/vcs";
-import { resolveCheckoutBranchMismatch } from "./BranchToolbar.logic";
+import { resolveLocalCheckoutBranchMismatch } from "./BranchToolbar.logic";
 import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
 import { PreviewCornerAction } from "./chat/PreviewCornerAction";
 import { ProviderInstanceIcon } from "./chat/ProviderInstanceIcon";
@@ -203,7 +203,7 @@ function LiveThreadPreview(props: ThreadPreviewProps & { shell: EnvironmentThrea
   const previousProviderNames = thread.providerInstanceHistory
     .filter((instanceId) => instanceId !== modelInstanceId)
     .map((instanceId) => providerEntries.get(instanceId)?.displayName ?? instanceId);
-  const branchMismatch = resolveCheckoutBranchMismatch({
+  const branchMismatch = resolveLocalCheckoutBranchMismatch({
     effectiveEnvMode: thread.worktreePath === null ? "local" : "worktree",
     activeWorktreePath: thread.worktreePath,
     activeThreadBranch: thread.branch,
@@ -342,5 +342,25 @@ function ReadThreadPreview(props: ThreadPreviewProps & { read: ThreadReadSnapsho
         </PreviewLine>
       ) : null}
     </ThreadPreviewLayout>
+  );
+}
+
+export function ThreadHoverCard({
+  title,
+  children,
+  footer,
+}: {
+  title: string;
+  children: ReactNode;
+  footer?: ReactNode;
+}) {
+  return (
+    <div className="flex min-w-0 max-w-80 flex-col gap-2 px-1 py-2">
+      <div className="min-w-0 truncate text-xs leading-tight font-medium text-foreground">
+        {title}
+      </div>
+      <div className="grid gap-1.5 pl-0.5 text-xs text-muted-foreground">{children}</div>
+      {footer}
+    </div>
   );
 }

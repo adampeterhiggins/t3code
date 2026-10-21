@@ -9,6 +9,8 @@ import {
   EnvironmentId,
   type ClaudeSettings,
   type CodexSettings,
+  type CustomAcpSettings,
+  type DevinSettings,
   ProviderDriverKind,
   type ProviderInstanceConfigMap,
   ProviderInstanceId,
@@ -17,6 +19,15 @@ import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderL
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import type { GrokSettings } from "@t3tools/provider-grok/settings";
 import type { CursorSettings } from "@t3tools/provider-cursor/settings";
+import type { OpenCodeSettings } from "@t3tools/provider-opencode/settings";
+import * as AntigravityInstallation from "./AntigravityInstallation.ts";
+import { CursorDriver, type CursorDriverEnv } from "@t3tools/provider-cursor/server";
+import { GrokDriver, type GrokDriverEnv } from "@t3tools/provider-grok/server";
+import { OpenCodeDriver, type OpenCodeDriverEnv } from "@t3tools/provider-opencode/server";
+import * as OpenCodeRuntime from "@t3tools/provider-opencode/server/OpenCodeRuntime";
+import * as OpenCodeServerLedger from "@t3tools/provider-opencode/server/OpenCodeServerLedger";
+import { DevinDriver, type DevinDriverEnv } from "./Drivers/DevinDriver.ts";
+import { CustomAcpDriver, type CustomAcpDriverEnv } from "./Drivers/CustomAcpDriver.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -28,18 +39,11 @@ import * as TestClock from "effect/testing/TestClock";
 import { HttpClient, HttpClientResponse } from "effect/http";
 
 import * as BackgroundPolicy from "../background/BackgroundPolicy.ts";
-import * as AntigravityInstallation from "./AntigravityInstallation.ts";
 import * as ServerConfig from "../config.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { ClaudeDriver, type ClaudeDriverEnv } from "./Drivers/ClaudeDriver.ts";
 import { CodexDriver, type CodexDriverEnv } from "./Drivers/CodexDriver.ts";
-import { CursorDriver, type CursorDriverEnv } from "@t3tools/provider-cursor/server";
-import { GrokDriver, type GrokDriverEnv } from "@t3tools/provider-grok/server";
-import { OpenCodeDriver, type OpenCodeDriverEnv } from "@t3tools/provider-opencode/server";
-import type { OpenCodeSettings } from "@t3tools/provider-opencode/settings";
 import * as ModelManifest from "./ModelManifest.ts";
-import * as OpenCodeRuntime from "@t3tools/provider-opencode/server/OpenCodeRuntime";
-import * as OpenCodeServerLedger from "@t3tools/provider-opencode/server/OpenCodeServerLedger";
 import * as ResetCreditCoordinator from "./resetCreditCoordinator.ts";
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
 import { makeProviderInstanceRegistry } from "./ProviderInstanceRegistry.ts";
@@ -99,16 +103,6 @@ const makeCodexConfig = (overrides: Partial<CodexSettings>): CodexSettings => ({
   ...overrides,
 });
 
-const makeClaudeConfig = (overrides: Partial<ClaudeSettings>): ClaudeSettings => ({
-  enabled: false,
-  binaryPath: "claude",
-  homePath: "",
-  customModels: [],
-  launchArgs: "",
-  autoCompactWindow: "",
-  ...overrides,
-});
-
 const makeCursorConfig = (overrides: Partial<CursorSettings>): CursorSettings => ({
   enabled: false,
   customModels: [],
@@ -130,6 +124,32 @@ const makeOpenCodeConfig = (overrides: Partial<OpenCodeSettings>): OpenCodeSetti
   serverUrl: "",
   serverPassword: "",
   customModels: [],
+  ...overrides,
+});
+
+const makeDevinConfig = (overrides: Partial<DevinSettings>): DevinSettings => ({
+  enabled: false,
+  binaryPath: "devin",
+  homePath: "",
+  customModels: [],
+  ...overrides,
+});
+
+const makeCustomAcpConfig = (overrides: Partial<CustomAcpSettings>): CustomAcpSettings => ({
+  enabled: false,
+  binaryPath: "",
+  arguments: "",
+  customModels: [],
+  ...overrides,
+});
+
+const makeClaudeConfig = (overrides: Partial<ClaudeSettings>): ClaudeSettings => ({
+  enabled: false,
+  binaryPath: "claude",
+  homePath: "",
+  customModels: [],
+  launchArgs: "",
+  autoCompactWindow: "",
   ...overrides,
 });
 
@@ -845,12 +865,16 @@ describe("ProviderInstanceRegistry — all drivers slice", () => {
       const cursorId = ProviderInstanceId.make("cursor_default");
       const grokId = ProviderInstanceId.make("grok_default");
       const openCodeId = ProviderInstanceId.make("opencode_default");
+      const devinId = ProviderInstanceId.make("devin_default");
+      const customAcpId = ProviderInstanceId.make("custom_acp_default");
 
       const codexDriverKind = ProviderDriverKind.make("codex");
       const claudeDriverKind = ProviderDriverKind.make("claudeAgent");
       const cursorDriverKind = ProviderDriverKind.make("cursor");
       const grokDriverKind = ProviderDriverKind.make("grok");
       const openCodeDriverKind = ProviderDriverKind.make("opencode");
+      const devinDriverKind = ProviderDriverKind.make("devin");
+      const customAcpDriverKind = ProviderDriverKind.make("customAcp");
 
       const configMap: ProviderInstanceConfigMap = {
         [codexId]: {
@@ -886,12 +910,38 @@ describe("ProviderInstanceRegistry — all drivers slice", () => {
           enabled: false,
           config: makeOpenCodeConfig({}),
         },
+        [devinId]: {
+          driver: devinDriverKind,
+          displayName: "Devin",
+          enabled: false,
+          config: makeDevinConfig({}),
+        },
+        [customAcpId]: {
+          driver: customAcpDriverKind,
+          displayName: "Custom ACP",
+          enabled: false,
+          config: makeCustomAcpConfig({}),
+        },
       };
 
       const { registry } = yield* makeProviderInstanceRegistry<
-        CodexDriverEnv | ClaudeDriverEnv | CursorDriverEnv | GrokDriverEnv | OpenCodeDriverEnv
+        | CodexDriverEnv
+        | ClaudeDriverEnv
+        | CursorDriverEnv
+        | GrokDriverEnv
+        | OpenCodeDriverEnv
+        | DevinDriverEnv
+        | CustomAcpDriverEnv
       >({
-        drivers: [CodexDriver, ClaudeDriver, CursorDriver, GrokDriver, OpenCodeDriver],
+        drivers: [
+          CodexDriver,
+          ClaudeDriver,
+          CursorDriver,
+          GrokDriver,
+          OpenCodeDriver,
+          DevinDriver,
+          CustomAcpDriver,
+        ],
         configMap,
       });
 
@@ -899,9 +949,9 @@ describe("ProviderInstanceRegistry — all drivers slice", () => {
       expect(unavailable).toEqual([]);
 
       const instances = yield* registry.listInstances;
-      expect(instances).toHaveLength(5);
+      expect(instances).toHaveLength(7);
       expect(instances.map((instance) => instance.instanceId).toSorted()).toEqual(
-        [codexId, claudeId, cursorId, grokId, openCodeId].toSorted(),
+        [codexId, claudeId, cursorId, grokId, openCodeId, devinId, customAcpId].toSorted(),
       );
 
       const codex = yield* registry.getInstance(codexId);
@@ -909,16 +959,22 @@ describe("ProviderInstanceRegistry — all drivers slice", () => {
       const cursor = yield* registry.getInstance(cursorId);
       const grok = yield* registry.getInstance(grokId);
       const openCode = yield* registry.getInstance(openCodeId);
+      const devin = yield* registry.getInstance(devinId);
+      const customAcp = yield* registry.getInstance(customAcpId);
       expect(codex?.driverKind).toBe(codexDriverKind);
       expect(claude?.driverKind).toBe(claudeDriverKind);
       expect(cursor?.driverKind).toBe(cursorDriverKind);
       expect(grok?.driverKind).toBe(grokDriverKind);
       expect(openCode?.driverKind).toBe(openCodeDriverKind);
+      expect(devin?.driverKind).toBe(devinDriverKind);
+      expect(customAcp?.driverKind).toBe(customAcpDriverKind);
       expect(codex?.displayName).toBe("Codex");
       expect(claude?.displayName).toBe("Claude");
       expect(cursor?.displayName).toBe("Cursor");
       expect(grok?.displayName).toBe("Grok");
       expect(openCode?.displayName).toBe("OpenCode");
+      expect(devin?.displayName).toBe("Devin");
+      expect(customAcp?.displayName).toBe("Custom ACP");
 
       const adapters = [
         codex!.orchestrationAdapter,
@@ -926,6 +982,8 @@ describe("ProviderInstanceRegistry — all drivers slice", () => {
         cursor!.orchestrationAdapter,
         grok!.orchestrationAdapter,
         openCode!.orchestrationAdapter,
+        devin!.orchestrationAdapter,
+        customAcp!.orchestrationAdapter,
       ];
       expect(new Set(adapters).size).toBe(adapters.length);
       const textGenerations = [
@@ -934,6 +992,8 @@ describe("ProviderInstanceRegistry — all drivers slice", () => {
         cursor!.textGeneration,
         grok!.textGeneration,
         openCode!.textGeneration,
+        devin!.textGeneration,
+        customAcp!.textGeneration,
       ];
       expect(new Set(textGenerations).size).toBe(textGenerations.length);
       const snapshots = [
@@ -942,6 +1002,8 @@ describe("ProviderInstanceRegistry — all drivers slice", () => {
         cursor!.snapshot,
         grok!.snapshot,
         openCode!.snapshot,
+        devin!.snapshot,
+        customAcp!.snapshot,
       ];
       expect(new Set(snapshots).size).toBe(snapshots.length);
 
@@ -981,6 +1043,20 @@ describe("ProviderInstanceRegistry — all drivers slice", () => {
       expect(openCodeSnapshot.enabled).toBe(false);
       expect(openCodeSnapshot.continuation?.groupKey).toBe(
         `${openCodeDriverKind}:instance:${openCodeId}`,
+      );
+
+      const devinSnapshot = yield* devin!.snapshot.getSnapshot;
+      expect(devinSnapshot.instanceId).toBe(devinId);
+      expect(devinSnapshot.driver).toBe(devinDriverKind);
+      expect(devinSnapshot.enabled).toBe(false);
+      expect(devinSnapshot.continuation?.groupKey).toBe(`${devinDriverKind}:instance:${devinId}`);
+
+      const customAcpSnapshot = yield* customAcp!.snapshot.getSnapshot;
+      expect(customAcpSnapshot.instanceId).toBe(customAcpId);
+      expect(customAcpSnapshot.driver).toBe(customAcpDriverKind);
+      expect(customAcpSnapshot.enabled).toBe(false);
+      expect(customAcpSnapshot.continuation?.groupKey).toBe(
+        `${customAcpDriverKind}:instance:${customAcpId}`,
       );
     }).pipe(Effect.provide(layerTest)),
   );

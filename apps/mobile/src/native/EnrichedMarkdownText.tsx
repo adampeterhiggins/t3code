@@ -7,6 +7,7 @@ import {
 import {
   markdownWithHtml,
   markdownWithObjectLinkLabels,
+  markdownWithInlineFileLinks,
   markdownWithTableBreaks,
 } from "../lib/markdownDocument";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
@@ -155,7 +156,15 @@ export function MobileEnrichedMarkdownText(props: SelectableMarkdownTextProps) {
   const { renderImage, resolveImageSource } = props;
   const { themeAppearance, mathRenderingEnabled } = useAppearancePreferences();
   const { markdown, urls: objectLinkUrls } = useMemo(
-    () => markdownWithObjectLinkLabels(markdownWithTableBreaks(markdownWithHtml(props.markdown))),
+    () =>
+      markdownWithObjectLinkLabels(
+        markdownWithTableBreaks(
+          markdownWithInlineFileLinks(
+            markdownWithHtml(props.markdown),
+            ENRICHED_INLINE_FILE_LINK_REGEX,
+          ),
+        ),
+      ),
     [props.markdown],
   );
   const [documentAssets, setDocumentAssets] = useState<DocumentAssetsEvent["assets"]>([]);
@@ -182,7 +191,6 @@ export function MobileEnrichedMarkdownText(props: SelectableMarkdownTextProps) {
   const linkRecognition = useMemo(
     () => ({
       text: enrichedSkillLinkRegex(props.skills) ?? undefined,
-      inlineCode: ENRICHED_INLINE_FILE_LINK_REGEX,
     }),
     [props.skills],
   );

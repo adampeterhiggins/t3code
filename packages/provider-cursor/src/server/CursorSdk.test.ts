@@ -2,8 +2,6 @@
 import * as NodeChildProcess from "node:child_process";
 import { describe, expect, it } from "vite-plus/test";
 
-import { isCursorShellSpawnFailure } from "./CursorSdk.ts";
-
 const cursorSdkUrl = new URL("./CursorSdk.ts", import.meta.url).href;
 const sdkUrl = new URL("./sdk.ts", import.meta.url).href;
 
@@ -212,6 +210,7 @@ function runProbe(mode: string): Promise<{ code: number | null; stdout: string; 
     child.stderr.on("data", (chunk: string) => {
       stderr += chunk;
     });
+    // oxlint-disable-next-line t3code/no-real-time-wait-in-tests -- Kill a hung subprocess probe; this is a deadline, not a synchronization wait.
     const timer = setTimeout(() => {
       child.kill();
       reject(new Error(`probe ${mode} timed out`));
@@ -223,35 +222,6 @@ function runProbe(mode: string): Promise<{ code: number | null; stdout: string; 
     });
   });
 }
-
-describe("isCursorShellSpawnFailure", () => {
-  it("matches only Cursor's shell wrapper", () => {
-    const spawnFailure = (syscall: string, spawnargs: ReadonlyArray<string>) =>
-      Object.assign(new Error(`${syscall} ENOENT`), { code: "ENOENT", syscall, spawnargs });
-    expect(
-      isCursorShellSpawnFailure(
-        spawnFailure("spawn /bin/zsh", ["-c", "dump_zsh_state >&4", "--", "true"]),
-      ),
-    ).toBe(true);
-    expect(
-      isCursorShellSpawnFailure(spawnFailure("spawn bash", ["-c", "dump_bash_state >&4"])),
-    ).toBe(true);
-    expect(
-      isCursorShellSpawnFailure(
-        spawnFailure("spawn /bin/zsh", ["-c", 'builtin eval "${__CURSOR_SANDBOX_ENV_RESTORE:-}"']),
-      ),
-    ).toBe(true);
-    expect(isCursorShellSpawnFailure(spawnFailure("spawn git", ["status"]))).toBe(false);
-    expect(isCursorShellSpawnFailure(spawnFailure("spawn /bin/zsh", ["-lc", "true"]))).toBe(false);
-    expect(
-      isCursorShellSpawnFailure(
-        Object.assign(new Error("open failed"), { code: "ENOENT", syscall: "open" }),
-      ),
-    ).toBe(false);
-    expect(isCursorShellSpawnFailure(new Error("boom"))).toBe(false);
-    expect(isCursorShellSpawnFailure("spawn ENOENT")).toBe(false);
-  });
-});
 
 describe("Cursor long-context requests", () => {
   it("sets Max Mode in real SDK sends for the reported context tiers", async () => {

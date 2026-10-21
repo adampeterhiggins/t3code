@@ -1,6 +1,6 @@
 import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
 import { type EnvironmentId, type ScopedProjectRef } from "@t3tools/contracts";
-import { ContextPreviewHover, type ContextPreviewPlacement } from "./contextPresentationRegistry";
+import { ContextPreviewHover, type ContextPreviewPlacement } from "./contextPreviewRegistry";
 import { CollapsibleSectionHeader } from "./ui/collapsible-section-header";
 import { ThreadTerminalStatusButton } from "./ThreadStatusIndicators";
 import { ThreadContextDragGhost } from "./chat/ThreadContextDragGhost";

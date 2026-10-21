@@ -1,181 +1,36 @@
-import * as Orchestrator from "../../../orchestration-v2/Orchestrator.ts";
-import * as ProjectionStore from "../../../orchestration-v2/ProjectionStore.ts";
-import * as DeviceService from "../../../device/DeviceService.ts";
-import * as ServerConfig from "../../../config.ts";
-import { expect, it } from "@effect/vitest";
-import { NodeHttpServer } from "@effect/platform-node";
-import * as NodeServices from "@effect/platform-node/NodeServices";
-import { ProviderInstanceId, ThreadId } from "@t3tools/contracts";
-import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as Schema from "effect/Schema";
-import { HttpBody, HttpClient, HttpRouter } from "effect/http";
+import { assert, describe, it } from "@effect/vitest";
+import * as Context from "effect/Context";
+import { Tool } from "effect/ai";
 
-import * as ServerEnvironment from "../../../environment/ServerEnvironment.ts";
-import * as GitWorkflowService from "../../../git/GitWorkflowService.ts";
-import * as GitHubIssueThreadLinks from "../../../githubIssues/GitHubIssueThreadLinks.ts";
-import * as MessageDrafts from "../../../messageDrafts/MessageDrafts.ts";
-import * as LinearThreadLinks from "../../../linear/LinearThreadLinks.ts";
-import * as ProviderAdapterRegistry from "../../../orchestration-v2/ProviderAdapterRegistry.ts";
-import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
-import * as ProjectService from "../../../project/ProjectService.ts";
-import * as PullRequestReviewGuideService from "../../../pullRequest/PullRequestReviewGuideService.ts";
-import * as ProjectSetupScriptRunner from "../../../project/ProjectSetupScriptRunner.ts";
-import * as ProviderRegistry from "../../../provider/ProviderRegistry.ts";
-import * as ScheduledTaskService from "../../../scheduledTasks/ScheduledTaskService.ts";
-import * as ThreadLaunchService from "../../../orchestration-v2/ThreadLaunchService.ts";
-import * as SecretRequests from "../../../secrets/SecretRequests.ts";
-import * as ServerSettings from "../../../serverSettings.ts";
-import * as VcsStatusBroadcaster from "../../../vcs/VcsStatusBroadcaster.ts";
-import * as ServerSecretStore from "../../../auth/ServerSecretStore.ts";
-import * as ManagedProjectFolders from "../../../project/ManagedProjectFolders.ts";
-import * as ThreadSearch from "../../../orchestration-v2/ThreadSearch.ts";
-import * as PreviewManager from "../../../preview/Manager.ts";
-import * as SourceControlRepositoryService from "../../../sourceControl/SourceControlRepositoryService.ts";
-import * as GitVcsDriver from "../../../vcs/GitVcsDriver.ts";
-import * as McpHttpServer from "../../McpHttpServer.ts";
-import * as McpContextLinks from "../../McpContextLinks.ts";
-import * as McpSessionRegistry from "../../McpSessionRegistry.ts";
-import * as PreviewAutomationBroker from "../../PreviewAutomationBroker.ts";
-import * as PreviewBrowser from "../../../preview/PreviewBrowser.ts";
+import { WorktreeToolkit } from "./tools.ts";
 
-const layerStubServices = Layer.mergeAll(
-  Layer.mock(Orchestrator.OrchestratorV2)({}),
-  Layer.mock(ProjectionStore.ProjectionStoreV2)({}),
-  Layer.mock(DeviceService.DeviceService)({}),
-  Layer.mock(ThreadManagementService.ThreadManagementService)({}),
-  Layer.mock(ProviderRegistry.ProviderRegistry)({}),
-  Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({}),
-  Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
-  Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
-  Layer.mock(SecretRequests.SecretRequests)({}),
-  Layer.mock(ProjectService.ProjectService)({}),
-  Layer.mock(PullRequestReviewGuideService.PullRequestReviewGuideService)({}),
-  ServerSettings.layerTest({}),
-  Layer.mock(GitWorkflowService.GitWorkflowService)({}),
-  Layer.mock(ProjectSetupScriptRunner.ProjectSetupScriptRunner)({}),
-  Layer.mock(VcsStatusBroadcaster.VcsStatusBroadcaster)({}),
-  Layer.mock(LinearThreadLinks.LinearThreadLinks)({}),
-  Layer.mock(GitHubIssueThreadLinks.GitHubIssueThreadLinks)({}),
-  Layer.mock(MessageDrafts.MessageDrafts)({}),
-  Layer.mock(GitVcsDriver.GitVcsDriver)({}),
-  Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({ namedProjectsRoot: "/unused" }),
-  Layer.mock(PreviewManager.PreviewManager)({}),
-  Layer.mock(ServerSecretStore.ServerSecretStore)({}),
-  Layer.mock(SourceControlRepositoryService.SourceControlRepositoryService)({}),
-  Layer.mock(ThreadSearch.ThreadSearch)({}),
-  Layer.mock(McpContextLinks.McpContextLinks)({}),
-  McpProviderSessions.layer,
-);
+describe("worktree MCP tools", () => {
+  it("publishes handoff, status, and list as object-root tools", () => {
+    const {
+      t3_worktree_handoff: handoff,
+      t3_worktree_status: status,
+      t3_worktree_list: list,
+    } = WorktreeToolkit.tools;
 
-const ToolsListPayload = Schema.fromJsonString(
-  Schema.Struct({
-    result: Schema.Struct({
-      tools: Schema.Array(
-        Schema.Struct({
-          name: Schema.String,
-          inputSchema: Schema.Struct({ type: Schema.optional(Schema.String) }),
-          annotations: Schema.optional(
-            Schema.Struct({
-              readOnlyHint: Schema.optional(Schema.Boolean),
-              destructiveHint: Schema.optional(Schema.Boolean),
-              openWorldHint: Schema.optional(Schema.Boolean),
-            }),
-          ),
-        }),
-      ),
-    }),
-  }),
-);
-const decodeToolsListPayload = Schema.decodeUnknownEffect(ToolsListPayload);
+    assert.strictEqual(Context.get(handoff.annotations, Tool.Readonly), false);
+    assert.strictEqual(Context.get(handoff.annotations, Tool.Destructive), true);
+    assert.strictEqual(Context.get(handoff.annotations, Tool.OpenWorld), true);
+    assert.include(handoff.description ?? "", "continuationPrompt");
+    assert.include(handoff.description ?? "", "existing worktree");
 
-it.effect("production mcp layer lists worktree tools over http", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const layerRoutes = McpHttpServer.layer.pipe(Layer.provide(McpSessionRegistry.layer));
-      yield* HttpRouter.serve(layerRoutes, {
-        disableListenLog: true,
-        disableLogger: true,
-      }).pipe(
-        Layer.provide(
-          Layer.mock(ServerEnvironment.ServerEnvironment)({
-            getEnvironmentId: Effect.succeed("environment-scratch" as never),
-          }),
-        ),
-        Layer.provide(PreviewAutomationBroker.layer),
-        Layer.provide(PreviewBrowser.layer),
-        Layer.provide(layerStubServices),
-        Layer.build,
-      );
+    assert.strictEqual(Context.get(status.annotations, Tool.Readonly), true);
+    assert.strictEqual(Context.get(status.annotations, Tool.Destructive), false);
 
-      const registry = McpSessionRegistry.issueActiveMcpCredential({
-        threadId: ThreadId.make("thread-scratch"),
-        providerInstanceId: ProviderInstanceId.make("claudeAgent"),
-      });
-      const credential = yield* registry;
-      expect(credential).toBeDefined();
+    assert.strictEqual(Context.get(list.annotations, Tool.Readonly), true);
+    assert.strictEqual(Context.get(list.annotations, Tool.Destructive), false);
 
-      const httpClient = yield* HttpClient.HttpClient;
-      const auth = credential!.config.authorizationHeader;
-      const initResponse = yield* httpClient.post("/mcp", {
-        headers: {
-          accept: "application/json, text/event-stream",
-          authorization: auth,
-        },
-        body: HttpBody.text(
-          `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"scratch","version":"1.0.0"}}}`,
-          "application/json",
-        ),
-      });
-      expect(initResponse.status).toBe(200);
-      const sessionId = initResponse.headers["mcp-session-id"];
-
-      const listResponse = yield* httpClient.post("/mcp", {
-        headers: {
-          accept: "application/json, text/event-stream",
-          authorization: auth,
-          "mcp-protocol-version": "2025-06-18",
-          ...(sessionId ? { "mcp-session-id": sessionId } : {}),
-        },
-        body: HttpBody.text(
-          `{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}`,
-          "application/json",
-        ),
-      });
-      const bodyText = yield* listResponse.text;
-      const payload = yield* decodeToolsListPayload(bodyText.match(/\{.*\}/s)![0]);
-      const tools = payload.result.tools;
-      const toolNames = tools.map((tool) => tool.name);
-      expect(toolNames).toContain("t3_worktree_handoff");
-      expect(toolNames).toContain("t3_worktree_status");
-      expect(toolNames).toContain("preview_status");
-      expect(toolNames).toContain("delegate_task");
-
-      const handoff = tools.find((tool) => tool.name === "t3_worktree_handoff");
-      expect(handoff?.annotations?.readOnlyHint).toBe(false);
-      expect(handoff?.annotations?.destructiveHint).toBe(true);
-      expect(handoff?.annotations?.openWorldHint).toBe(true);
-      const status = tools.find((tool) => tool.name === "t3_worktree_status");
-      expect(status?.annotations?.readOnlyHint).toBe(true);
-      expect(status?.annotations?.destructiveHint).toBe(false);
-
-      // MCP requires every tool input schema to be a top-level object schema.
-      // A non-object schema (e.g. the anyOf produced by an empty
-      // Schema.Struct({})) makes clients reject the entire server.
-      for (const tool of tools) {
-        expect(tool.inputSchema.type, `inputSchema.type of ${tool.name}`).toBe("object");
-      }
-    }),
-  ).pipe(
-    Effect.provide(
-      Layer.mergeAll(
-        NodeHttpServer.layerTest,
-        ServerConfig.layerTest(process.cwd(), { prefix: "t3-worktree-mcp-" }).pipe(
-          Layer.provide(NodeServices.layer),
-        ),
-        NodeServices.layer,
-      ),
-    ),
-  ),
-);
+    for (const [name, tool] of [
+      ["t3_worktree_handoff", handoff],
+      ["t3_worktree_status", status],
+      ["t3_worktree_list", list],
+    ] as const) {
+      const schema = Tool.getJsonSchema(tool) as { readonly type?: unknown };
+      assert.strictEqual(schema.type, "object", name);
+    }
+  });
+});

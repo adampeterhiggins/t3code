@@ -17,6 +17,9 @@ export interface GhosttyCellRange {
   readonly end: { readonly x: number; readonly y: number };
 }
 
+const POWERLINE_SOLID_RIGHT = "\ue0b0";
+const POWERLINE_SOLID_LEFT = "\ue0b2";
+
 const DEFAULT_SELECTION_BACKGROUND = "rgba(72, 122, 191, 0.35)";
 
 function cssColor(color: GhosttyColor): string {
@@ -33,6 +36,30 @@ function sameTextStyle(left: GhosttyCell, right: GhosttyCell): boolean {
     left.italic === right.italic &&
     left.invisible === right.invisible
   );
+}
+
+function isSolidPowerlineSeparator(text: string): boolean {
+  return text === POWERLINE_SOLID_RIGHT || text === POWERLINE_SOLID_LEFT;
+}
+
+// Fallback fonts inset or scale these private-use glyphs, leaving a gap where
+// the separator should meet the next cell. Fill the triangle from the cell's
+// own edges instead, as native terminals do.
+function fillSolidPowerlineSeparator(
+  context: CanvasRenderingContext2D,
+  text: string,
+  left: number,
+  top: number,
+  metrics: GhosttyCellMetrics,
+): void {
+  const right = left + metrics.width;
+  const [base, point] = text === POWERLINE_SOLID_RIGHT ? [left, right] : [right, left];
+  context.beginPath();
+  context.moveTo(base, top);
+  context.lineTo(point, top + metrics.height / 2);
+  context.lineTo(base, top + metrics.height);
+  context.closePath();
+  context.fill();
 }
 
 export function ghosttyTextRunEnd(

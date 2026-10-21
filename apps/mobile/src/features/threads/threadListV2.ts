@@ -6,6 +6,7 @@ import {
   QUEUED_TURN_START_GRACE_MS,
   resolveSnoozePresets,
   snoozeWakeLabel,
+  threadWokeAt,
 } from "@t3tools/client-runtime/state/thread-settled";
 import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
@@ -160,6 +161,20 @@ export function threadHasUnseenCompletion(
   const lastVisitedAtMs = Date.parse(thread.lastVisitedAt);
   if (Number.isNaN(lastVisitedAtMs)) return true;
   return completedAtMs > lastVisitedAtMs;
+}
+
+export function resolveThreadListV2WokeAt(
+  thread: EnvironmentThreadShell,
+  options: { readonly now: string },
+): string | null {
+  // Older servers cannot persist an acknowledgement.
+  if (thread.lastVisitedAt === undefined || thread.settledOverride === "settled") return null;
+  const wokeAt = threadWokeAt(thread, options);
+  const wokeAtMs = Date.parse(wokeAt ?? "");
+  const lastVisitedAtMs = Date.parse(thread.lastVisitedAt ?? "");
+  return !Number.isNaN(wokeAtMs) && (Number.isNaN(lastVisitedAtMs) || lastVisitedAtMs < wokeAtMs)
+    ? wokeAt
+    : null;
 }
 
 export function resolveThreadListV2Status(
@@ -470,6 +485,7 @@ export interface ThreadListV2Item {
   readonly hidden: boolean;
   /** Group-section row: never part of an arrangeable section. */
   readonly grouped: boolean;
+  readonly wokeAt: string | null;
   readonly isLast: boolean;
 }
 
@@ -623,6 +639,7 @@ export function threadListV2ListItemsAreEqual(
         previous.item.pinned === item.item.pinned &&
         previous.item.hidden === item.item.hidden &&
         previous.item.grouped === item.item.grouped &&
+        previous.item.wokeAt === item.item.wokeAt &&
         previous.snoozeWakeLabelText === item.snoozeWakeLabelText &&
         previous.timeLabel === item.timeLabel &&
         previous.snoozePresetMinute === item.snoozePresetMinute &&
@@ -682,7 +699,9 @@ function resolveThreadListV2ItemTimeLabel(
   if (showSnoozeWakeLabel) return "";
   if (
     variant === "card" &&
-    (resolveThreadListV2Status(thread) !== "ready" || threadHasUnseenCompletion(thread))
+    (resolveThreadListV2Status(thread) !== "ready" ||
+      item.wokeAt !== null ||
+      threadHasUnseenCompletion(thread))
   )
     return "";
   const settledTimestamp =
@@ -1057,6 +1076,7 @@ export function buildThreadListV2Items(input: {
       pinned: true,
       hidden: false,
       grouped: false,
+      wokeAt: resolveThreadListV2WokeAt(thread, { now }),
       isLast: false,
     });
   }
@@ -1068,6 +1088,7 @@ export function buildThreadListV2Items(input: {
       pinned: false,
       hidden: false,
       grouped: false,
+      wokeAt: resolveThreadListV2WokeAt(thread, { now }),
       isLast: false,
     });
   }
@@ -1080,6 +1101,7 @@ export function buildThreadListV2Items(input: {
       pinned: false,
       hidden: false,
       grouped: false,
+      wokeAt: resolveThreadListV2WokeAt(thread, { now }),
       isLast: false,
     });
   }
@@ -1105,6 +1127,7 @@ export function buildThreadListV2Items(input: {
         pinned: false,
         hidden: false,
         grouped: true,
+        wokeAt: resolveThreadListV2WokeAt(thread, { now }),
         isLast: false,
       });
     }
@@ -1124,6 +1147,7 @@ export function buildThreadListV2Items(input: {
       hidden: false,
       // Like a group's rows, never part of an arrangeable section.
       grouped: true,
+      wokeAt: resolveThreadListV2WokeAt(thread, { now }),
       isLast: false,
     });
   }
@@ -1136,6 +1160,7 @@ export function buildThreadListV2Items(input: {
       pinned: false,
       hidden: false,
       grouped: false,
+      wokeAt: null,
       isLast: false,
     });
   }
@@ -1152,6 +1177,7 @@ export function buildThreadListV2Items(input: {
       pinned: false,
       hidden: true,
       grouped: false,
+      wokeAt: null,
       isLast: false,
     });
   }
@@ -1164,6 +1190,7 @@ export function buildThreadListV2Items(input: {
       pinned: false,
       hidden: false,
       grouped: false,
+      wokeAt: null,
       isLast: false,
     });
   }
