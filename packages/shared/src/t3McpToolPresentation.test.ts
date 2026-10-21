@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { T3_MCP_TOOL_NAMES, resolveT3McpToolPresentation } from "./t3McpToolPresentation.ts";
+import {
+  T3_MCP_TOOL_NAMES,
+  resolveT3McpToolId,
+  resolveT3McpToolPresentation,
+} from "./t3McpToolPresentation.ts";
 
 describe("resolveT3McpToolPresentation", () => {
   it("recognizes every T3 tool across provider prefixes and completion suffixes", () => {
@@ -30,5 +34,10 @@ describe("resolveT3McpToolPresentation", () => {
       resolveT3McpToolPresentation("t3-code-thread_opencode2-adapter_delegate_task")?.displayName,
     ).toBe("Delegate a child task");
     expect(resolveT3McpToolPresentation("t3-code-thread_opencode2-adapter_not_a_tool")).toBeNull();
+  });
+
+  it("reads a renamed tool's old name as the tool it became", () => {
+    expect(resolveT3McpToolId("mcp__t3-code__list_thread_issues")).toBe("list_thread_links");
+    expect(resolveT3McpToolId("mcp__another-server__list_thread_issues")).toBeNull();
   });
 });

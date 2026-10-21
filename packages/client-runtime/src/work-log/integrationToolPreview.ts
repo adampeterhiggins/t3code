@@ -961,6 +961,19 @@ export function agentUtilityToolPreview(
         ? action(name ? `Started the ${name} workflow` : "Started a workflow", [str(data.summary)])
         : null;
     }
+    // Claude's name for a subagent tool result whose call was never seen: the output is all
+    // there is.
+    case "tool": {
+      // A ToolSearch result is a list of `tool_reference` blocks.
+      const loaded = (Array.isArray(result) ? result : []).filter(isRecord).flatMap((block) => {
+        const name = block.type === "tool_reference" ? str(block.tool_name) : null;
+        return name ? [name.replace(/^mcp__.+?__/, "")] : [];
+      });
+      if (loaded.length > 0) return { kind: "loaded-tools", names: loaded };
+      return (
+        inferredPreview(result) ?? (text ? documentPreview(text, { preformatted: true }) : null)
+      );
+    }
     case "cua_repl.js":
       // Accessibility trees are tab-indented; images show in the raw output.
       return text ? documentPreview(text, { preformatted: true }) : null;
