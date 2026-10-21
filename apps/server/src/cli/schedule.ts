@@ -163,7 +163,7 @@ export const scheduleFromFlags = Effect.fn("cli.schedule.scheduleFromFlags")(fun
   });
 });
 
-export const describeSchedule = (schedule: ScheduledTaskSchedule, timeZone?: string): string => {
+export const describeSchedule = (schedule: ScheduledTaskSchedule): string => {
   if (schedule.type === "webhook") {
     return schedule.signature === null ? "On webhook" : "On signed webhook";
   }
@@ -177,9 +177,8 @@ export const describeSchedule = (schedule: ScheduledTaskSchedule, timeZone?: str
       : weekdays.length === 5 && weekdays.every((day) => day >= 1 && day <= 5)
         ? "Weekdays"
         : weekdays.map((day) => WEEKDAY_LABELS[day] ?? String(day)).join(", ");
-  const zone = timeZone === undefined ? "" : ` ${timeZone === "Etc/UTC" ? "UTC" : timeZone}`;
   const catchUp = schedule.catchUpMissed === true ? ", catches up" : "";
-  return `${days} at ${schedule.timeOfDay}${zone}${catchUp}`;
+  return `${days} at ${schedule.timeOfDay}${catchUp}`;
 };
 
 /** A local timestamp with how far away it is, such as `2026-10-21 09:00 (in 2h 5m)`. */
@@ -217,13 +216,13 @@ const findTask = Effect.fn("cli.schedule.findTask")(function* (
   client: LiveRpcClient,
   identifier: string,
 ) {
-  const { tasks, timeZone } = yield* listTasks(client);
+  const { tasks } = yield* listTasks(client);
   const match = matchId(tasks, (task) => task.id, identifier);
   if (match.type === "none") return yield* usage(`No scheduled task matches '${identifier}'.`);
   if (match.type === "ambiguous") {
     return yield* usage(`'${identifier}' matches several tasks: ${match.ids.join(", ")}.`);
   }
-  return { task: match.item, timeZone };
+  return { task: match.item };
 });
 
 const decodeThreadId = (value: string) => ThreadId.make(value.trim());
@@ -236,13 +235,13 @@ const webhookLine = (task: ScheduledTask) =>
 
 const printTask = Effect.fn("cli.schedule.printTask")(function* (
   task: ScheduledTask,
-  context: { readonly timeZone: string | undefined; readonly projectTitle: string | undefined },
+  context: { readonly projectTitle: string | undefined },
 ) {
   const now = yield* Clock.currentTimeMillis;
   yield* Console.log(task.title);
   yield* Console.log(`  id         ${task.id}`);
   yield* Console.log(`  enabled    ${task.enabled ? "yes" : "no"}`);
-  yield* Console.log(`  schedule   ${describeSchedule(task.schedule, context.timeZone)}`);
+  yield* Console.log(`  schedule   ${describeSchedule(task.schedule)}`);
   if (task.schedule.type !== "webhook") {
     yield* Console.log(`  next run   ${task.enabled ? formatWhen(task.nextRunAt, now) : "paused"}`);
   }
@@ -410,7 +409,7 @@ const scheduleListCommand = Command.make("list", {
       flags,
       "t3 schedule cli",
       Effect.fn("cli.schedule.list")(function* (client) {
-        const { tasks, timeZone } = yield* listTasks(client);
+        const { tasks } = yield* listTasks(client);
         const { projects } = yield* loadLiveShell(client);
         const projectId = Option.isSome(flags.project)
           ? Option.some((yield* resolveLiveProject(projects, flags.project.value)).id)
@@ -418,7 +417,7 @@ const scheduleListCommand = Command.make("list", {
         const shown = Option.isSome(projectId)
           ? tasks.filter((task) => task.projectId === projectId.value)
           : tasks;
-        if (flags.json) return yield* printJson({ tasks: shown, timeZone: timeZone ?? null });
+        if (flags.json) return yield* printJson({ tasks: shown });
         if (shown.length === 0) return yield* Console.log("No scheduled tasks.");
         const now = yield* Clock.currentTimeMillis;
         const titles = new Map(projects.map((project) => [project.id, project.title]));
@@ -433,7 +432,7 @@ const scheduleListCommand = Command.make("list", {
             [
               task.id,
               task.enabled ? "on " : "off",
-              describeSchedule(task.schedule, timeZone),
+              describeSchedule(task.schedule),
               titles.get(task.projectId) ?? task.projectId,
               task.title,
               when,
@@ -456,11 +455,10 @@ const scheduleShowCommand = Command.make("show", {
       flags,
       "t3 schedule cli",
       Effect.fn("cli.schedule.show")(function* (client) {
-        const { task, timeZone } = yield* findTask(client, flags.id);
+        const { task } = yield* findTask(client, flags.id);
         if (flags.json) return yield* printJson(task);
         const { projects } = yield* loadLiveShell(client);
         yield* printTask(task, {
-          timeZone,
           projectTitle: projects.find((project) => project.id === task.projectId)?.title,
         });
       }),

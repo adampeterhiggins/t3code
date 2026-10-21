@@ -121,15 +121,12 @@ it.effect("conflicting or orphaned trigger flags are refused", () =>
 it("describes schedules the way the settings list does", () => {
   assert.strictEqual(describeSchedule({ type: "interval", everyMs: 5_400_000 }), "Every 1h 30m");
   assert.strictEqual(
-    describeSchedule(
-      { type: "fixed_time", timeOfDay: "09:00", weekdays: [1, 2, 3, 4, 5] },
-      "Europe/London",
-    ),
-    "Weekdays at 09:00 Europe/London",
+    describeSchedule({ type: "fixed_time", timeOfDay: "09:00", weekdays: [1, 2, 3, 4, 5] }),
+    "Weekdays at 09:00",
   );
   assert.strictEqual(
-    describeSchedule({ type: "fixed_time", timeOfDay: "07:15", weekdays: [0, 6] }, "Etc/UTC"),
-    "Sun, Sat at 07:15 UTC",
+    describeSchedule({ type: "fixed_time", timeOfDay: "07:15", weekdays: [0, 6] }),
+    "Sun, Sat at 07:15",
   );
 });
 
