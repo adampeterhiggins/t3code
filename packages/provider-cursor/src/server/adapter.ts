@@ -50,7 +50,7 @@ import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderS
 import * as McpProviderSession from "@t3tools/provider-core/server/mcpSession";
 import { CursorTransportFailure } from "./transportFailure.ts";
 import { cursorContextWindowTokens, cursorSdkModelSelection } from "./sdkModel.ts";
-import { cursorModelUsageWindowIds } from "./usageLimits.ts";
+import { cursorModelUsageRule } from "./usageLimits.ts";
 import {
   discoverCursorSkills,
   hasCursorSkillMention,
@@ -2406,7 +2406,7 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
             limits: yield* subscriptionLimit.checkUsage,
             nowMs: DateTime.toEpochMillis(yield* DateTime.now),
             provider: "Cursor",
-            windowIds: cursorModelUsageWindowIds(model),
+            ...cursorModelUsageRule(model),
           });
         });
         if (subscriptionLimit !== undefined) {

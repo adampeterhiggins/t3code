@@ -1814,30 +1814,32 @@ describe("CursorAdapterV2 subscription-limit guard", () => {
     return { runtime, startTurn, sends };
   });
 
-  it.effect("refuses a guarded turn before Cursor runs it once an allowance is used up", () =>
-    Effect.gen(function* () {
-      const session = yield* makeGuardedSession({
-        name: "refused",
-        usedPercent: yield* usage({ autoPercentUsed: 100, apiPercentUsed: 20 }),
-        guardSwitchedOn: yield* Queue.unbounded<void>(),
-        cancelled: yield* Deferred.make<void>(),
-      });
-      const error = yield* session.startTurn.pipe(Effect.flip);
-      const failure = findSubscriptionLimitStop(error);
-      assert.equal(failure?.class, "usage_limit");
-      assert.equal(failure?.resetAt, "2033-05-19T07:20:00.000Z");
-      assert.equal(yield* Ref.get(session.sends), 0);
-    }).pipe(
-      Effect.scoped,
-      Effect.provide(
-        Layer.mergeAll(NodeServices.layer, IdAllocator.layer, McpProviderSessions.layer),
+  it.effect(
+    "refuses a guarded Composer turn before Cursor runs it once both pools are used up",
+    () =>
+      Effect.gen(function* () {
+        const session = yield* makeGuardedSession({
+          name: "refused",
+          usedPercent: yield* usage({ autoPercentUsed: 100, apiPercentUsed: 100 }),
+          guardSwitchedOn: yield* Queue.unbounded<void>(),
+          cancelled: yield* Deferred.make<void>(),
+        });
+        const error = yield* session.startTurn.pipe(Effect.flip);
+        const failure = findSubscriptionLimitStop(error);
+        assert.equal(failure?.class, "usage_limit");
+        assert.equal(failure?.resetAt, "2033-05-19T07:20:00.000Z");
+        assert.equal(yield* Ref.get(session.sends), 0);
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(NodeServices.layer, IdAllocator.layer, McpProviderSessions.layer),
+        ),
       ),
-    ),
   );
 
   it.effect("cancels a running guarded turn once a recheck finds the allowance used up", () =>
     Effect.gen(function* () {
-      const usedPercent = yield* usage({ autoPercentUsed: 40 });
+      const usedPercent = yield* usage({ autoPercentUsed: 40, apiPercentUsed: 100 });
       const guardSwitchedOn = yield* Queue.unbounded<void>();
       const session = yield* makeGuardedSession({
         name: "live",
@@ -1846,7 +1848,7 @@ describe("CursorAdapterV2 subscription-limit guard", () => {
         cancelled: yield* Deferred.make<void>(),
       });
       yield* session.startTurn;
-      yield* Ref.set(usedPercent, { autoPercentUsed: 100 });
+      yield* Ref.set(usedPercent, { autoPercentUsed: 100, apiPercentUsed: 100 });
       yield* Queue.offer(guardSwitchedOn, undefined);
       const terminal = yield* session.runtime.events.pipe(
         Stream.filter((event) => event.type === "turn.terminal"),
@@ -1865,9 +1867,9 @@ describe("CursorAdapterV2 subscription-limit guard", () => {
     ),
   );
 
-  it.effect("runs a Composer turn while only the API allowance is used up", () =>
+  it.effect("runs a Composer turn while either pool still has room", () =>
     Effect.gen(function* () {
-      const session = yield* makeGuardedSession({
+      const apiSpent = yield* makeGuardedSession({
         name: "composer-api-spent",
         usedPercent: yield* usage({
           totalPercentUsed: 100,
@@ -1877,8 +1879,21 @@ describe("CursorAdapterV2 subscription-limit guard", () => {
         guardSwitchedOn: yield* Queue.unbounded<void>(),
         cancelled: yield* Deferred.make<void>(),
       });
-      yield* session.startTurn;
-      assert.equal(yield* Ref.get(session.sends), 1);
+      yield* apiSpent.startTurn;
+      assert.equal(yield* Ref.get(apiSpent.sends), 1);
+
+      const autoSpent = yield* makeGuardedSession({
+        name: "composer-auto-spent",
+        usedPercent: yield* usage({
+          totalPercentUsed: 100,
+          autoPercentUsed: 100,
+          apiPercentUsed: 30,
+        }),
+        guardSwitchedOn: yield* Queue.unbounded<void>(),
+        cancelled: yield* Deferred.make<void>(),
+      });
+      yield* autoSpent.startTurn;
+      assert.equal(yield* Ref.get(autoSpent.sends), 1);
     }).pipe(
       Effect.scoped,
       Effect.provide(
@@ -1917,7 +1932,37 @@ describe("CursorAdapterV2 subscription-limit guard", () => {
     ),
   );
 
-  it.effect("refuses a guarded turn when its model's allowance is missing from usage", () =>
+  it.effect("stops Auto only once both pools are used up", () =>
+    Effect.gen(function* () {
+      const runs = yield* makeGuardedSession({
+        name: "auto-one-spent",
+        model: "auto",
+        usedPercent: yield* usage({ autoPercentUsed: 100, apiPercentUsed: 30 }),
+        guardSwitchedOn: yield* Queue.unbounded<void>(),
+        cancelled: yield* Deferred.make<void>(),
+      });
+      yield* runs.startTurn;
+      assert.equal(yield* Ref.get(runs.sends), 1);
+
+      const refused = yield* makeGuardedSession({
+        name: "auto-both-spent",
+        model: "auto",
+        usedPercent: yield* usage({ autoPercentUsed: 100, apiPercentUsed: 100 }),
+        guardSwitchedOn: yield* Queue.unbounded<void>(),
+        cancelled: yield* Deferred.make<void>(),
+      });
+      const error = yield* refused.startTurn.pipe(Effect.flip);
+      assert.equal(findSubscriptionLimitStop(error)?.class, "usage_limit");
+      assert.equal(yield* Ref.get(refused.sends), 0);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(NodeServices.layer, IdAllocator.layer, McpProviderSessions.layer),
+      ),
+    ),
+  );
+
+  it.effect("refuses a guarded turn when one of its model's pools is missing from usage", () =>
     Effect.gen(function* () {
       const session = yield* makeGuardedSession({
         name: "pool-unreported",

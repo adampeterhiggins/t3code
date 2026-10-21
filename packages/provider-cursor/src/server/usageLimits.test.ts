@@ -8,7 +8,7 @@ import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import * as CursorKeychain from "./CursorKeychain.ts";
 import {
-  cursorModelUsageWindowIds,
+  cursorModelUsageRule,
   cursorUsageResponseToLimits,
   readCursorUsageLimits,
 } from "./usageLimits.ts";
@@ -24,19 +24,22 @@ const withNodeServices = <A, E>(
     Effect.provide(NodeServices.layer),
   );
 
-describe("cursorModelUsageWindowIds", () => {
-  it("maps Grok and Composer to the Cursor Models pool", () => {
-    expect(cursorModelUsageWindowIds("composer-2.5")).toEqual(["autoPercentUsed"]);
-    expect(cursorModelUsageWindowIds("grok-4-fast")).toEqual(["autoPercentUsed"]);
+describe("cursorModelUsageRule", () => {
+  const bothPools = { windowIds: ["autoPercentUsed", "apiPercentUsed"], stopWhen: "all" };
+
+  it("stops Grok and Composer only once both pools are used up", () => {
+    expect(cursorModelUsageRule("composer-2.5")).toEqual(bothPools);
+    expect(cursorModelUsageRule("grok-4-fast")).toEqual(bothPools);
   });
 
-  it("maps every other model to the API pool", () => {
-    expect(cursorModelUsageWindowIds("claude-4.5-sonnet")).toEqual(["apiPercentUsed"]);
-    expect(cursorModelUsageWindowIds("gpt-5.2")).toEqual(["apiPercentUsed"]);
+  it("gives Auto the same both-pools rule", () => {
+    expect(cursorModelUsageRule("auto")).toEqual(bothPools);
   });
 
-  it("lets Auto stop on either pool", () => {
-    expect(cursorModelUsageWindowIds("auto")).toEqual(["autoPercentUsed", "apiPercentUsed"]);
+  it("stops every other model on the API pool", () => {
+    const apiPool = { windowIds: ["apiPercentUsed"], stopWhen: "any" };
+    expect(cursorModelUsageRule("claude-4.5-sonnet")).toEqual(apiPool);
+    expect(cursorModelUsageRule("gpt-5.2")).toEqual(apiPool);
   });
 });
 
