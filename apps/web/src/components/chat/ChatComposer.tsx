@@ -285,6 +285,12 @@ import {
 } from "./ComposerCommandMenu";
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
 import { CompactComposerControlsMenu } from "./CompactComposerControlsMenu";
+import { ProviderAccountPicker } from "./ProviderAccountPicker";
+import {
+  accountsForProvider,
+  resolveModelForAccountSwitch,
+  shouldShowProviderAccountPicker,
+} from "./providerAccountSelection";
 import {
   ComposerAttachmentFileList,
   ComposerAttachmentMediaRow,
@@ -1391,6 +1397,9 @@ export interface ChatComposerProps {
   ) => void;
   onOpenProviderSetup: (instanceId: ProviderInstanceId) => void;
   getModelDisabledReason: (instanceId: ProviderInstanceId, model: string) => string | null;
+  /** Set once the thread has started: the pickers can then fork into a new tab. */
+  onForkModel?: (instanceId: ProviderInstanceId, model: string) => void;
+  modelRequiresFork?: (instanceId: ProviderInstanceId, model: string) => boolean;
   toggleInteractionMode: () => void;
   handleRuntimeModeChange: (mode: RuntimeMode) => void;
   handleInteractionModeChange: (mode: ProviderInteractionMode) => void;
@@ -1764,6 +1773,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onProviderModelSelect,
     onOpenProviderSetup,
     getModelDisabledReason,
+    onForkModel,
+    modelRequiresFork,
     toggleInteractionMode,
     handleRuntimeModeChange,
     handleInteractionModeChange,
@@ -4944,6 +4955,52 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     size: composerControlsCollapsed ? "xs" : "sm",
     hidden: composerControlsHidden || restingHiddenBlockCount > 1,
   });
+  const allProviderAccounts = accountsForProvider({
+    entries: providerInstanceEntries,
+    driverKind: selectedProvider,
+  });
+  const lockedProviderAccounts =
+    lockedContinuationGroupKey != null
+      ? accountsForProvider({
+          entries: providerInstanceEntries,
+          driverKind: selectedProvider,
+          lockedContinuationGroupKey,
+        })
+      : allProviderAccounts;
+  const showProviderAccountPicker = shouldShowProviderAccountPicker(allProviderAccounts);
+  // A started thread that can fork lists every account; the ones it cannot switch to in place
+  // open in a new tab instead.
+  const providerAccounts = onForkModel ? allProviderAccounts : lockedProviderAccounts;
+  const resolveAccountSwitchModel = (instanceId: ProviderInstanceId) =>
+    resolveModelForAccountSwitch({
+      currentModel: selectedModelForPickerWithCustomFallback,
+      destinationModels: modelOptionsByInstance.get(instanceId) ?? [],
+    });
+  const accountRequiresFork = (instanceId: ProviderInstanceId) =>
+    onForkModel !== undefined &&
+    (!lockedProviderAccounts.some((account) => account.instanceId === instanceId) ||
+      modelRequiresFork?.(instanceId, resolveAccountSwitchModel(instanceId)) === true);
+  const onAccountChange = (instanceId: ProviderInstanceId) => {
+    const nextModel = resolveAccountSwitchModel(instanceId);
+    if (onForkModel && accountRequiresFork(instanceId)) {
+      onForkModel(instanceId, nextModel);
+      return;
+    }
+    setMultipleModelSelections(null);
+    onProviderModelSelect(instanceId, nextModel);
+  };
+  const restingProviderAccountPicker = showProviderAccountPicker ? (
+    <ProviderAccountPicker
+      isComposerOwned
+      activeInstanceId={selectedInstanceId}
+      accounts={providerAccounts}
+      size={composerControlsCollapsed ? "xs" : "sm"}
+      disabled={providerCatalogPending || isSendBusy}
+      hidden={composerControlsHidden || restingHiddenBlockCount > 2}
+      onAccountChange={onAccountChange}
+      requiresFork={accountRequiresFork}
+    />
+  ) : null;
   const restingBlockDefs = [
     ...(providerTraitsPicker
       ? [
@@ -4973,6 +5030,19 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         />
       ),
     },
+    ...(restingProviderAccountPicker
+      ? [
+          {
+            id: "account",
+            content: (
+              <>
+                <ComposerControlSeparator size={composerControlsCollapsed ? "xs" : "sm"} />
+                {restingProviderAccountPicker}
+              </>
+            ),
+          },
+        ]
+      : []),
   ];
   const hiddenRestingBlockIds = restingBlockDefs
     .slice(restingBlockDefs.length - restingHiddenBlockCount)
@@ -5033,6 +5103,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       onOpenChange={setIsComposerModelPickerOpen}
       getModelDisabledReason={getModelDisabledReason}
       onOpenProviderSetup={onOpenProviderSetup}
+      {...(onForkModel ? { onForkModel } : {})}
+      {...(modelRequiresFork ? { modelRequiresFork } : {})}
     />
   );
   const composerControls = showProviderUnavailable ? (
@@ -5105,6 +5177,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             traitsMenuContent={
               hiddenRestingBlockIds.includes("traits") ? providerTraitsMenuContent : undefined
             }
+            {...(hiddenRestingBlockIds.includes("account") && showProviderAccountPicker
+              ? {
+                  accountMenu: {
+                    activeInstanceId: selectedInstanceId,
+                    accounts: providerAccounts,
+                    onAccountChange,
+                    requiresFork: accountRequiresFork,
+                  },
+                }
+              : {})}
             onToggleInteractionMode={toggleInteractionMode}
             onRuntimeModeChange={handleRuntimeModeChange}
           />
