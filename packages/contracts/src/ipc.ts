@@ -216,14 +216,19 @@ export const DesktopSnapShotShortcutAvailability = Schema.Struct({
 });
 export type DesktopSnapShotShortcutAvailability = typeof DesktopSnapShotShortcutAvailability.Type;
 
+export const DesktopQuickMessagePresentation = Schema.Literals(["compact", "expanded"]);
+export type DesktopQuickMessagePresentation = typeof DesktopQuickMessagePresentation.Type;
+
 export const DesktopQuickMessageState = Schema.Struct({
   shortcutRegistered: Schema.Boolean,
   message: Schema.NullOr(Schema.String),
+  /**
+   * Absent on older shells. Callers treat that as compact, which is the
+   * panel's initial presentation.
+   */
+  presentation: Schema.optionalKey(DesktopQuickMessagePresentation),
 });
 export type DesktopQuickMessageState = typeof DesktopQuickMessageState.Type;
-
-export const DesktopQuickMessagePresentation = Schema.Literals(["compact", "expanded"]);
-export type DesktopQuickMessagePresentation = typeof DesktopQuickMessagePresentation.Type;
 
 export const DesktopQuickMessageFile = Schema.Struct({
   name: Schema.String,
@@ -316,6 +321,10 @@ export type DesktopQuickMessageSubmission = typeof DesktopQuickMessageSubmission
 /** Sent each time the panel opens; the panel never persists settings, so it adopts these. */
 export const DesktopQuickMessageShowEvent = Schema.Struct({
   clientSettings: ClientSettingsSchema,
+  /**
+   * Absent on older shells. Callers treat that as compact.
+   */
+  presentation: Schema.optionalKey(DesktopQuickMessagePresentation),
 });
 export type DesktopQuickMessageShowEvent = typeof DesktopQuickMessageShowEvent.Type;
 
@@ -1303,6 +1312,10 @@ export interface DesktopBridge {
     setPanelReady: () => Promise<void>;
     submit: (submission: DesktopQuickMessageSubmission) => Promise<void>;
     dismiss: () => Promise<void>;
+    /**
+     * Panel window only. Older desktop shells omit it; the panel stays compact.
+     */
+    setPresentation?: (presentation: DesktopQuickMessagePresentation) => Promise<void>;
     onShow: (listener: (event: DesktopQuickMessageShowEvent) => void) => () => void;
   };
   appActivation?: {
