@@ -944,7 +944,10 @@ through the thread MCP's `link_linear_issue` / `unlink_linear_issue`, and read t
 and GitHub issue links with `list_thread_issues`
 ([`toolkits/issueLinks/`](../apps/server/src/mcp/toolkits/issueLinks/)). Like the pull request
 tools, they default to the caller's thread, need the `pull-requests` MCP capability, and write
-through the same thread access checks.
+through the same thread access checks. A link carries only the issue's identity, so agents read
+Linear through the environment's connection with `read_linear_issue` (the linked issue by default,
+rendered as the same markdown a composer chip sends), `search_linear_issues`, and
+`list_linear_filter_options`. These work when the agent has no Linear MCP server of its own.
 
 `linearAssignmentTriggers` in server settings (off when empty) holds rules that start a thread
 when an issue is newly assigned to the connected account. The server polls the read-only API

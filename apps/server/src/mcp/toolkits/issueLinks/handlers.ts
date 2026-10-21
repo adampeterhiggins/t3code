@@ -2,6 +2,7 @@ import type { ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
 import * as GitHubIssueThreadLinks from "../../../githubIssues/GitHubIssueThreadLinks.ts";
+import * as LinearApi from "../../../linear/LinearApi.ts";
 import * as LinearThreadLinks from "../../../linear/LinearThreadLinks.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -11,12 +12,25 @@ import {
   IssueLinkThreadNotFoundError,
   IssueLinkThreadRequiredError,
   IssueLinksToolkit,
+  NoLinkedLinearIssueError,
 } from "./tools.ts";
+
+const NO_FILTERS = {
+  assigneeIds: [],
+  teamIds: [],
+  projectIds: [],
+  milestoneIds: [],
+  stateNames: [],
+  priorities: [],
+  labelNames: [],
+  includeClosed: false,
+};
 
 const make = Effect.gen(function* () {
   const threads = yield* ThreadManagementService.ThreadManagementService;
   const linear = yield* LinearThreadLinks.LinearThreadLinks;
   const github = yield* GitHubIssueThreadLinks.GitHubIssueThreadLinks;
+  const linearApi = yield* LinearApi.LinearApi;
 
   /**
    * The thread a call targets: `requested`, or the caller's own. Issue links ride the
@@ -34,6 +48,9 @@ const make = Effect.gen(function* () {
     }
     return thread.id;
   });
+
+  /** Reads that reach Linear through the environment's connection rather than a thread. */
+  const requireLinearRead = McpInvocationContext.requireMcpCapability("pull-requests");
 
   /** A tool that changes `threadId`, or the caller's own thread when it is omitted. */
   const writesThread = <P extends { readonly threadId?: ThreadId | undefined }, A, E, R>(
@@ -73,6 +90,34 @@ const make = Effect.gen(function* () {
           github: (yield* github.forThread(threadId)) ?? null,
         };
       }),
+    ),
+    read_linear_issue: McpToolAccess.reads((input) =>
+      Effect.gen(function* () {
+        if (input.issue !== undefined) {
+          yield* requireLinearRead;
+          return yield* linearApi.getIssue({ id: input.issue });
+        }
+        const threadId = yield* requireThread(input.threadId);
+        const link = yield* linear.forThread(threadId);
+        if (link === undefined) {
+          return yield* new NoLinkedLinearIssueError({ threadId });
+        }
+        return yield* linearApi.getIssue({ id: link.issueId });
+      }),
+    ),
+    search_linear_issues: McpToolAccess.reads((input) =>
+      requireLinearRead.pipe(
+        Effect.flatMap(() =>
+          linearApi.listIssues({
+            query: input.query,
+            filters: input.filters === undefined ? undefined : { ...NO_FILTERS, ...input.filters },
+            sort: input.sort,
+          }),
+        ),
+      ),
+    ),
+    list_linear_filter_options: McpToolAccess.reads(() =>
+      requireLinearRead.pipe(Effect.flatMap(() => linearApi.getFilterOptions)),
     ),
   } satisfies McpToolAccess.Handlers<typeof IssueLinksToolkit.tools>;
 });

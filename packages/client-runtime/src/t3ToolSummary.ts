@@ -438,6 +438,16 @@ export function summarizeT3ToolCalls(
         `linked issues${selected.length === 1 ? "" : ` ${times}`}`,
       );
       break;
+    case "read-issue":
+      label = phrase("Read", "read", quantity(selected.length, "Linear issue"));
+      break;
+    case "search-issues":
+      label = phrase(
+        "Searched",
+        "search",
+        `Linear issues${selected.length === 1 ? "" : ` ${times}`}`,
+      );
+      break;
     case "write-pr-guides": {
       // One call writes many guides, and reports a refusal per guide rather than failing.
       const outcomes = selected.flatMap((call) =>
