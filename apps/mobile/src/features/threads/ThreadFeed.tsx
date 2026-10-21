@@ -1544,6 +1544,7 @@ function UserMessageContent(props: UserMessageContentProps) {
   const liveText = useReferenceLinks(
     useLiveThreadLinkLabels(props.text, props.environmentId),
     props.environmentId,
+    { linkBareGitHubReferences: true },
   );
   const text = replaceComposerContextReferences(liveText, (ref) => {
     const available = props.context?.records.some((record) => record.contextId === ref.contextId);

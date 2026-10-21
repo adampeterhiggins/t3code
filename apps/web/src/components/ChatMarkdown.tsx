@@ -264,6 +264,9 @@ interface ChatMarkdownProps {
       uploads need; without it those images and videos load unauthenticated and 404. */
   githubMedia?: boolean | undefined;
   headingLevelOffset?: number | undefined;
+  /** Links a bare `#123` to the thread's repository. Only for the user's own text: an agent's can
+      mean any repository it works in, so agents are told to write full references instead. */
+  linkBareGitHubReferences?: boolean | undefined;
 }
 
 export interface ChatMarkdownContextReference {
@@ -1824,6 +1827,7 @@ function ChatMarkdown({
   lineBreaks = false,
   parseRawHtml = true,
   extraRemarkPlugins = EMPTY_REMARK_PLUGINS,
+  linkBareGitHubReferences = false,
   ...props
 }: ChatMarkdownProps) {
   const {
@@ -1850,7 +1854,7 @@ function ChatMarkdown({
   );
   const hasGitHubIssueReference = mayHaveGitHubIssueReference(text);
   const githubThread = useQuietThreadShell(
-    hasGitHubIssueReference ? (props.threadRef ?? null) : null,
+    hasGitHubIssueReference && linkBareGitHubReferences ? (props.threadRef ?? null) : null,
   );
   const githubProject = useProject(
     githubThread === null

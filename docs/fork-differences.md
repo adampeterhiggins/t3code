@@ -921,13 +921,17 @@ existing links are left alone.
 - A Linear identifier (`ENG-123`) links to the connected workspace. Only the workspace's team
   keys from `linear.getFilterOptions` match, in capitals, so `UTF-8` stays text
   ([`linearIssueReferences.ts`](../packages/shared/src/linearIssueReferences.ts)).
-- `owner/repo#123` links to GitHub, and `#123` links when the thread's project is a GitHub
-  repository ([`githubIssueReferences.ts`](../packages/shared/src/githubIssueReferences.ts)).
+- `owner/repo#123` links to GitHub, and in the user's own messages `#123` links when the thread's
+  project is a GitHub repository ([`githubIssueReferences.ts`](../packages/shared/src/githubIssueReferences.ts)).
   The repository is the one gh opens pull requests in, so `gh repo set-default origin` sends a
   fork's `#123` to the fork rather than its `upstream` remote. The GitHub provider records it as
   the project identity's `webUrl`
   ([`GitHubSourceControlProvider.ts`](../packages/source-control-github/src/server/GitHubSourceControlProvider.ts)),
   which a pull request linked by number also uses.
+  An agent's `#123` stays text, since a thread can work in several repositories and the number
+  alone does not say which. The runtime instructions every provider gets tell agents to write the
+  full URL or `owner/repo#123` instead
+  ([`runtimeInstructions.ts`](../packages/provider-core/src/server/runtimeInstructions.ts)).
   Commit SHAs and mentions are not linked in chat.
 
 Web applies these as remark plugins in `ChatMarkdown`; mobile rewrites message markdown in

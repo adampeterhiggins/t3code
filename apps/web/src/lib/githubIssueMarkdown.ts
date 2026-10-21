@@ -8,7 +8,7 @@ import { findAndReplaceText, type MarkdownNode } from "~/vendor/mdast-find-and-r
 const IGNORED_TYPES = new Set(["link", "linkReference"]);
 
 /**
- * Fork: links `owner/repo#123`, and `#123` when the thread's repository is on GitHub, so they
+ * Fork: links `owner/repo#123`, and `#123` when given the thread's GitHub repository, so they
  * render the way a pasted issue or pull request link does. Code and existing links keep their
  * text.
  */
