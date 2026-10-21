@@ -9,6 +9,7 @@ import {
   type SlackSearchMessagesResult,
   type SlackThreadContext,
 } from "@t3tools/contracts";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as DateTime from "effect/DateTime";
@@ -23,6 +24,7 @@ import * as ServerConfig from "../config.ts";
 
 import { SlackAuth } from "./SlackAuth.ts";
 import {
+  mentionedGroupIds,
   mentionedUserIds,
   renderSlackThread,
   slackTextToMarkdown,
@@ -33,6 +35,8 @@ import { slackApiRequest } from "./slackWebApi.ts";
 const PREVIEW_MAX_CHARS = 300;
 const TITLE_MAX_CHARS = 200;
 const NAME_CACHE_MAX = 2_000;
+/** How long a user group list is trusted before an unknown group id reads it again. */
+const GROUPS_TTL_MS = 10 * 60_000;
 
 const ChannelRef = Schema.Struct({
   id: Schema.String,
@@ -84,6 +88,9 @@ type ThreadMessage = typeof ThreadMessage.Type;
 
 const RepliesData = Schema.Struct({ messages: Schema.Array(ThreadMessage) });
 const ChannelInfoData = Schema.Struct({ channel: ChannelRef });
+const UserGroupsData = Schema.Struct({
+  usergroups: Schema.Array(Schema.Struct({ id: Schema.String, handle: Schema.String })),
+});
 const UserInfoData = Schema.Struct({
   user: Schema.Struct({
     name: Schema.String,
@@ -160,6 +167,9 @@ export const make = Effect.gen(function* () {
   // server from growing it without bound.
   const names = new Map<string, string>();
   const avatars = new Map<string, string>();
+  // User group id → handle. One `usergroups.list` read returns every group in the workspace.
+  const groups = new Map<string, string>();
+  let groupsReadAtMs: number | null = null;
 
   const call = <S extends Schema.Top>(method: string, params: Record<string, string>, data: S) =>
     auth.accessToken.pipe(
@@ -192,6 +202,24 @@ export const make = Effect.gen(function* () {
     ).pipe(Effect.as(names as ReadonlyMap<string, string>));
   };
 
+  /**
+   * Fills the group cache when `ids` has one it lacks. A failed read, such as a connection made
+   * before `usergroups:read` was requested, leaves those mentions as ids.
+   */
+  const resolveGroups = Effect.fn("slack.resolve_groups")(function* (ids: Iterable<string>) {
+    if ([...ids].every((id) => groups.has(id))) return;
+    const now = yield* Clock.currentTimeMillis;
+    if (groupsReadAtMs !== null && now - groupsReadAtMs < GROUPS_TTL_MS) return;
+    groupsReadAtMs = now;
+    yield* call("usergroups.list", {}, UserGroupsData).pipe(
+      Effect.map((data) => {
+        groups.clear();
+        for (const group of data.usergroups) groups.set(group.id, group.handle);
+      }),
+      Effect.ignore,
+    );
+  });
+
   const channelLabel = (channel: ChannelRef, directUserId: string | undefined) => {
     if (channel.is_mpim) return "Group message";
     if (channel.is_im || channel.id.startsWith("D")) {
@@ -220,6 +248,7 @@ export const make = Effect.gen(function* () {
         [match.user ?? undefined, directUserId(match.channel)].filter((id) => id !== undefined),
       ),
     );
+    yield* resolveGroups(matches.flatMap((match) => mentionedGroupIds(match.text ?? "")));
     return {
       messages: matches.map((match): SlackMessageSummary => ({
         channelId: match.channel.id,
@@ -231,7 +260,7 @@ export const make = Effect.gen(function* () {
           match.username ??
           match.user ??
           "Slack",
-        text: collapse(slackTextToMarkdown(match.text ?? "", names), PREVIEW_MAX_CHARS),
+        text: collapse(slackTextToMarkdown(match.text ?? "", names, groups), PREVIEW_MAX_CHARS),
         url: match.permalink,
         postedAt: slackTsToIso(match.ts),
       })),
@@ -322,10 +351,11 @@ export const make = Effect.gen(function* () {
       ]),
       ...(info.channel.is_im && info.channel.user ? [info.channel.user] : []),
     ]);
+    yield* resolveGroups(messages.flatMap((message) => mentionedGroupIds(message.text ?? "")));
     const label = channelLabel(info.channel, info.channel.user);
     const linked = messages.find((message) => message.ts === input.ts) ?? messages[0]!;
     const rootTs = linked.thread_ts ?? input.threadTs;
-    const linkedText = slackTextToMarkdown(linked.text ?? "", names);
+    const linkedText = slackTextToMarkdown(linked.text ?? "", names, groups);
     const title = linkedText
       .split("\n")
       .map((line) => line.trim())
@@ -340,7 +370,7 @@ export const make = Effect.gen(function* () {
           ts: message.ts,
           authorName: authorName(message),
           avatarUrl: avatarUrl(message),
-          text: slackTextToMarkdown(message.text ?? "", names),
+          text: slackTextToMarkdown(message.text ?? "", names, groups),
           files: (message.files ?? []).map((file) => file.name ?? file.title ?? "file"),
         })),
       },

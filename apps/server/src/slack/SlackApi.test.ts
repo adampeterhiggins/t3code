@@ -208,6 +208,38 @@ it.effect("snapshots a whole thread with the linked message marked and mentions 
   }).pipe(Effect.provide(harness.layer));
 });
 
+const GROUP_THREAD = [
+  { ts: PARENT_TS, user: "U1", text: "<!subteam^S1> and <!subteam^S2> please review" },
+];
+
+it.effect("names the user groups a message mentions, reading the group list once", () => {
+  const harness = makeHarness({
+    "conversations.replies": { ok: true, messages: GROUP_THREAD },
+    "usergroups.list": { ok: true, usergroups: [{ id: "S1", handle: "arlo-team" }] },
+  });
+  return Effect.gen(function* () {
+    const api = yield* SlackApi.SlackApi;
+    const input = { ...threadInput, ts: PARENT_TS, scope: "message" as const };
+    const context = yield* api.getThread(input);
+    // A group Slack doesn't list keeps its id.
+    assert.strictEqual(context.messages[0]!.text, "@arlo-team and @S2 please review");
+    yield* api.getThread(input);
+    assert.strictEqual(harness.calls.filter((call) => call.method === "usergroups.list").length, 1);
+  }).pipe(Effect.provide(harness.layer));
+});
+
+it.effect("leaves group ids when the connection lacks the user groups scope", () => {
+  const harness = makeHarness({
+    "conversations.replies": { ok: true, messages: GROUP_THREAD },
+    "usergroups.list": { ok: false, error: "missing_scope", needed: "usergroups:read" },
+  });
+  return Effect.gen(function* () {
+    const api = yield* SlackApi.SlackApi;
+    const context = yield* api.getThread({ ...threadInput, ts: PARENT_TS, scope: "message" });
+    assert.strictEqual(context.messages[0]!.text, "@S1 and @S2 please review");
+  }).pipe(Effect.provide(harness.layer));
+});
+
 it.effect("keeps only the linked message when asked for the message alone", () => {
   const harness = makeHarness();
   return Effect.gen(function* () {

@@ -17,7 +17,7 @@ export const SlackMessageTs = TrimmedNonEmptyString.check(Schema.isPattern(/^\d{
  */
 export const SLACK_REDIRECT_URI = "http://localhost:47832/callback";
 
-/** Read-only user scopes: search, read every kind of conversation, and resolve names. */
+/** Read-only user scopes: search, read every kind of conversation, and resolve user and group names. */
 export const SLACK_USER_SCOPES = [
   "search:read",
   "channels:history",
@@ -29,6 +29,7 @@ export const SLACK_USER_SCOPES = [
   "im:read",
   "mpim:read",
   "users:read",
+  "usergroups:read",
 ] as const;
 
 /**

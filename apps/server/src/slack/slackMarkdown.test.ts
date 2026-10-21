@@ -1,6 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 
 import {
+  mentionedGroupIds,
   mentionedUserIds,
   renderSlackThread,
   slackTextToMarkdown,
@@ -34,6 +35,14 @@ describe("slackTextToMarkdown", () => {
       slackTextToMarkdown("a &lt;b&gt; &amp;&amp; `x &gt; 1`", names),
       "a <b> && `x > 1`",
     );
+  });
+
+  it("names unlabelled user groups from their handles", () => {
+    assert.strictEqual(
+      slackTextToMarkdown("<!subteam^S1> <!subteam^S2>", names, new Map([["S1", "infra"]])),
+      "@infra @S2",
+    );
+    assert.deepEqual(mentionedGroupIds("<!subteam^S1> <!subteam^S2|@x> <@U1>"), ["S1"]);
   });
 
   it("collects mentioned user ids", () => {

@@ -16,6 +16,11 @@ Slack signs in through an app in your own workspace. You make it once, and it ta
 The manifest asks only for read scopes and turns on PKCE, so T3 Code never needs the app's client
 secret. If your workspace requires admin approval for new apps, approve the app first.
 
+An app made from an older manifest lacks the `usergroups:read` scope, which shows group mentions
+such as `@design-team` by name. Slack refuses to connect until the app has it: in the app's
+**OAuth & Permissions** page, add `usergroups:read` under **User Token Scopes**, then connect
+again.
+
 Use an app made in your own workspace, not one shared across workspaces. Slack limits apps
 installed in other workspaces to reading 15 thread messages a minute, which is too few to attach
 threads.
