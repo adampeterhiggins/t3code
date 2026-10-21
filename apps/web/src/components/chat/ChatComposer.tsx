@@ -304,7 +304,10 @@ import { ComposerModelFilters } from "./ComposerModelFilters";
 import { deriveComposerModelItems } from "./composerModelItems";
 import { attachModelToChat } from "./modelReferences";
 import { useEnvironmentModelPreferences } from "~/hooks/useSettings";
-import { useIssueContextStore } from "~/issueContextStore";
+import { useCheckoutContextRecords } from "~/checkoutContextStore";
+import { useIssueContextRecords, useIssueContextStore } from "~/issueContextStore";
+import { useRepositoryContextRecords } from "~/repositoryContextStore";
+import { useThreadTabContextRecords } from "~/threadTabContextStore";
 import { providerModelKey } from "~/modelOrdering";
 import { ComposerPrimaryActions, type ComposerSendSurface } from "./ComposerPrimaryActions";
 import { useComposerCheckoutItems } from "./useComposerCheckoutItems";
@@ -1953,10 +1956,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     updateModelChip: (record: ModelContextRecord) =>
       useIssueContextStore.getState().upsert(routeThreadRef.threadId, record),
   };
+  const composerThreadTabContexts = useThreadTabContextRecords(routeThreadRef.threadId);
+  const composerIssueContexts = useIssueContextRecords(routeThreadRef.threadId);
+  const composerRepositoryContexts = useRepositoryContextRecords(routeThreadRef.threadId);
+  const composerCheckoutContexts = useCheckoutContextRecords(routeThreadRef.threadId);
   const composerContextRecords = composerContextRecordsFromDraft({
     terminalContexts: composerTerminalContexts,
     reviewComments: composerReviewComments,
     previewAnnotations: composerPreviewAnnotations,
+    threadTabs: composerThreadTabContexts,
+    issues: composerIssueContexts,
+    repositories: composerRepositoryContexts,
+    checkouts: composerCheckoutContexts,
     threadContexts: composerThreadContexts,
     images: composerImages,
     files: composerFiles,
