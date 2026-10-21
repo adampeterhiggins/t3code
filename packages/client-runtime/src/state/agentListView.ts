@@ -612,6 +612,20 @@ export function subagentToolCallText(call: SubagentToolCall): string {
 
 export type SubagentToolCallSort = "newest" | "oldest" | "duration";
 
+/**
+ * A model call's tool calls stay adjacent only in time order, either direction.
+ * Any other sort scatters them, so step dividers would repeat the same step.
+ */
+export function isChronologicalSubagentToolCallSort(sort: SubagentToolCallSort): boolean {
+  switch (sort) {
+    case "newest":
+    case "oldest":
+      return true;
+    case "duration":
+      return false;
+  }
+}
+
 export interface SubagentToolCallView {
   readonly query: string;
   /** Empty means every status. */

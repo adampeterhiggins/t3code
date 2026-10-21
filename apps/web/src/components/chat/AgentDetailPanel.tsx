@@ -26,6 +26,7 @@ import {
   DEFAULT_SUBAGENT_TOOL_CALL_VIEW,
   deriveSubagentToolCalls,
   groupSubagentToolCallSteps,
+  isChronologicalSubagentToolCallSort,
   subagentEmptyToolCallsText,
   subagentToolCallFacets,
   subagentWorkspaceRoot,
@@ -363,6 +364,41 @@ function FilterMenu(props: {
   );
 }
 
+function ToolCallStepsToggle(props: {
+  shown: boolean;
+  chronological: boolean;
+  onToggle: () => void;
+}) {
+  const label = props.chronological
+    ? props.shown
+      ? "Hide model call steps"
+      : "Show model call steps"
+    : "Steps show when sorted by time";
+  return (
+    <Tooltip>
+      {/* A disabled button drops pointer events, so the span keeps the tooltip hoverable. */}
+      <TooltipTrigger
+        render={
+          <span className="inline-flex">
+            <Button
+              type="button"
+              size="icon-micro"
+              variant={props.shown ? "ghost" : "ghost-muted"}
+              aria-label={label}
+              aria-pressed={props.shown}
+              disabled={!props.chronological}
+              onClick={props.onToggle}
+            >
+              {props.shown ? <Rows3Icon /> : <ListIcon />}
+            </Button>
+          </span>
+        }
+      />
+      <TooltipPopup>{label}</TooltipPopup>
+    </Tooltip>
+  );
+}
+
 function ActionButton(props: { label: string; onClick: () => void; children: ReactNode }) {
   return (
     <Tooltip>
@@ -477,10 +513,12 @@ export function AgentDetailPanel(props: {
   const visibleCalls = applySubagentToolCallView(calls, toolView);
   const toolFacets = subagentToolCallFacets(calls, toolView);
   // No model-call ids (Cursor, or a filter that hid every attributed call) means the toggle
-  // would change nothing on screen.
+  // would change nothing on screen. A non-time sort scatters one call's rows, so the dividers
+  // stay off without changing the saved preference.
+  const toolCallStepsChronological = isChronologicalSubagentToolCallSort(toolView.sort);
   const toolCallStepsAvailable = visibleCalls.some((call) => call.modelCallId !== undefined);
   const toolCallEntries =
-    showToolCallSteps && toolCallStepsAvailable
+    showToolCallSteps && toolCallStepsAvailable && toolCallStepsChronological
       ? groupSubagentToolCallSteps(calls, visibleCalls)
       : undefined;
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
@@ -1025,31 +1063,15 @@ export function AgentDetailPanel(props: {
               </Menu>
             ) : null}
             {tools && toolCallStepsAvailable ? (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      type="button"
-                      size="icon-micro"
-                      variant={showToolCallSteps ? "ghost" : "ghost-muted"}
-                      aria-label={
-                        showToolCallSteps ? "Hide model call steps" : "Show model call steps"
-                      }
-                      aria-pressed={showToolCallSteps}
-                      onClick={() =>
-                        void updateClientSettings({
-                          showSubagentToolCallSteps: !showToolCallSteps,
-                        })
-                      }
-                    />
-                  }
-                >
-                  {showToolCallSteps ? <Rows3Icon /> : <ListIcon />}
-                </TooltipTrigger>
-                <TooltipPopup>
-                  {showToolCallSteps ? "Hide model call steps" : "Show model call steps"}
-                </TooltipPopup>
-              </Tooltip>
+              <ToolCallStepsToggle
+                shown={showToolCallSteps}
+                chronological={toolCallStepsChronological}
+                onToggle={() =>
+                  void updateClientSettings({
+                    showSubagentToolCallSteps: !showToolCallSteps,
+                  })
+                }
+              />
             ) : null}
             {customised ? (
               <Button

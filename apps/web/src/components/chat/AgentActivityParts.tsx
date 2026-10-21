@@ -272,6 +272,19 @@ function stepTokenSummary(usage: OrchestrationV2ModelCallUsage | undefined): str
   return parts.length === 0 ? null : parts.join(" · ");
 }
 
+function UsageBreakdown(props: { rows: ReadonlyArray<readonly [label: string, value: string]> }) {
+  return (
+    <dl className="grid grid-cols-[auto_auto] gap-x-4 gap-y-0.5 font-mono text-2xs tabular-nums">
+      {props.rows.map(([label, value]) => (
+        <div key={label} className="contents">
+          <dt className="text-muted-foreground">{label}</dt>
+          <dd className="text-right">{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 function StepUsageTooltip(props: { usage: OrchestrationV2ModelCallUsage; summary: string }) {
   const { usage } = props;
   const exact = (value: number) => value.toLocaleString();
@@ -299,14 +312,7 @@ function StepUsageTooltip(props: { usage: OrchestrationV2ModelCallUsage; summary
         {props.summary}
       </TooltipTrigger>
       <TooltipPopup side="top" align="end">
-        <dl className="grid grid-cols-[auto_auto] gap-x-4 gap-y-0.5 font-mono text-2xs tabular-nums">
-          {rows.map(([label, value]) => (
-            <div key={label} className="contents">
-              <dt className="text-muted-foreground">{label}</dt>
-              <dd className="text-right">{value}</dd>
-            </div>
-          ))}
-        </dl>
+        <UsageBreakdown rows={rows} />
       </TooltipPopup>
     </Tooltip>
   );
@@ -464,14 +470,7 @@ export function AgentUsageFooter(props: {
             </span>
           </TooltipTrigger>
           <TooltipPopup side="top" align="end">
-            <dl className="grid grid-cols-[auto_auto] gap-x-4 gap-y-0.5 font-mono text-2xs tabular-nums">
-              {breakdown.map(([label, value]) => (
-                <div key={label} className="contents">
-                  <dt className="text-muted-foreground">{label}</dt>
-                  <dd className="text-right">{value}</dd>
-                </div>
-              ))}
-            </dl>
+            <UsageBreakdown rows={breakdown} />
           </TooltipPopup>
         </Tooltip>
       ) : (

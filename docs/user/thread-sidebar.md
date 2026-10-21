@@ -433,7 +433,9 @@ with its time. Click a call or thought to expand its command, output, or diff. W
 the bottom, new activity scrolls into view; scroll up to read and it stays put. **Tools** lists
 calls newest first; filter them by status or tool, or sort oldest first or by duration. When a
 provider reports which response made each call, those calls are grouped into steps with that
-response's token use, and a button in the header hides the steps. Search either view; a search
+response's token use while the list is newest or oldest first, and a button in the header hides
+the steps. Sorting by duration lists the calls flat, and that button stays disabled until the
+list is in time order again. Search either view; a search
 or filter shows how many entries it kept. Paths read
 relative to the checkout the agent works in, including a separate worktree it was given. The
 footer shows the agent's token usage, and its runs and retries when there were several; hover a
