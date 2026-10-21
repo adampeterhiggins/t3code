@@ -937,8 +937,10 @@ provider. An **Open Linear links in** setting can send issue links to the Linear
 A thread's chat-tab group can also be linked to one issue, from the thread menu or the command
 palette, and starting a thread from an issue links it. The link lives in the fork-owned
 `fork_linear_thread_links` table, keyed by tab group, and streams to clients over
-`linear.subscribeThreadLinks`. Only the issue's identity is stored; the chat header chip reads its
-status live, and offers open, change, and unlink. Mobile shows the same chip beside the tab
+`linear.subscribeThreadLinks`. Only the issue's identity is stored; its row in the web thread details panel's
+Links section (`apps/web/src/components/chat/ThreadLinks.tsx`) reads its status live, and offers
+open, change, and unlink. The section's **+** menu links any kind the group does not have yet,
+with the same permission and integration checks as the command palette. Mobile shows a chip beside the tab
 switcher (`apps/mobile/src/features/threads/ThreadLinearLink.tsx`). Agents link and unlink it
 through the thread MCP's `link_linear_issue` / `unlink_linear_issue`, and read the thread's Linear
 and GitHub issue links with `list_thread_issues`
@@ -1008,8 +1010,8 @@ A thread's chat-tab group can also be linked to one Slack thread, from the threa
 command palette, or the mobile tab menu, which open the same picker in link mode. Picking a reply links its whole thread.
 The link lives in the fork-owned `fork_slack_thread_links` table, keyed by tab group, and streams
 over `slack.subscribeThreadLinks`. Slack threads have no status, so the channel, author, and the
-picked message's first line are copied when linked. The web chat header chip shows the channel and
-offers open, change, and unlink; mobile shows the same chip beside the tab switcher. Linking and
+picked message's first line are copied when linked. The web thread details panel's Links row shows the
+message and channel and offers open, change, and unlink; mobile shows a chip beside the tab switcher. Linking and
 unlinking are client-guarded RPCs that need the orchestration-operate grant. Unlinking stays
 available with the integration turned off.
 
@@ -1062,6 +1064,8 @@ or typed message links, the attach menu picker, a `#` menu tab, the command pale
 attach menu, MCP `contextLinks`, bare-link previews in rendered messages
 (`discord.getLinkPreview`, cached under `discord-link-previews`), and a tab-group thread link in
 the fork-owned `fork_discord_thread_links` table, streamed over `discord.subscribeThreadLinks`.
+The web thread details panel's Links row shows the linked message and its channel, and offers open,
+change, and unlink.
 Search uses Discord's guild message search in every server the bot is in; a server still being
 indexed is skipped. A message in or starting a Discord thread snapshots the thread (up to the newest
 200 messages plus the starter message, which lives in the parent channel for threads started from
@@ -1097,8 +1101,8 @@ provider.
 
 Starting a thread from a GitHub issue links it to the thread's chat-tab group, in the fork-owned
 `fork_github_issue_thread_links` table, streamed over `githubIssues.subscribeThreadLinks`. A group
-can hold one GitHub link beside its Linear link. The web chat header and the mobile tab switcher
-show `#123` with its live open or closed state, and offer open, change, and unlink. An existing
+can hold one GitHub link beside its Linear link. The web thread details panel's Links section and the
+mobile tab switcher show `#123` with its live open or closed state, and offer open, change, and unlink. An existing
 thread links or changes its issue from the thread menu (web sidebar and chat header), the web
 command palette (which also unlinks), or the mobile tab menu and **Link issue** pill, through the
 same picker in link mode, listing issues from the thread's own checkout. Pickers mark a linked
@@ -2012,7 +2016,7 @@ Code: `cursorRunFailure` in
 
 Web and desktop support Notion OAuth sign-in in Integrations settings, where the user enters their own Notion connection's client ID and secret (kept on the server, with `T3CODE_NOTION_CLIENT_ID` and `T3CODE_NOTION_CLIENT_SECRET` as a fallback), page attachments from the paperclip picker and command palette, a Notion tab in the `#` menu, and conversion of pasted `notion.so`, `notion.com`, and `notion.site` page links to context chips. A pasted link to a page the connection cannot read becomes a broken-link chip, with a notice that opens the page in Notion and retries the conversion once the user shares it. Turning off **Enable Notion integration** in those settings keeps pasted Notion links as links without setup prompts and hides Notion attachment actions on web, desktop, and mobile for the environment, keeping the connected account. Mobile can pick pages using the environment's connection and inspect captured page contents. Pages are captured as bounded Markdown snapshots and sent through the shared context projection to every provider. Remote sign-in can use a registered HTTPS callback through `T3CODE_NOTION_REDIRECT_URI`, or paste the OAuth redirect URL back into settings.
 
-A thread's chat-tab group can also be linked to one Notion page, from the thread menu, the web command palette, or the mobile tab menu, which open the page picker in link mode. The link lives in the fork-owned `fork_notion_thread_links` table, keyed by tab group, and streams over `notion.subscribeThreadLinks`; the page's title and URL are copied when linked. The web chat header chip shows the title and offers open, change, and unlink; mobile shows the same chip beside the tab switcher. Linking and unlinking are client-guarded RPCs that need the orchestration-operate grant. Unlinking stays available with the integration turned off.
+A thread's chat-tab group can also be linked to one Notion page, from the thread menu, the web command palette, or the mobile tab menu, which open the page picker in link mode. The link lives in the fork-owned `fork_notion_thread_links` table, keyed by tab group, and streams over `notion.subscribeThreadLinks`; the page's title and URL are copied when linked. The web thread details panel's Links row shows the title and offers open, change, and unlink; mobile shows a chip beside the tab switcher. Linking and unlinking are client-guarded RPCs that need the orchestration-operate grant. Unlinking stays available with the integration turned off.
 
 Code: [NotionAuth](../apps/server/src/notion/NotionAuth.ts), [NotionApi](../apps/server/src/notion/NotionApi.ts), [NotionPagePicker](../apps/web/src/components/chat/NotionPagePicker.tsx), [NotionThreadLinks](../apps/server/src/notion/NotionThreadLinks.ts), [NotionThreadLink](../apps/web/src/components/chat/NotionThreadLink.tsx), and [NotionPagePickerSheet](../apps/mobile/src/components/NotionPagePickerSheet.tsx). User guide: [Notion](./user/notion.md).
 
@@ -2039,8 +2043,8 @@ turns the entry points and link conversion off without disconnecting. Agents att
 A thread's chat-tab group can also be linked to one note, from the thread menu, the web command
 palette, or the mobile tab menu, which open the picker in link mode. The link lives in the
 fork-owned `fork_granola_thread_links` table, keyed by tab group, and streams over
-`granola.subscribeThreadLinks`; the note's title and URL are copied when linked. The web chat
-header and mobile tab switcher show a chip with open, change, and unlink. Linking is a
+`granola.subscribeThreadLinks`; the note's title and URL are copied when linked. The web thread
+details panel's Links section and mobile tab switcher show it with open, change, and unlink. Linking is a
 client-guarded RPC that needs the orchestration-operate grant, and unlinking stays available with
 the integration turned off.
 

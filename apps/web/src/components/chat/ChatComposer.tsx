@@ -140,6 +140,8 @@ import {
 import { ComposerStashBadge } from "./ComposerStashBadge";
 import { ComposerStashMenu } from "./ComposerStashMenu";
 import { useComposerTriggerState } from "./useComposerTriggerState";
+import { agentReferenceTargetOf, attachAgentToChat } from "./agentReferences";
+import { useComposerAgentItems } from "./useComposerAgentItems";
 import { useComposerMenuItems } from "./useComposerMenuItems";
 import { useComposerFocusState } from "./useComposerFocusState";
 import { useComposerMultilinePrompt } from "./useComposerMultilinePrompt";
@@ -1669,7 +1671,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activeThread,
     promptHistoryMessages,
     threadTabGroup,
-    isServerThread: _isServerThread,
+    isServerThread,
     isLocalDraftThread: _isLocalDraftThread,
     forceExpandedOnMobile,
     projectSelectionRequired,
@@ -2384,6 +2386,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       : composerMenuItemsFromTrigger;
   const isPathTrigger = composerTrigger?.kind === "path";
   const pathTriggerQuery = isPathTrigger ? composerTrigger.query : "";
+  // A draft has no agents, and its thread does not exist on the server yet.
+  const agentMenu = useComposerAgentItems(
+    routeThreadRef,
+    isPathTrigger && isServerThread,
+    pathTriggerQuery,
+    gitCwd,
+  );
   const { favorites: favoriteModels } = useEnvironmentModelPreferences(environmentId);
   const [modelFilterChoice, setModelFilterChoice] = useState<{
     rangeStart: number;
@@ -2405,18 +2414,27 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   });
   const [pathTabChoice, setPathTabChoice] = useState<{
     rangeStart: number;
-    tab: "files" | "models";
+    tab: "files" | "agents" | "models";
   } | null>(null);
   const [isModelChipPickerOpen, setIsModelChipPickerOpen] = useState(false);
   const [attachMenuAnchor, setAttachMenuAnchor] = useState<HTMLSpanElement | null>(null);
   const pathTab =
-    isPathTrigger && pathTabChoice?.rangeStart === composerTrigger.rangeStart
+    isPathTrigger &&
+    pathTabChoice?.rangeStart === composerTrigger.rangeStart &&
+    (pathTabChoice.tab !== "agents" || agentMenu.available)
       ? pathTabChoice.tab
-      : modelMenu.prefersModels
-        ? "models"
-        : "files";
-  const composerMenuItems =
-    isPathTrigger && pathTab === "models" ? [...modelMenu.items] : pathMenuBase;
+      : agentMenu.prefersAgents
+        ? "agents"
+        : modelMenu.prefersModels
+          ? "models"
+          : "files";
+  const composerMenuItems = !isPathTrigger
+    ? pathMenuBase
+    : pathTab === "models"
+      ? [...modelMenu.items]
+      : pathTab === "agents"
+        ? [...agentMenu.items]
+        : pathMenuBase;
 
   const composerMenuOpen = Boolean(composerTrigger);
   const composerMenuSearchKey = composerTrigger
@@ -3563,6 +3581,20 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         });
         setComposerHighlightedItemId(null);
       }
+      return;
+    }
+    if (item.type === "subagent") {
+      if (trigger.kind !== "path") return;
+      // The query text leaves first; the chip lands at the caret once its record resolves.
+      const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
+        expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
+      });
+      if (!applied) return;
+      setComposerHighlightedItemId(null);
+      void attachAgentToChat(
+        item.parentRef,
+        agentReferenceTargetOf(item.parentRef.environmentId, item.entry),
+      );
       return;
     }
     if (item.type === "model") {
@@ -6597,11 +6629,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     isLoading={isComposerMenuLoading}
                     triggerKind={composerTriggerKind}
                     emptyStateText={
-                      isPathTrigger && pathTab === "models"
+                      isPathTrigger && pathTab === "agents"
                         ? pathTriggerQuery
-                          ? `No model matches ${pathTriggerQuery}.`
-                          : "No models available."
-                        : composerMenuEmptyState
+                          ? `No agent matches ${pathTriggerQuery}.`
+                          : "This thread has no agents."
+                        : isPathTrigger && pathTab === "models"
+                          ? pathTriggerQuery
+                            ? `No model matches ${pathTriggerQuery}.`
+                            : "No models available."
+                          : composerMenuEmptyState
                     }
                     activeItemId={activeComposerMenuItem?.id ?? null}
                     onHighlightedItemChange={onComposerMenuItemHighlightedStable}
@@ -6611,13 +6647,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                           tabs: {
                             options: [
                               { id: "files", label: "Files" },
+                              ...(agentMenu.available ? [{ id: "agents", label: "Agents" }] : []),
                               { id: "models", label: "Models" },
                             ],
                             activeId: pathTab,
                             onSelect: (id: string) =>
                               setPathTabChoice({
                                 rangeStart: composerTrigger.rangeStart,
-                                tab: id === "models" ? "models" : "files",
+                                tab:
+                                  id === "models" ? "models" : id === "agents" ? "agents" : "files",
                               }),
                           },
                           ...(pathTab === "models"

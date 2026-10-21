@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import { useEffect, useRef } from "react";
 import type {
   EnvironmentProject,
   EnvironmentThread,
@@ -32,7 +33,11 @@ import {
   allEnvironmentProjectSnapshotsReadyAtom,
   allEnvironmentShellsBootstrappedAtom,
 } from "./shell";
-import { environmentThreadDetails, environmentThreadShells } from "./threads";
+import {
+  environmentThreadDetails,
+  environmentThreadShells,
+  refreshEnvironmentThread,
+} from "./threads";
 import { waitForAtomValue } from "./waitForAtomValue";
 
 const EMPTY_THREAD_REFS: ReadonlyArray<ScopedThreadRef> = Object.freeze([]);
@@ -171,6 +176,29 @@ export function useThreadHistory(ref: ScopedThreadRef | null): ThreadHistoryMeta
   return useAtomValue(
     ref === null ? EMPTY_THREAD_HISTORY_ATOM : environmentThreadDetails.historyAtom(ref),
   );
+}
+
+/**
+ * Loads a thread again when its detail says deleted but the shell still lists
+ * it, which happens when the detail asked for a thread before the server
+ * created it. Once per thread, so a real deletion racing the shell cannot loop.
+ */
+export function useRecoverMissingThreadDetail(
+  ref: ScopedThreadRef | null,
+  shellExists: boolean,
+): void {
+  const status = useThreadStatus(ref);
+  const recoveredKey = useRef<string | null>(null);
+  const environmentId = ref?.environmentId ?? null;
+  const threadId = ref?.threadId ?? null;
+  const missing = shellExists && status === "deleted";
+  useEffect(() => {
+    if (!missing || environmentId === null || threadId === null) return;
+    const key = `${environmentId}:${threadId}`;
+    if (recoveredKey.current === key) return;
+    recoveredKey.current = key;
+    refreshEnvironmentThread(environmentId, threadId);
+  }, [environmentId, missing, threadId]);
 }
 
 export function resolveThreadDetailRef(

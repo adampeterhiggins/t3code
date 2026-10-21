@@ -149,7 +149,6 @@ import { readLocalApi } from "../localApi";
 import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
 import { selectProjectGroupingSettings } from "../logicalProject";
 import {
-  countSidebarProjectChoices,
   projectGroupsSpanEnvironments,
   resolveSidebarProjectScopeKey,
   getSidebarProjectSettingsKey,
@@ -1984,13 +1983,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                   <span className="flex-1" />
                 )}
                 {agentIndicator}
-                {/* Status at rest, hover actions once they fit. The pin is the
-            trailing item, outside that swap, so it cannot slide sideways. */}
+                {/* Left of the status slot, so hover swapping the label for the
+                    wider row controls does not slide the pin. */}
+                {pinIndicator}
                 {sortable?.isDragging ? (
-                  <>
-                    {dragDestination}
-                    {pinIndicator}
-                  </>
+                  dragDestination
                 ) : (
                   <span
                     className={cn(
@@ -2167,7 +2164,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                         </span>
                       ) : null}
                     </span>
-                    {pinIndicator}
                   </span>
                 )}
                 {props.sweepAction !== null ? dragDestination : null}
@@ -4047,7 +4043,7 @@ export default function Sidebar() {
     false,
     Schema.Boolean,
   );
-  const projectChoiceCount = countSidebarProjectChoices(projectGroups);
+  const projectChoiceCount = projectGroups.length;
   const toggleWorkingShelf = () => setWorkingShelfExpanded((value) => !value);
   const visibleWorkingThreads = (() => {
     if (workingShelfExpanded) return workingThreads;

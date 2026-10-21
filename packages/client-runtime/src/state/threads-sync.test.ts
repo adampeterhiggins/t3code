@@ -560,6 +560,31 @@ describe("EnvironmentThreads", () => {
     }),
   );
 
+  it.effect("loads a thread created after an earlier mount saw a 404", () =>
+    Effect.gen(function* () {
+      const resumeCache: NonNullable<Parameters<typeof makeEnvironmentThreadState>[1]> = {
+        snapshot: undefined,
+        owner: undefined,
+      };
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const draft = yield* makeHarness({ httpSnapshot: { _tag: "missing" }, resumeCache });
+          yield* awaitThreadState(draft.observed, (value) => value.status === "deleted");
+        }),
+      );
+      const created = yield* makeHarness({
+        httpSnapshot: {
+          _tag: "present",
+          snapshot: { projection: BASE_PROJECTION, snapshotSequence: CACHED_SNAPSHOT_SEQUENCE },
+        },
+        resumeCache,
+      });
+      const state = yield* awaitThreadState(created.observed, (value) => value.status === "live");
+      expect(Option.getOrThrow(state.data)).toEqual(BASE_PROJECTION);
+      expect(yield* Ref.get(created.subscriptionCount)).toBe(1);
+    }),
+  );
+
   it.effect("resumes a warm cache via afterSequence without an HTTP fetch", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness({ cached: BASE_PROJECTION });
