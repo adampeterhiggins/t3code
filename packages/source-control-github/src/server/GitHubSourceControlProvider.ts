@@ -880,8 +880,31 @@ export const make = Effect.gen(function* () {
     return { title: subject.title, body: subject.body ?? null };
   });
 
+  /**
+   * Fork: the identity names the `upstream` remote, but `#123` means a pull request in the
+   * repository gh opens them in, which `gh repo set-default` can point at `origin`. The web URL
+   * names that repository when it differs, so clients resolve bare numbers there.
+   */
+  const refineRepositoryIdentity: NonNullable<
+    SourceControlProvider.SourceControlProvider["Service"]["refineRepositoryIdentity"]
+  > = Effect.fn("GitHubSourceControlProvider.refineRepositoryIdentity")(function* ({ identity }) {
+    if (identity.provider !== "github" || !identity.rootPath) return identity;
+    const base = yield* resolveRepository({ cwd: identity.rootPath }).pipe(Effect.option);
+    if (Option.isNone(base)) return identity;
+    const { host, owner, name } = base.value;
+    const key = `${host}/${owner}/${name}`.toLowerCase();
+    if (key === identity.canonicalKey) return identity;
+    // The resolved path is lower-cased; the origin keeps the remote's capitalisation.
+    const repository =
+      key === identity.origin?.canonicalKey
+        ? (identity.origin.displayName ?? `${owner}/${name}`)
+        : `${owner}/${name}`;
+    return { ...identity, webUrl: `https://${host}/${repository}` };
+  });
+
   return SourceControlProvider.SourceControlProvider.of({
     kind: SourceControlProviderKind.make("github"),
+    refineRepositoryIdentity,
     // `gh pr list --head` filters on the head ref name alone and accepts anything, so an
     // `owner:branch` or `remote:branch` selector silently lists zero pull requests while
     // spending a GraphQL call; the bare branch is always among the selectors. Without the owner,

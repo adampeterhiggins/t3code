@@ -51,4 +51,15 @@ describe("githubRepositoryUrl", () => {
     ).toBeNull();
     expect(githubRepositoryUrl(null)).toBeNull();
   });
+
+  it("prefers the web URL of the repository gh opens pull requests in", () => {
+    expect(
+      githubRepositoryUrl({
+        provider: "github",
+        canonicalKey: "github.com/acme/api",
+        displayName: "acme/api",
+        webUrl: "https://github.com/me/api",
+      }),
+    ).toBe("https://github.com/me/api");
+  });
 });

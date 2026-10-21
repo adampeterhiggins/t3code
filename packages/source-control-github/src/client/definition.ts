@@ -53,8 +53,9 @@ export const definition = defineSourceControlClient({
   publishHost: () => "github.com",
   newRepositoryOwner: (account) => ({ owner: account }),
   defaultCloneTransport: "https",
-  changeRequestUrl: ({ host, repository, number }) =>
-    `https://${host}/${repository}/pull/${number}`,
+  // Fork: the web URL, when the server set one, is the repository gh opens pull requests in.
+  changeRequestUrl: ({ host, repository, number, webUrl }) =>
+    `${webUrl ?? `https://${host}/${repository}`}/pull/${number}`,
   changeRequestActions: new Set([
     "merge",
     "ready",
