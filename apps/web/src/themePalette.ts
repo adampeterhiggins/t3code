@@ -22,7 +22,8 @@ import {
   type ThemeVariants,
 } from "@t3tools/shared/themePalettes";
 
-import { notifyCommittedAppearanceChange } from "./appearanceSnapshot";
+import { isPresentedAppearanceActive, notifyCommittedAppearanceChange } from "./appearanceSnapshot";
+import { isQuickMessageWindow } from "./components/quickMessage/quickMessageWindow";
 
 export {
   DEFAULT_TERMINAL_ANSI_COLORS,
@@ -1104,6 +1105,31 @@ export function getThemePreferenceMode(theme: ThemePreference): ThemeAppearance 
   return getThemeDefinition(theme)?.appearance ?? null;
 }
 
+/**
+ * Mode implied by a committed theme id. Painting uses `getThemePreferenceMode`,
+ * which follows the presented overlay; this one reads the stored library so a
+ * base theme the overlay does not carry still infers its own mode.
+ */
+export function getCommittedThemePreferenceMode(theme: string): ThemeAppearance | null {
+  if (theme === "system") return null;
+  if (theme === "light" || theme === "dark") return theme;
+  const legacyMode = legacyThemeMode(theme);
+  if (legacyMode) return legacyMode;
+  return committedThemeDefinition(theme)?.appearance ?? null;
+}
+
+function committedThemeDefinition(theme: string): ThemeDefinition | null {
+  const themeId = themeIdFromPreference(theme);
+  const snapshot = getCustomThemeLibrarySnapshot();
+  const storedThemes = snapshot.status === "ready" ? snapshot.themes : EMPTY_CUSTOM_THEMES;
+  return (
+    BUILT_IN_THEME_DEFINITIONS.find((definition) => definition.id === themeId) ??
+    storedThemes.find((definition) => definition.id === themeId) ??
+    environmentThemeDefinitions.find((definition) => definition.id === themeId) ??
+    null
+  );
+}
+
 export function themeIdFromName(name: string): string {
   const normalized = name
     .trim()
@@ -1129,10 +1155,17 @@ export class ThemeLibraryStorageError extends Schema.TaggedError<ThemeLibrarySto
   }
 }
 
+function assertCustomThemeLibraryWritable(): void {
+  if (isPresentedAppearanceActive() || isQuickMessageWindow) {
+    throw new Error("Installed themes are read-only in this window.");
+  }
+}
+
 function saveCustomThemes(
   storedThemes: ReadonlyArray<unknown>,
   themes: ReadonlyArray<ThemeDefinition>,
 ): void {
+  assertCustomThemeLibraryWritable();
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(CUSTOM_THEMES_STORAGE_KEY, JSON.stringify(storedThemes));
@@ -1187,6 +1220,7 @@ function storedThemeHasCollectionId(storedTheme: unknown, collectionId: string):
 }
 
 export function installCustomTheme(theme: ThemeDefinition): ThemeDefinition {
+  assertCustomThemeLibraryWritable();
   if (RESERVED_THEME_IDS.has(theme.id)) {
     throw new Error(`The theme id "${theme.id}" is reserved.`);
   }
@@ -1204,6 +1238,7 @@ export function installCustomTheme(theme: ThemeDefinition): ThemeDefinition {
 }
 
 export function updateCustomTheme(theme: ThemeDefinition): ThemeDefinition {
+  assertCustomThemeLibraryWritable();
   if (RESERVED_THEME_IDS.has(theme.id)) {
     throw new Error(`The theme id "${theme.id}" is reserved.`);
   }
@@ -1238,6 +1273,7 @@ export function replaceCustomThemeCollection(
   themes: ReadonlyArray<ThemeDefinition>,
   options?: { expectedCollection?: ReadonlyArray<ThemeDefinition> },
 ): ReadonlyArray<ThemeDefinition> {
+  assertCustomThemeLibraryWritable();
   if (themes.length === 0) throw new Error("A theme collection cannot be empty.");
 
   const validated = themes.map((theme) => parseStoredTheme(theme));
@@ -1295,6 +1331,7 @@ export function removeCustomTheme(themeId: string): void {
 }
 
 export function removeCustomThemes(themeIds: ReadonlyArray<string>): void {
+  assertCustomThemeLibraryWritable();
   const removedIds = new Set(themeIds);
   if (removedIds.size === 0) return;
   const library = getWritableCustomThemeLibrary();

@@ -19,6 +19,7 @@ import {
   invalidateCustomThemes,
   canonicalThemePreference,
   isKnownThemePreference,
+  getCommittedThemePreferenceMode,
   getThemePreferenceMode,
   getThemePreviewAppearance,
   parseThemeHalves,
@@ -494,7 +495,17 @@ function handleSystemAppearanceChange() {
 }
 
 function handleStorageChange(e: StorageEvent) {
-  if (isPresentedAppearanceActive()) return;
+  // The presented palette stays in memory. These events only drop the stored
+  // cache and the read-failure latch so release can see what other windows wrote.
+  if (isPresentedAppearanceActive()) {
+    if (e.key === STORAGE_KEY || e.key === null) {
+      themeStorageReadFailure = null;
+    }
+    if (e.key === CUSTOM_THEMES_STORAGE_KEY || e.key === null) {
+      invalidateCustomThemes();
+    }
+    return;
+  }
   if (e.key === STORAGE_KEY) {
     themeStorageReadFailure = null;
     applyTheme(getStored(), { suppressTransitions: true });
@@ -693,11 +704,44 @@ function committedThemeHalves(): DesktopAppearanceSnapshot["halves"] {
   };
 }
 
+/**
+ * The stored id is published as written, including an environment or custom id
+ * this window cannot paint yet. Legacy aliases are canonicalized; a missing
+ * key is system. Painting still goes through `readThemePreference`.
+ */
+function readCommittedThemeId(): string {
+  if (typeof window === "undefined") return DEFAULT_THEME_SNAPSHOT.theme;
+  let raw: string | null;
+  try {
+    raw = window.localStorage.getItem(STORAGE_KEY);
+  } catch (cause) {
+    throw new ThemeStorageError({
+      operation: "read",
+      storageKey: STORAGE_KEY,
+      cause,
+    });
+  }
+  if (raw === null) return DEFAULT_THEME_SNAPSHOT.theme;
+  return canonicalThemePreference(raw);
+}
+
+function readCommittedAppearanceMode(theme: string): ThemePreferenceMode {
+  if (typeof window !== "undefined") {
+    try {
+      const raw = window.localStorage.getItem(THEME_APPEARANCE_MODE_STORAGE_KEY);
+      if (isThemePreferenceMode(raw)) return raw;
+    } catch {}
+  }
+
+  if (readStoredFollowSystem(theme)) return "system";
+  return getCommittedThemePreferenceMode(theme) ?? "light";
+}
+
 export function readCommittedAppearanceSnapshot(): DesktopAppearanceSnapshot {
-  const theme = readThemePreference();
+  const theme = readCommittedThemeId();
   return {
     theme,
-    appearanceMode: readAppearanceModePreference(theme),
+    appearanceMode: readCommittedAppearanceMode(theme),
     halves: committedThemeHalves(),
     customThemes: [...readStoredCustomThemes()],
   };
@@ -731,6 +775,9 @@ export function adoptPresentedAppearance(snapshot: unknown): void {
 }
 
 export function releasePresentedAppearance(): void {
+  // Drop the cached library while the overlay still answers theme reads, so
+  // this invalidation cannot paint stored colors over the presented snapshot.
+  invalidateCustomThemes();
   setPresentedAppearanceSnapshot(null);
   clearPresentedCustomThemes();
   lastAppliedTheme = null;
