@@ -1,6 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { linearLinkForThread } from "@t3tools/client-runtime/state/linear";
-import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import type { EnvironmentId, LinearThreadLink, ScopedThreadRef } from "@t3tools/contracts";
 import { ExternalLinkIcon, PencilIcon, UnlinkIcon } from "lucide-react";
 
 import { useLinearLinkClickHandler } from "~/browser/useLinearLinkClickHandler";
@@ -9,9 +9,9 @@ import { linearEnvironment } from "~/state/linear";
 import { useEnvironmentQuery } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { LinearIcon } from "../Icons";
-import { Button } from "../ui/button";
-import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
+import { MenuItem, MenuSeparator } from "../ui/menu";
 import { openLinearIssuePicker } from "./LinearIssuePicker";
+import { ThreadLinkRow } from "./ThreadLinkRow";
 
 /** Every Linear link in the environment. Null until the server answers, or on servers without links. */
 export function useLinearThreadLinks(environmentId: EnvironmentId | null) {
@@ -36,77 +36,66 @@ export function useUnlinkLinearIssue() {
 }
 
 /**
- * The chat header's chip for the thread's linked Linear issue, with its current status. Status is
- * read from Linear when the chip mounts and cached for a minute; the link itself stays put when
+ * The thread details row for the thread's linked Linear issue, with its current status. Status is
+ * read from Linear when the row mounts and cached for a minute; the link itself stays put when
  * Linear is unreachable.
  */
-export function LinearThreadLinkChip(props: { threadRef: ScopedThreadRef }) {
-  const { threadRef } = props;
-  const link = useThreadLinearLink(threadRef);
+export function LinearThreadLinkRow(props: { threadRef: ScopedThreadRef; link: LinearThreadLink }) {
+  const { threadRef, link } = props;
   const summary = useEnvironmentQuery(
-    link === null
-      ? null
-      : linearEnvironment.issueSummary({
-          environmentId: threadRef.environmentId,
-          input: { id: link.issueId },
-        }),
+    linearEnvironment.issueSummary({
+      environmentId: threadRef.environmentId,
+      input: { id: link.issueId },
+    }),
   ).data;
   const openLink = useLinearLinkClickHandler(useLinkClickHandler(threadRef));
   const unlink = useUnlinkLinearIssue();
   const canEdit = useAtomValue(
     linearEnvironment.linkThread.permissionAtom(threadRef.environmentId),
   );
-  if (link === null) return null;
   const title = summary?.title ?? link.title;
   const url = summary?.url ?? link.url;
+  const identifier = summary?.identifier ?? link.identifier;
 
   return (
-    <Menu>
-      <MenuTrigger
-        render={
-          <Button
-            size="compact"
-            variant="ghost-muted"
-            aria-label={`Linked Linear issue ${link.identifier}: ${title}`}
-            title={title}
-          />
-        }
-      >
-        <LinearIcon />
-        <span className="tabular-nums">{summary?.identifier ?? link.identifier}</span>
-        {summary ? (
-          <span className="flex items-center gap-1">
+    <ThreadLinkRow
+      icon={<LinearIcon className="size-4 shrink-0" />}
+      label={`${identifier} ${title}`}
+      accessibleLabel={`Linked Linear issue ${identifier}: ${title}`}
+      title={title}
+      trailing={
+        summary ? (
+          <span className="flex shrink-0 items-center gap-1 text-2xs text-muted-foreground">
             <span
               aria-hidden
               className="size-2 shrink-0 rounded-full"
               style={{ backgroundColor: summary.stateColor }}
             />
-            <span className="max-w-28 truncate">{summary.stateName}</span>
+            <span className="max-w-24 truncate">{summary.stateName}</span>
           </span>
-        ) : null}
-      </MenuTrigger>
-      <MenuPopup align="end">
-        <MenuItem
-          render={<a href={url} target="_blank" rel="noreferrer" />}
-          onClick={(event) => openLink(event, url)}
-        >
-          <ExternalLinkIcon />
-          Open in Linear
-        </MenuItem>
-        {canEdit ? (
-          <>
-            <MenuItem onClick={() => openLinearIssuePicker(threadRef, "link")}>
-              <PencilIcon />
-              Change issue…
-            </MenuItem>
-            <MenuSeparator />
-            <MenuItem onClick={() => void unlink(threadRef)}>
-              <UnlinkIcon />
-              Unlink issue
-            </MenuItem>
-          </>
-        ) : null}
-      </MenuPopup>
-    </Menu>
+        ) : null
+      }
+    >
+      <MenuItem
+        render={<a href={url} target="_blank" rel="noreferrer" />}
+        onClick={(event) => openLink(event, url)}
+      >
+        <ExternalLinkIcon />
+        Open in Linear
+      </MenuItem>
+      {canEdit ? (
+        <>
+          <MenuItem onClick={() => openLinearIssuePicker(threadRef, "link")}>
+            <PencilIcon />
+            Change issue…
+          </MenuItem>
+          <MenuSeparator />
+          <MenuItem onClick={() => void unlink(threadRef)}>
+            <UnlinkIcon />
+            Unlink issue
+          </MenuItem>
+        </>
+      ) : null}
+    </ThreadLinkRow>
   );
 }

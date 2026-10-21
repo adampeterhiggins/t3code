@@ -1,6 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { notionLinkForThread } from "@t3tools/client-runtime/state/notion";
-import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import type { EnvironmentId, ScopedThreadRef, NotionThreadLink } from "@t3tools/contracts";
 import { ExternalLinkIcon, PencilIcon, UnlinkIcon } from "lucide-react";
 
 import { useLinkClickHandler } from "~/browser/useOpenLink";
@@ -9,8 +9,8 @@ import { notionEnvironment } from "~/state/notion";
 import { useEnvironmentQuery } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { NotionIcon } from "../Icons";
-import { Button } from "../ui/button";
-import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
+import { MenuItem, MenuSeparator } from "../ui/menu";
+import { ThreadLinkRow } from "./ThreadLinkRow";
 import { openNotionPagePicker } from "./NotionPagePicker";
 
 /** Every Notion link in the environment. Null until the server answers, or on servers without links. */
@@ -35,10 +35,9 @@ export function useUnlinkNotionPage() {
     });
 }
 
-/** The chat header's chip for the thread's linked Notion page, showing its title when linked. */
-export function NotionThreadLinkChip(props: { threadRef: ScopedThreadRef }) {
-  const { threadRef } = props;
-  const link = useThreadNotionLink(threadRef);
+/** The thread details row for the thread's linked Notion page, showing its title when linked. */
+export function NotionThreadLinkRow(props: { threadRef: ScopedThreadRef; link: NotionThreadLink }) {
+  const { threadRef, link } = props;
   const notionEnabled = useEnvironmentSettings(
     threadRef.environmentId,
     (s) => s.enableNotionIntegration,
@@ -48,47 +47,36 @@ export function NotionThreadLinkChip(props: { threadRef: ScopedThreadRef }) {
   );
   const openLink = useLinkClickHandler(threadRef);
   const unlink = useUnlinkNotionPage();
-  if (link === null) return null;
 
   return (
-    <Menu>
-      <MenuTrigger
-        render={
-          <Button
-            size="compact"
-            variant="ghost-muted"
-            aria-label={`Linked Notion page: ${link.title}`}
-            title={link.title}
-          />
-        }
+    <ThreadLinkRow
+      icon={<NotionIcon className="size-4 shrink-0" />}
+      label={link.title}
+      accessibleLabel={`Linked Notion page: ${link.title}`}
+      title={link.title}
+    >
+      <MenuItem
+        render={<a href={link.url} target="_blank" rel="noreferrer" />}
+        onClick={(event) => openLink(event, link.url)}
       >
-        <NotionIcon />
-        <span className="max-w-32 truncate">{link.title}</span>
-      </MenuTrigger>
-      <MenuPopup align="end">
-        <MenuItem
-          render={<a href={link.url} target="_blank" rel="noreferrer" />}
-          onClick={(event) => openLink(event, link.url)}
-        >
-          <ExternalLinkIcon />
-          Open in Notion
+        <ExternalLinkIcon />
+        Open in Notion
+      </MenuItem>
+      {notionEnabled && canEdit ? (
+        <MenuItem onClick={() => openNotionPagePicker(threadRef, "link")}>
+          <PencilIcon />
+          Change page…
         </MenuItem>
-        {notionEnabled && canEdit ? (
-          <MenuItem onClick={() => openNotionPagePicker(threadRef, "link")}>
-            <PencilIcon />
-            Change page…
+      ) : null}
+      {canEdit ? (
+        <>
+          <MenuSeparator />
+          <MenuItem onClick={() => void unlink(threadRef)}>
+            <UnlinkIcon />
+            Unlink page
           </MenuItem>
-        ) : null}
-        {canEdit ? (
-          <>
-            <MenuSeparator />
-            <MenuItem onClick={() => void unlink(threadRef)}>
-              <UnlinkIcon />
-              Unlink page
-            </MenuItem>
-          </>
-        ) : null}
-      </MenuPopup>
-    </Menu>
+        </>
+      ) : null}
+    </ThreadLinkRow>
   );
 }

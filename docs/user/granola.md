@@ -27,7 +27,7 @@ A linked note stays with the thread and all of its chat tabs, so you can see whi
 - On web and desktop, choose **Link > Granola note…** from the thread's menu (the sidebar row or the chat header title), or run **Link Granola note** from the command palette.
 - On mobile, choose **Link > Link Granola note** from the chat tab menu, or from **Link** beside **New tab** when the thread has one tab.
 
-The chat header shows the meeting's title; on mobile the chip sits beside the tab switcher. Tap or click it to open the note in Granola, change it, or unlink it.
+On web and desktop, the thread details panel's **Links** section shows the meeting's title; on mobile a chip sits beside the tab switcher. Tap or click it to open the note in Granola, change it, or unlink it.
 
 ## Links in messages
 

@@ -1,6 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { granolaLinkForThread } from "@t3tools/client-runtime/state/granola";
-import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import type { EnvironmentId, ScopedThreadRef, GranolaThreadLink } from "@t3tools/contracts";
 import { ExternalLinkIcon, PencilIcon, UnlinkIcon } from "lucide-react";
 
 import { useLinkClickHandler } from "~/browser/useOpenLink";
@@ -9,8 +9,8 @@ import { granolaEnvironment } from "~/state/granola";
 import { useEnvironmentQuery } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { GranolaIcon } from "../Icons";
-import { Button } from "../ui/button";
-import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
+import { MenuItem, MenuSeparator } from "../ui/menu";
+import { ThreadLinkRow } from "./ThreadLinkRow";
 import { openGranolaNotePicker } from "./GranolaNotePicker";
 
 /** Every Granola link in the environment. Null until the server answers, or on servers without links. */
@@ -35,10 +35,12 @@ export function useUnlinkGranolaNote() {
     });
 }
 
-/** The chat header's chip for the thread's linked Granola note, showing its title when linked. */
-export function GranolaThreadLinkChip(props: { threadRef: ScopedThreadRef }) {
-  const { threadRef } = props;
-  const link = useThreadGranolaLink(threadRef);
+/** The thread details row for the thread's linked Granola note, showing its title when linked. */
+export function GranolaThreadLinkRow(props: {
+  threadRef: ScopedThreadRef;
+  link: GranolaThreadLink;
+}) {
+  const { threadRef, link } = props;
   const granolaEnabled = useEnvironmentSettings(
     threadRef.environmentId,
     (s) => s.enableGranolaIntegration,
@@ -48,47 +50,36 @@ export function GranolaThreadLinkChip(props: { threadRef: ScopedThreadRef }) {
   );
   const openLink = useLinkClickHandler(threadRef);
   const unlink = useUnlinkGranolaNote();
-  if (link === null) return null;
 
   return (
-    <Menu>
-      <MenuTrigger
-        render={
-          <Button
-            size="compact"
-            variant="ghost-muted"
-            aria-label={`Linked Granola note: ${link.title}`}
-            title={link.title}
-          />
-        }
+    <ThreadLinkRow
+      icon={<GranolaIcon className="size-4 shrink-0" />}
+      label={link.title}
+      accessibleLabel={`Linked Granola note: ${link.title}`}
+      title={link.title}
+    >
+      <MenuItem
+        render={<a href={link.url} target="_blank" rel="noreferrer" />}
+        onClick={(event) => openLink(event, link.url)}
       >
-        <GranolaIcon />
-        <span className="max-w-32 truncate">{link.title}</span>
-      </MenuTrigger>
-      <MenuPopup align="end">
-        <MenuItem
-          render={<a href={link.url} target="_blank" rel="noreferrer" />}
-          onClick={(event) => openLink(event, link.url)}
-        >
-          <ExternalLinkIcon />
-          Open in Granola
+        <ExternalLinkIcon />
+        Open in Granola
+      </MenuItem>
+      {granolaEnabled && canEdit ? (
+        <MenuItem onClick={() => openGranolaNotePicker(threadRef, "link")}>
+          <PencilIcon />
+          Change note…
         </MenuItem>
-        {granolaEnabled && canEdit ? (
-          <MenuItem onClick={() => openGranolaNotePicker(threadRef, "link")}>
-            <PencilIcon />
-            Change note…
+      ) : null}
+      {canEdit ? (
+        <>
+          <MenuSeparator />
+          <MenuItem onClick={() => void unlink(threadRef)}>
+            <UnlinkIcon />
+            Unlink note
           </MenuItem>
-        ) : null}
-        {canEdit ? (
-          <>
-            <MenuSeparator />
-            <MenuItem onClick={() => void unlink(threadRef)}>
-              <UnlinkIcon />
-              Unlink note
-            </MenuItem>
-          </>
-        ) : null}
-      </MenuPopup>
-    </Menu>
+        </>
+      ) : null}
+    </ThreadLinkRow>
   );
 }

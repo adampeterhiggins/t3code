@@ -80,10 +80,11 @@ conversation the work is for. A thread links one Slack thread at a time.
 - On mobile, choose **Link > Link Slack thread** from the chat tab menu, or from **Link** beside **New
   tab** when the thread has one tab.
 
-Pick any message in the thread; a reply links its whole thread. The chat header shows the linked
-thread's channel; on mobile the chip sits beside the tab switcher. Tap or click it to open the
+Pick any message in the thread; a reply links its whole thread. On web and desktop,
+the thread details panel's **Links** section shows the linked message and its channel; on mobile a chip sits beside the
+tab switcher. Tap or click it to open the
 thread in Slack, change it, or unlink it. The channel, author, and first line are copied when you
-link and don't update. Connections without permission to change threads see the chip but can only
+link and don't update. Connections without permission to change threads see the link but can only
 open it.
 
 ## Turn off or disconnect

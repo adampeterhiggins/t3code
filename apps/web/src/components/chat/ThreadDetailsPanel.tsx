@@ -24,6 +24,7 @@ import { ThreadDetailsSection } from "./ThreadDetailsSection";
 import { ThreadAutomationsPanel } from "./ThreadAutomationsPanel";
 import { ThreadRelationshipsPanel } from "./ThreadRelationshipsControl";
 import { ThreadLinkedCheckouts } from "./ThreadLinkedCheckouts";
+import { ThreadLinks } from "./ThreadLinks";
 
 const GitActionsControl = memo(BaseGitActionsControl);
 
@@ -193,6 +194,10 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                 ) : null}
               </div>
             </ThreadDetailsSection>
+          ) : null}
+
+          {density === "full" && !props.draftId ? (
+            <ThreadLinks threadRef={activeThreadRef} />
           ) : null}
 
           {density === "full" && !props.draftId ? (
