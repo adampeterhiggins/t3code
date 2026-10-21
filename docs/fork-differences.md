@@ -1464,7 +1464,9 @@ through the same read and record a pasted copy of it would become, so an agent's
 chip for the same thing look alike. A link whose integration is turned off, or that can't be read,
 shows its URL. Rows in the thread details panel's Links section preview the same way
 ([`ThreadLinkRow.tsx`](../apps/web/src/components/chat/ThreadLinkRow.tsx)). Pull request and
-thread links keep their own previews. Mobile has no hover.
+thread links keep their own previews. GitHub writes pull requests through `/issues/` too, so
+an issue link, including every `#123` reference, previews as its pull request when it is one and
+as the issue otherwise. Mobile has no hover.
 
 The composer, sent-message chips, and these links take each kind's card from the context
 preview registry ([`contextPreviewRegistry.tsx`](../apps/web/src/components/contextPreviewRegistry.tsx))

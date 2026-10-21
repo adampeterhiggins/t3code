@@ -211,7 +211,11 @@ import {
   markdownImageCopy,
 } from "./chat/ChatMarkdownMedia";
 import { MarkdownExternalLinkContent } from "./chat/MarkdownExternalLink";
-import { LinkedObjectLinkPreview, isPreviewableObjectLink } from "./chat/LinkedObjectLinkPreview";
+import {
+  LinkedObjectLinkPreview,
+  LinkedObjectPreviewBody,
+  isPreviewableObjectLink,
+} from "./chat/LinkedObjectLinkPreview";
 import { gitHubRefTypeFromUrl } from "./gitHubRefPresentation";
 import { objectLinkLabel, parseComposerObjectLink } from "@t3tools/shared/composerObjectLinks";
 import { useEnvironmentSettings } from "../hooks/useSettings";
@@ -1313,8 +1317,12 @@ const CHAT_MARKDOWN_COMPONENTS = {
       const isBareDiscordLink = bareObjectKind === "discord-message";
       const isBareGranolaLink = bareObjectKind === "granola-note";
       const confirmBeforeOpen = pullRequestAutolink === "reference";
-      const pullRequestCandidateUrl =
-        confirmBeforeOpen && href ? pullRequestCandidateUrlFromReferenceAutolink(href) : href;
+      // GitHub writes pull requests through `/issues/` too (`#123` references always do), so an
+      // issue link previews as its pull request when it is one, and as the issue otherwise.
+      const issueLinkPullRequestUrl = href
+        ? pullRequestCandidateUrlFromReferenceAutolink(href)
+        : null;
+      const pullRequestCandidateUrl = issueLinkPullRequestUrl ?? (confirmBeforeOpen ? null : href);
       const pullRequestPreviewTarget = pullRequestCandidateUrl
         ? resolvePullRequestPreviewTarget({
             environmentId,
@@ -1488,6 +1496,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
       if (!faviconHost || !href) {
         return link;
       }
+      const objectLink = parseComposerObjectLink(href);
       if (pullRequestPreviewTarget !== null) {
         return (
           <PullRequestLinkPreview
@@ -1495,6 +1504,17 @@ const CHAT_MARKDOWN_COMPONENTS = {
             originalUrl={href}
             target={pullRequestPreviewTarget}
             confirmBeforeOpen={confirmBeforeOpen}
+            fallback={
+              issueLinkPullRequestUrl !== null &&
+              environmentId !== null &&
+              isPreviewableObjectLink(objectLink) ? (
+                <LinkedObjectPreviewBody
+                  objectLink={objectLink}
+                  environmentId={environmentId}
+                  threadRef={threadRef ?? null}
+                />
+              ) : undefined
+            }
             onOpenPullRequest={(targetUrl) =>
               openChangeRequestLink(
                 {
@@ -1512,7 +1532,6 @@ const CHAT_MARKDOWN_COMPONENTS = {
           />
         );
       }
-      const objectLink = parseComposerObjectLink(href);
       if (environmentId !== null && isPreviewableObjectLink(objectLink)) {
         return (
           <LinkedObjectLinkPreview
