@@ -59,6 +59,7 @@ export class NotionThreadLinks extends Context.Service<
     readonly link: (input: NotionLinkThreadInput) => Effect.Effect<NotionThreadLink, NotionError>;
     readonly unlink: (input: NotionUnlinkThreadInput) => Effect.Effect<void, NotionError>;
     /** Re-reads group membership after a tab joins a group. */
+    readonly forThread: (threadId: ThreadId) => Effect.Effect<NotionThreadLink | undefined>;
     readonly refresh: Effect.Effect<void>;
   }
 >()("t3/notion/NotionThreadLinks") {}
@@ -115,6 +116,10 @@ export const make = Effect.gen(function* () {
 
   return NotionThreadLinks.of({
     links: SubscriptionRef.changes(state),
+    forThread: (threadId) =>
+      SubscriptionRef.get(state).pipe(
+        Effect.map((links) => links.find((entry) => entry.threadIds.includes(threadId))),
+      ),
     link,
     unlink,
     refresh,

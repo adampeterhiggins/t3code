@@ -69,6 +69,7 @@ export class DiscordThreadLinks extends Context.Service<
     ) => Effect.Effect<DiscordThreadLink, DiscordError>;
     readonly unlink: (input: DiscordUnlinkThreadInput) => Effect.Effect<void, DiscordError>;
     /** Re-reads group membership after a tab joins a group. */
+    readonly forThread: (threadId: ThreadId) => Effect.Effect<DiscordThreadLink | undefined>;
     readonly refresh: Effect.Effect<void>;
   }
 >()("t3/discord/DiscordThreadLinks") {}
@@ -139,6 +140,10 @@ export const make = Effect.gen(function* () {
 
   return DiscordThreadLinks.of({
     links: SubscriptionRef.changes(state),
+    forThread: (threadId) =>
+      SubscriptionRef.get(state).pipe(
+        Effect.map((links) => links.find((entry) => entry.threadIds.includes(threadId))),
+      ),
     link,
     unlink,
     refresh,

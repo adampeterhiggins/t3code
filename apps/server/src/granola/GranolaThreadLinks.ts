@@ -61,6 +61,7 @@ export class GranolaThreadLinks extends Context.Service<
     ) => Effect.Effect<GranolaThreadLink, GranolaError>;
     readonly unlink: (input: GranolaUnlinkThreadInput) => Effect.Effect<void, GranolaError>;
     /** Re-reads group membership after a tab joins a group. */
+    readonly forThread: (threadId: ThreadId) => Effect.Effect<GranolaThreadLink | undefined>;
     readonly refresh: Effect.Effect<void>;
   }
 >()("t3/granola/GranolaThreadLinks") {}
@@ -117,6 +118,10 @@ export const make = Effect.gen(function* () {
 
   return GranolaThreadLinks.of({
     links: SubscriptionRef.changes(state),
+    forThread: (threadId) =>
+      SubscriptionRef.get(state).pipe(
+        Effect.map((links) => links.find((entry) => entry.threadIds.includes(threadId))),
+      ),
     link,
     unlink,
     refresh,

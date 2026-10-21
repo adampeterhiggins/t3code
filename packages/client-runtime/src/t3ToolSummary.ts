@@ -432,20 +432,29 @@ export function summarizeT3ToolCalls(
       label = phrase("Unlinked", "unlink", quantity(selected.length, "issue"));
       break;
     case "list-issues":
-      label = phrase(
-        "Checked",
-        "check",
-        `linked issues${selected.length === 1 ? "" : ` ${times}`}`,
-      );
+      label = phrase("Checked", "check", `linked items${selected.length === 1 ? "" : ` ${times}`}`);
       break;
     case "read-issue":
       label = phrase("Read", "read", quantity(selected.length, "Linear issue"));
+      break;
+    case "read-link":
+      label = phrase("Read", "read", quantity(selected.length, "link"));
       break;
     case "search-issues":
       label = phrase(
         "Searched",
         "search",
         `Linear issues${selected.length === 1 ? "" : ` ${times}`}`,
+      );
+      break;
+    case "search-messages":
+      label = phrase("Searched", "search", `Slack${selected.length === 1 ? "" : ` ${times}`}`);
+      break;
+    case "search-pages":
+      label = phrase(
+        "Searched",
+        "search",
+        `Notion pages${selected.length === 1 ? "" : ` ${times}`}`,
       );
       break;
     case "write-pr-guides": {

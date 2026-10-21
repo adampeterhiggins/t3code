@@ -65,6 +65,7 @@ export class SlackThreadLinks extends Context.Service<
     readonly link: (input: SlackLinkThreadInput) => Effect.Effect<SlackThreadLink, SlackError>;
     readonly unlink: (input: SlackUnlinkThreadInput) => Effect.Effect<void, SlackError>;
     /** Re-reads group membership after a tab joins a group. */
+    readonly forThread: (threadId: ThreadId) => Effect.Effect<SlackThreadLink | undefined>;
     readonly refresh: Effect.Effect<void>;
   }
 >()("t3/slack/SlackThreadLinks") {}
@@ -134,6 +135,10 @@ export const make = Effect.gen(function* () {
 
   return SlackThreadLinks.of({
     links: SubscriptionRef.changes(state),
+    forThread: (threadId) =>
+      SubscriptionRef.get(state).pipe(
+        Effect.map((links) => links.find((entry) => entry.threadIds.includes(threadId))),
+      ),
     link,
     unlink,
     refresh,

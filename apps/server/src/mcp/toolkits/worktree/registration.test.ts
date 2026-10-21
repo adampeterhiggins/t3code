@@ -16,7 +16,13 @@ import * as ServerEnvironment from "../../../environment/ServerEnvironment.ts";
 import * as GitWorkflowService from "../../../git/GitWorkflowService.ts";
 import * as GitHubIssueThreadLinks from "../../../githubIssues/GitHubIssueThreadLinks.ts";
 import * as MessageDrafts from "../../../messageDrafts/MessageDrafts.ts";
+import * as DiscordThreadLinks from "../../../discord/DiscordThreadLinks.ts";
+import * as GranolaThreadLinks from "../../../granola/GranolaThreadLinks.ts";
 import * as LinearApi from "../../../linear/LinearApi.ts";
+import * as NotionApi from "../../../notion/NotionApi.ts";
+import * as NotionThreadLinks from "../../../notion/NotionThreadLinks.ts";
+import * as SlackApi from "../../../slack/SlackApi.ts";
+import * as SlackThreadLinks from "../../../slack/SlackThreadLinks.ts";
 import * as LinearThreadLinks from "../../../linear/LinearThreadLinks.ts";
 import * as ProviderAdapterRegistry from "../../../orchestration-v2/ProviderAdapterRegistry.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
@@ -59,6 +65,12 @@ const layerStubServices = Layer.mergeAll(
   Layer.mock(VcsStatusBroadcaster.VcsStatusBroadcaster)({}),
   Layer.mock(LinearThreadLinks.LinearThreadLinks)({}),
   Layer.mock(LinearApi.LinearApi)({}),
+  Layer.mock(SlackThreadLinks.SlackThreadLinks)({}),
+  Layer.mock(SlackApi.SlackApi)({}),
+  Layer.mock(NotionApi.NotionApi)({}),
+  Layer.mock(DiscordThreadLinks.DiscordThreadLinks)({}),
+  Layer.mock(NotionThreadLinks.NotionThreadLinks)({}),
+  Layer.mock(GranolaThreadLinks.GranolaThreadLinks)({}),
   Layer.mock(GitHubIssueThreadLinks.GitHubIssueThreadLinks)({}),
   Layer.mock(MessageDrafts.MessageDrafts)({}),
   Layer.mock(GitVcsDriver.GitVcsDriver)({}),
