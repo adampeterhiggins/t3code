@@ -3359,7 +3359,10 @@ export default function ChatView(props: ChatViewProps) {
       rememberCheckoutIsRepo(environmentId, gitStatusCwd, liveIsGitRepo);
     }
   }, [environmentId, gitStatusCwd, liveIsGitRepo]);
-  const isGitRepo = liveIsGitRepo ?? recallCheckoutIsRepo(environmentId, gitStatusCwd) ?? true;
+  const knownIsGitRepo = liveIsGitRepo ?? recallCheckoutIsRepo(environmentId, gitStatusCwd);
+  const isGitRepo = knownIsGitRepo ?? true;
+  const checkoutKindPending =
+    gitStatusCwd !== null && knownIsGitRepo === undefined && gitStatusQuery.error === null;
   // A provider-native subagent cannot take messages: a status bar replaces the
   // composer and its strips. Its approvals and questions are asked on the
   // top-level parent thread.
@@ -9476,6 +9479,7 @@ export default function ChatView(props: ChatViewProps) {
                               isCompacting={isCompacting}
                               canInterrupt={canInterruptRunningThread}
                               isConnecting={isConnecting}
+                              checkoutKindPending={checkoutKindPending}
                               isSendBusy={
                                 (isSendBusy && !sendQueuesBehindSetup) ||
                                 (setupQueueSendThreadKey !== null &&
