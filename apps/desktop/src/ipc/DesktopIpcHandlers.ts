@@ -130,6 +130,7 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   yield* ipc.handle(QuickMessageIpc.setQuickMessagePanelReady);
   yield* ipc.handle(QuickMessageIpc.submitQuickMessage);
   yield* ipc.handle(QuickMessageIpc.dismissQuickMessage);
+  yield* ipc.handle(QuickMessageIpc.setQuickMessagePresentation);
   yield* ipc.handle(setConnectionCatalog);
   yield* ipc.handle(clearConnectionCatalog);
 

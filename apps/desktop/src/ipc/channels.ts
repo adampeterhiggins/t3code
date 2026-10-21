@@ -135,4 +135,5 @@ export const QUICK_MESSAGE_SUBMIT_EVENT_CHANNEL = "desktop:quick-message-submit-
 export const SET_QUICK_MESSAGE_PANEL_READY_CHANNEL = "desktop:set-quick-message-panel-ready";
 export const SUBMIT_QUICK_MESSAGE_CHANNEL = "desktop:submit-quick-message";
 export const DISMISS_QUICK_MESSAGE_CHANNEL = "desktop:dismiss-quick-message";
+export const SET_QUICK_MESSAGE_PRESENTATION_CHANNEL = "desktop:set-quick-message-presentation";
 export const QUICK_MESSAGE_SHOW_EVENT_CHANNEL = "desktop:quick-message-show-event";

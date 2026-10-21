@@ -1,4 +1,8 @@
-import { DesktopQuickMessageState, DesktopQuickMessageSubmission } from "@t3tools/contracts";
+import {
+  DesktopQuickMessagePresentation,
+  DesktopQuickMessageState,
+  DesktopQuickMessageSubmission,
+} from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -89,5 +93,14 @@ export const dismissQuickMessage = DesktopIpc.makeIpcMethod({
   result: Schema.Void,
   handler: Effect.fn("desktop.ipc.quickMessage.dismiss")(function* (_, event) {
     yield* (yield* ensurePanelSender(event)).dismiss;
+  }),
+});
+
+export const setQuickMessagePresentation = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.SET_QUICK_MESSAGE_PRESENTATION_CHANNEL,
+  payload: DesktopQuickMessagePresentation,
+  result: Schema.Void,
+  handler: Effect.fn("desktop.ipc.quickMessage.setPresentation")(function* (presentation, event) {
+    yield* (yield* ensurePanelSender(event)).setPresentation(presentation);
   }),
 });

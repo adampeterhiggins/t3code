@@ -346,6 +346,8 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     submit: (submission) =>
       ipcRenderer.invoke(IpcChannels.SUBMIT_QUICK_MESSAGE_CHANNEL, submission),
     dismiss: () => ipcRenderer.invoke(IpcChannels.DISMISS_QUICK_MESSAGE_CHANNEL),
+    setPresentation: (presentation) =>
+      ipcRenderer.invoke(IpcChannels.SET_QUICK_MESSAGE_PRESENTATION_CHANNEL, presentation),
     onShow: (listener) => {
       const wrappedListener = (_event: Electron.IpcRendererEvent, event: unknown) => {
         if (typeof event !== "object" || event === null) return;
