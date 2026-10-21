@@ -1190,7 +1190,11 @@ export const OrchestrationV2NotificationSource = kindUnionWithFallback(
     Schema.Struct({ kind: Schema.Literal("background_command").transform("command") }),
     SubagentNotificationSource,
     CommandNotificationSource,
-    Schema.Struct({ kind: Schema.Literal("monitor") }),
+    Schema.Struct({
+      kind: Schema.Literal("monitor"),
+      /** Set when T3 Code's pull request watch sent it, so clients can link and preview it. */
+      pullRequestUrl: Schema.optional(TrimmedNonEmptyString),
+    }),
     Schema.Struct({ kind: Schema.Literal("background_task") }),
     Schema.Struct({ kind: Schema.Literal("system") }),
   ],

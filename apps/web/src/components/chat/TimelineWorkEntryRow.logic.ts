@@ -234,3 +234,24 @@ export function remarkThoughtPreview(fallback: string) {
       : [{ type: "text", value: fallback }];
   };
 }
+
+/**
+ * Splits a pull request watch notification (`#650: checks passed`) so its `#650` can link to the
+ * pull request. Notifications sent before they carried the URL find it among the thread's links.
+ */
+export function pullRequestNotificationLabel(
+  workEntry: TimelineWorkEntry,
+  label: string,
+  pullRequests: ReadonlyArray<{ readonly number: number; readonly url: string }>,
+): { readonly url: string; readonly reference: string; readonly rest: string } | null {
+  const item = workEntry.projectedItem?.item;
+  if (item?.type !== "notification" || item.source.kind !== "monitor") return null;
+  const reference = /^#(\d+)\b/.exec(label);
+  if (reference === null) return null;
+  const url =
+    item.source.pullRequestUrl ??
+    pullRequests.find((pullRequest) => pullRequest.number === Number(reference[1]))?.url;
+  return url === undefined
+    ? null
+    : { url, reference: reference[0], rest: label.slice(reference[0].length) };
+}

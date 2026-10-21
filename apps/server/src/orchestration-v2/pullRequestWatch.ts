@@ -266,7 +266,7 @@ export function pullRequestWatchMessage(input: {
   return {
     text,
     notification: {
-      source: { kind: "monitor" },
+      source: { kind: "monitor", pullRequestUrl: input.url },
       outcome: failed
         ? "failed"
         : changes.every((change) => change.kind === "checks-passed")

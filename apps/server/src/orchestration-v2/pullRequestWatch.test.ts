@@ -328,7 +328,7 @@ describe("pullRequestWatchMessage", () => {
     assert.include(message.text, '  - reviewer on src/index.ts: "Needs a test."');
     assert.include(message.text, "unwatch_pull_request");
     assert.deepEqual(message.notification, {
-      source: { kind: "monitor" },
+      source: { kind: "monitor", pullRequestUrl: "https://github.com/o/r/pull/12" },
       outcome: "failed",
       summary: "#12: checks failed, new comments",
     });
