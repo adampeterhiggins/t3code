@@ -10,7 +10,20 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
 import { act, render } from "../../../test/render";
 
-const mocks = vi.hoisted(() => ({ observeSource: vi.fn(), dispose: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  observeSource: vi.fn(),
+  dispose: vi.fn(),
+  threads: [] as unknown[],
+}));
+vi.mock(import("~/state/entities"), async (importOriginal) => ({
+  ...(await importOriginal()),
+  useProjects: () => [],
+  useThreadShells: () => mocks.threads as never,
+  useThreadShell: (ref) =>
+    (ref
+      ? mocks.threads.find((thread) => (thread as { id: string }).id === ref.threadId)
+      : null) as never,
+}));
 vi.mock(import("./AssistantCitationSource"), async (importOriginal) => ({
   ...(await importOriginal()),
   observeAssistantCitationCommentSource: mocks.observeSource,
@@ -22,6 +35,7 @@ vi.mock(import("@tanstack/react-router"), async (importOriginal) => ({
 }));
 
 import { AssistantCitationChip } from "./AssistantCitationChip";
+import type { AssistantCitationDestinations } from "./AssistantCitationCommentEditor";
 
 const citation = {
   version: 1 as const,
@@ -39,6 +53,7 @@ const citation = {
 function setup() {
   mocks.observeSource.mockReset().mockReturnValue(mocks.dispose);
   mocks.dispose.mockClear();
+  mocks.threads = [];
   const source = document.createElement("p");
   source.textContent = "hello";
   document.body.append(source);
@@ -52,6 +67,7 @@ function mount(
   sourceAnchor: AssistantCitationSourceAnchor,
   onSave: (comment: string) => boolean,
   onSaveAndSend?: (comment: string) => boolean,
+  destinations?: AssistantCitationDestinations,
 ) {
   function Composer() {
     const [open, setOpen] = useState(true);
@@ -65,6 +81,7 @@ function mount(
           onOpenChange: setOpen,
           onSave,
           ...(onSaveAndSend ? { onSaveAndSend } : {}),
+          ...(destinations ? { destinations } : {}),
         }}
       />
     );
@@ -183,5 +200,56 @@ describe("citation comment Enter", () => {
     await pressEnter(true);
     expect(mounted.onSaveAndSend).toHaveBeenCalledWith("comment");
     expect(mounted.onSave).not.toHaveBeenCalled();
+  });
+});
+
+describe("citation comment destinations", () => {
+  it("sends the quote to the chosen thread, queueing behind its running turn", async () => {
+    localStorage.clear();
+    using source = setup();
+    mocks.threads = [
+      {
+        environmentId: citation.environmentId,
+        id: ThreadId.make("target"),
+        projectId: "project",
+        title: "Fix WS reconnect backoff",
+        runtime: { status: "running", activeRunId: "run" },
+        archivedAt: null,
+        hiddenAt: null,
+        updatedAt: "2026-10-01T00:00:00.000Z",
+      },
+    ];
+    const onSave = vi.fn(() => true);
+    const onSaveAndSend = vi.fn(() => true);
+    const onSubmit = vi.fn(() => true);
+    await using _screen = await mount(source.sourceAnchor, onSave, onSaveAndSend, {
+      environmentId: citation.environmentId,
+      threadId: citation.threadId,
+      followUpBehavior: "queue",
+      onSubmit,
+    });
+    await typeComment("fix it there");
+
+    const picker = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="Send citation to: This thread"]',
+    );
+    await act(async () => picker!.click());
+    const target = await vi.waitFor(() => {
+      const item = [...document.querySelectorAll("[data-slot=command-item]")].find((element) =>
+        element.textContent?.includes("Fix WS reconnect backoff"),
+      );
+      expect(item).toBeDefined();
+      return item as HTMLElement;
+    });
+    await act(async () => target.click());
+
+    await clickButton("Add to queue");
+    expect(onSubmit).toHaveBeenCalledWith(
+      { kind: "thread", threadId: "target", title: "Fix WS reconnect backoff" },
+      "send",
+      "fix it there",
+    );
+    expect(onSaveAndSend).not.toHaveBeenCalled();
+    expect(textarea()).toBeNull();
   });
 });

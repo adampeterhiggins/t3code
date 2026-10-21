@@ -1605,7 +1605,7 @@ Code: `markdown` on `AssistantCitation` in
 [AssistantSelectionToolbar.tsx](../apps/web/src/components/chat/AssistantSelectionToolbar.tsx) and
 shown by [AssistantCitationChip.tsx](../apps/web/src/components/chat/AssistantCitationChip.tsx).
 
-## Send a citation comment straight away
+## Send a citation comment straight away, or to another thread
 
 Upstream's comment popover on an assistant-response citation only has **Save**, with Cmd/Ctrl+Enter
 as a hidden way to save and send. The fork replaces **Save** with the same split button as the pull
@@ -1617,8 +1617,18 @@ behaviour would queue the message, **Send** reads **Add to queue**, as the compo
 does. The button shows whichever the reader used last. Enter does what the button shows, and
 Cmd/Ctrl+Enter does the other one.
 
+The comment panel also has a destination picker (**This thread**, **New thread**, or any other
+thread in the environment), and its split button then acts on that thread. **Send** starts or
+queues a turn there with that thread's own model and modes, **Save** adds the quote to that
+thread's composer, and **Save as draft** stores a message draft there. For a new thread, the
+button reads **Start thread**, and **Save** opens a new thread with the quote in its composer. A
+quote shown outside the thread it came from names its source thread in its preview. See
+[Quote an assistant response](user/composer.md#quote-an-assistant-response).
+
 Code: `SubmitChoiceButton` in
-[AssistantCitationCommentEditor.tsx](../apps/web/src/components/chat/AssistantCitationCommentEditor.tsx).
+[AssistantCitationCommentEditor.tsx](../apps/web/src/components/chat/AssistantCitationCommentEditor.tsx),
+[CitationDestinationPicker.tsx](../apps/web/src/components/chat/CitationDestinationPicker.tsx), and
+`sendCitationElsewhere` in [ChatView.tsx](../apps/web/src/components/ChatView.tsx).
 
 ## Message drafts and send button menus
 
