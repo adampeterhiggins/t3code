@@ -478,6 +478,27 @@ an agent's own thread show it.
   draft and opens the parent. On mobile, the Agents sheet rows show the handle and offer the same
   actions on long-press. The mobile composer's `@` menu has the same tabs.
 
+## Name a model in a message
+
+A `model` context chip (`ModelContextRecord` in
+[`composerContext.ts`](../packages/contracts/src/composerContext.ts)) records a provider instance,
+model and the trait options the user chose, with their labels and the time it was written. It is
+a record of what was asked: a sent chip is never updated. See the
+[composer guide](user/composer.md#context-in-your-message).
+
+- **Composer.** The `@` menu has a **Models** tab after **Files**, **Chats** and **Agents**, listing
+  what the model picker offers in columns (model, provider instance, context size, trait glyphs,
+  favourite) with a provider filter. A query that starts a word of a model's name opens on Models
+  ([`composerModelItems.ts`](../apps/web/src/components/chat/composerModelItems.ts)). The attach
+  menu's **Model** item opens the model picker panel to insert a chip instead of switching models.
+  Clicking a composer chip opens the traits menu for it.
+- **Chip and hover.** The chip shows effort, fast mode and context as glyphs. The hover is the same
+  card in the composer and in sent messages: the options as written and when.
+- **Agent payload.** The provider receives the choice as a `delegate_task` target
+  (`formatModelPayload` in
+  [`composerContextReferences.ts`](../packages/shared/src/composerContextReferences.ts)).
+- **Mobile.** Sent chips render with their details sheet; the mobile composer has no Models tab.
+
 ## Click inline code to copy it
 
 In chat Markdown (messages, plans, agent results), clicking an inline `` `code` `` span copies its

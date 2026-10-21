@@ -114,6 +114,7 @@ import {
 } from "../../types";
 import ChatMarkdown, { ChatMarkdownAssetImage } from "../ChatMarkdown";
 import { T3Wordmark } from "../T3Wordmark";
+import { ModelChipTrigger, modelChipAccessibleLabel } from "./ModelContextChip";
 import { SubagentChipTrigger, subagentChipAccessibleLabel } from "./SubagentContextChip";
 import { AgentHandle } from "./AgentHandle";
 import { ThreadChipTrigger } from "../ThreadContextChip";
@@ -4643,6 +4644,16 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
               ),
               accessibleLabel: unreadLinkAccessibleLabel(record),
               preview: { record, onOpenLink: context.onOpenLink },
+            }
+          : null,
+    },
+    model: {
+      chip: (record, context) =>
+        record.kind === "model"
+          ? {
+              trigger: <ModelChipTrigger record={record} copyMarkdown={context.copyMarkdown} />,
+              accessibleLabel: modelChipAccessibleLabel(record),
+              preview: { record },
             }
           : null,
     },

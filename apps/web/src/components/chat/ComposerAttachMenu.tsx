@@ -1,5 +1,11 @@
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { FolderGit2Icon, LaptopIcon, MessageSquareIcon, PaperclipIcon } from "lucide-react";
+import {
+  CpuIcon,
+  FolderGit2Icon,
+  LaptopIcon,
+  MessageSquareIcon,
+  PaperclipIcon,
+} from "lucide-react";
 import { GitHubIcon, GranolaIcon, DiscordIcon, LinearIcon, NotionIcon, SlackIcon } from "../Icons";
 import { memo } from "react";
 import { useEnvironmentSettings } from "~/hooks/useSettings";
@@ -62,7 +68,7 @@ export function openComposerAttachPicker(
 
 /**
  * The composer's attach button: files, thread summaries, issues, Notion pages, Granola notes, Slack
- * and Discord messages, pull requests, and repositories.
+ * and Discord messages, pull requests, repositories, and models.
  */
 export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
   environmentId: EnvironmentId;
@@ -74,6 +80,8 @@ export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
   checkoutsAvailable: boolean;
   onAttachFiles: () => void;
   onPick: (picker: ComposerAttachPicker) => void;
+  /** Fork: opens the model picker to insert a model chip; absent where chips can't be edited. */
+  onPickModel?: (() => void) | undefined;
 }) {
   const composerMenuProps = useComposerMenuProps();
   const slackEnabled = useEnvironmentSettings(props.environmentId, (s) => s.enableSlackIntegration);
@@ -155,6 +163,12 @@ export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
           <FolderGit2Icon />
           Repository
         </MenuItem>
+        {props.onPickModel ? (
+          <MenuItem onClick={props.onPickModel}>
+            <CpuIcon />
+            Model
+          </MenuItem>
+        ) : null}
       </MenuPopup>
     </Menu>
   );

@@ -739,6 +739,26 @@ export function ComposerContextSheet(props: {
                 ) : null}
               </View>
             ) : null}
+            {record.kind === "model" ? (
+              <View className="gap-3">
+                <ContextField label="Model" value={`${record.modelName} (${record.model})`} />
+                <ContextField
+                  label="Provider"
+                  value={`${record.instanceName} · ${record.providerInstanceId}`}
+                />
+                <ContextField
+                  label="Traits"
+                  value={
+                    record.options.length > 0
+                      ? record.options
+                          .map((option) => `${option.label}: ${option.valueLabel}`)
+                          .join("\n")
+                      : "None set; uses the model's defaults."
+                  }
+                />
+                <ContextField label="Written" value={new Date(record.writtenAt).toLocaleString()} />
+              </View>
+            ) : null}
             {record.kind === "skill" ? (
               <View className="gap-3">
                 <ContextField label="Skill" value={record.name} />

@@ -1,6 +1,6 @@
 import { useCheckoutContextRecords } from "~/checkoutContextStore";
 import { useRepositoryContextRecords } from "~/repositoryContextStore";
-import { useIssueContextRecords } from "~/issueContextStore";
+import { useIssueContextRecords, useIssueContextStore } from "~/issueContextStore";
 import { useThreadTabContextRecords } from "~/threadTabContextStore";
 import { formatProviderSkillDisplayName } from "@t3tools/shared/inlineSkills";
 import { useComposerTypingGuard } from "./useComposerTypingGuard";
@@ -22,7 +22,12 @@ import { messageDraftEnvironment, useThreadMessageDrafts } from "../../state/mes
 import { messageDraftComposerRecords } from "./messageDraftComposer";
 import { useMessageDraftActions } from "./useMessageDraftActions";
 import { useRightPanelStore } from "~/rightPanelStore";
-import { useEnvironmentSettings } from "~/hooks/useSettings";
+import { useEnvironmentModelPreferences, useEnvironmentSettings } from "~/hooks/useSettings";
+import { providerModelKey } from "~/modelOrdering";
+import { ComposerModelFilters } from "./ComposerModelFilters";
+import { deriveComposerModelItems } from "./composerModelItems";
+import { attachModelToChat } from "./modelReferences";
+import { ComposerModelChipPicker } from "./ComposerModelChipPicker";
 import { AttachmentFilePreview } from "../files/AttachmentFilePreview";
 import { Dialog, DialogPopup, DialogTitle } from "../ui/dialog";
 import { importPastedComposerText, readPastedComposerContext } from "../composerInlineTokenPaste";
@@ -56,6 +61,7 @@ import type {
   ThreadTabGroup,
   SnapShotSource,
   UnreadLinkContextRecord,
+  ModelContextRecord,
 } from "@t3tools/contracts";
 import {
   EnvironmentRequestInvalidError,
@@ -446,7 +452,7 @@ import {
 } from "./composerScrollGesture";
 import { prepareVideoFirstFrame } from "../../lib/videoFirstFrame";
 import { observeResize } from "~/lib/observeResize";
-type ComposerPathTab = "files" | "chats" | "agents";
+type ComposerPathTab = "files" | "chats" | "agents" | "models";
 /** Fork: the `@` menu's tabs. Agents shows only when the thread has agents. */
 const PATH_MENU_TABS: ReadonlyArray<{
   id: ComposerPathTab;
@@ -455,6 +461,7 @@ const PATH_MENU_TABS: ReadonlyArray<{
   { id: "files", label: "Files" },
   { id: "chats", label: "Chats" },
   { id: "agents", label: "Agents" },
+  { id: "models", label: "Models" },
 ];
 const REFERENCE_MENU_TABS: ReadonlyArray<{
   id: ComposerReferenceTab;
@@ -2283,6 +2290,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       unreadLinkActionsRef.current?.retry(record),
     keepUnreadLinkAsText: (record: UnreadLinkContextRecord) =>
       unreadLinkActionsRef.current?.keepAsText(record),
+    updateModelChip: (record: ModelContextRecord) =>
+      useIssueContextStore.getState().upsert(routeThreadRef.threadId, record),
   };
   const composerThreadTabContexts = useThreadTabContextRecords(routeThreadRef?.threadId);
   const composerIssueContexts = useIssueContextRecords(routeThreadRef?.threadId);
@@ -2752,8 +2761,28 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       }).filter((item) => !tabThreadIds.has(item.thread.threadId)),
     ];
   })();
+  const { favorites: favoriteModels } = useEnvironmentModelPreferences(environmentId);
+  // Like the tab choice, the provider filter holds until this `@` token closes.
+  const [modelFilterChoice, setModelFilterChoice] = useState<{
+    rangeStart: number;
+    instanceId: ProviderInstanceId | null;
+  } | null>(null);
+  const modelInstanceFilter =
+    composerTrigger?.kind === "path" && modelFilterChoice?.rangeStart === composerTrigger.rangeStart
+      ? modelFilterChoice.instanceId
+      : null;
+  const modelMenu = deriveComposerModelItems({
+    enabled: isPathTrigger,
+    query: pathTriggerQuery,
+    entries: providerInstanceEntries,
+    modelOptionsByInstance,
+    favoriteKeys: new Set(
+      favoriteModels.map((favorite) => providerModelKey(favorite.provider, favorite.model)),
+    ),
+    instanceFilter: modelInstanceFilter,
+  });
   // A tab picked by hand holds until this `@` token closes; otherwise the query picks it:
-  // Agents for a handle, Chats when only chats match, else Files.
+  // Agents for a handle, Models for a model name, Chats when only chats match, else Files.
   const [pathTabChoice, setPathTabChoice] = useState<{
     rangeStart: number;
     tab: ComposerPathTab;
@@ -2766,12 +2795,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         ? pathTabChoice.tab
         : agentMenu.prefersAgents
           ? "agents"
-          : pathTriggerQuery.trim().length > 0 &&
-              chatMenuItems.length > 0 &&
-              !workspaceEntries.isPending &&
-              workspaceEntries.entries.length === 0
-            ? "chats"
-            : "files";
+          : modelMenu.prefersModels
+            ? "models"
+            : pathTriggerQuery.trim().length > 0 &&
+                chatMenuItems.length > 0 &&
+                !workspaceEntries.isPending &&
+                workspaceEntries.entries.length === 0
+              ? "chats"
+              : "files";
   const showAgents = pathTab === "agents";
   const pathMenuTabs = agentMenu.available
     ? PATH_MENU_TABS
@@ -2987,6 +3018,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     if (composerTrigger.kind === "pull-request") return [...referenceMenuItems];
     if (composerTrigger.kind === "path" && showAgents) return [...agentMenu.items];
     if (composerTrigger.kind === "path" && pathTab === "chats") return chatMenuItems;
+    if (composerTrigger.kind === "path" && pathTab === "models") return [...modelMenu.items];
     if (composerTrigger.kind === "path") {
       return workspaceEntries.entries.map((entry) => ({
         id: `path:${entry.kind}:${entry.path}`,
@@ -3145,6 +3177,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       return composerTrigger?.query
         ? `No agent matches ${composerTrigger.query}.`
         : "This thread has no agents.";
+    }
+    if (composerTriggerKind === "path" && pathTab === "models") {
+      return composerTrigger?.query
+        ? `No model matches ${composerTrigger.query}.`
+        : "No models available.";
     }
     if (composerTriggerKind === "path" && pathTab === "chats") {
       return composerTrigger?.query
@@ -3677,7 +3714,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         case "subagent":
         case "prompt-link":
         case "github-ref":
-        case "unread-link": {
+        case "unread-link":
+        case "model": {
           const threadId = routeThreadRef?.threadId;
           if (!threadId) break;
           rewritten.set(
@@ -4428,6 +4466,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       );
       return;
     }
+    if (item.type === "model") {
+      if (trigger.kind !== "path") return;
+      // As with agents, the query text leaves first and the chip lands at the caret.
+      const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
+        expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
+      });
+      if (!applied) return;
+      setComposerHighlightedItemId(null);
+      attachModelToChat(routeThreadRef, {
+        entry: item.entry,
+        slug: item.option.slug,
+        name: item.option.name,
+      });
+      return;
+    }
     if (item.type === "thread") {
       if (trigger.kind !== "path") return;
       const shell = readThreadShell(item.thread);
@@ -4452,6 +4505,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }
   };
   const onSelectComposerItemStable = useStableCallback(onSelectComposerItem);
+  const [isModelChipPickerOpen, setIsModelChipPickerOpen] = useState(false);
+  const [attachMenuAnchor, setAttachMenuAnchor] = useState<HTMLSpanElement | null>(null);
+  const openModelChipPickerStable = useStableCallback(() => setIsModelChipPickerOpen(true));
   const onComposerMenuItemHighlighted = (itemId: string | null) => {
     setComposerHighlightedItemId(itemId);
     setComposerHighlightedSearchKey(composerMenuSearchKey);
@@ -7726,6 +7782,22 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       : {})}
                     {...(showSlackMessages ? { loadingText: "Searching Slack..." } : {})}
                     {...(showDiscordMessages ? { loadingText: "Searching Discord..." } : {})}
+                    {...(composerTrigger?.kind === "path" && pathTab === "models"
+                      ? {
+                          filters: (
+                            <ComposerModelFilters
+                              instances={modelMenu.instances}
+                              selected={modelInstanceFilter}
+                              onSelect={(instanceId) =>
+                                setModelFilterChoice({
+                                  rangeStart: composerTrigger.rangeStart,
+                                  instanceId,
+                                })
+                              }
+                            />
+                          ),
+                        }
+                      : {})}
                     {...(composerTrigger?.kind === "path"
                       ? {
                           tabs: {
@@ -8364,13 +8436,42 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                           });
                         }}
                       />
-                      <ComposerAttachMenu
-                        environmentId={routeThreadRef.environmentId}
-                        onPick={(picker) => openComposerAttachPicker(picker, routeThreadRef)}
-                        pullRequestsAvailable={pullRequestProjectId !== null}
-                        githubIssuesAvailable={githubIssueCwd !== null}
-                        checkoutsAvailable={checkoutMenu.hasLocalCandidates}
-                        onAttachFiles={() => attachmentInputRef.current?.click()}
+                      <span ref={setAttachMenuAnchor} className="inline-flex">
+                        <ComposerAttachMenu
+                          environmentId={routeThreadRef.environmentId}
+                          onPick={(picker) => openComposerAttachPicker(picker, routeThreadRef)}
+                          onPickModel={openModelChipPickerStable}
+                          pullRequestsAvailable={pullRequestProjectId !== null}
+                          githubIssuesAvailable={githubIssueCwd !== null}
+                          checkoutsAvailable={checkoutMenu.hasLocalCandidates}
+                          onAttachFiles={() => attachmentInputRef.current?.click()}
+                        />
+                      </span>
+                      <ComposerModelChipPicker
+                        open={isModelChipPickerOpen}
+                        onOpenChange={setIsModelChipPickerOpen}
+                        anchor={attachMenuAnchor}
+                        environmentId={environmentId}
+                        activeInstanceId={selectedInstanceId}
+                        model={selectedModelForPickerWithCustomFallback}
+                        instanceEntries={providerInstanceEntries}
+                        modelOptionsByInstance={modelOptionsByInstance}
+                        keybindings={keybindings}
+                        terminalOpen={terminalOpen}
+                        onPick={(instanceId, model) => {
+                          const entry = providerInstanceEntries.find(
+                            (candidate) => candidate.instanceId === instanceId,
+                          );
+                          if (!entry) return;
+                          const option = modelOptionsByInstance
+                            .get(instanceId)
+                            ?.find((candidate) => candidate.slug === model);
+                          attachModelToChat(routeThreadRef, {
+                            entry,
+                            slug: model,
+                            name: option?.name ?? model,
+                          });
+                        }}
                       />
                     </>
                   ) : null}

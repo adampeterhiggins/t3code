@@ -15,6 +15,7 @@ import {
   MessageSquareTextIcon,
   MessagesSquareIcon,
   MousePointerClickIcon,
+  CpuIcon,
   QuoteIcon,
   TerminalIcon,
 } from "lucide-react";
@@ -50,6 +51,7 @@ const CHIP_ICONS: Partial<Record<ContextChipKind, ReactNode>> = {
   repository: <FolderGit2Icon />,
   checkout: <FolderIcon />,
   citation: <QuoteIcon />,
+  model: <CpuIcon />,
 };
 
 type Segment = {

@@ -281,6 +281,21 @@ const knownRecords: Record<(typeof COMPOSER_CONTEXT_KINDS)[number], Record<strin
     linkKind: "linear-issue",
     reason: "timed-out",
   },
+  model: {
+    ...base,
+    kind: "model",
+    label: "Grok 4.7",
+    providerInstanceId: "cursor_symphony",
+    driver: "cursor",
+    instanceName: "symphony",
+    model: "grok-4.7",
+    modelName: "Grok 4.7",
+    options: [
+      { id: "effort", value: "high", label: "Effort", valueLabel: "High" },
+      { id: "fastMode", value: true, label: "Fast mode", valueLabel: "On" },
+    ],
+    writtenAt: "2026-10-21T08:12:00.000Z",
+  },
 };
 
 describe("ComposerContextRecord", () => {

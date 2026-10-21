@@ -401,6 +401,15 @@ Agents panel, or use **Attach to parent chat** from the agent's own thread. The 
 agent's task and result, and the agent you are talking to learns how to reach it. It can send follow-ups to agents T3 Code delegated
 and to Claude subagents it started itself. Other providers' subagents cannot take messages, so they
 come along as their task and result.
+You can name a model in your message, such as the one subagents should use. Type `@` and
+switch to the **Models** tab, or keep typing a model's name (`@grok`, `@opus`), to pick one; the
+buttons under the tabs narrow the list to one provider. On web and desktop you can also choose
+**Model** from the attach (paperclip) menu. Click the chip to set its effort, fast mode or other
+options; the chip shows them as a brain with the effort's initial, a bolt and the context size.
+Hovering the chip shows exactly what you asked for and when, and it never changes after you send.
+The agent receives the provider instance, model and options in the form T3 Code's `delegate_task`
+tool takes, so it can start subagents on that model directly.
+
 Dropping a thread from another environment attaches a saved transcript file. The source
 environment must be connected and up to date. The transcript includes the visible history and
 saved text context at the time of the drop; later messages and the contents of attached files

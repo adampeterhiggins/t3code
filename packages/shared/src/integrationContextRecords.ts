@@ -10,9 +10,12 @@ import type {
   GranolaNoteContextRecord,
   LinearIssueContext,
   LinearIssueContextRecord,
+  ModelContextOption,
+  ModelContextRecord,
   NotionPageContext,
   NotionPageContextRecord,
   PromptLinkContextRecord,
+  ProviderInstanceId,
   RepositoryContextRecord,
   SlackThreadContext,
   SlackThreadContextRecord,
@@ -259,5 +262,31 @@ export function unreadLinkContextRecord(
     url: link.url.slice(0, 2_048),
     linkKind: link.kind,
     reason,
+  };
+}
+
+/** Fork: a model chip. `chipId` keeps each chip's record apart so one can be edited alone. */
+export function modelContextRecord(input: {
+  readonly chipId: string;
+  readonly providerInstanceId: ProviderInstanceId;
+  readonly driver: string;
+  readonly instanceName: string;
+  readonly model: string;
+  readonly modelName: string;
+  readonly options: ReadonlyArray<ModelContextOption>;
+  readonly writtenAt: string;
+}): ModelContextRecord {
+  return {
+    version: 1,
+    kind: "model",
+    contextId: toKindScopedComposerContextId("model", input.chipId),
+    label: sanitizeComposerContextLabel(input.modelName, "model"),
+    providerInstanceId: input.providerInstanceId,
+    driver: input.driver.slice(0, 64),
+    instanceName: input.instanceName.slice(0, 2_048),
+    model: input.model.slice(0, 255),
+    modelName: input.modelName.slice(0, 2_048),
+    options: input.options.slice(0, 32),
+    writtenAt: input.writtenAt,
   };
 }
