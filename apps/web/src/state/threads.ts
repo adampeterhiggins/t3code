@@ -15,6 +15,7 @@ import { AsyncResult, Atom } from "effect/reactivity";
 
 import { environmentCatalog } from "../connection/catalog";
 import { connectionAtomRuntime } from "../connection/runtime";
+import { appAtomRegistry } from "../rpc/atomRegistry";
 import { environmentSnapshotAtom } from "./shell";
 
 export const threadEnvironment = createThreadEnvironmentAtoms(
@@ -25,6 +26,9 @@ const environmentThreads = createEnvironmentThreadStateAtoms(connectionAtomRunti
 export const environmentThreadDetails = createEnvironmentThreadDetailAtoms(
   environmentThreads.stateAtom,
 );
+export function refreshEnvironmentThread(environmentId: EnvironmentId, threadId: ThreadId): void {
+  appAtomRegistry.refresh(environmentThreads.stateAtom(environmentId, threadId));
+}
 export const environmentThreadShells = createEnvironmentThreadShellAtoms({
   catalogValueAtom: environmentCatalog.catalogValueAtom,
   snapshotAtom: threadEnvironment.snapshotAtom,

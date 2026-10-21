@@ -444,6 +444,7 @@ import {
   useProject,
   useProjects,
   useThreadProjection,
+  useRecoverMissingThreadDetail,
   useThreadStatus,
   useThreadHistory,
   useQuietThreadShell,
@@ -1365,6 +1366,7 @@ export default function ChatView(props: ChatViewProps) {
     ? deriveReportedModelSelection(serverProjection)
     : null;
   const threadStatus = useThreadStatus(routeThreadDetailRef);
+  useRecoverMissingThreadDetail(routeThreadDetailRef, serverThreadShell !== null);
   const threadSyncPhase = resolveThreadSyncPhase({
     detailExists: serverProjection !== null,
     shellExists: serverThread !== null,

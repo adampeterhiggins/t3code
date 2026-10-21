@@ -2040,7 +2040,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activeThread,
     promptHistoryMessages,
     threadTabGroup,
-    isServerThread: _isServerThread,
+    isServerThread,
     isLocalDraftThread: _isLocalDraftThread,
     forceExpandedOnMobile,
     projectSelectionRequired,
@@ -2733,7 +2733,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const pathTriggerQuery = composerTrigger?.kind === "path" ? composerTrigger.query : "";
   const isPathTrigger = composerTriggerKind === "path";
   const environmentThreadShells = useThreadShells(isPathTrigger);
-  const agentMenu = useComposerAgentItems(routeThreadRef, isPathTrigger, pathTriggerQuery, gitCwd);
+  // A draft has no agents, and its thread does not exist on the server yet.
+  const agentMenu = useComposerAgentItems(
+    routeThreadRef,
+    isPathTrigger && isServerThread,
+    pathTriggerQuery,
+    gitCwd,
+  );
   const workspaceEntries = useComposerPathSearch({
     environmentId,
     cwd: isPathTrigger ? gitCwd : null,
