@@ -62,6 +62,21 @@ const SLACK_CHANNEL_ID = /^[CDG][A-Z0-9]{2,}$/u;
 // `p` and the message timestamp without its dot: the last six digits are the fraction.
 const SLACK_PERMALINK_TS = /^p(\d{7,})$/u;
 const SLACK_TS = /^\d{1,12}\.\d{1,9}$/u;
+// A fence comes first so backticks inside it are not read as spans. An unclosed fence runs to the
+// end, as markdown renders it.
+const MARKDOWN_CODE = /(`{3,}|~{3,})[\s\S]*?(?:\1|$)|(`+)[^\n]*?\2/gu;
+
+/** Where `text` has markdown code spans and fences, as `[start, end)` pairs in order. */
+function markdownCodeRanges(text: string): ReadonlyArray<readonly [number, number]> {
+  return Array.from(text.matchAll(MARKDOWN_CODE), (match) => [
+    match.index,
+    match.index + match[0].length,
+  ]);
+}
+
+function isInRanges(ranges: ReadonlyArray<readonly [number, number]>, index: number): boolean {
+  return ranges.some(([start, end]) => index >= start && index < end);
+}
 
 /**
  * A Slack message permalink, `https://<workspace>.slack.com/archives/<channel>/p<ts>`, with
@@ -292,14 +307,19 @@ export function composerObjectLinkChipLabel(
   return objectLinkLabel(link.url) ?? `${noun.charAt(0).toUpperCase()}${noun.slice(1)}`;
 }
 
-/** Every attachable link in `text`, in order, with where it sits. */
+/**
+ * Every attachable link in `text`, in order, with where it sits. A link in markdown code is code,
+ * not a reference, so it is left out.
+ */
 export function findComposerObjectLinks(
   text: string,
 ): ReadonlyArray<{ readonly link: ComposerObjectLink; readonly index: number }> {
   const found: Array<{ link: ComposerObjectLink; index: number }> = [];
+  const code = markdownCodeRanges(text);
   for (const match of text.matchAll(URL_PATTERN)) {
     // A markdown link's target already has text the writer chose to show.
     if (text.slice(match.index - 2, match.index) === "](") continue;
+    if (isInRanges(code, match.index)) continue;
     const url = match[0].replace(TRAILING_PUNCTUATION, "");
     const link = parseComposerObjectLink(url);
     if (link !== null) found.push({ link, index: match.index });
@@ -308,8 +328,8 @@ export function findComposerObjectLinks(
 }
 
 /**
- * Where `url` sits in `text` as a whole link (not the start of a longer one), choosing the
- * occurrence nearest `hint`. Null once the user has edited it away.
+ * Where `url` sits in `text` as a whole link (not the start of a longer one) outside markdown
+ * code, choosing the occurrence nearest `hint`. Null once the user has edited it away or into code.
  */
 export function locateComposerObjectLink(
   text: string,
@@ -317,8 +337,10 @@ export function locateComposerObjectLink(
   hint: number,
 ): { readonly start: number; readonly end: number } | null {
   let best: { start: number; end: number } | null = null;
+  const code = markdownCodeRanges(text);
   for (let start = text.indexOf(url); start !== -1; start = text.indexOf(url, start + 1)) {
     const end = start + url.length;
+    if (isInRanges(code, start)) continue;
     // Read the link here the way `findComposerObjectLinks` would, so a longer link is skipped.
     const whole = LEADING_URL.exec(text.slice(start))?.[0].replace(TRAILING_PUNCTUATION, "");
     if (whole !== url) continue;
@@ -343,6 +365,25 @@ export function findTypedComposerObjectLink(
   if (start === -1) return null;
   const found = findComposerObjectLinks(before.slice(start)).at(-1);
   if (found === undefined) return null;
-  const rest = before.slice(start + found.index + found.link.url.length);
-  return /^[.,;:!?)\]}>]*$/u.test(rest) ? { link: found.link, index: start + found.index } : null;
+  const index = start + found.index;
+  // A backtick right before the link opens a code span the user has not closed yet.
+  if (text[index - 1] === "`" || isInRanges(markdownCodeRanges(text), index)) return null;
+  const rest = before.slice(index + found.link.url.length);
+  return /^[.,;:!?)\]}>]*$/u.test(rest) ? { link: found.link, index } : null;
+}
+
+/**
+ * The attachable links a paste of `pastedText` at `pasteStart` put in `prompt`, with where each
+ * sits in the prompt. A link the paste landed inside markdown code is left out, as is one the
+ * pasted text itself wraps in code.
+ */
+export function findPastedComposerObjectLinks(
+  prompt: string,
+  pastedText: string,
+  pasteStart: number,
+): ReadonlyArray<{ readonly link: ComposerObjectLink; readonly index: number }> {
+  const code = markdownCodeRanges(prompt);
+  return findComposerObjectLinks(pastedText)
+    .map(({ link, index }) => ({ link, index: pasteStart + index }))
+    .filter(({ link, index }) => !(prompt.startsWith(link.url, index) && isInRanges(code, index)));
 }

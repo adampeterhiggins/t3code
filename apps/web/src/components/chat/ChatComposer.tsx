@@ -65,7 +65,7 @@ import {
 } from "@t3tools/shared/composerTrigger";
 import {
   type ComposerObjectLink,
-  findComposerObjectLinks,
+  findPastedComposerObjectLinks,
   findTypedComposerObjectLink,
   parseComposerObjectLink,
 } from "@t3tools/shared/composerObjectLinks";
@@ -5676,13 +5676,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     keepAsText: boolean,
     pasteStart: number,
   ) => {
-    const links = findComposerObjectLinks(pastedText);
+    const links = findPastedComposerObjectLinks(promptRef.current, pastedText, pasteStart);
     if (links.length === 0) return;
     if (keepAsText) {
       for (const { link } of links) handledObjectLinks().add(link.url);
       return;
     }
-    convertObjectLinks(links.map(({ link, index }) => ({ link, index: pasteStart + index })));
+    convertObjectLinks(links);
   };
   // Read by `onPromptChange`, which is declared before the replacement helpers this needs.
   const convertTypedObjectLink = (
