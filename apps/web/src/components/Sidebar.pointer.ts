@@ -66,9 +66,12 @@ export class SidebarPointerSensor {
     if (this.phase === "finished" || event.pointerId !== this.pointer.pointerId) return;
     const coordinates = { x: event.clientX, y: event.clientY };
     // Desktop can report buttons=0 on the final move before pointerup. Let an
-    // active context drag drop there before cancelling the sidebar sort.
+    // active context drag drop there before cancelling the sidebar sort. Before
+    // activation that move is just the release of a click: end it like pointerup,
+    // since cancelling would swallow the row's click.
     if ((event.buttons & 1) === 0) {
-      if (this.phase === "dragging") this.props.options.onDrop?.(coordinates);
+      if (this.phase === "pending") return this.finish(false);
+      this.props.options.onDrop?.(coordinates);
       return this.cancel();
     }
     if (this.phase === "pending") {

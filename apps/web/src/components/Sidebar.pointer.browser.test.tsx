@@ -97,26 +97,30 @@ describe("sidebar pointer lifecycle", () => {
       document.dispatchEvent(pointer("pointermove", { buttons: 0, clientY: 100 })),
   };
   for (const [name, interrupt] of Object.entries(interruptions)) {
-    it.each([false, true])(`cancels on ${name}, started=%s, and ignores late events`, (started) => {
-      const drag = gesture();
-      if (started) document.dispatchEvent(pointer("pointermove", { clientY: 20 }));
-      interrupt();
-      document.dispatchEvent(pointer("pointermove", { clientY: 100 }));
-      document.dispatchEvent(pointer("pointerup", { buttons: 0 }));
-      drag.sensor.cancel();
-      expect(drag.onCancel).toHaveBeenCalledOnce();
-      expect(drag.onEnd).not.toHaveBeenCalled();
-      expect(drag.onFinish).toHaveBeenCalledOnce();
-      expect(drag.onStart).toHaveBeenCalledTimes(started ? 1 : 0);
-      expect(drag.onAbort).toHaveBeenCalledTimes(started ? 0 : 1);
+    // Before activation a zero-button move is a release, not a cancel; see the click test below.
+    it.each(name === "missed release" ? [true] : [false, true])(
+      `cancels on ${name}, started=%s, and ignores late events`,
+      (started) => {
+        const drag = gesture();
+        if (started) document.dispatchEvent(pointer("pointermove", { clientY: 20 }));
+        interrupt();
+        document.dispatchEvent(pointer("pointermove", { clientY: 100 }));
+        document.dispatchEvent(pointer("pointerup", { buttons: 0 }));
+        drag.sensor.cancel();
+        expect(drag.onCancel).toHaveBeenCalledOnce();
+        expect(drag.onEnd).not.toHaveBeenCalled();
+        expect(drag.onFinish).toHaveBeenCalledOnce();
+        expect(drag.onStart).toHaveBeenCalledTimes(started ? 1 : 0);
+        expect(drag.onAbort).toHaveBeenCalledTimes(started ? 0 : 1);
 
-      hidden = false;
-      const next = gesture();
-      document.dispatchEvent(pointer("pointermove", { clientY: 20 }));
-      document.dispatchEvent(pointer("pointerup", { buttons: 0 }));
-      expect(next.onStart).toHaveBeenCalledOnce();
-      expect(next.onEnd).toHaveBeenCalledOnce();
-    });
+        hidden = false;
+        const next = gesture();
+        document.dispatchEvent(pointer("pointermove", { clientY: 20 }));
+        document.dispatchEvent(pointer("pointerup", { buttons: 0 }));
+        expect(next.onStart).toHaveBeenCalledOnce();
+        expect(next.onEnd).toHaveBeenCalledOnce();
+      },
+    );
   }
 
   it("hands claimed moves and drops to the context handlers and cancels the sort", () => {
@@ -182,6 +186,20 @@ describe("sidebar pointer lifecycle", () => {
     expect(drag.onStart).not.toHaveBeenCalled();
     expect(drag.onAbort).toHaveBeenCalledOnce();
     expect(drag.onFinish).toHaveBeenCalledExactlyOnceWith(false);
+  });
+
+  it("lets the click through when a zero-button move precedes a plain release", () => {
+    const press = gesture();
+    document.dispatchEvent(pointer("pointermove", { buttons: 0, clientX: 11, clientY: 10 }));
+    document.dispatchEvent(pointer("pointerup", { buttons: 0, clientX: 11, clientY: 10 }));
+    const onClick = vi.fn();
+    document.body.addEventListener("click", onClick);
+    document.body.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    document.body.removeEventListener("click", onClick);
+
+    expect(onClick).toHaveBeenCalledOnce();
+    expect(press.onCancel).not.toHaveBeenCalled();
+    expect(press.onEnd).toHaveBeenCalledOnce();
   });
 
   it("resumes reordering when a context drag returns to the sidebar", () => {
