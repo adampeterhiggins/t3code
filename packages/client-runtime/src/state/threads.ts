@@ -398,7 +398,9 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
       history: patch(current.history),
     }));
 
-  const setDeleted = Effect.fn("EnvironmentThreadState.setDeleted")(function* () {
+  const setDeleted = Effect.fn("EnvironmentThreadState.setDeleted")(function* (options?: {
+    readonly retain?: boolean;
+  }) {
     yield* Ref.set(awaitingCompletion, false);
     yield* SubscriptionRef.set(state, {
       data: Option.none(),
@@ -407,6 +409,7 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
       history: EMPTY_THREAD_HISTORY_META,
     });
     yield* remember;
+    if (options?.retain === false && resumeCache?.owner === owner) resumeCache.snapshot = undefined;
     if (resumeCache !== undefined && resumeCache.owner !== owner) return;
     yield* cache.removeThread(environmentId, threadId).pipe(
       Effect.catch((error) =>
@@ -831,7 +834,9 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
               break;
             }
             case "missing": {
-              yield* setDeleted();
+              // A 404 also answers a draft id the server has not created yet, so
+              // unlike a delete event it must not outlive this mount.
+              yield* setDeleted({ retain: false });
               return yield* Effect.never;
             }
             case "unavailable": {
