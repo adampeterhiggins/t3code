@@ -11,6 +11,7 @@ const expectedDesktopBridgeApis = [
   "getLocalEnvironmentBootstraps",
   "getPathForFile",
   "getWindowRole",
+  "isQuickMessageSessionIsolated",
   "pickFolder",
 ];
 const clerkPasskeysGlobal = "__clerk_internal_electron_passkeys";

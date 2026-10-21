@@ -13,7 +13,10 @@ import {
   syncDocumentWindowControlsOverlayClass,
 } from "./lib/windowControlsOverlay";
 import { AppRoot } from "./AppRoot";
-import { isQuickMessageWindow } from "./components/quickMessage/quickMessageWindow";
+import {
+  isDetachedChatWindow,
+  isQuickMessageWindow,
+} from "./components/quickMessage/quickMessageWindow";
 import { clearChunkReloadGuard, reloadOnceForChunkLoadError } from "./lib/chunkReloadGuard";
 
 prepareProviderAuthDelivery();
@@ -27,7 +30,10 @@ if (isElectron) {
   syncDocumentElectronPlatformClasses(navigator.platform);
   syncDocumentWindowControlsOverlayClass();
 }
-if (isQuickMessageWindow) document.documentElement.dataset.quickMessage = "";
+// The transparent panel stylesheet belongs to the legacy composer. The floating
+// chat paints the real thread surface.
+if (isQuickMessageWindow && !isDetachedChatWindow)
+  document.documentElement.dataset.quickMessage = "";
 
 const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined;
 
@@ -48,8 +54,10 @@ const app = <AppRoot router={router} />;
 // Loading only the selected runtime as a split chunk keeps every Clerk byte out
 // of the startup graph for local-mode users, and keeps the bundled clerk-js out
 // of the browser build entirely.
+// The floating chat authenticates with the desktop bridge bearer. Loading Clerk
+// here would offer T3 Connect sign-in in a window that only talks to this computer.
 const managedAuthShellModule =
-  clerkPublishableKey && hasCloudPublicConfig()
+  !isDetachedChatWindow && clerkPublishableKey && hasCloudPublicConfig()
     ? isElectron
       ? import("./components/clerk/ElectronManagedAuthShell")
       : import("./components/clerk/BrowserManagedAuthShell")

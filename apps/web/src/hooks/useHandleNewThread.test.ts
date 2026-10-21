@@ -5,6 +5,18 @@ const testState = vi.hoisted(() => {
   let completeProjectFileRead: (value: null) => void = () => undefined;
   let projectFileRead = Promise.resolve<null>(null);
   let projectRemoved = false;
+  let detached = false;
+  let primaryEnvironmentId: string | null = "environment-primary";
+  let routeTarget: { readonly kind: "draft"; readonly draftId: string } | null = null;
+  let activeDraftSession: {
+    readonly draftId: string;
+    readonly logicalProjectKey: string;
+    readonly promotedTo: null;
+    readonly threadId: string;
+    readonly createdAt: string;
+    readonly runtimeMode: string;
+    readonly interactionMode: string;
+  } | null = null;
   let targetSettings = {
     defaultThreadEnvMode: "local" as "local" | "worktree",
     newWorktreesStartFromOrigin: false,
@@ -29,7 +41,7 @@ const testState = vi.hoisted(() => {
   const draftStore = {
     getComposerDraft: vi.fn(() => ({})),
     getDraftSessionByLogicalProjectKey: vi.fn(() => storedDraft),
-    getDraftSession: vi.fn(() => null),
+    getDraftSession: vi.fn(() => activeDraftSession),
     getDraftThread: vi.fn(() => null),
     applyStickyState: vi.fn(),
     setDraftThreadContext: vi.fn(),
@@ -49,6 +61,30 @@ const testState = vi.hoisted(() => {
     removeProject() {
       projectRemoved = true;
     },
+    get detached() {
+      return detached;
+    },
+    set detached(value: boolean) {
+      detached = value;
+    },
+    get primaryEnvironmentId() {
+      return primaryEnvironmentId;
+    },
+    set primaryEnvironmentId(value: string | null) {
+      primaryEnvironmentId = value;
+    },
+    get routeTarget() {
+      return routeTarget;
+    },
+    set routeTarget(value: { readonly kind: "draft"; readonly draftId: string } | null) {
+      routeTarget = value;
+    },
+    get activeDraftSession() {
+      return activeDraftSession;
+    },
+    set activeDraftSession(value: typeof activeDraftSession) {
+      activeDraftSession = value;
+    },
     get targetSettings() {
       return targetSettings;
     },
@@ -61,6 +97,10 @@ const testState = vi.hoisted(() => {
     ) {
       storedDraft = nextStoredDraft;
       projectRemoved = false;
+      detached = false;
+      primaryEnvironmentId = "environment-primary";
+      routeTarget = null;
+      activeDraftSession = null;
       targetSettings = {
         defaultThreadEnvMode: workspaceDefaults.envMode,
         newWorktreesStartFromOrigin: workspaceDefaults.startFromOrigin,
@@ -71,6 +111,8 @@ const testState = vi.hoisted(() => {
       router.navigate.mockClear();
       draftStore.setDraftThreadContext.mockClear();
       draftStore.setLogicalProjectDraftThreadId.mockClear();
+      draftStore.getDraftSessionByLogicalProjectKey.mockReset();
+      draftStore.getDraftSessionByLogicalProjectKey.mockImplementation(() => storedDraft);
       projectFileRead = new Promise<null>((resolve) => {
         completeProjectFileRead = resolve;
       });
@@ -94,7 +136,18 @@ const testServerConfigs = () =>
   ]);
 
 vi.mock("../rpc/atomRegistry", () => ({
-  appAtomRegistry: { get: () => testServerConfigs() },
+  appAtomRegistry: {
+    get: (atom: unknown) =>
+      atom === "primary-environment-id" ? testState.primaryEnvironmentId : testServerConfigs(),
+  },
+}));
+vi.mock("../state/primaryEnvironment", () => ({
+  primaryEnvironmentIdAtom: "primary-environment-id",
+}));
+vi.mock("../components/quickMessage/quickMessageWindow", () => ({
+  get isDetachedChatWindow() {
+    return testState.detached;
+  },
 }));
 
 vi.mock("@effect/atom-react", () => ({
@@ -194,7 +247,9 @@ vi.mock("../state/server", () => ({
   environmentServerConfigsAtom: {},
   primaryServerSettingsAtom: "primary-settings",
 }));
-vi.mock("../threadRoutes", () => ({ resolveThreadRouteTarget: () => null }));
+vi.mock("../threadRoutes", () => ({
+  resolveThreadRouteTarget: () => testState.routeTarget,
+}));
 vi.mock("../uiStateStore", () => ({
   legacyProjectCwdPreferenceKey: () => "remote-project",
   useUiStateStore: () => [],
@@ -365,4 +420,113 @@ describe.each([
       );
     },
   );
+});
+
+const primaryProjectRef = {
+  environmentId: "environment-ssh",
+  projectId: "project-remote",
+} as never;
+
+const manualSelection = {
+  environmentSelection: "manual",
+  loadBalancedEnvironmentId: null,
+};
+
+describe("floating chat new threads", () => {
+  it.each([
+    ["new", null],
+    [
+      "reusable",
+      {
+        draftId: "draft-existing",
+        environmentId: "environment-ssh",
+        promotedTo: null,
+        threadId: "thread-existing",
+      },
+    ],
+  ] as const)("forces a manual primary selection for a %s draft", async (_, draft) => {
+    testState.reset(draft);
+    testState.detached = true;
+    testState.primaryEnvironmentId = "environment-ssh";
+    const pendingOpen = useNewThreadHandler()(primaryProjectRef);
+    testState.completeProjectFileRead(null);
+    const opened = await pendingOpen;
+
+    expect(opened?.draftId).toBe(draft?.draftId ?? "draft-delayed");
+    expect(testState.draftStore.setLogicalProjectDraftThreadId).toHaveBeenCalledWith(
+      "remote-project",
+      primaryProjectRef,
+      opened!.draftId,
+      expect.objectContaining(manualSelection),
+    );
+  });
+
+  it("forces a manual primary selection when the open draft is empty", async () => {
+    testState.reset(null);
+    testState.detached = true;
+    testState.primaryEnvironmentId = "environment-ssh";
+    testState.routeTarget = { kind: "draft", draftId: "draft-open" };
+    testState.activeDraftSession = {
+      draftId: "draft-open",
+      logicalProjectKey: "remote-project",
+      promotedTo: null,
+      threadId: "thread-open",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      runtimeMode: "full-access",
+      interactionMode: "default",
+    };
+
+    const opened = await useNewThreadHandler()(primaryProjectRef);
+
+    expect(opened).toEqual({ draftId: "draft-open", threadId: "thread-open" });
+    expect(testState.router.navigate).not.toHaveBeenCalled();
+    expect(testState.draftStore.setLogicalProjectDraftThreadId).toHaveBeenCalledWith(
+      "remote-project",
+      primaryProjectRef,
+      "draft-open",
+      expect.objectContaining(manualSelection),
+    );
+  });
+
+  it("forces a manual primary selection when a concurrent draft wins", async () => {
+    testState.reset(null);
+    testState.detached = true;
+    testState.primaryEnvironmentId = "environment-ssh";
+    testState.draftStore.getDraftSessionByLogicalProjectKey
+      .mockReturnValueOnce(null)
+      .mockReturnValueOnce({
+        draftId: "draft-raced",
+        environmentId: "environment-ssh",
+        promotedTo: null,
+        threadId: "thread-raced",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        runtimeMode: "full-access",
+        interactionMode: "default",
+      } as never);
+
+    const pendingOpen = useNewThreadHandler()(primaryProjectRef);
+    testState.completeProjectFileRead(null);
+    const opened = await pendingOpen;
+
+    expect(opened).toEqual({ draftId: "draft-raced", threadId: "thread-raced" });
+    expect(testState.draftStore.setLogicalProjectDraftThreadId).toHaveBeenCalledWith(
+      "remote-project",
+      primaryProjectRef,
+      "draft-raced",
+      expect.objectContaining(manualSelection),
+    );
+  });
+
+  it("refuses a destination that is not this computer", async () => {
+    testState.reset(null);
+    testState.detached = true;
+    testState.primaryEnvironmentId = "environment-primary";
+
+    const pendingOpen = useNewThreadHandler()(primaryProjectRef);
+    testState.completeProjectFileRead(null);
+
+    await expect(pendingOpen).resolves.toBeNull();
+    expect(testState.router.navigate).not.toHaveBeenCalled();
+    expect(testState.draftStore.setLogicalProjectDraftThreadId).not.toHaveBeenCalled();
+  });
 });

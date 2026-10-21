@@ -13,7 +13,11 @@ import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 import * as IpcChannels from "./ipc/channels.ts";
 import { mergeLegacyLocalStorage } from "./legacyLocalStorageMerge.ts";
 import { createPreloadSnapshot } from "./preloadSnapshot.ts";
-import { consumesLegacyLocalStorage, parseDesktopWindowRole } from "./windowRole.ts";
+import {
+  consumesLegacyLocalStorage,
+  parseDesktopWindowRole,
+  parseQuickMessageSessionIsolated,
+} from "./windowRole.ts";
 
 const SNAP_SHOT_EVENT_TYPES = new Set([
   "requested",
@@ -36,6 +40,7 @@ exposeClerkBridge({ passkeys: true });
 
 // Known before any app script. Electron keeps additionalArguments on this renderer across reloads.
 const windowRole = parseDesktopWindowRole(process.argv);
+const quickMessageSessionIsolated = parseQuickMessageSessionIsolated(process.argv);
 
 // The quick-message window shares this profile and must not take the one-time import.
 if (consumesLegacyLocalStorage(windowRole)) {
@@ -108,6 +113,7 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
   getClientPlatform: () => clientPlatform,
   getWindowRole: () => windowRole,
+  isQuickMessageSessionIsolated: () => quickMessageSessionIsolated,
   setNotificationBadge: (badge) =>
     ipcRenderer.invoke(IpcChannels.SET_NOTIFICATION_BADGE_CHANNEL, badge),
   onNotificationBadgeClear: (listener) => {
