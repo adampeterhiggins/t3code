@@ -34,6 +34,7 @@ import * as DesktopWslEnvironment from "../../wsl/DesktopWslEnvironment.ts";
 import * as ElectronApp from "../../electron/ElectronApp.ts";
 import * as ElectronDialog from "../../electron/ElectronDialog.ts";
 import * as ElectronMenu from "../../electron/ElectronMenu.ts";
+import * as NativeWindowInteraction from "../../electron/NativeWindowInteraction.ts";
 import * as ElectronShell from "../../electron/ElectronShell.ts";
 import * as ElectronTheme from "../../electron/ElectronTheme.ts";
 import * as ElectronWindow from "../../electron/ElectronWindow.ts";
@@ -186,9 +187,8 @@ export const pickFolder = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.PICK_FOLDER_CHANNEL,
   payload: Schema.UndefinedOr(PickFolderOptionsSchema),
   result: Schema.NullOr(Schema.String),
-  handler: Effect.fn("desktop.ipc.window.pickFolder")(function* (options) {
+  handler: Effect.fn("desktop.ipc.window.pickFolder")(function* (options, event) {
     const dialog = yield* ElectronDialog.ElectronDialog;
-    const electronWindow = yield* ElectronWindow.ElectronWindow;
     const environment = yield* DesktopEnvironment.DesktopEnvironment;
     const appSettings = yield* DesktopAppSettings.DesktopAppSettings;
     const wslEnvironment = yield* DesktopWslEnvironment.DesktopWslEnvironment;
@@ -220,10 +220,14 @@ export const pickFolder = DesktopIpc.makeIpcMethod({
           ),
         )
       : environment.resolvePickFolderDefaultPath(options);
-    const selectedPath = yield* dialog.pickFolder({
-      owner: yield* electronWindow.focusedMainOrFirst,
-      defaultPath,
-    });
+    const owner = yield* NativeWindowInteraction.resolveNativeInteractionOwner(event);
+    const selectedPath = yield* NativeWindowInteraction.withNativeWindowInteraction(
+      owner,
+      dialog.pickFolder({
+        owner,
+        defaultPath,
+      }),
+    );
     if (Option.isNone(selectedPath)) {
       return null;
     }
@@ -248,24 +252,27 @@ export const pickProjectFavicon = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.PICK_PROJECT_FAVICON_CHANNEL,
   payload: Schema.UndefinedOr(Schema.String),
   result: Schema.NullOr(Schema.String),
-  handler: Effect.fn("desktop.ipc.window.pickProjectFavicon")(function* (initialPath) {
+  handler: Effect.fn("desktop.ipc.window.pickProjectFavicon")(function* (initialPath, event) {
     const dialog = yield* ElectronDialog.ElectronDialog;
-    const electronWindow = yield* ElectronWindow.ElectronWindow;
     const appSettings = yield* DesktopAppSettings.DesktopAppSettings;
     if (!(yield* appSettings.get).localEnvironmentEnabled) {
       return null;
     }
-    const paths = yield* dialog.pickFiles({
-      owner: yield* electronWindow.focusedMainOrFirst,
-      defaultPath: Option.fromNullishOr(initialPath),
-      multiple: false,
-      filters: [
-        {
-          name: "Images",
-          extensions: PROJECT_FAVICON_EXTENSIONS.map((extension) => extension.slice(1)),
-        },
-      ],
-    });
+    const owner = yield* NativeWindowInteraction.resolveNativeInteractionOwner(event);
+    const paths = yield* NativeWindowInteraction.withNativeWindowInteraction(
+      owner,
+      dialog.pickFiles({
+        owner,
+        defaultPath: Option.fromNullishOr(initialPath),
+        multiple: false,
+        filters: [
+          {
+            name: "Images",
+            extensions: PROJECT_FAVICON_EXTENSIONS.map((extension) => extension.slice(1)),
+          },
+        ],
+      }),
+    );
     return paths[0] ?? null;
   }),
 });
@@ -284,19 +291,21 @@ export const showContextMenu = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.CONTEXT_MENU_CHANNEL,
   payload: ContextMenuInput,
   result: Schema.NullOr(Schema.String),
-  handler: Effect.fn("desktop.ipc.window.showContextMenu")(function* (input) {
+  handler: Effect.fn("desktop.ipc.window.showContextMenu")(function* (input, event) {
     const electronMenu = yield* ElectronMenu.ElectronMenu;
-    const electronWindow = yield* ElectronWindow.ElectronWindow;
-    const window = yield* electronWindow.focusedMainOrFirst;
+    const window = yield* NativeWindowInteraction.resolveNativeInteractionOwner(event);
     if (Option.isNone(window)) {
       return null;
     }
 
-    const selectedItemId = yield* electronMenu.showContextMenu({
-      window: window.value,
-      items: input.items,
-      position: Option.fromNullishOr(input.position),
-    });
+    const selectedItemId = yield* NativeWindowInteraction.withNativeWindowInteraction(
+      window,
+      electronMenu.showContextMenu({
+        window: window.value,
+        items: input.items,
+        position: Option.fromNullishOr(input.position),
+      }),
+    );
     return Option.getOrNull(selectedItemId);
   }),
 });
@@ -352,24 +361,17 @@ export const pasteAsText = DesktopIpc.makeIpcMethod({
   payload: Schema.Undefined,
   result: Schema.Void,
   handler: Effect.fn("desktop.ipc.window.pasteAsText")(function* (_input, event) {
-    const electronWindow = yield* ElectronWindow.ElectronWindow;
-    const window = yield* electronWindow.main;
-    if (
-      event === undefined ||
-      Option.isNone(window) ||
-      window.value.isDestroyed() ||
-      window.value.webContents.id !== event.sender.id
-    ) {
+    // The renderer arms its paste bypass, then asks to paste. Only the trusted
+    // window that asked may paste, and only into contents that belong to it.
+    const requester = yield* NativeWindowInteraction.resolveTrustedAppSender(event);
+    if (Option.isNone(requester) || requester.value.isDestroyed()) return;
+    const focused = Electron.webContents.getFocusedWebContents();
+    if (focused === undefined || focused === null || focused.isDestroyed()) return;
+    const owner = Electron.BrowserWindow.fromWebContents(focused);
+    if (owner === null || owner === undefined || owner.isDestroyed() || owner !== requester.value) {
       return;
     }
-    const focused = Electron.webContents.getFocusedWebContents();
-    if (
-      focused &&
-      !focused.isDestroyed() &&
-      Electron.BrowserWindow.fromWebContents(focused) === window.value
-    ) {
-      focused.paste();
-    }
+    focused.paste();
   }),
 });
 
@@ -397,21 +399,24 @@ export const pickThemeFiles = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.PICK_THEME_FILES_CHANNEL,
   payload: Schema.Undefined,
   result: Schema.NullOr(Schema.Array(PickedThemeFileSchema)),
-  handler: Effect.fn("desktop.ipc.window.pickThemeFiles")(function* () {
+  handler: Effect.fn("desktop.ipc.window.pickThemeFiles")(function* (_input, event) {
     const dialog = yield* ElectronDialog.ElectronDialog;
-    const electronWindow = yield* ElectronWindow.ElectronWindow;
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const extensionsDir = path.join(yield* HostProcess.HomeDirectory, ".vscode", "extensions");
     const defaultPath = yield* fileSystem
       .exists(extensionsDir)
       .pipe(Effect.orElseSucceed(() => false));
-    const paths = yield* dialog.pickFiles({
-      owner: yield* electronWindow.focusedMainOrFirst,
-      defaultPath: defaultPath ? Option.some(extensionsDir) : Option.none(),
-      filters: [{ name: "JSON", extensions: ["json"] }],
-      multiple: true,
-    });
+    const owner = yield* NativeWindowInteraction.resolveNativeInteractionOwner(event);
+    const paths = yield* NativeWindowInteraction.withNativeWindowInteraction(
+      owner,
+      dialog.pickFiles({
+        owner,
+        defaultPath: defaultPath ? Option.some(extensionsDir) : Option.none(),
+        filters: [{ name: "JSON", extensions: ["json"] }],
+        multiple: true,
+      }),
+    );
     if (paths.length === 0) {
       return null;
     }
@@ -438,21 +443,24 @@ export const saveTextFile = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.SAVE_TEXT_FILE_CHANNEL,
   payload: SaveTextFileInputSchema,
   result: Schema.NullOr(Schema.String),
-  handler: Effect.fn("desktop.ipc.window.saveTextFile")(function* (input) {
+  handler: Effect.fn("desktop.ipc.window.saveTextFile")(function* (input, event) {
     const dialog = yield* ElectronDialog.ElectronDialog;
-    const electronWindow = yield* ElectronWindow.ElectronWindow;
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const extension = path.extname(input.defaultFileName).slice(1);
-    const selectedPath = yield* dialog.saveFile({
-      owner: yield* electronWindow.focusedMainOrFirst,
-      defaultPath: path.join(
-        yield* HostProcess.HomeDirectory,
-        "Downloads",
-        path.basename(input.defaultFileName),
-      ),
-      filters: extension === "md" ? [{ name: "Markdown", extensions: ["md"] }] : [],
-    });
+    const owner = yield* NativeWindowInteraction.resolveNativeInteractionOwner(event);
+    const selectedPath = yield* NativeWindowInteraction.withNativeWindowInteraction(
+      owner,
+      dialog.saveFile({
+        owner,
+        defaultPath: path.join(
+          yield* HostProcess.HomeDirectory,
+          "Downloads",
+          path.basename(input.defaultFileName),
+        ),
+        filters: extension === "md" ? [{ name: "Markdown", extensions: ["md"] }] : [],
+      }),
+    );
     if (Option.isNone(selectedPath)) {
       return null;
     }

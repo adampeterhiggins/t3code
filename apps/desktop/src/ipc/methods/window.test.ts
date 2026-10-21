@@ -6,34 +6,42 @@ import * as Path from "effect/Path";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import { vi } from "vite-plus/test";
+import { beforeEach, vi } from "vite-plus/test";
 
 import type * as Electron from "electron";
 
-const { focusedWebContents, ownerWindow } = vi.hoisted(() => ({
+const { focusedWebContents, ownerWindow, webContentsFromId } = vi.hoisted(() => ({
   focusedWebContents: vi.fn(),
   ownerWindow: vi.fn(),
+  webContentsFromId: vi.fn(),
 }));
 vi.mock("electron", () => ({
-  webContents: { getFocusedWebContents: focusedWebContents },
+  webContents: { getFocusedWebContents: focusedWebContents, fromId: webContentsFromId },
   BrowserWindow: { fromWebContents: ownerWindow },
 }));
 
 import * as DesktopBackendConfiguration from "../../backend/DesktopBackendConfiguration.ts";
 import * as DesktopBackendManager from "../../backend/DesktopBackendManager.ts";
 import * as DesktopBackendPool from "../../backend/DesktopBackendPool.ts";
+import * as DesktopEnvironment from "../../app/DesktopEnvironment.ts";
 import * as ElectronDialog from "../../electron/ElectronDialog.ts";
+import * as ElectronMenu from "../../electron/ElectronMenu.ts";
+import * as NativeWindowInteraction from "../../electron/NativeWindowInteraction.ts";
 import * as ElectronShell from "../../electron/ElectronShell.ts";
 import * as ElectronWindow from "../../electron/ElectronWindow.ts";
 import * as DesktopAppSettings from "../../settings/DesktopAppSettings.ts";
+import * as DesktopWslEnvironment from "../../wsl/DesktopWslEnvironment.ts";
 import {
   getLocalEnvironmentBootstraps,
   getRelayTelemetryEnabled,
   getWindowFullscreenState,
   pasteAsText,
+  pickFolder,
   pickProjectFavicon,
+  pickThemeFiles,
   probeRemoteEditors,
   saveTextFile,
+  showContextMenu,
   showSavedFileInFolder,
   revealWindow,
 } from "./window.ts";
@@ -238,47 +246,136 @@ describe("getWindowFullscreenState", () => {
 });
 
 describe("pasteAsText", () => {
+  interface AppContents {
+    readonly id: number;
+    isDestroyed: () => boolean;
+    getType: () => "window" | "webview";
+    paste: ReturnType<typeof vi.fn>;
+  }
+
+  function appWindow(id: number, destroyed = false) {
+    const contents: AppContents = {
+      id,
+      isDestroyed: () => destroyed,
+      getType: () => "window",
+      paste: vi.fn(),
+    };
+    const window = {
+      id,
+      isDestroyed: () => destroyed,
+      webContents: contents,
+    } as unknown as Electron.BrowserWindow;
+    return { window, contents };
+  }
+
+  function present(
+    ...entries: ReadonlyArray<{
+      readonly contents: AppContents;
+      readonly window: Electron.BrowserWindow | null;
+    }>
+  ) {
+    const byId = new Map(entries.map((entry) => [entry.contents.id, entry]));
+    webContentsFromId.mockImplementation((id: number) => byId.get(id)?.contents);
+    ownerWindow.mockImplementation(
+      (contents: AppContents) => byId.get(contents?.id)?.window ?? null,
+    );
+  }
+
+  const windowLayer = (main: Option.Option<Electron.BrowserWindow>) =>
+    Layer.mock(ElectronWindow.ElectronWindow)({
+      main: Effect.succeed(main),
+      focusedMainOrFirst: Effect.die("paste must not fall back to another window"),
+    });
+
+  beforeEach(() => {
+    webContentsFromId.mockReset();
+    ownerWindow.mockReset();
+    focusedWebContents.mockReset();
+  });
+
   it.effect(
     "pastes into the focused guest only after the main renderer acknowledges the menu action",
     () => {
-      const paste = vi.fn();
-      const mainPaste = vi.fn();
-      const window = {
-        webContents: { id: 42, paste: mainPaste },
+      const main = appWindow(42);
+      const focused: AppContents = {
+        id: 77,
         isDestroyed: () => false,
-      } as unknown as Electron.BrowserWindow;
-      focusedWebContents.mockReturnValue({ paste, isDestroyed: () => false });
-      ownerWindow.mockReturnValue(window);
+        getType: () => "webview",
+        paste: vi.fn(),
+      };
+      present(main, { contents: focused, window: main.window });
+      focusedWebContents.mockReturnValue(focused);
 
       return Effect.gen(function* () {
         yield* pasteAsText.handler(undefined, { sender: { id: 42 } });
-        assert.equal(paste.mock.calls.length, 1);
-        assert.equal(mainPaste.mock.calls.length, 0);
+        assert.equal(focused.paste.mock.calls.length, 1);
+        assert.equal(main.contents.paste.mock.calls.length, 0);
 
         yield* pasteAsText.handler(undefined, { sender: { id: 99 } });
-        assert.equal(paste.mock.calls.length, 1);
-        ownerWindow.mockReturnValue({}); // A focused PiP/other BrowserWindow.
+        assert.equal(focused.paste.mock.calls.length, 1);
+
+        present(main, { contents: focused, window: appWindow(8).window });
         yield* pasteAsText.handler(undefined, { sender: { id: 42 } });
-        assert.equal(paste.mock.calls.length, 1);
-        ownerWindow.mockReturnValue(null); // Detached contents.
+        assert.equal(focused.paste.mock.calls.length, 1);
+
+        present(main, { contents: focused, window: null });
         yield* pasteAsText.handler(undefined, { sender: { id: 42 } });
-        assert.equal(paste.mock.calls.length, 1);
-        ownerWindow.mockReturnValue(window);
-        focusedWebContents.mockReturnValue({ paste, isDestroyed: () => true });
+        assert.equal(focused.paste.mock.calls.length, 1);
+
+        present(main, {
+          contents: { ...focused, isDestroyed: () => true },
+          window: main.window,
+        });
+        focusedWebContents.mockReturnValue({ ...focused, isDestroyed: () => true });
         yield* pasteAsText.handler(undefined, { sender: { id: 42 } });
-        assert.equal(paste.mock.calls.length, 1);
+        assert.equal(focused.paste.mock.calls.length, 1);
+
         focusedWebContents.mockReturnValue(null);
         yield* pasteAsText.handler(undefined, { sender: { id: 42 } });
-        assert.equal(paste.mock.calls.length, 1);
-      }).pipe(
-        Effect.provide(
-          Layer.mock(ElectronWindow.ElectronWindow)({
-            main: Effect.succeedSome(window),
-          }),
-        ),
-      );
+        assert.equal(focused.paste.mock.calls.length, 1);
+
+        yield* pasteAsText.handler(undefined);
+        assert.equal(focused.paste.mock.calls.length, 1);
+      }).pipe(Effect.provide(windowLayer(Option.some(main.window))));
     },
   );
+
+  it.effect("pastes for a quick-message window only into that same window", () => {
+    const main = appWindow(1);
+    const quick = appWindow(2);
+    const stranger = appWindow(8);
+    ElectronWindow.markAuxiliaryWindow(quick.window);
+    const guest: AppContents = {
+      id: 99,
+      isDestroyed: () => false,
+      getType: () => "webview",
+      paste: vi.fn(),
+    };
+    const destroyed = appWindow(3, true);
+    ElectronWindow.markAuxiliaryWindow(destroyed.window);
+    present(main, quick, stranger, destroyed, { contents: guest, window: main.window });
+    focusedWebContents.mockReturnValue(quick.contents);
+
+    return Effect.gen(function* () {
+      yield* pasteAsText.handler(undefined, { sender: { id: quick.contents.id } });
+      assert.equal(quick.contents.paste.mock.calls.length, 1);
+      assert.equal(main.contents.paste.mock.calls.length, 0);
+
+      focusedWebContents.mockReturnValue(guest);
+      yield* pasteAsText.handler(undefined, { sender: { id: quick.contents.id } });
+      assert.equal(quick.contents.paste.mock.calls.length, 1);
+      assert.equal(guest.paste.mock.calls.length, 0);
+
+      yield* pasteAsText.handler(undefined, { sender: { id: guest.id } });
+      yield* pasteAsText.handler(undefined, { sender: { id: stranger.contents.id } });
+      yield* pasteAsText.handler(undefined, { sender: { id: destroyed.contents.id } });
+      focusedWebContents.mockReturnValue(stranger.contents);
+      yield* pasteAsText.handler(undefined, { sender: { id: stranger.contents.id } });
+      assert.equal(quick.contents.paste.mock.calls.length, 1);
+      assert.equal(stranger.contents.paste.mock.calls.length, 0);
+      assert.equal(main.contents.paste.mock.calls.length, 0);
+    }).pipe(Effect.provide(windowLayer(Option.some(main.window))));
+  });
 });
 
 describe("revealWindow", () => {
@@ -412,6 +509,303 @@ describe("saveTextFile", () => {
       assert.strictEqual(saved, null);
     }),
   );
+});
+
+describe("native interaction ownership", () => {
+  beforeEach(() => {
+    webContentsFromId.mockReset();
+    ownerWindow.mockReset();
+  });
+
+  interface AppContents {
+    readonly id: number;
+    isDestroyed: () => boolean;
+    getType: () => "window" | "webview";
+  }
+
+  function appWindow(id: number, destroyed = false) {
+    const contents: AppContents = {
+      id,
+      isDestroyed: () => destroyed,
+      getType: () => "window",
+    };
+    const window = {
+      id,
+      isDestroyed: () => destroyed,
+      webContents: contents,
+    } as unknown as Electron.BrowserWindow;
+    return { window, contents };
+  }
+
+  function present(
+    ...entries: ReadonlyArray<{
+      readonly contents: AppContents;
+      readonly window: Electron.BrowserWindow | null;
+    }>
+  ) {
+    const byId = new Map(entries.map((entry) => [entry.contents.id, entry]));
+    webContentsFromId.mockImplementation((id: number) => byId.get(id)?.contents);
+    ownerWindow.mockImplementation(
+      (contents: AppContents) => byId.get(contents?.id)?.window ?? null,
+    );
+  }
+
+  const selector = (
+    main: Option.Option<Electron.BrowserWindow>,
+    focused: "unread" | Option.Option<Electron.BrowserWindow>,
+  ) =>
+    Layer.mock(ElectronWindow.ElectronWindow)({
+      main: Effect.succeed(main),
+      focusedMainOrFirst:
+        focused === "unread"
+          ? Effect.die("focused main selector was read")
+          : Effect.succeed(focused),
+    });
+
+  const menuItem = { id: "copy", label: "Copy" };
+
+  it.effect("targets the quick-message window that sent the menu", () => {
+    const quick = appWindow(2);
+    ElectronWindow.markAuxiliaryWindow(quick.window);
+    present(quick);
+    const showContextMenuMock = vi.fn((input: { readonly window: Electron.BrowserWindow }) =>
+      Effect.sync(() => {
+        assert.strictEqual(input.window, quick.window);
+        assert.isTrue(NativeWindowInteraction.nativeWindowInteractionInProgress(quick.window));
+        return Option.some("copy");
+      }),
+    );
+
+    return Effect.gen(function* () {
+      const selected = yield* showContextMenu.handler(
+        { items: [menuItem] },
+        { sender: { id: quick.contents.id } },
+      );
+
+      assert.strictEqual(selected, "copy");
+      assert.strictEqual(showContextMenuMock.mock.calls[0]?.[0].window, quick.window);
+      assert.isFalse(NativeWindowInteraction.nativeWindowInteractionInProgress(quick.window));
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          selector(Option.none(), "unread"),
+          Layer.mock(ElectronMenu.ElectronMenu)({ showContextMenu: showContextMenuMock }),
+        ),
+      ),
+    );
+  });
+
+  it.effect("targets the registered main window that sent the menu", () => {
+    const main = appWindow(1);
+    const quick = appWindow(2);
+    ElectronWindow.markAuxiliaryWindow(quick.window);
+    present(main, quick);
+    const showContextMenuMock = vi.fn((input: { readonly window: Electron.BrowserWindow }) =>
+      Effect.sync(() => {
+        assert.strictEqual(input.window, main.window);
+        assert.isTrue(NativeWindowInteraction.nativeWindowInteractionInProgress(main.window));
+        assert.isFalse(NativeWindowInteraction.nativeWindowInteractionInProgress(quick.window));
+        return Option.some("copy");
+      }),
+    );
+
+    return Effect.gen(function* () {
+      yield* showContextMenu.handler({ items: [menuItem] }, { sender: { id: main.contents.id } });
+      assert.strictEqual(showContextMenuMock.mock.calls[0]?.[0].window, main.window);
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          selector(Option.some(main.window), "unread"),
+          Layer.mock(ElectronMenu.ElectronMenu)({ showContextMenu: showContextMenuMock }),
+        ),
+      ),
+    );
+  });
+
+  it.effect("keeps the main-window selector when no sender is attached", () => {
+    const fallback = appWindow(3);
+    const showContextMenuMock = vi.fn((_input: { readonly window: Electron.BrowserWindow }) =>
+      Effect.succeedSome("copy"),
+    );
+
+    return Effect.gen(function* () {
+      yield* showContextMenu.handler({ items: [menuItem] });
+      assert.strictEqual(webContentsFromId.mock.calls.length, 0);
+      assert.strictEqual(showContextMenuMock.mock.calls[0]?.[0].window, fallback.window);
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          selector(Option.none(), Option.some(fallback.window)),
+          Layer.mock(ElectronMenu.ElectronMenu)({ showContextMenu: showContextMenuMock }),
+        ),
+      ),
+    );
+  });
+
+  it.effect("does not trust a preview webview or an unregistered window", () => {
+    const quick = appWindow(2);
+    const stranger = appWindow(8);
+    const fallback = appWindow(4);
+    ElectronWindow.markAuxiliaryWindow(quick.window);
+    const guest: AppContents = {
+      id: 99,
+      isDestroyed: () => false,
+      getType: () => "webview",
+    };
+    present(quick, stranger, { contents: guest, window: quick.window });
+    const showContextMenuMock = vi.fn((input: { readonly window: Electron.BrowserWindow }) =>
+      Effect.sync(() => {
+        assert.strictEqual(input.window, fallback.window);
+        assert.isTrue(NativeWindowInteraction.nativeWindowInteractionInProgress(fallback.window));
+        assert.isFalse(NativeWindowInteraction.nativeWindowInteractionInProgress(quick.window));
+        assert.isFalse(NativeWindowInteraction.nativeWindowInteractionInProgress(stranger.window));
+        return Option.some("copy");
+      }),
+    );
+    const layer = Layer.mergeAll(
+      selector(Option.some(appWindow(1).window), Option.some(fallback.window)),
+      Layer.mock(ElectronMenu.ElectronMenu)({ showContextMenu: showContextMenuMock }),
+    );
+
+    return Effect.gen(function* () {
+      yield* showContextMenu
+        .handler({ items: [menuItem] }, { sender: { id: guest.id } })
+        .pipe(Effect.provide(layer));
+      yield* showContextMenu
+        .handler({ items: [menuItem] }, { sender: { id: stranger.contents.id } })
+        .pipe(Effect.provide(layer));
+      assert.strictEqual(showContextMenuMock.mock.calls.length, 2);
+    });
+  });
+
+  it.effect("falls back when the sender window is already destroyed", () => {
+    const quick = appWindow(2, true);
+    const main = appWindow(1, true);
+    const fallback = appWindow(4);
+    ElectronWindow.markAuxiliaryWindow(quick.window);
+    present(quick, main);
+    const showContextMenuMock = vi.fn((input: { readonly window: Electron.BrowserWindow }) =>
+      Effect.sync(() => {
+        assert.strictEqual(input.window, fallback.window);
+        assert.isTrue(NativeWindowInteraction.nativeWindowInteractionInProgress(fallback.window));
+        assert.isFalse(NativeWindowInteraction.nativeWindowInteractionInProgress(quick.window));
+        assert.isFalse(NativeWindowInteraction.nativeWindowInteractionInProgress(main.window));
+        return Option.some("copy");
+      }),
+    );
+    const layer = Layer.mergeAll(
+      selector(Option.some(main.window), Option.some(fallback.window)),
+      Layer.mock(ElectronMenu.ElectronMenu)({ showContextMenu: showContextMenuMock }),
+    );
+
+    return Effect.gen(function* () {
+      yield* showContextMenu
+        .handler({ items: [menuItem] }, { sender: { id: quick.contents.id } })
+        .pipe(Effect.provide(layer));
+      yield* showContextMenu
+        .handler({ items: [menuItem] }, { sender: { id: main.contents.id } })
+        .pipe(Effect.provide(layer));
+    });
+  });
+
+  it.effect("owns folder, file, and save dialogs to the quick-message sender", () => {
+    const quick = appWindow(2);
+    ElectronWindow.markAuxiliaryWindow(quick.window);
+    present(quick);
+    const assertOwned = (owner: Option.Option<Electron.BrowserWindow>) => {
+      assert.isTrue(Option.isSome(owner));
+      if (Option.isSome(owner)) assert.strictEqual(owner.value, quick.window);
+      assert.isTrue(NativeWindowInteraction.nativeWindowInteractionInProgress(quick.window));
+    };
+    const pickFolderMock = vi.fn(
+      (input: { readonly owner: Option.Option<Electron.BrowserWindow> }) =>
+        Effect.sync(() => {
+          assertOwned(input.owner);
+          return Option.some("/work");
+        }),
+    );
+    const pickFilesMock = vi.fn(
+      (input: { readonly owner: Option.Option<Electron.BrowserWindow> }) =>
+        Effect.sync(() => {
+          assertOwned(input.owner);
+          return ["/icon.png"];
+        }),
+    );
+    const saveFileMock = vi.fn((input: { readonly owner: Option.Option<Electron.BrowserWindow> }) =>
+      Effect.sync(() => {
+        assertOwned(input.owner);
+        return Option.none<string>();
+      }),
+    );
+    const electron = selector(Option.none(), "unread");
+
+    return Effect.gen(function* () {
+      assert.strictEqual(
+        yield* pickFolder.handler(undefined, { sender: { id: quick.contents.id } }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              electron,
+              Layer.mock(ElectronDialog.ElectronDialog)({ pickFolder: pickFolderMock }),
+              Layer.mock(DesktopEnvironment.DesktopEnvironment)({
+                resolvePickFolderDefaultPath: () => Option.none(),
+              } as unknown as DesktopEnvironment.DesktopEnvironment["Service"]),
+              Layer.mock(DesktopWslEnvironment.DesktopWslEnvironment)({}),
+              DesktopAppSettings.layerTest(),
+            ),
+          ),
+        ),
+        "/work",
+      );
+      assert.strictEqual(
+        yield* pickProjectFavicon
+          .handler(undefined, { sender: { id: quick.contents.id } })
+          .pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                electron,
+                Layer.mock(ElectronDialog.ElectronDialog)({ pickFiles: pickFilesMock }),
+                DesktopAppSettings.layerTest(),
+              ),
+            ),
+          ),
+        "/icon.png",
+      );
+      assert.isNull(
+        yield* pickThemeFiles.handler(undefined, { sender: { id: quick.contents.id } }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              electron,
+              Layer.mock(ElectronDialog.ElectronDialog)({
+                pickFiles: (input: { readonly owner: Option.Option<Electron.BrowserWindow> }) =>
+                  Effect.sync(() => {
+                    assertOwned(input.owner);
+                    return [];
+                  }),
+              }),
+              NodeServices.layer,
+            ),
+          ),
+        ),
+      );
+      assert.isNull(
+        yield* saveTextFile
+          .handler(
+            { defaultFileName: "thread.md", contents: "# Thread\n" },
+            { sender: { id: quick.contents.id } },
+          )
+          .pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                electron,
+                Layer.mock(ElectronDialog.ElectronDialog)({ saveFile: saveFileMock }),
+                NodeServices.layer,
+              ),
+            ),
+          ),
+      );
+      assert.isFalse(NativeWindowInteraction.nativeWindowInteractionInProgress(quick.window));
+    });
+  });
 });
 
 it.effect.skipIf(HostProcess.Platform.defaultValue() === "win32")(

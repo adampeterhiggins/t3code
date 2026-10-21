@@ -4,6 +4,7 @@ import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import type * as Electron from "electron";
 import { beforeEach, vi } from "vite-plus/test";
 
@@ -560,6 +561,28 @@ describe("ElectronWindow", () => {
       assert.lengthOf(activateWindowsForegroundMock.mock.calls, 1);
       assert.lengthOf(window.focus.mock.calls, 2);
     }).pipe(Effect.provide(layerTestFor("win32"))),
+  );
+
+  it.effect("does not treat an auxiliary window as the focused or first main window", () =>
+    Effect.gen(function* () {
+      const auxiliary = makeBrowserWindow({ id: 7, destroyed: false });
+      const main = makeBrowserWindow({ id: 3, destroyed: false });
+      ElectronWindow.markAuxiliaryWindow(auxiliary);
+      getAllWindowsMock.mockReturnValue([auxiliary, main]);
+      getFocusedWindowMock.mockReturnValue(auxiliary);
+      const electronWindow = yield* ElectronWindow.ElectronWindow;
+
+      assert.strictEqual(Option.getOrNull(yield* electronWindow.currentMainOrFirst), main);
+      assert.strictEqual(Option.getOrNull(yield* electronWindow.focusedMainOrFirst), main);
+
+      yield* electronWindow.setMain(main);
+      assert.strictEqual(Option.getOrNull(yield* electronWindow.focusedMainOrFirst), main);
+
+      getAllWindowsMock.mockReturnValue([auxiliary]);
+      yield* electronWindow.clearMain(Option.some(main));
+      assert.isTrue(Option.isNone(yield* electronWindow.currentMainOrFirst));
+      assert.isTrue(Option.isNone(yield* electronWindow.focusedMainOrFirst));
+    }).pipe(Effect.provide(layerTest)),
   );
 
   it.effect("starts the Windows focus worker lazily and closes it with the layer", () =>

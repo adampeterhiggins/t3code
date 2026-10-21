@@ -18,6 +18,10 @@ import * as Electron from "electron";
 import * as NodeEvents from "node:events";
 import { vi } from "vite-plus/test";
 
+const { getFocusedWindow } = vi.hoisted(() => ({
+  getFocusedWindow: vi.fn((): Electron.BrowserWindow | null => null),
+}));
+
 vi.mock("electron", async (importOriginal) => ({
   ...(await importOriginal<typeof import("electron")>()),
   session: {
@@ -27,7 +31,7 @@ vi.mock("electron", async (importOriginal) => ({
       setUserAgent: vi.fn(),
     })),
   },
-  BrowserWindow: { getAllWindows: () => [], getFocusedWindow: () => null },
+  BrowserWindow: { getAllWindows: () => [], getFocusedWindow },
   app: { setBadgeCount: vi.fn() },
   screen: {
     getAllDisplays: vi.fn(() => [
@@ -87,6 +91,7 @@ import * as ElectronMenu from "../electron/ElectronMenu.ts";
 import * as ElectronShell from "../electron/ElectronShell.ts";
 import * as ElectronTheme from "../electron/ElectronTheme.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
+import * as NativeWindowInteraction from "../electron/NativeWindowInteraction.ts";
 import {
   MENU_ACTION_CHANNEL,
   SNAP_SHOT_EVENT_CHANNEL,
@@ -172,6 +177,7 @@ function makeFakeBrowserWindow() {
   return {
     window: window as unknown as Electron.BrowserWindow,
     close: window.close,
+    focus: window.focus,
     getBounds: window.getBounds,
     getNormalBounds: window.getNormalBounds,
     isDestroyed: window.isDestroyed,
@@ -697,7 +703,11 @@ describe("DesktopWindow", () => {
         mainWindow: yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none()),
         copiedTexts,
         onPopupTemplate: (input) =>
-          Queue.offer(menus, { input, focusedContents }).pipe(Effect.asVoid),
+          Effect.sync(() => {
+            assert.isTrue(NativeWindowInteraction.nativeWindowInteractionInProgress(input.window));
+          }).pipe(
+            Effect.andThen(Queue.offer(menus, { input, focusedContents }).pipe(Effect.asVoid)),
+          ),
       });
 
       yield* Effect.gen(function* () {
@@ -1955,6 +1965,108 @@ describe("DesktopWindow", () => {
         assert.deepEqual(main.send.mock.calls, [[MENU_ACTION_CHANNEL, "open-settings"]]);
       }).pipe(Effect.provide(scenario.layer));
     }),
+  );
+
+  it.effect("sends paste-as-text to the focused trusted window and does not reveal another", () =>
+    Effect.gen(function* () {
+      const main = makeFakeBrowserWindow();
+      const quick = makeFakeBrowserWindow();
+      const stranger = makeFakeBrowserWindow();
+      ElectronWindow.markAuxiliaryWindow(quick.window);
+      const createCount = yield* Ref.make(0);
+      const mainWindow = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
+      const revealed: Electron.BrowserWindow[] = [];
+      const layer = layerTest({
+        window: main.window,
+        createCount,
+        mainWindow,
+        onReveal: (window) => {
+          revealed.push(window);
+        },
+      });
+
+      yield* Effect.gen(function* () {
+        const desktopWindow = yield* DesktopWindow.DesktopWindow;
+        getFocusedWindow.mockReturnValue(quick.window);
+        yield* desktopWindow.dispatchMenuAction("paste-as-text", {
+          reveal: false,
+          target: "focused-trusted",
+        });
+        assert.equal(yield* Ref.get(createCount), 0);
+        assert.deepEqual(quick.send.mock.calls, [[MENU_ACTION_CHANNEL, "paste-as-text"]]);
+        assert.equal(main.send.mock.calls.length, 0);
+        assert.deepEqual(revealed, []);
+        assert.equal(quick.focus.mock.calls.length, 0);
+        assert.equal(main.focus.mock.calls.length, 0);
+
+        quick.send.mockClear();
+        yield* desktopWindow.handleBackendReady(new URL("http://127.0.0.1:3773"));
+        getFocusedWindow.mockReturnValue(main.window);
+        yield* desktopWindow.dispatchMenuAction("paste-as-text", {
+          reveal: false,
+          target: "focused-trusted",
+        });
+        assert.deepEqual(main.send.mock.calls, [[MENU_ACTION_CHANNEL, "paste-as-text"]]);
+        assert.equal(quick.send.mock.calls.length, 0);
+        assert.deepEqual(revealed, []);
+
+        main.send.mockClear();
+        for (const focused of [stranger.window, null]) {
+          getFocusedWindow.mockReturnValue(focused);
+          yield* desktopWindow.dispatchMenuAction("paste-as-text", {
+            reveal: false,
+            target: "focused-trusted",
+          });
+        }
+        quick.isDestroyed.mockReturnValue(true);
+        getFocusedWindow.mockReturnValue(quick.window);
+        yield* desktopWindow.dispatchMenuAction("paste-as-text", {
+          reveal: false,
+          target: "focused-trusted",
+        });
+        assert.equal(main.send.mock.calls.length, 0);
+        assert.equal(quick.send.mock.calls.length, 0);
+        assert.equal(stranger.send.mock.calls.length, 0);
+        assert.deepEqual(revealed, []);
+        assert.equal(main.focus.mock.calls.length, 0);
+        assert.equal(stranger.focus.mock.calls.length, 0);
+      }).pipe(Effect.provide(layer));
+    }).pipe(Effect.ensuring(Effect.sync(() => getFocusedWindow.mockReset()))),
+  );
+
+  it.effect("keeps settings and capture events on the main window while a panel is focused", () =>
+    Effect.gen(function* () {
+      const main = makeFakeBrowserWindow();
+      const quick = makeFakeBrowserWindow();
+      ElectronWindow.markAuxiliaryWindow(quick.window);
+      getFocusedWindow.mockReturnValue(quick.window);
+      const createCount = yield* Ref.make(0);
+      const mainWindow = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
+      const revealed: Electron.BrowserWindow[] = [];
+      const layer = layerTest({
+        window: main.window,
+        createCount,
+        mainWindow,
+        onReveal: (window) => {
+          revealed.push(window);
+        },
+      });
+
+      yield* Effect.gen(function* () {
+        const desktopWindow = yield* DesktopWindow.DesktopWindow;
+        yield* desktopWindow.handleBackendReady(new URL("http://127.0.0.1:3773"));
+        yield* desktopWindow.dispatchMenuAction("open-settings");
+        yield* desktopWindow.dispatchSnapShotEvent({ type: "ready", id: captureOne });
+
+        assert.deepEqual(main.send.mock.calls, [
+          [MENU_ACTION_CHANNEL, "open-settings"],
+          [SNAP_SHOT_EVENT_CHANNEL, { type: "ready", id: captureOne }],
+        ]);
+        assert.equal(quick.send.mock.calls.length, 0);
+        assert.deepEqual(revealed, [main.window]);
+        assert.equal(quick.focus.mock.calls.length, 0);
+      }).pipe(Effect.provide(layer));
+    }).pipe(Effect.ensuring(Effect.sync(() => getFocusedWindow.mockReset()))),
   );
 
   it.effect("delivers capture completion and late errors without taking focus back", () =>

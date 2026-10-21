@@ -50,6 +50,10 @@ export function markAuxiliaryWindow(window: Electron.BrowserWindow): void {
   auxiliaryWindows.add(window);
 }
 
+export function isAuxiliaryWindow(window: Electron.BrowserWindow): boolean {
+  return auxiliaryWindows.has(window);
+}
+
 const ElectronWindowCreateOptions = Schema.Struct({
   title: Schema.NullOr(Schema.String),
   width: Schema.NullOr(Schema.Number),
