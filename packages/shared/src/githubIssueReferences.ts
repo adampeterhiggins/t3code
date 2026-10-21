@@ -2,7 +2,8 @@ import type { RepositoryIdentity } from "@t3tools/contracts";
 
 /**
  * Fork: GitHub issue and pull request references in chat text link to GitHub, so they read like
- * a pasted link. `owner/repo#123` names its repository; `#123` needs the thread's. Commit SHAs
+ * a pasted link. `owner/repo#123` names its repository. `#123` uses the thread's, but only in the user's own
+ * text: a thread's agent can work in several repositories, so its bare numbers are not linked. Commit SHAs
  * and mentions stay text: in chat they are usually code, or not about GitHub.
  *
  * Groups: 1 is the `owner/repo` qualifier, if any; 2 is the number. A word, path, or entity
