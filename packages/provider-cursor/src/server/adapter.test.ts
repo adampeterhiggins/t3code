@@ -1497,6 +1497,64 @@ describe("CursorAdapterV2", () => {
     }
   });
 
+  it("reads nested lint results whose clean files omit diagnostics", () => {
+    assert.deepEqual(
+      nestedToolCallFromEnvelope({
+        toolCallId: "tool:lints",
+        readLintsToolCall: {
+          args: { paths: ["src/clean.ts", "src/broken.ts"] },
+          result: {
+            success: {
+              fileDiagnostics: [
+                { path: "src/clean.ts" },
+                {
+                  path: "src/broken.ts",
+                  diagnostics: [
+                    {
+                      severity: "error",
+                      message: "Cannot find name 'x'.",
+                      source: "ts",
+                      code: "2304",
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      }),
+      {
+        callId: "tool:lints",
+        toolCall: {
+          type: "readLints",
+          args: { paths: ["src/clean.ts", "src/broken.ts"] },
+          result: {
+            status: "success",
+            value: {
+              fileDiagnostics: [
+                { path: "src/clean.ts", diagnostics: [], diagnosticsCount: 0 },
+                {
+                  path: "src/broken.ts",
+                  diagnostics: [
+                    {
+                      severity: "error",
+                      message: "Cannot find name 'x'.",
+                      source: "ts",
+                      code: "2304",
+                    },
+                  ],
+                  diagnosticsCount: 1,
+                },
+              ],
+              totalFiles: 2,
+              totalDiagnostics: 1,
+            },
+          },
+        },
+      },
+    );
+  });
+
   it("preserves failed nested read calls when Cursor omits their path", () => {
     assert.deepEqual(
       nestedToolCallFromEnvelope({
