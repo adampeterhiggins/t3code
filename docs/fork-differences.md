@@ -337,11 +337,12 @@ thread details panel, one row each, newest first, and removed the right-panel Ag
   agent's activity from its child thread: its **Tools** (the default), with status and kind
   filters and sorting, or a live **Transcript** of its messages, reasoning summaries, tool calls,
   and notices in order, each with its time. Tool calls a provider attributes to one model call
-  sit under a numbered step with that call's input and output tokens
-  (`groupSubagentToolCallSteps` in
-  [`agentListView.ts`](../packages/client-runtime/src/state/agentListView.ts)). The header
-  toggle hides the steps; the choice is a client setting, on by default. Calls with no model
-  call, such as Cursor's, stay a flat list and the toggle is not shown. Both views can be
+  sit under a numbered step with that call's input and output tokens while the list is in time
+  order, newest or oldest (`groupSubagentToolCallSteps` and `isChronologicalSubagentToolCallSort`
+  in [`agentListView.ts`](../packages/client-runtime/src/state/agentListView.ts)). Any other sort
+  lists the calls flat. The header toggle hides the steps; the choice is a client setting, on by
+  default, and the toggle is disabled while the sort is not by time. Calls with no model call,
+  such as Cursor's, stay a flat list and the toggle is not shown. Both views can be
   searched, and a narrowed view says **Showing N of M**. Paths in both read relative to the
   checkout the agent works in: a Claude
   `.claude/worktrees/agent-<id>` worktree or a sibling checkout its calls use

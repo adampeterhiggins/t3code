@@ -10,6 +10,7 @@ import {
   DEFAULT_SUBAGENT_TOOL_CALL_VIEW,
   deriveSubagentToolCalls,
   groupSubagentToolCallSteps,
+  isChronologicalSubagentToolCallSort,
   latestSubagentToolCall,
   subagentContinuationContext,
   subagentEmptyToolCallsText,
@@ -504,6 +505,14 @@ describe("deriveSubagentToolCalls", () => {
         query: "limit: 40",
       }).map((call) => call.id),
     ).toEqual(["read"]);
+  });
+});
+
+describe("isChronologicalSubagentToolCallSort", () => {
+  it("is true for time order in either direction and false otherwise", () => {
+    expect(isChronologicalSubagentToolCallSort("newest")).toBe(true);
+    expect(isChronologicalSubagentToolCallSort("oldest")).toBe(true);
+    expect(isChronologicalSubagentToolCallSort("duration")).toBe(false);
   });
 });
 
