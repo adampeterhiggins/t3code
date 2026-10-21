@@ -38,6 +38,9 @@ import {
 import {
   AssetWorkspaceAssetNotFoundError,
   AuthPreviewOperateScope,
+  DEFAULT_SERVER_SETTINGS,
+  EDITORS,
+  resolveFileOpenTarget,
   type EditorId,
   type EnvironmentId,
   type ServerConfig,
@@ -426,10 +429,23 @@ type MarkdownServerConfigFields = ReturnType<typeof markdownServerConfigFields>;
 
 /** The server config fields markdown reads. */
 function markdownServerConfigFields(config: ServerConfig | null) {
+  const settings = config?.settings ?? DEFAULT_SERVER_SETTINGS;
+  const availableEditors = config?.availableEditors ?? NO_MARKDOWN_EDITORS;
   return {
     pullRequestsEnabled: config?.environment.capabilities.pullRequests === true,
     threadPullRequestsEnabled: config?.environment.capabilities.threadPullRequests === true,
-    availableEditors: config?.availableEditors ?? NO_MARKDOWN_EDITORS,
+    availableEditors,
+    // Fork: file links follow Settings → Open in (default target, extension rules, custom apps).
+    fileOpenSettings: {
+      fileOpenDefault: settings.fileOpenDefault,
+      fileOpenRules: settings.fileOpenRules,
+    },
+    openWithEditors: [
+      ...EDITORS.filter(
+        (editor) => editor.id !== "file-manager" && availableEditors.includes(editor.id),
+      ),
+      ...settings.customEditors,
+    ].map(({ id, label }) => ({ id, label })),
     revealInFileManagerLabel:
       config?.shellRevealInFileManager === true && config.availableEditors.includes("file-manager")
         ? config.shellRevealInFileManagerKind === undefined
@@ -448,7 +464,18 @@ function markdownServerConfigFieldsEqual(
     previous.threadPullRequestsEnabled === next.threadPullRequestsEnabled &&
     previous.revealInFileManagerLabel === next.revealInFileManagerLabel &&
     previous.availableEditors.length === next.availableEditors.length &&
-    previous.availableEditors.every((editor, index) => editor === next.availableEditors[index])
+    previous.availableEditors.every((editor, index) => editor === next.availableEditors[index]) &&
+    previous.fileOpenSettings.fileOpenDefault === next.fileOpenSettings.fileOpenDefault &&
+    previous.fileOpenSettings.fileOpenRules.length === next.fileOpenSettings.fileOpenRules.length &&
+    previous.fileOpenSettings.fileOpenRules.every((rule, index) => {
+      const nextRule = next.fileOpenSettings.fileOpenRules[index];
+      return rule.extension === nextRule?.extension && rule.target === nextRule.target;
+    }) &&
+    previous.openWithEditors.length === next.openWithEditors.length &&
+    previous.openWithEditors.every((editor, index) => {
+      const nextEditor = next.openWithEditors[index];
+      return editor.id === nextEditor?.id && editor.label === nextEditor.label;
+    })
   );
 }
 
@@ -609,11 +636,17 @@ function useChatMarkdownState({
     pullRequestsEnabled,
     threadPullRequestsEnabled,
     availableEditors,
+    fileOpenSettings,
+    openWithEditors,
     revealInFileManagerLabel,
   } = useAtomValue(markdownServerConfigFieldsAtom(environmentId));
   const projects = useProjects();
   const [preferredEditor] = usePreferredEditor(availableEditors);
-  const preferredEditorMenuLabel = openInEditorMenuLabel(preferredEditor);
+  const customEditorLabel = openWithEditors.find((editor) => editor.id === preferredEditor)?.label;
+  const preferredEditorMenuLabel =
+    customEditorLabel !== undefined && !EDITORS.some((editor) => editor.id === preferredEditor)
+      ? `Open in ${customEditorLabel}`
+      : openInEditorMenuLabel(preferredEditor);
   const openInPreferredEditor = useOpenInPreferredEditor(environmentId, availableEditors);
   const openInEditor = useAtomCommand(shellEnvironment.openInEditor, {
     reportFailure: false,
@@ -856,6 +889,7 @@ function useChatMarkdownState({
       fileLinkMeta.workspaceRelativePath ??
       (!canPreviewMedia && isHostPath(fileLinkMeta.filePath) ? fileLinkMeta.filePath : null);
 
+    const fileOpenTarget = resolveFileOpenTarget(fileLinkMeta.filePath, fileOpenSettings);
     return (
       <MarkdownFileLink
         environmentId={environmentId}
@@ -881,6 +915,18 @@ function useChatMarkdownState({
             ? async () =>
                 openInPreferredEditor(
                   markdownFileEditorTarget(fileLinkMeta, await resolveHostPath()),
+                  fileOpenTarget === "t3" ? undefined : fileOpenTarget,
+                )
+            : undefined
+        }
+        openExternally={fileOpenTarget !== "t3"}
+        openWithEditors={openWithEditors}
+        onOpenWith={
+          canUseShellActions
+            ? async (editor: EditorId) =>
+                openInPreferredEditor(
+                  markdownFileEditorTarget(fileLinkMeta, await resolveHostPath()),
+                  editor,
                 )
             : undefined
         }

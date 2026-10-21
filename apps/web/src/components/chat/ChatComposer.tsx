@@ -1,5 +1,7 @@
 import { useComposerTypingGuard } from "./useComposerTypingGuard";
 import { insertAttachmentReferencesForDraft } from "./composerAttachmentReferences";
+import { resolveComposerSnapshot, type ComposerSnapshot } from "./composerPendingSnapshot";
+import { useCaptureThreadTabContext } from "./ThreadTabs";
 import { DESKTOP_PASTE_AS_TEXT_EVENT } from "../../lib/desktopPasteAsText";
 import { runtimeModeConfig, runtimeModeOptions as runtimeModes } from "./runtimeModeConfig";
 import { isLocalEnvironmentDisabled } from "../../localEnvironment";
@@ -231,6 +233,10 @@ import {
 import { useOpenPrLink } from "~/lib/openPullRequestLink";
 import { useLinkClickHandler } from "~/browser/useOpenLink";
 import {
+  clearComposerSnapshotRecords,
+  importComposerSnapshotRecord,
+} from "~/lib/composerSnapshotImport";
+import {
   collectInlineContextIds,
   stripInlineContextReferences,
   type ComposerContextReference,
@@ -325,6 +331,7 @@ import {
   isComposerReferenceItem as isReferenceMenuItem,
 } from "./composerReferenceMenu.logic";
 import { useComposerReferenceMenu } from "./useComposerReferenceMenu";
+import { useSplitPaneFocus } from "./splitPane";
 import {
   ComposerFooterModeControls,
   ComposerFooterPrimaryActions,
@@ -1667,29 +1674,14 @@ function useComposerImageGroups(
   };
 }
 
-function withThreadTabMenuItems(
-  items: readonly ComposerCommandItem[],
-  group: ThreadTabGroup | null,
-  activeThreadId: ThreadId | null,
-  query: string,
-): ComposerCommandItem[] {
-  if (group === null) return [...items];
-  const tabQuery = query.trim().toLowerCase();
-  const tabThreadIds = new Set(group.tabs.map((tab) => tab.threadId));
-  const tabs: ComposerCommandItem[] = group.tabs
-    .filter((tab) => tab.threadId !== activeThreadId && tab.title.toLowerCase().includes(tabQuery))
-    .map((tab) => ({
-      id: `thread-tab:${tab.threadId}`,
-      type: "thread-tab",
-      threadId: tab.threadId,
-      label: tab.title,
-      description: "Chat tab",
-    }));
-  return [
-    ...tabs,
-    ...items.filter((item) => item.type !== "thread" || !tabThreadIds.has(item.thread.threadId)),
-  ];
-}
+type ComposerPathTab = "files" | "chats" | "agents" | "models";
+/** Fork: the `@` menu's tabs. Agents shows only when the thread has agents. */
+const PATH_MENU_TABS: ReadonlyArray<{ id: ComposerPathTab; label: string }> = [
+  { id: "files", label: "Files" },
+  { id: "chats", label: "Chats" },
+  { id: "agents", label: "Agents" },
+  { id: "models", label: "Models" },
+];
 
 const NO_PROVIDER_SKILLS: ServerProvider["skills"] = [];
 const NO_PROVIDER_SLASH_COMMANDS: ServerProvider["slashCommands"] = [];
@@ -2006,6 +1998,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     supportsAttachmentUploads,
     maxFileAttachmentBytes,
   });
+  const attachmentUploadPendingReason = supportsAttachmentUploads
+    ? attachmentUploadBlockReason({
+        imageIds: [...composerImages, ...composerFiles].map((attachment) => attachment.id),
+        uploadsByImageId,
+        environmentId,
+      })
+    : null;
   const attachmentBlockReason =
     (questionAttachmentTarget &&
     !supportsQuestionAttachments &&
@@ -2018,11 +2017,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         ? needsReattachFileCount === 1
           ? "Attach the interrupted file again or remove it"
           : "Attach the interrupted files again or remove them"
-        : attachmentUploadBlockReason({
-            imageIds: [...composerImages, ...composerFiles].map((attachment) => attachment.id),
-            uploadsByImageId,
-            environmentId,
-          })
+        : attachmentUploadPendingReason
       : null);
   const setComposerDraftPrompt = useComposerDraftStore((store) => store.setPrompt);
   const addComposerDraftImages = useComposerDraftStore((store) => store.addImages);
@@ -2346,6 +2341,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const stashInFlightRef = useRef<Set<string>>(new Set());
   const pendingImageCompressionsRef = useRef<Map<string, number>>(new Map());
   const pendingThreadImportsRef = useRef<Map<string, number>>(new Map());
+  const unfocusedSplitPane = useSplitPaneFocus() === "unfocused";
   const isRevertingCheckpointRef = useRef(isRevertingCheckpoint);
   useLayoutEffect(() => {
     isRevertingCheckpointRef.current = isRevertingCheckpoint;
@@ -2460,6 +2456,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const attachSlackMessage = useAttachSlackMessage();
   const attachDiscordMessage = useAttachDiscordMessage();
   const attachGitHubIssue = useAttachGitHubIssue();
+  const captureThreadTabContext = useCaptureThreadTabContext(environmentId, activeThreadId);
   const {
     items: composerMenuItemsFromTrigger,
     isLoading: isTriggerMenuLoading,
@@ -2480,21 +2477,38 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     selectedProviderSlashCommands,
     showSkillsInSlashMenu: settings.showSkillsInSlashMenu,
   });
-  const isComposerMenuLoading = referenceMenu.open ? referenceMenu.isLoading : isTriggerMenuLoading;
   const composerMenuEmptyState = referenceMenu.open
     ? referenceMenu.emptyState
     : triggerMenuEmptyState;
-  const pathMenuBase =
-    composerTrigger?.kind === "path"
-      ? withThreadTabMenuItems(
-          composerMenuItemsFromTrigger,
-          threadTabGroup,
-          activeThreadId,
-          composerTrigger.query,
-        )
-      : composerMenuItemsFromTrigger;
   const isPathTrigger = composerTrigger?.kind === "path";
   const pathTriggerQuery = isPathTrigger ? composerTrigger.query : "";
+  // Fork: the `@` menu splits files from chats. Files lists workspace paths only; Chats lists
+  // this thread's other chat tabs, then other threads by recency.
+  const fileMenuItems = isPathTrigger
+    ? composerMenuItemsFromTrigger.filter((item) => item.type === "path")
+    : [];
+  const chatMenuItems = ((): ComposerCommandItem[] => {
+    if (!isPathTrigger) return [];
+    const tabQuery = pathTriggerQuery.trim().toLowerCase();
+    const tabs = threadTabGroup?.tabs ?? [];
+    const tabThreadIds = new Set(tabs.map((tab) => tab.threadId));
+    return [
+      ...tabs
+        .filter(
+          (tab) => tab.threadId !== activeThreadId && tab.title.toLowerCase().includes(tabQuery),
+        )
+        .map((tab) => ({
+          id: `thread-tab:${tab.threadId}`,
+          type: "thread-tab" as const,
+          threadId: tab.threadId,
+          label: tab.title,
+          description: "Chat tab",
+        })),
+      ...composerMenuItemsFromTrigger.filter(
+        (item) => item.type === "thread" && !tabThreadIds.has(item.thread.threadId),
+      ),
+    ];
+  })();
   // A draft has no agents, and its thread does not exist on the server yet.
   const agentMenu = useComposerAgentItems(
     routeThreadRef,
@@ -2521,13 +2535,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     ),
     instanceFilter: modelInstanceFilter,
   });
+  // A tab picked by hand holds until this `@` token closes; otherwise the query picks it:
+  // Agents for a handle, Models for a model name, Chats when only chats match, else Files.
   const [pathTabChoice, setPathTabChoice] = useState<{
     rangeStart: number;
-    tab: "files" | "agents" | "models";
+    tab: ComposerPathTab;
   } | null>(null);
   const [isModelChipPickerOpen, setIsModelChipPickerOpen] = useState(false);
   const [attachMenuAnchor, setAttachMenuAnchor] = useState<HTMLSpanElement | null>(null);
-  const pathTab =
+  const pathTab: ComposerPathTab =
     isPathTrigger &&
     pathTabChoice?.rangeStart === composerTrigger.rangeStart &&
     (pathTabChoice.tab !== "agents" || agentMenu.available)
@@ -2536,16 +2552,26 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         ? "agents"
         : modelMenu.prefersModels
           ? "models"
-          : "files";
+          : pathTriggerQuery.trim().length > 0 &&
+              chatMenuItems.length > 0 &&
+              !isTriggerMenuLoading &&
+              fileMenuItems.length === 0
+            ? "chats"
+            : "files";
+  const isComposerMenuLoading = referenceMenu.open
+    ? referenceMenu.isLoading
+    : isTriggerMenuLoading && (!isPathTrigger || pathTab === "files");
   const composerMenuItems = referenceMenu.open
     ? [...referenceMenu.items]
     : !isPathTrigger
-      ? pathMenuBase
+      ? composerMenuItemsFromTrigger
       : pathTab === "models"
         ? [...modelMenu.items]
         : pathTab === "agents"
           ? [...agentMenu.items]
-          : pathMenuBase;
+          : pathTab === "chats"
+            ? chatMenuItems
+            : fileMenuItems;
 
   const composerMenuOpen = Boolean(composerTrigger);
   const composerMenuSearchKey = composerTrigger
@@ -2972,7 +2998,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     ? existing.record.id
                     : undefined,
                 })
-              : existing?.kind === "thread"
+              : existing && existing.kind !== "image" && existing.kind !== "file"
                 ? existing.record
                 : existing
                   ? (uploadedContextRecordFromDraft(existing) ?? undefined)
@@ -3032,6 +3058,37 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             appendReference: false,
           });
           rewritten.set(record.contextId, record.contextId);
+          break;
+        }
+        case "checkout": {
+          // A checkout is a path on its own machine; it means nothing to another server.
+          const threadId = routeThreadRef?.threadId;
+          if (!threadId || record.environmentId !== environmentId) break;
+          rewritten.set(
+            record.contextId,
+            importComposerSnapshotRecord(threadId, record, conflicts),
+          );
+          break;
+        }
+        case "repository":
+        case "thread-tab":
+        case "linear-issue":
+        case "github-issue":
+        case "slack-thread":
+        case "discord-thread":
+        case "notion-page":
+        case "granola-note":
+        case "subagent":
+        case "prompt-link":
+        case "github-ref":
+        case "unread-link":
+        case "model": {
+          const threadId = routeThreadRef?.threadId;
+          if (!threadId) break;
+          rewritten.set(
+            record.contextId,
+            importComposerSnapshotRecord(threadId, record, conflicts),
+          );
           break;
         }
         case "image":
@@ -3424,7 +3481,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     convertTypedObjectLinkRef.current?.(previousPrompt, nextPrompt, expandedCursor);
   };
   const onPromptChangeStable = useStableCallback(onPromptChange);
-
+  const pendingComposerSnapshotRef = useRef<ComposerSnapshot | null>(null);
   const applyPromptReplacement = (
     rangeStart: number,
     rangeEnd: number,
@@ -3475,6 +3532,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         insertedSpaces: options.citationComment.insertedSpaces,
       });
     }
+    pendingComposerSnapshotRef.current = {
+      value: next.text,
+      cursor: nextCursor,
+      expandedCursor: nextExpandedCursor,
+      contextIds: isLiteralPendingAnswer ? [] : collectInlineContextIds(next.text),
+    };
     promptRef.current = next.text;
     const activePendingQuestion = activePendingProgress?.activeQuestion;
     if (activePendingQuestion && activePendingUserInput) {
@@ -3552,9 +3615,19 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     contextIds: string[];
   } => {
     const editorSnapshot = composerEditorRef.current?.readSnapshot();
-    if (editorSnapshot) {
-      return editorSnapshot;
+    const pendingSnapshot = pendingComposerSnapshotRef.current;
+    if (
+      editorSnapshot?.value === promptRef.current ||
+      pendingSnapshot?.value !== promptRef.current
+    ) {
+      pendingComposerSnapshotRef.current = null;
     }
+    const snapshot = resolveComposerSnapshot(
+      promptRef.current,
+      editorSnapshot,
+      pendingComposerSnapshotRef.current,
+    );
+    if (snapshot) return snapshot;
     return {
       value: promptRef.current,
       cursor: composerCursor,
@@ -3673,6 +3746,35 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       if (applied) {
         setComposerHighlightedItemId(null);
       }
+      return;
+    }
+    if (item.type === "thread-tab") {
+      if (!captureThreadTabContext) return;
+      const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
+        expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
+      });
+      if (!applied) return;
+      setComposerHighlightedItemId(null);
+      // The summary is fetched after the query text leaves, so the chip lands at the caret
+      // wherever it is by then.
+      captureThreadTabContext.capture(item.threadId, item.label).then(
+        (reference) => {
+          const current = readComposerSnapshot();
+          const edit = inlineContextReferenceReplacement(
+            current.value,
+            { start: current.expandedCursor, end: current.expandedCursor },
+            [reference],
+          );
+          applyPromptReplacement(edit.start, edit.end, edit.text);
+        },
+        (cause: unknown) => {
+          toastManager.add({
+            type: "error",
+            title: "Could not include that chat",
+            description: cause instanceof Error ? cause.message : undefined,
+          });
+        },
+      );
       return;
     }
     if (item.type === "slash-command") {
@@ -3961,6 +4063,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     return onSaveMessageDraft();
   };
   const saveMessageDraftStable = useStableCallback(saveMessageDraft);
+  const saveCitationAsDraftStable = useStableCallback(() => {
+    void saveMessageDraft();
+  });
   const loadMessageDraft = (draft: MessageDraft) => {
     const rewrittenContextIds = importContextRecords(
       messageDraftComposerRecords(draft),
@@ -4109,15 +4214,29 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }
   };
   const openSendContextMenuStable = useStableCallback(openSendContextMenu);
+  // A surface beside the composer asked to send what it just wrote here. Wait out a connect,
+  // attachments it just handed over that are still uploading, and the git status of a draft that
+  // just opened (until it lands, a non-git folder reads as a repo and asks for a base branch),
+  // then send as Enter would; anything else that stops it leaves the draft in place to send by hand.
   const submitRequested = useComposerSubmitRequestStore((state) =>
     state.pending.has(composerDraftTargetKey),
   );
+  const attachmentsUploading = attachmentUploadPendingReason !== null;
   useEffect(() => {
-    if (!submitRequested || isConnecting || isSendBusy || checkoutKindPending) return;
+    if (
+      !submitRequested ||
+      isConnecting ||
+      isSendBusy ||
+      attachmentsUploading ||
+      checkoutKindPending
+    ) {
+      return;
+    }
     const intent = useComposerSubmitRequestStore.getState().take(composerDraftTargetKey);
     if (intent === "save-draft") void saveMessageDraftStable();
     else if (intent === "send") submitComposerStable();
   }, [
+    attachmentsUploading,
     checkoutKindPending,
     composerDraftTargetKey,
     isConnecting,
@@ -4139,6 +4258,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     );
   };
   const handleSubmitMessageStable = useStableCallback(handleSubmitMessage);
+  const citationSendDispatchMode = resolveComposerDispatchMode({
+    running: phase === "running",
+    alternateModifier: false,
+    activeTurnDefault: followUpBehavior,
+    canSteer: !isCompacting,
+  });
   const submitCitationAndSend = async (citationText: string): Promise<boolean> => {
     if (
       noProviderAvailable ||
@@ -4146,15 +4271,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     ) {
       return false;
     }
-    return onSendCitation(
-      citationText,
-      resolveComposerDispatchMode({
-        running: phase === "running",
-        alternateModifier: false,
-        activeTurnDefault: followUpBehavior,
-        canSteer: !isCompacting,
-      }),
-    );
+    return onSendCitation(citationText, citationSendDispatchMode);
   };
   const submitCitationAndSendStable = useStableCallback(submitCitationAndSend);
   // A question took the editor while a citation comment was
@@ -4785,6 +4902,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       clearComposerDraftPromptAndImages(stashTarget);
       clearComposerDraftTerminalContexts(stashTarget);
       setComposerDraftThreadContexts(stashTarget, []);
+      clearComposerSnapshotRecords(routeThreadRef.threadId);
       for (const comment of composerReviewComments) {
         removeComposerDraftReviewComment(stashTarget, comment.id);
       }
@@ -5405,6 +5523,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   }
 
   useEffect(() => {
+    // Both split panes mount a composer; only the focused one answers window-level keys.
+    if (unfocusedSplitPane) return;
     const handler = (event: globalThis.KeyboardEvent) => {
       const command = resolveShortcutCommand(event, keybindings, {
         context: {
@@ -5413,6 +5533,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           modelPickerOpen: isComposerModelPickerOpen,
         },
       });
+      if (command === "composer.saveDraft") {
+        // Unclaimed where there is no thread to keep a draft on, so the key keeps its default.
+        if (!canSaveMessageDraft || isCommandPaletteOpen()) return;
+        event.preventDefault();
+        event.stopPropagation();
+        void saveMessageDraftStable();
+        return;
+      }
       if (command !== "composer.stash") return;
       // Always claim the shortcut so the browser save dialog never opens,
       // even when the composer is in a state that can't stash.
@@ -5441,6 +5569,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     stashCurrentPromptStable,
     isRevertingCheckpoint,
     terminalOpen,
+    unfocusedSplitPane,
+    canSaveMessageDraft,
+    saveMessageDraftStable,
   ]);
 
   const addComposerAttachments = async (
@@ -7096,7 +7227,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                           ? pathTriggerQuery
                             ? `No model matches ${pathTriggerQuery}.`
                             : "No models available."
-                          : composerMenuEmptyState
+                          : isPathTrigger && pathTab === "chats"
+                            ? pathTriggerQuery
+                              ? `No chat matches ${pathTriggerQuery}.`
+                              : "No other chats yet."
+                            : composerMenuEmptyState
                     }
                     activeItemId={activeComposerMenuItem?.id ?? null}
                     onHighlightedItemChange={onComposerMenuItemHighlightedStable}
@@ -7126,18 +7261,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     {...(isPathTrigger
                       ? {
                           tabs: {
-                            options: [
-                              { id: "files", label: "Files" },
-                              ...(agentMenu.available ? [{ id: "agents", label: "Agents" }] : []),
-                              { id: "models", label: "Models" },
-                            ],
+                            options: agentMenu.available
+                              ? PATH_MENU_TABS
+                              : PATH_MENU_TABS.filter((tab) => tab.id !== "agents"),
                             activeId: pathTab,
-                            onSelect: (id: string) =>
+                            onSelect: (id: string) => {
+                              const tab = PATH_MENU_TABS.find((option) => option.id === id);
+                              if (!tab) return;
                               setPathTabChoice({
                                 rangeStart: composerTrigger.rangeStart,
-                                tab:
-                                  id === "models" ? "models" : id === "agents" ? "agents" : "files",
-                              }),
+                                tab: tab.id,
+                              });
+                            },
                           },
                           ...(pathTab === "models"
                             ? {
@@ -7236,6 +7371,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     onPageScrollKeyUp={onPageScrollKeyUp}
                     onPageScrollRelease={onPageScrollRelease}
                     onCitationSubmitAndSend={submitCitationAndSendStable}
+                    onCitationSubmitAndSaveDraft={
+                      canSaveMessageDraft ? saveCitationAsDraftStable : undefined
+                    }
+                    citationSendQueues={citationSendDispatchMode === "queue"}
                     citationDestinations={
                       onSendCitationElsewhere && activeThreadId
                         ? {

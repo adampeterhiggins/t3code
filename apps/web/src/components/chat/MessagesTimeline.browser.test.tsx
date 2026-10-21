@@ -498,6 +498,32 @@ describe("MessagesTimeline messages", () => {
     expect((globalThis as { __t3Xss?: number }).__t3Xss).toBeUndefined();
   });
 
+  it("forks a user message into a new tab only where tabs exist", async () => {
+    const onForkFromMessage = vi.fn();
+    {
+      await using screen = await renderTimeline([message("Try this")], { onForkFromMessage });
+      await click(screen.button("Fork into new tab"));
+      expect(onForkFromMessage).toHaveBeenCalledWith(MessageId.make("message-1"));
+    }
+    await using screen = await renderTimeline([message("Try this")]);
+    expect(screen.buttons("Fork into new tab")).toHaveLength(0);
+  });
+
+  it("attaches a subagent to its parent chat from the Subagent of divider", async () => {
+    const onAttach = vi.fn();
+    await using screen = await renderTimeline([message("Work")], {
+      parentThreadLink: {
+        threadId: "thread-parent" as never,
+        title: "Parent",
+        handle: "researcher",
+        onAttach,
+      },
+    });
+    expect(screen.text()).toContain("@researcher");
+    await click(screen.button("Attach to parent chat"));
+    expect(onAttach).toHaveBeenCalledOnce();
+  });
+
   it("renders sanitized raw HTML in assistant messages", async () => {
     await using screen = await renderTimeline([
       message(

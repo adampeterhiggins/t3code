@@ -1,6 +1,7 @@
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { type ToolActivityIcon } from "@t3tools/contracts";
-import { toolActivityFaviconUrl } from "@t3tools/shared/favicon";
+import { toolActivityBrandMark, toolActivityFaviconUrl } from "@t3tools/shared/favicon";
+import { GranolaIcon, LinearIcon } from "~/components/Icons";
 import { getProjectFaviconCacheKey } from "@t3tools/shared/projectFavicon";
 import { use, useState } from "react";
 import { T3Wordmark } from "../T3Wordmark";
@@ -84,6 +85,11 @@ export function ToolActivityIconView(props: {
   const fallbackClassName = cn(props.className, props.muted && "opacity-70 light:brightness-60");
   if (!props.icon) {
     return <WorkEntryIcon name={props.fallbackName} className={fallbackClassName} />;
+  }
+  const brandMark = toolActivityBrandMark(props.icon);
+  if (brandMark) {
+    const BrandIcon = brandMark === "linear" ? LinearIcon : GranolaIcon;
+    return <BrandIcon className={fallbackClassName} aria-hidden />;
   }
   if (props.icon._tag === "website") {
     const src = toolActivityFaviconUrl(props.icon, resolvedTheme, 32);

@@ -1028,6 +1028,31 @@ effectIt.effect("does not mistake a failed state read for a superseded run", () 
   }),
 );
 
+effectIt.effect("resumes an imported native session on its first T3 turn", () =>
+  Effect.gen(function* () {
+    const firstTurnFor = (marked: boolean) =>
+      Effect.gen(function* () {
+        const harness = makeLocalCommandHarness({
+          text: "Continue",
+          existingClaudeSession: { marked },
+        });
+        yield* harness.start;
+        expect(harness.startRootRun).toHaveBeenCalledOnce();
+        return harness.startRootRun.mock.calls[0]![0];
+      });
+
+    // Claude creates the session on a first turn without prior native turns,
+    // which the CLI rejects for an imported session id that already exists.
+    const imported = yield* firstTurnFor(true);
+    expect(imported.providerTurnOrdinal).toBe(1);
+    expect(imported.nativeThreadHasTurns).toBe(true);
+
+    const unmarked = yield* firstTurnFor(false);
+    expect(unmarked.providerTurnOrdinal).toBe(1);
+    expect(unmarked.nativeThreadHasTurns).toBe(false);
+  }),
+);
+
 effectIt.effect(
   "signs out the existing native provider before opening the newly selected provider",
   () =>

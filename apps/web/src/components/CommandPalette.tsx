@@ -46,16 +46,42 @@ import {
   resolveEnvironmentMachineKind,
 } from "@t3tools/contracts";
 import { useLocation, useNavigate } from "@tanstack/react-router";
+import { isGitHubProject } from "@t3tools/client-runtime/state/github-issues";
+import { openGitHubIssuePicker } from "./chat/GitHubIssuePicker";
+import { useThreadGitHubIssueLink, useUnlinkGitHubIssue } from "./chat/GitHubIssueThreadLink";
+import { openNotionPagePicker } from "./chat/NotionPagePicker";
+import { openGranolaNotePicker } from "./chat/GranolaNotePicker";
+import { openSlackMessagePicker } from "./chat/SlackMessagePicker";
+import { openDiscordMessagePicker } from "./chat/DiscordMessagePicker";
+import { openLinearIssuePicker } from "./chat/LinearIssuePicker";
+import { useThreadLinearLink, useUnlinkLinearIssue } from "./chat/LinearThreadLink";
+import { useThreadNotionLink, useUnlinkNotionPage } from "./chat/NotionThreadLink";
+import { useThreadGranolaLink, useUnlinkGranolaNote } from "./chat/GranolaThreadLink";
+import { useThreadSlackLink, useUnlinkSlackThread } from "./chat/SlackThreadLink";
+import { useThreadDiscordLink, useUnlinkDiscordThread } from "./chat/DiscordThreadLink";
+import { openThreadAttachPicker } from "./chat/ThreadAttachPicker";
+import { openPullRequestAttachPicker } from "./chat/PullRequestAttachPicker";
+import { openRepositoryAttachPicker } from "./chat/RepositoryAttachPicker";
+import { openStartFromPicker } from "./chat/StartFromPicker";
+import { dispatchSplitViewAction, useSplitPartner } from "./chat/splitPane";
 import {
   ArrowLeftIcon,
+  BotIcon,
+  CalendarClockIcon,
   ChartNoAxesColumnIcon,
   CheckIcon,
   ChevronRightIcon,
+  Columns2Icon,
   CornerLeftUpIcon,
+  DownloadIcon,
   FileSearchIcon,
   FolderGit2Icon,
   FolderIcon,
   FolderPlusIcon,
+  GitBranchIcon,
+  HistoryIcon,
+  InboxIcon,
+  LayersIcon,
   MessageSquareDashedIcon,
   LinkIcon,
   MessageSquareIcon,
@@ -91,7 +117,10 @@ import {
   copyPromptLink,
   promptLinkRepositoryOf,
 } from "./promptLinks/copyPromptLink";
-import { useClientSettings } from "../hooks/useSettings";
+import { updateClientSettings, useClientSettings } from "../hooks/useSettings";
+import { useAttentionInbox } from "../hooks/useAttentionInbox";
+import { useRestartAgentSession } from "../hooks/useRestartAgentSession";
+import { useRunScheduledTask } from "../hooks/useRunThreadScheduledTask";
 import { useStableCallback } from "../hooks/useStableCallback";
 import { useTheme } from "../hooks/useTheme";
 import { readLocalApi } from "../localApi";
@@ -100,7 +129,12 @@ import { filesystemEnvironment, useFilesystemReadAccess } from "../state/filesys
 import { projectEnvironment } from "../state/projects";
 import { useEnvironmentQuery } from "../state/query";
 import { serverEnvironment } from "../state/server";
-import { threadEnvironment } from "../state/threads";
+import { githubIssueEnvironment } from "../state/githubIssues";
+import { linearEnvironment } from "../state/linear";
+import { notionEnvironment } from "../state/notion";
+import { granolaEnvironment } from "../state/granola";
+import { slackEnvironment } from "../state/slack";
+import { discordEnvironment } from "../state/discord";
 import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
 import { sourceControlEnvironment } from "../state/sourceControl";
 import { useAtomCommand } from "../state/use-atom-command";
@@ -113,7 +147,13 @@ import {
   useEnvironments,
   usePrimaryEnvironmentId,
 } from "../state/environments";
-import { useProjects, useServerConfigs, useThreadShells, waitForProject } from "../state/entities";
+import {
+  readThreadVisibleTurnItems,
+  useProjects,
+  useServerConfigs,
+  useThreadShells,
+  waitForProject,
+} from "../state/entities";
 import { resolveThreadActionProjectRef, startNewThreadFromContext } from "../lib/chatThreadActions";
 import {
   appendBrowsePathSegment,
@@ -144,6 +184,8 @@ import {
 } from "../lib/utils";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
 import { buildThreadRouteParams } from "../threadRoutes";
+import { resolveThreadScheduledTasks } from "../threadScheduledTasks";
+import { formatRelativeTimeLabel } from "../timestampFormat";
 import { useAvailableSettingsSearchItems } from "./settings/useAvailableSettingsSearchItems";
 import {
   applyWslEnvironmentConfiguration,
@@ -215,6 +257,13 @@ import {
   scrollCommandPaletteRowIntoView,
 } from "./CommandPaletteResults";
 import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
+import { DiscordIcon, GitHubIcon, GranolaIcon, LinearIcon, NotionIcon, SlackIcon } from "./Icons";
+import { openImportConversationDialog } from "./ImportConversationDialog";
+import {
+  ATTENTION_REASON_PRESENTATION,
+  useProjectTitleByKey,
+} from "./sidebar/SidebarAttentionInbox";
+import { openTranscriptExportDialog } from "./TranscriptExportDialog";
 import { Checkbox } from "./ui/checkbox";
 import { ProjectFilePicker } from "./files/ProjectFilePicker";
 import { openLinkPullRequestDialog } from "./pullRequest/LinkPullRequestDialog";
@@ -314,6 +363,13 @@ export function CommandPalette({ children }: { children: ReactNode }) {
         dispatch({ _tag: "OpenChangeTheme" });
         return;
       }
+      if (command === "attentionInbox.open") {
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.repeat) return;
+        dispatch({ _tag: "OpenAttentionInbox" });
+        return;
+      }
       if (command === "themeEditor.toggle") {
         event.preventDefault();
         event.stopPropagation();
@@ -362,6 +418,8 @@ export function CommandPalette({ children }: { children: ReactNode }) {
           openNewThreadIn();
         } else if (detail.open === "add-project") {
           openAddProject();
+        } else if (detail.open === "run-scheduled-task") {
+          dispatch({ _tag: "OpenRunScheduledTask" });
         } else if (detail.query !== undefined) {
           dispatch({
             _tag: "OpenSearch",
@@ -401,6 +459,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
           openCommandSearch={(query) =>
             dispatch({ _tag: "OpenSearch", query, fromFilePicker: true })
           }
+          openFileSearch={(query) => dispatch({ _tag: "OpenFileSearch", query })}
           clearOpenIntent={clearOpenIntent}
         />
       </CommandDialog>
@@ -419,6 +478,7 @@ function CommandPaletteDialog(props: {
   readonly initialContext: CommandPaletteReturnContext | undefined;
   readonly initialFileQuery: string;
   readonly openCommandSearch: (query: string) => void;
+  readonly openFileSearch: (query: string) => void;
   readonly clearOpenIntent: () => void;
 }) {
   const composerHandleRef = useComposerHandleContext();
@@ -460,6 +520,7 @@ function CommandPaletteDialog(props: {
           setOpen={props.setOpen}
           openChildSearch={props.openChildSearch}
           initialContext={props.initialContext}
+          openFileSearch={props.openFileSearch}
           clearOpenIntent={props.clearOpenIntent}
         />
       )}
@@ -482,12 +543,15 @@ function OpenCommandPaletteDialog(props: {
     context: CommandPaletteReturnContext,
   ) => void;
   readonly initialContext: CommandPaletteReturnContext | undefined;
+  readonly openFileSearch: (query: string) => void;
   readonly clearOpenIntent: () => void;
 }) {
   const navigate = useNavigate();
   const pathname = useLocation({ select: (location) => location.pathname });
   const composerHandleRef = useComposerHandleContext();
-  const { clearOpenIntent, openIntent, openChildSearch, setOpen } = props;
+  const attentionEntries = useAttentionInbox();
+  const attentionProjectTitleByKey = useProjectTitleByKey();
+  const { clearOpenIntent, openIntent, openChildSearch, openFileSearch, setOpen } = props;
   const initialSearch = props.initialContext ?? {
     query: openIntent?.kind === "search" ? openIntent.query : "",
     linkedThreadSearch: openIntent?.kind === "search" ? openIntent : null,
@@ -510,6 +574,8 @@ function OpenCommandPaletteDialog(props: {
     setHighlightedItemValue(null);
   }
   const clientSettings = useClientSettings(selectCommandPaletteClientSettings);
+  const legacySidebarEnabled = useClientSettings((settings) => settings.legacySidebarEnabled);
+  const sidebarShowTabs = useClientSettings((settings) => settings.sidebarShowTabs);
   const createProject = useAtomCommand(projectEnvironment.create, {
     reportFailure: false,
   });
@@ -527,12 +593,7 @@ function OpenCommandPaletteDialog(props: {
   const startProjectClone = useAtomCommand(sourceControlEnvironment.startProjectClone, {
     reportFailure: false,
   });
-  const stopThreadSession = useAtomCommand(threadEnvironment.stopSession, {
-    reportFailure: false,
-  });
-  const refreshProviders = useAtomCommand(serverEnvironment.refreshProviders, {
-    reportFailure: false,
-  });
+  const restartAgentSession = useRestartAgentSession();
   const { environments } = useEnvironments();
   const desktopLocalBootstraps = useDesktopLocalBootstraps();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
@@ -540,6 +601,8 @@ function OpenCommandPaletteDialog(props: {
   const { activeDraftThread, activeThread, defaultProjectRef, handleNewThread } =
     useHandleNewThread();
   const paletteRouteTarget = useThreadRouteTarget();
+  const splitRouteRef = paletteRouteTarget?.kind === "server" ? paletteRouteTarget.threadRef : null;
+  const splitViewOpen = useSplitPartner(splitRouteRef) !== null;
   const projects = useProjects();
   const referenceThreadRef =
     pathname === "/pull-requests"
@@ -552,7 +615,61 @@ function OpenCommandPaletteDialog(props: {
         ? scopeThreadRef(activeThread.environmentId, activeThread.id)
         : null;
   const openPanelPullRequestUrl = useOpenPanelPullRequestUrl(referenceThreadRef);
-  const activeThreadServerConfig = useServerConfigs().get(
+  const activeLinkThreadRef = activeThread
+    ? scopeThreadRef(activeThread.environmentId, activeThread.id)
+    : activeDraftThread
+      ? scopeThreadRef(activeDraftThread.environmentId, activeDraftThread.threadId)
+      : null;
+  const scheduledTaskThreadRef = activeThread
+    ? scopeThreadRef(activeThread.environmentId, activeThread.id)
+    : null;
+  const canRunScheduledTasks = useAtomValue(
+    serverEnvironment.runScheduledTaskNow.permissionAtom(
+      scheduledTaskThreadRef?.environmentId ?? null,
+    ),
+  );
+  // Subscribed only while the palette is open; the dialog unmounts on close.
+  const scheduledTasksQuery = useEnvironmentQuery(
+    scheduledTaskThreadRef !== null && canRunScheduledTasks
+      ? serverEnvironment.scheduledTasksLive({
+          environmentId: scheduledTaskThreadRef.environmentId,
+          input: {},
+        })
+      : null,
+  );
+  const runScheduledTask = useRunScheduledTask();
+  const activeLinearLink = useThreadLinearLink(activeLinkThreadRef);
+  const unlinkLinearIssue = useUnlinkLinearIssue();
+  const canLinkLinearIssue = useAtomValue(
+    linearEnvironment.linkThread.permissionAtom(activeLinkThreadRef?.environmentId ?? null),
+  );
+  const activeSlackLink = useThreadSlackLink(activeLinkThreadRef);
+  const unlinkSlackThread = useUnlinkSlackThread();
+  const canLinkSlack = useAtomValue(
+    slackEnvironment.linkThread.permissionAtom(activeLinkThreadRef?.environmentId ?? null),
+  );
+  const activeDiscordLink = useThreadDiscordLink(activeLinkThreadRef);
+  const unlinkDiscordThread = useUnlinkDiscordThread();
+  const canLinkDiscord = useAtomValue(
+    discordEnvironment.linkThread.permissionAtom(activeLinkThreadRef?.environmentId ?? null),
+  );
+  const activeNotionLink = useThreadNotionLink(activeLinkThreadRef);
+  const unlinkNotionPage = useUnlinkNotionPage();
+  const canLinkNotion = useAtomValue(
+    notionEnvironment.linkThread.permissionAtom(activeLinkThreadRef?.environmentId ?? null),
+  );
+  const activeGranolaLink = useThreadGranolaLink(activeLinkThreadRef);
+  const unlinkGranolaNote = useUnlinkGranolaNote();
+  const canLinkGranola = useAtomValue(
+    granolaEnvironment.linkThread.permissionAtom(activeLinkThreadRef?.environmentId ?? null),
+  );
+  const activeGitHubIssueLink = useThreadGitHubIssueLink(activeLinkThreadRef);
+  const unlinkGitHubIssue = useUnlinkGitHubIssue();
+  const canLinkGitHubIssue = useAtomValue(
+    githubIssueEnvironment.linkThread.permissionAtom(activeLinkThreadRef?.environmentId ?? null),
+  );
+  const serverConfigs = useServerConfigs();
+  const activeThreadServerConfig = serverConfigs.get(
     activeThread?.environmentId ?? ("" as EnvironmentId),
   );
   const activeThreadReferenceCopyTarget =
@@ -938,6 +1055,16 @@ function OpenCommandPaletteDialog(props: {
   }
 
   function handleQueryChange(nextQuery: string): void {
+    // Deleting the `>` that came from the file picker hands the query back to it.
+    if (
+      linkedThreadSearch?.fromFilePicker === true &&
+      currentView === null &&
+      query.startsWith(">") &&
+      !nextQuery.startsWith(">")
+    ) {
+      openFileSearch(nextQuery);
+      return;
+    }
     browseNavigation.invalidate();
     clearTypedHighlight();
     setQuery(nextQuery);
@@ -1227,6 +1354,63 @@ function OpenCommandPaletteDialog(props: {
           });
         },
       });
+      actionItems.push({
+        kind: "action",
+        value: "action:start-thread-from",
+        searchTerms: [
+          "pull request",
+          "pr",
+          "branch",
+          "issue",
+          "linear",
+          "checkout",
+          "start from",
+          "automation",
+          "scheduled task",
+        ],
+        title: (
+          <>
+            New thread from PR, branch, or issue in{" "}
+            <span className="font-semibold">{activeProjectTitle}</span>
+          </>
+        ),
+        icon: <GitBranchIcon className={ITEM_ICON_CLASS} />,
+        shortcutCommand: "chat.startFrom",
+        run: async () => {
+          const started = await startNewThreadFromContext({
+            activeDraftThread,
+            activeThread: activeThread ?? undefined,
+            defaultProjectRef,
+            handleNewThread,
+          });
+          if (started) openStartFromPicker();
+        },
+      });
+    }
+    if (
+      [...serverConfigs.values()].some(
+        (config) => config.environment.capabilities.agentSessionPicker === true,
+      )
+    ) {
+      actionItems.push({
+        kind: "action",
+        value: "action:import-conversation",
+        searchTerms: [
+          "import",
+          "conversation",
+          "claude code",
+          "codex",
+          "conductor",
+          "session",
+          "resume",
+          "cli",
+        ],
+        title: "Import conversation…",
+        icon: <HistoryIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openImportConversationDialog();
+        },
+      });
     }
 
     actionItems.push({
@@ -1372,8 +1556,347 @@ function OpenCommandPaletteDialog(props: {
     }
   }
 
-  if (activeThread !== null) {
-    const thread = activeThread;
+  const runScheduledTaskItems: CommandPaletteActionItem[] =
+    scheduledTaskThreadRef === null || !scheduledTasksQuery.data
+      ? []
+      : resolveThreadScheduledTasks(
+          scheduledTasksQuery.data.tasks,
+          scheduledTaskThreadRef.threadId,
+          readThreadVisibleTurnItems(scheduledTaskThreadRef),
+        ).map((task) => ({
+          kind: "action",
+          value: `scheduled-task:${task.id}`,
+          title: task.title,
+          searchTerms: [task.title, "scheduled task", "automation", "run now"],
+          icon: <CalendarClockIcon className={ITEM_ICON_CLASS} />,
+          run: async () => {
+            await runScheduledTask(scheduledTaskThreadRef.environmentId, task);
+          },
+        }));
+  const singleScheduledTask = runScheduledTaskItems.length === 1 ? runScheduledTaskItems[0] : null;
+  if (singleScheduledTask) {
+    actionItems.push({
+      ...singleScheduledTask,
+      value: "action:run-scheduled-task",
+      title: "Run scheduled task now",
+      description: singleScheduledTask.title,
+      shortcutCommand: "thread.runScheduledTask",
+    });
+  } else if (runScheduledTaskItems.length > 1) {
+    actionItems.push({
+      kind: "submenu",
+      value: "action:run-scheduled-task",
+      searchTerms: ["scheduled task", "automation", "run now"],
+      title: "Run scheduled task now...",
+      icon: <CalendarClockIcon className={ITEM_ICON_CLASS} />,
+      addonIcon: <CalendarClockIcon className={ADDON_ICON_CLASS} />,
+      shortcutCommand: "thread.runScheduledTask",
+      groups: [
+        { value: "run-scheduled-task", label: "Scheduled tasks", items: runScheduledTaskItems },
+      ],
+    });
+  }
+
+  if (activeThread) {
+    const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
+    actionItems.push({
+      kind: "action",
+      value: "action:export-transcript",
+      searchTerms: ["export", "transcript", "markdown", "save", "copy", "conversation"],
+      title: "Export transcript",
+      icon: <DownloadIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        openTranscriptExportDialog(threadRef);
+      },
+    });
+    // Fork: the thread's agent fleet in the right panel.
+    actionItems.push({
+      kind: "action",
+      value: "action:open-agents-panel",
+      searchTerms: ["agents", "subagents", "fleet", "tasks", "panel"],
+      title: "Show agents",
+      icon: <BotIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        useRightPanelStore.getState().open(threadRef, "agents");
+      },
+    });
+  }
+
+  if (activeLinkThreadRef !== null) {
+    const composerThreadRef = activeLinkThreadRef;
+    const composerSettings = serverConfigs.get(composerThreadRef.environmentId)?.settings;
+    actionItems.push({
+      kind: "action",
+      value: "action:attach-thread",
+      searchTerms: ["thread", "chat", "conversation", "summary", "attach", "context"],
+      title: "Attach thread",
+      icon: <MessageSquareIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        openThreadAttachPicker(composerThreadRef);
+      },
+    });
+    actionItems.push({
+      kind: "action",
+      value: "action:attach-linear-issue",
+      searchTerms: ["linear", "issue", "ticket", "attach", "context"],
+      title: "Attach Linear issue",
+      icon: <LinearIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        openLinearIssuePicker(composerThreadRef);
+      },
+    });
+    if (composerSettings?.enableNotionIntegration !== false) {
+      actionItems.push({
+        kind: "action",
+        value: "action:attach-notion-page",
+        searchTerms: ["notion", "page", "document", "attach", "context"],
+        title: "Attach Notion page",
+        icon: <NotionIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openNotionPagePicker(composerThreadRef);
+        },
+      });
+    }
+    if (composerSettings?.enableGranolaIntegration !== false) {
+      actionItems.push({
+        kind: "action",
+        value: "action:attach-granola-note",
+        searchTerms: ["granola", "meeting", "notes", "transcript", "call", "attach", "context"],
+        title: "Attach Granola note",
+        icon: <GranolaIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openGranolaNotePicker(composerThreadRef);
+        },
+      });
+    }
+    if (composerSettings?.enableSlackIntegration !== false) {
+      actionItems.push({
+        kind: "action",
+        value: "action:attach-slack-message",
+        searchTerms: ["slack", "message", "thread", "conversation", "attach", "context"],
+        title: "Attach Slack message",
+        icon: <SlackIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openSlackMessagePicker(composerThreadRef);
+        },
+      });
+    }
+    if (composerSettings?.enableDiscordIntegration !== false) {
+      actionItems.push({
+        kind: "action",
+        value: "action:attach-discord-message",
+        searchTerms: ["discord", "message", "thread", "conversation", "attach", "context"],
+        title: "Attach Discord message",
+        icon: <DiscordIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openDiscordMessagePicker(composerThreadRef);
+        },
+      });
+    }
+    // Issues are listed from the project's GitHub repository, so only offer them there.
+    const composerProject = projectByKey.get(
+      `${composerThreadRef.environmentId}:${currentProjectId ?? ""}`,
+    );
+    if (isGitHubProject(composerProject)) {
+      actionItems.push({
+        kind: "action",
+        value: "action:attach-github-issue",
+        searchTerms: ["github", "issue", "ticket", "attach", "context"],
+        title: "Attach GitHub issue",
+        icon: <GitHubIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openGitHubIssuePicker(composerThreadRef);
+        },
+      });
+      if (canLinkGitHubIssue) {
+        actionItems.push({
+          kind: "action",
+          value: "action:link-github-issue",
+          searchTerms: ["github", "issue", "ticket", "link", "thread"],
+          title: activeGitHubIssueLink
+            ? `Change linked GitHub issue (#${activeGitHubIssueLink.number})`
+            : "Link GitHub issue",
+          icon: <GitHubIcon className={ITEM_ICON_CLASS} />,
+          run: async () => {
+            openGitHubIssuePicker(composerThreadRef, "link");
+          },
+        });
+      }
+    }
+    // Unlinking needs no listing, so it stays offered even if the project stops being on GitHub.
+    if (canLinkGitHubIssue && activeGitHubIssueLink) {
+      actionItems.push({
+        kind: "action",
+        value: "action:unlink-github-issue",
+        searchTerms: ["github", "issue", "ticket", "unlink", "remove"],
+        title: `Unlink GitHub issue #${activeGitHubIssueLink.number}`,
+        icon: <GitHubIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          await unlinkGitHubIssue(composerThreadRef);
+        },
+      });
+    }
+    if (canLinkLinearIssue) {
+      actionItems.push({
+        kind: "action",
+        value: "action:link-linear-issue",
+        searchTerms: ["linear", "issue", "ticket", "link", "thread"],
+        title: activeLinearLink
+          ? `Change linked Linear issue (${activeLinearLink.identifier})`
+          : "Link Linear issue",
+        icon: <LinearIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openLinearIssuePicker(composerThreadRef, "link");
+        },
+      });
+      if (activeLinearLink) {
+        actionItems.push({
+          kind: "action",
+          value: "action:unlink-linear-issue",
+          searchTerms: ["linear", "issue", "ticket", "unlink", "remove"],
+          title: `Unlink Linear issue ${activeLinearLink.identifier}`,
+          icon: <LinearIcon className={ITEM_ICON_CLASS} />,
+          run: async () => {
+            await unlinkLinearIssue(composerThreadRef);
+          },
+        });
+      }
+    }
+    if (canLinkSlack && composerSettings?.enableSlackIntegration === true) {
+      actionItems.push({
+        kind: "action",
+        value: "action:link-slack-thread",
+        searchTerms: ["slack", "thread", "conversation", "link"],
+        title: activeSlackLink
+          ? `Change linked Slack thread (${activeSlackLink.channelLabel})`
+          : "Link Slack thread",
+        icon: <SlackIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openSlackMessagePicker(composerThreadRef, "link");
+        },
+      });
+    }
+    // Unlinking stays reachable with the integration off: it is the way out of a link.
+    if (canLinkSlack && activeSlackLink) {
+      actionItems.push({
+        kind: "action",
+        value: "action:unlink-slack-thread",
+        searchTerms: ["slack", "thread", "conversation", "unlink", "remove"],
+        title: `Unlink Slack thread in ${activeSlackLink.channelLabel}`,
+        icon: <SlackIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          await unlinkSlackThread(composerThreadRef);
+        },
+      });
+    }
+    if (canLinkDiscord && composerSettings?.enableDiscordIntegration === true) {
+      actionItems.push({
+        kind: "action",
+        value: "action:link-discord-thread",
+        searchTerms: ["discord", "thread", "conversation", "link"],
+        title: activeDiscordLink
+          ? `Change linked Discord thread (${activeDiscordLink.channelLabel})`
+          : "Link Discord thread",
+        icon: <DiscordIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openDiscordMessagePicker(composerThreadRef, "link");
+        },
+      });
+    }
+    // Unlinking stays reachable with the integration off: it is the way out of a link.
+    if (canLinkDiscord && activeDiscordLink) {
+      actionItems.push({
+        kind: "action",
+        value: "action:unlink-discord-thread",
+        searchTerms: ["discord", "thread", "conversation", "unlink", "remove"],
+        title: `Unlink Discord thread in ${activeDiscordLink.channelLabel}`,
+        icon: <DiscordIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          await unlinkDiscordThread(composerThreadRef);
+        },
+      });
+    }
+    if (canLinkNotion && composerSettings?.enableNotionIntegration === true) {
+      actionItems.push({
+        kind: "action",
+        value: "action:link-notion-page",
+        searchTerms: ["notion", "page", "document", "link"],
+        title: activeNotionLink
+          ? `Change linked Notion page (${activeNotionLink.title})`
+          : "Link Notion page",
+        icon: <NotionIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openNotionPagePicker(composerThreadRef, "link");
+        },
+      });
+    }
+    if (canLinkNotion && activeNotionLink) {
+      actionItems.push({
+        kind: "action",
+        value: "action:unlink-notion-page",
+        searchTerms: ["notion", "page", "document", "unlink", "remove"],
+        title: `Unlink Notion page ${activeNotionLink.title}`,
+        icon: <NotionIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          await unlinkNotionPage(composerThreadRef);
+        },
+      });
+    }
+    if (canLinkGranola && composerSettings?.enableGranolaIntegration === true) {
+      actionItems.push({
+        kind: "action",
+        value: "action:link-granola-note",
+        searchTerms: ["granola", "meeting", "notes", "link"],
+        title: activeGranolaLink
+          ? `Change linked Granola note (${activeGranolaLink.title})`
+          : "Link Granola note",
+        icon: <GranolaIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openGranolaNotePicker(composerThreadRef, "link");
+        },
+      });
+    }
+    if (canLinkGranola && activeGranolaLink) {
+      actionItems.push({
+        kind: "action",
+        value: "action:unlink-granola-note",
+        searchTerms: ["granola", "meeting", "notes", "unlink", "remove"],
+        title: `Unlink Granola note ${activeGranolaLink.title}`,
+        icon: <GranolaIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          await unlinkGranolaNote(composerThreadRef);
+        },
+      });
+    }
+    if (
+      serverConfigs.get(composerThreadRef.environmentId)?.environment.capabilities.pullRequests ===
+      true
+    ) {
+      actionItems.push({
+        kind: "action",
+        value: "action:attach-pull-request",
+        searchTerms: ["pull request", "pr", "attach", "context"],
+        title: "Attach pull request",
+        icon: <PullRequestGlyph.pullRequest className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openPullRequestAttachPicker(composerThreadRef);
+        },
+      });
+    }
+    actionItems.push({
+      kind: "action",
+      value: "action:attach-repository",
+      searchTerms: ["repository", "repo", "clone", "context", "ctxclone", "attach"],
+      title: "Attach repository",
+      icon: <FolderGit2Icon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        openRepositoryAttachPicker(composerThreadRef);
+      },
+    });
+  }
+
+  if (activeThread) {
+    const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
     actionItems.push({
       kind: "action",
       value: "action:restart-agent-session",
@@ -1381,30 +1904,7 @@ function OpenCommandPaletteDialog(props: {
       title: "Restart agent session",
       icon: <RotateCcwIcon className={ITEM_ICON_CLASS} />,
       run: async () => {
-        const { environmentId } = thread;
-        if (thread.runtime !== null) {
-          const stopped = await stopThreadSession({
-            environmentId,
-            input: { threadId: thread.id },
-          });
-          if (stopped._tag === "Failure") throw squashAtomCommandFailure(stopped);
-        }
-        toastManager.add({
-          type: "success",
-          title: "Agent session will restart",
-          description: "Your next message starts a fresh session.",
-        });
-        const project = projectByKey.get(`${environmentId}:${thread.projectId}`);
-        if (!project) return;
-        const refreshed = await refreshProviders({
-          environmentId,
-          input: {
-            instanceId: thread.runtime?.providerInstanceId ?? thread.modelSelection.instanceId,
-            cwd: thread.worktreePath ?? project.workspaceRoot,
-            fresh: true,
-          },
-        });
-        if (refreshed._tag === "Failure") throw squashAtomCommandFailure(refreshed);
+        await restartAgentSession(threadRef);
       },
     });
   }
@@ -1528,17 +2028,134 @@ function OpenCommandPaletteDialog(props: {
           groups: [{ value: "themes", label: "Change theme", items: [] }],
         });
         return;
+      case "run-scheduled-task":
+        pushPaletteView({
+          addonIcon: <CalendarClockIcon className={ADDON_ICON_CLASS} />,
+          groups: [{ value: "run-scheduled-task", label: "Scheduled tasks", items: [] }],
+        });
+        return;
+      case "attention-inbox":
+        pushPaletteView({
+          addonIcon: <InboxIcon className={ADDON_ICON_CLASS} />,
+          groups: [{ value: "attention-inbox", label: "Needs attention", items: [] }],
+        });
+        return;
     }
   });
+  const runScheduledTaskItemCount = runScheduledTaskItems.length;
   useLayoutEffect(() => {
     if (openIntent === null) return;
     // A new-thread-in intent waits until the project items exist.
     if (openIntent.kind === "new-thread-in" && projectThreadItemCount === 0) return;
+    // The task list arrives over a subscription the dialog opens on mount.
+    if (openIntent.kind === "run-scheduled-task" && runScheduledTaskItemCount === 0) return;
     // oxlint-disable-next-line react/set-state-in-effect -- applying the intent dispatches to the parent reducer and can navigate, neither of which may run during render.
     applyOpenIntent(openIntent);
-  }, [openIntent, projectThreadItemCount]);
+  }, [openIntent, projectThreadItemCount, runScheduledTaskItemCount]);
 
   actionItems.push(themeEditorItem);
+
+  if (splitRouteRef) {
+    actionItems.push({
+      kind: "action",
+      value: "action:split-view",
+      searchTerms: ["split", "side by side", "compare", "two", "pane", "tabs", "columns"],
+      title: splitViewOpen ? "Close split view" : "Open split view",
+      icon: <Columns2Icon className={ITEM_ICON_CLASS} />,
+      shortcutCommand: "splitView.toggle",
+      run: async () => {
+        dispatchSplitViewAction("toggle");
+      },
+    });
+    if (splitViewOpen) {
+      actionItems.push({
+        kind: "action",
+        value: "action:split-view-focus-other",
+        searchTerms: ["split", "pane", "focus", "other", "switch"],
+        title: "Focus other split pane",
+        icon: <Columns2Icon className={ITEM_ICON_CLASS} />,
+        shortcutCommand: "splitView.focusOther",
+        run: async () => {
+          dispatchSplitViewAction("focus-other");
+        },
+      });
+    }
+  }
+
+  if (!legacySidebarEnabled) {
+    actionItems.push({
+      kind: "action",
+      value: "action:sidebar-tabs",
+      searchTerms: ["tabs", "sidebar", "chat tabs", "group", "show", "hide"],
+      title: sidebarShowTabs ? "Hide tabs in sidebar" : "Show tabs in sidebar",
+      icon: <LayersIcon className={ITEM_ICON_CLASS} />,
+      shortcutCommand: "sidebar.toggleTabs",
+      run: async () => {
+        await updateClientSettings({ sidebarShowTabs: !sidebarShowTabs });
+      },
+    });
+  }
+
+  const attentionInboxItem: CommandPaletteSubmenuItem = {
+    kind: "submenu",
+    value: "action:attention-inbox",
+    searchTerms: [
+      "needs attention",
+      "inbox",
+      "attention",
+      "approval",
+      "input",
+      "question",
+      "failed",
+      "completed",
+      "unread",
+      "review",
+    ],
+    title: "Needs attention",
+    ...(attentionEntries.length > 0
+      ? {
+          titleTrailingContent: (
+            <span className="text-xs text-muted-foreground/70 tabular-nums">
+              {attentionEntries.length}
+            </span>
+          ),
+        }
+      : {}),
+    icon: <InboxIcon className={ITEM_ICON_CLASS} />,
+    addonIcon: <InboxIcon className={ADDON_ICON_CLASS} />,
+    shortcutCommand: "attentionInbox.open",
+    groups: [
+      {
+        value: "attention-inbox",
+        label: "Needs attention",
+        items: attentionEntries.map((entry) => {
+          const { label, Icon, iconClassName } = ATTENTION_REASON_PRESENTATION[entry.reason];
+          const projectTitle = attentionProjectTitleByKey.get(
+            `${entry.thread.environmentId}:${entry.thread.projectId}`,
+          );
+          return {
+            kind: "action" as const,
+            value: `attention:${entry.key}`,
+            searchTerms: [entry.thread.title, label, projectTitle ?? ""],
+            title: entry.thread.title,
+            description: projectTitle ? `${label} · ${projectTitle}` : label,
+            timestamp: formatRelativeTimeLabel(entry.at),
+            icon: <Icon className={cn("size-4", iconClassName)} />,
+            run: async () => {
+              // The entry's own route, not its tab group's last-opened tab.
+              await navigate({
+                to: "/$environmentId/$threadId",
+                params: buildThreadRouteParams(
+                  scopeThreadRef(entry.thread.environmentId, entry.thread.id),
+                ),
+              });
+            },
+          };
+        }),
+      },
+    ],
+  };
+  actionItems.push(attentionInboxItem);
 
   if (
     environments.some(
@@ -1650,9 +2267,19 @@ function OpenCommandPaletteDialog(props: {
         )
       : currentView?.groups[0]?.value === "themes"
         ? changeThemeItem.groups
-        : currentView?.groups[0]?.value === "appearance"
-          ? changeAppearanceItem.groups
-          : (currentView?.groups ?? rootGroups);
+        : currentView?.groups[0]?.value === "attention-inbox"
+          ? attentionInboxItem.groups
+          : currentView?.groups[0]?.value === "appearance"
+            ? changeAppearanceItem.groups
+            : currentView?.groups[0]?.value === "run-scheduled-task"
+              ? [
+                  {
+                    value: "run-scheduled-task",
+                    label: "Scheduled tasks",
+                    items: runScheduledTaskItems,
+                  },
+                ]
+              : (currentView?.groups ?? rootGroups);
 
   const filteredGroups = filterCommandPaletteGroups({
     activeGroups,

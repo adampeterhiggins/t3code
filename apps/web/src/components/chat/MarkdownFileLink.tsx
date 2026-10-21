@@ -4,7 +4,7 @@ import {
   squashAtomCommandFailure,
   type AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
-import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import type { EditorId, EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { memo, type MouseEvent as ReactMouseEvent } from "react";
 
 import { readLocalApi } from "../../localApi";
@@ -12,8 +12,8 @@ import { cn } from "../../lib/utils";
 import { shouldOpenMarkdownFileLinkInEditor } from "../../markdown-links";
 import type { markdownFileCopyPaths } from "../../markdownFileHostPath";
 import { ContextChip } from "../ContextChip";
+import { ContextPreviewHover } from "../contextPreviewRegistry";
 import { stackedThreadToast, toastManager } from "../ui/toast";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { FileTagChipContent } from "./FileTagChip";
 import {
   hasMarkdownFilePrimaryAction,
@@ -21,7 +21,6 @@ import {
   shouldUseMarkdownFileBrowserPrimaryAction,
 } from "./MarkdownFileLink.logic";
 import { reportMarkdownActionFailure } from "./markdownActionFailure";
-import { WorkspaceEntryTooltip } from "./WorkspaceEntryIcon";
 
 interface MarkdownFileLinkProps {
   environmentId: EnvironmentId | null;
@@ -36,6 +35,10 @@ interface MarkdownFileLinkProps {
   theme: "light" | "dark";
   threadRef?: ScopedThreadRef | undefined;
   onOpen?: (() => Promise<AtomCommandResult<unknown, unknown>>) | undefined;
+  /** Fork: the file's Open in target is an editor, so a plain click runs `onOpen`. */
+  openExternally?: boolean;
+  openWithEditors?: readonly { readonly id: EditorId; readonly label: string }[];
+  onOpenWith?: ((editor: EditorId) => Promise<AtomCommandResult<unknown, unknown>>) | undefined;
   onOpenInPanel: (panelPath: string, line: number | undefined) => void;
   resolveCopyPaths: () => Promise<ReturnType<typeof markdownFileCopyPaths>>;
   openInEditorMenuLabel: string;
@@ -61,6 +64,9 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
   threadRef,
   onOpen,
   onOpenInPanel,
+  openExternally,
+  openWithEditors,
+  onOpenWith,
   openInEditorMenuLabel,
   onOpenInBrowser,
   onOpenMedia,
@@ -106,7 +112,20 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
     })();
   };
 
+  const handleOpenInViewer = () => {
+    if (threadRef && panelPath) {
+      onOpenInPanel(panelPath, line);
+      return;
+    }
+    onOpenMedia?.();
+  };
+  const canOpenInViewer = (threadRef !== undefined && Boolean(panelPath)) || Boolean(onOpenMedia);
+
   const handleOpenInFilePreview = () => {
+    if (openExternally && onOpen) {
+      handleOpenInEditor();
+      return;
+    }
     if (threadRef && panelPath) {
       onOpenInPanel(panelPath, line);
       return;
@@ -249,7 +268,22 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
       const clicked = await api.contextMenu.show(
         [
           ...(onOpenMedia ? ([{ id: "preview-media", label: "Preview media" }] as const) : []),
+          ...(openExternally && canOpenInViewer
+            ? ([{ id: "open-in-viewer", label: "Open in T3 file viewer" }] as const)
+            : []),
           ...(onOpen ? ([{ id: "open", label: openInEditorMenuLabel }] as const) : []),
+          ...(onOpenWith && openWithEditors?.length
+            ? [
+                {
+                  id: "open-with",
+                  label: "Open with",
+                  children: openWithEditors.map((editor) => ({
+                    id: `editor:${editor.id}`,
+                    label: editor.label,
+                  })),
+                },
+              ]
+            : []),
           ...(onOpenInBrowser
             ? ([{ id: "open-in-browser", label: "Open in integrated browser" }] as const)
             : []),
@@ -261,6 +295,22 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
 
       if (clicked === "preview-media") {
         onOpenMedia?.();
+        return;
+      }
+      if (clicked === "open-in-viewer") {
+        handleOpenInViewer();
+        return;
+      }
+      if (clicked?.startsWith("editor:") && onOpenWith) {
+        const result = await onOpenWith(clicked.slice("editor:".length) as EditorId);
+        if (result._tag === "Failure")
+          toastManager.add(
+            stackedThreadToast({
+              type: "error",
+              title: "Unable to open file",
+              description: targetPath,
+            }),
+          );
         return;
       }
       if (clicked === "open") {
@@ -322,64 +372,60 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
   });
 
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          hasPrimaryAction ? (
-            <ContextChip
-              kind="mention"
-              render={<a href={href} />}
-              className={MARKDOWN_FILE_LINK_CLASS_NAME}
-              data-markdown-copy={copyMarkdown}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                if (onOpen && shouldOpenMarkdownFileLinkInEditor(event)) {
-                  handleOpenInEditor();
-                  return;
-                }
-                if (useBrowserPrimaryAction) {
-                  handleOpenInBrowser();
-                  return;
-                }
-                handleOpenInFilePreview();
-              }}
-              onContextMenu={handleContextMenu}
-            >
-              <FileTagChipContent
-                path={iconPath}
-                environmentId={environmentId}
-                label={label}
-                theme={theme}
-              />
-            </ContextChip>
-          ) : (
-            <ContextChip
-              kind="mention"
-              render={<button type="button" />}
-              aria-label={`File options for ${label}`}
-              aria-haspopup="menu"
-              className={cn(MARKDOWN_FILE_LINK_CLASS_NAME, "select-text")}
-              data-markdown-copy={copyMarkdown}
-              onClick={handleContextMenu}
-              onContextMenu={handleContextMenu}
-            >
-              <FileTagChipContent
-                path={iconPath}
-                environmentId={environmentId}
-                label={label}
-                theme={theme}
-              />
-            </ContextChip>
-          )
-        }
-      />
-      <TooltipPopup side="top" variant="code">
-        <div className="overflow-x-auto whitespace-nowrap scrollbar-thumb-border/78 scrollbar-track-transparent [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/78 [&::-webkit-scrollbar-track]:bg-transparent">
-          <WorkspaceEntryTooltip path={iconPath} label={targetPath} environmentId={environmentId} />
-        </div>
-      </TooltipPopup>
-    </Tooltip>
+    <ContextPreviewHover
+      kind="mention"
+      accessibleLabel={label}
+      preview={{ path: iconPath, label: targetPath, environmentId }}
+      trigger={
+        hasPrimaryAction ? (
+          <ContextChip
+            kind="mention"
+            render={<a href={href} />}
+            className={MARKDOWN_FILE_LINK_CLASS_NAME}
+            data-markdown-copy={copyMarkdown}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              if (onOpen && shouldOpenMarkdownFileLinkInEditor(event)) {
+                handleOpenInEditor();
+                return;
+              }
+              if (useBrowserPrimaryAction && !openExternally) {
+                handleOpenInBrowser();
+                return;
+              }
+              handleOpenInFilePreview();
+            }}
+            onContextMenu={handleContextMenu}
+          >
+            <FileTagChipContent
+              path={iconPath}
+              environmentId={environmentId}
+              label={label}
+              theme={theme}
+            />
+          </ContextChip>
+        ) : (
+          <ContextChip
+            kind="mention"
+            render={<button type="button" />}
+            aria-label={`File options for ${label}`}
+            aria-haspopup="menu"
+            className={cn(MARKDOWN_FILE_LINK_CLASS_NAME, "select-text")}
+            data-markdown-copy={copyMarkdown}
+            onClick={handleContextMenu}
+            onContextMenu={handleContextMenu}
+          >
+            <FileTagChipContent
+              path={iconPath}
+              environmentId={environmentId}
+              label={label}
+              theme={theme}
+            />
+          </ContextChip>
+        )
+      }
+    />
   );
 }, areMarkdownFileLinkPropsEqual);
 
@@ -400,6 +446,9 @@ function areMarkdownFileLinkPropsEqual(
     previous.theme === next.theme &&
     previous.threadRef === next.threadRef &&
     previous.onOpen === next.onOpen &&
+    previous.openExternally === next.openExternally &&
+    previous.openWithEditors === next.openWithEditors &&
+    previous.onOpenWith === next.onOpenWith &&
     previous.onOpenInPanel === next.onOpenInPanel &&
     previous.openInEditorMenuLabel === next.openInEditorMenuLabel &&
     previous.onOpenInBrowser === next.onOpenInBrowser &&
