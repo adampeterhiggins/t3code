@@ -60,10 +60,11 @@ function failedResult(requestId: string): DesktopMainDestinationResult {
 }
 
 /**
- * Reveals the main window and delivers one destination per request.
- * DesktopQuickMessage already depends on DesktopWindow; this service does not
- * depend on DesktopQuickMessage, so the panel check stays in IPC and the
- * quick-message lifecycle module stays untouched.
+ * Delivers one destination per user request and presents the main window once
+ * for that request. A missing window is created; an existing one is shown.
+ * Readiness and completion never steal focus. DesktopQuickMessage already
+ * depends on DesktopWindow; this service does not depend on DesktopQuickMessage,
+ * so the panel check stays in IPC and the quick-message lifecycle stays untouched.
  */
 export const make = Effect.gen(function* () {
   const electronWindow = yield* ElectronWindow.ElectronWindow;
@@ -126,14 +127,29 @@ export const make = Effect.gen(function* () {
   const armContents = (webContents: Electron.WebContents) => {
     if (armedContents.has(webContents.id)) return;
     armedContents.add(webContents.id);
-    const clear = () => {
-      armedContents.delete(webContents.id);
+    // Reload and cross-document navigation destroy the page that became ready.
+    // pushState and hash changes stay on that document and keep the receiver.
+    const onNavigation = (
+      event: Electron.Event<Electron.WebContentsDidStartNavigationEventParams>,
+    ) => {
+      if (!event.isMainFrame || event.isSameDocument) return;
+      dropDocument();
+    };
+    const dropDocument = () => {
       if (receiver?.id === webContents.id) receiver = null;
       failSentJobs(webContents.id);
       signalWake();
     };
-    webContents.once("destroyed", clear);
-    webContents.once("render-process-gone", clear);
+    const disarm = () => {
+      webContents.removeListener("did-start-navigation", onNavigation);
+      webContents.removeListener("render-process-gone", disarm);
+      webContents.removeListener("destroyed", disarm);
+      if (!armedContents.delete(webContents.id)) return;
+      dropDocument();
+    };
+    webContents.on("did-start-navigation", onNavigation);
+    webContents.on("render-process-gone", disarm);
+    webContents.on("destroyed", disarm);
   };
 
   const armWindow = (window: Electron.BrowserWindow) => {
@@ -164,25 +180,33 @@ export const make = Effect.gen(function* () {
   });
 
   const waitForReceiver = Effect.fn("DesktopMainDestination.waitForReceiver")(function* (job: Job) {
-    let revealedForGap = false;
+    let presented = false;
+    let attemptedCreate = false;
     while (!job.settled) {
       const main = yield* electronWindow.main;
       if (Option.isNone(main) || main.value.isDestroyed()) {
-        if (revealedForGap) {
+        presented = false;
+        if (attemptedCreate) {
           yield* waitForWake;
           continue;
         }
-        revealedForGap = true;
+        attemptedCreate = true;
         const created = yield* desktopWindow.revealOrCreateMain.pipe(Effect.option);
         if (Option.isNone(created)) {
           yield* settle(job, failedResult(job.request.requestId));
           return null;
         }
+        // revealOrCreateMain already shows the window it just created.
+        presented = true;
         armWindow(created.value);
         continue;
       }
-      revealedForGap = false;
+      attemptedCreate = false;
       armWindow(main.value);
+      if (!presented) {
+        presented = true;
+        yield* electronWindow.reveal(main.value);
+      }
       const contents = main.value.webContents;
       if (!contents.isDestroyed() && receiver?.id === contents.id) return contents;
       yield* waitForWake;
@@ -198,33 +222,36 @@ export const make = Effect.gen(function* () {
     const contents = yield* waitForReceiver(job);
     if (contents === null || job.settled) return;
     if (!job.sent) {
-      const sent = yield* Effect.try({
+      // Record delivery before send. A synchronous ack or document load sees the
+      // job as in flight; a throw still fails that attempt once, with no replay.
+      job.sent = true;
+      job.sentTo = contents.id;
+      const delivered = yield* Effect.try({
         try: () => contents.send(MAIN_DESTINATION_EVENT_CHANNEL, job.request),
         catch: () => new DesktopMainDestinationUnauthorizedError(),
       }).pipe(Effect.option);
-      if (Option.isNone(sent)) {
+      if (Option.isNone(delivered) && !job.settled) {
         yield* settle(job, failedResult(job.request.requestId));
-        return;
       }
-      job.sent = true;
-      job.sentTo = contents.id;
     }
+    if (job.settled) return;
     yield* Deferred.await(job.result);
   });
 
-  const runJobEffect = Effect.fn("DesktopMainDestination.runJob")(function* (job: Job) {
-    const arrived = yield* dispatch(job).pipe(Effect.timeoutOption(MAIN_DESTINATION_TIMEOUT));
-    if (Option.isNone(arrived)) yield* settle(job, failedResult(job.request.requestId));
+  // The caller waiting for the handoff owns the deadline. Wake the worker too,
+  // or a receiver wait keeps the queue stuck after the deadline settles the job.
+  const finish = Effect.fn("DesktopMainDestination.finish")(function* (job: Job) {
+    const arrived = yield* Deferred.await(job.result).pipe(
+      Effect.timeoutOption(MAIN_DESTINATION_TIMEOUT),
+    );
+    if (Option.isSome(arrived)) return arrived.value;
+    if (job.settled) return yield* Deferred.await(job.result);
+    yield* settle(job, failedResult(job.request.requestId));
+    yield* Effect.sync(signalWake);
+    return failedResult(job.request.requestId);
   });
-  const runJob = (job: Job) =>
-    runJobEffect(job).pipe(Effect.catch(() => settle(job, failedResult(job.request.requestId))));
 
-  const worker = Effect.forever(
-    Queue.take(jobs).pipe(
-      Effect.flatMap(runJob),
-      Effect.catch(() => Effect.void),
-    ),
-  );
+  const worker = Effect.forever(Queue.take(jobs).pipe(Effect.flatMap(dispatch)));
   yield* Effect.forkScoped(worker);
 
   return DesktopMainDestination.of({
@@ -239,16 +266,18 @@ export const make = Effect.gen(function* () {
         return { _tag: "admitted" as const, job };
       });
       if (admission._tag === "full") return failedResult(request.requestId);
-      if (admission._tag === "existing") return yield* Deferred.await(admission.job.result);
+      if (admission._tag === "existing") return yield* finish(admission.job);
       yield* Queue.offer(jobs, admission.job).pipe(Effect.asVoid);
-      return yield* Deferred.await(admission.job.result);
+      return yield* finish(admission.job);
     }),
     setReceiverReady: Effect.fn("DesktopMainDestination.setReceiverReady")(
       function* (webContents, ready) {
         yield* ensureMain(webContents);
         if (ready) {
-          receiver = webContents;
+          // Arm before the receiver is visible so the worker cannot deliver
+          // into a document whose load listener is not installed yet.
           armContents(webContents);
+          receiver = webContents;
         } else if (receiver?.id === webContents.id) {
           receiver = null;
         }
