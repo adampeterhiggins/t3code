@@ -1,6 +1,6 @@
 import * as DateTime from "effect/DateTime";
 
-import { renderChatThreadMarkdown } from "../chatThreadMarkdown.ts";
+import { type RenderedChatThread, renderChatThread } from "../chatThreadMarkdown.ts";
 
 const BROADCASTS = new Set(["here", "channel", "everyone"]);
 
@@ -60,6 +60,7 @@ export function mentionedUserIds(text: string): ReadonlyArray<string> {
 export interface SlackRenderedMessage {
   readonly ts: string;
   readonly authorName: string;
+  readonly avatarUrl: string | null;
   /** Already converted with `slackTextToMarkdown`. */
   readonly text: string;
   readonly files: ReadonlyArray<string>;
@@ -74,9 +75,12 @@ export interface SlackThreadSnapshot {
   readonly linkedTs: string;
 }
 
-/** Renders a thread or message as the markdown an agent receives; see `renderChatThreadMarkdown`. */
-export function renderSlackThreadMarkdown(snapshot: SlackThreadSnapshot, maxChars: number): string {
-  return renderChatThreadMarkdown(
+/** Renders a thread or message as the markdown an agent receives; see `renderChatThread`. */
+export function renderSlackThread(
+  snapshot: SlackThreadSnapshot,
+  maxChars: number,
+): RenderedChatThread {
+  return renderChatThread(
     {
       service: "Slack",
       channelLabel: snapshot.channelLabel,
@@ -86,7 +90,9 @@ export function renderSlackThreadMarkdown(snapshot: SlackThreadSnapshot, maxChar
       messages: snapshot.messages.map((message) => ({
         id: message.ts,
         authorName: message.authorName,
+        avatarUrl: message.avatarUrl,
         postedAt: slackTsToDisplay(message.ts),
+        postedAtIso: slackTsToIso(message.ts),
         text: message.text,
         files: message.files,
       })),

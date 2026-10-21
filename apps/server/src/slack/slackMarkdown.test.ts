@@ -2,7 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 
 import {
   mentionedUserIds,
-  renderSlackThreadMarkdown,
+  renderSlackThread,
   slackTextToMarkdown,
   slackTsToDisplay,
   slackTsToIso,
@@ -44,15 +44,16 @@ describe("slackTextToMarkdown", () => {
 const message = (index: number, text: string, files: Array<string> = []): SlackRenderedMessage => ({
   ts: `${1727779620 + index * 60}.000100`,
   authorName: `Author ${index}`,
+  avatarUrl: null,
   text,
   files,
 });
 
-describe("renderSlackThreadMarkdown", () => {
+describe("renderSlackThread", () => {
   const base = { channelLabel: "#eng", url: "https://acme.slack.com/archives/C1/p1" };
 
   it("renders a thread with the linked message marked and files listed", () => {
-    const markdown = renderSlackThreadMarkdown(
+    const { markdown } = renderSlackThread(
       {
         ...base,
         scope: "thread",
@@ -72,7 +73,7 @@ describe("renderSlackThreadMarkdown", () => {
   });
 
   it("does not mark a lone message", () => {
-    const markdown = renderSlackThreadMarkdown(
+    const { markdown } = renderSlackThread(
       { ...base, scope: "message", messages: [message(0, "Only")], linkedTs: message(0, "").ts },
       10_000,
     );
@@ -84,7 +85,7 @@ describe("renderSlackThreadMarkdown", () => {
 
   it("keeps the parent, the linked message, and the newest replies, marking gaps", () => {
     const messages = Array.from({ length: 10 }, (_, index) => message(index, "x".repeat(100)));
-    const markdown = renderSlackThreadMarkdown(
+    const { markdown } = renderSlackThread(
       { ...base, scope: "thread", messages, linkedTs: messages[3]!.ts },
       700,
     );
@@ -96,13 +97,42 @@ describe("renderSlackThreadMarkdown", () => {
     assert.include(markdown, "linked message");
   });
 
+  it("lists the messages the markdown kept, with their place in the thread", () => {
+    const messages = Array.from({ length: 10 }, (_, index) => message(index, "x".repeat(100)));
+    const rendered = renderSlackThread(
+      { ...base, scope: "thread", messages, linkedTs: messages[3]!.ts },
+      700,
+    );
+    assert.deepEqual(
+      rendered.messages.map(({ index, authorName, linked }) => ({ index, authorName, linked })),
+      [
+        { index: 0, authorName: "Author 0", linked: false },
+        { index: 3, authorName: "Author 3", linked: true },
+        { index: 8, authorName: "Author 8", linked: false },
+        { index: 9, authorName: "Author 9", linked: false },
+      ],
+    );
+    assert.strictEqual(rendered.messages[0]!.postedAt, "2024-10-01T10:47:00.000Z");
+  });
+
+  it("does not mark a lone message as linked", () => {
+    const rendered = renderSlackThread(
+      { ...base, scope: "thread", messages: [message(0, "Only")], linkedTs: message(0, "").ts },
+      10_000,
+    );
+    assert.deepEqual(
+      rendered.messages.map(({ linked }) => linked),
+      [false],
+    );
+  });
+
   it("cuts the parent and linked message when they alone exceed the budget", () => {
     const messages = [
       message(0, "p".repeat(5_000)),
       message(1, "r".repeat(100)),
       message(2, "l".repeat(5_000)),
     ];
-    const markdown = renderSlackThreadMarkdown(
+    const { markdown } = renderSlackThread(
       { ...base, scope: "thread", messages, linkedTs: messages[2]!.ts },
       1_000,
     );

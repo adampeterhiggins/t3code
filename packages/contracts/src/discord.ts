@@ -1,6 +1,7 @@
 import * as Schema from "effect/Schema";
 
 import { IsoDateTime, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { ChatThreadMessages } from "./chatThread.ts";
 
 /** Longest rendered thread sent to a client or inlined into a prompt. */
 export const DISCORD_THREAD_MARKDOWN_MAX_CHARS = 32_000;
@@ -120,6 +121,8 @@ export const DiscordThreadContext = Schema.Struct({
   replyCount: Schema.Number,
   scope: Schema.Literals(["thread", "message"]),
   markdown: Schema.String.check(Schema.isMaxLength(DISCORD_THREAD_MARKDOWN_MAX_CHARS)),
+  /** The messages the markdown kept, for clients to draw. */
+  messages: ChatThreadMessages,
 });
 export type DiscordThreadContext = typeof DiscordThreadContext.Type;
 

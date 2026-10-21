@@ -45,6 +45,8 @@ import { formatLinearMarkdownForPreview } from "~/lib/linearMarkdown";
 import { gitHubRefTypeLabel } from "./gitHubRefPresentation";
 import { cn } from "~/lib/utils";
 import ChatMarkdown from "./ChatMarkdown";
+import { ChatThreadDetails } from "./ChatThreadDetails";
+import { DiscordIcon, SlackIcon } from "./Icons";
 import { PierreEntryIcon } from "./chat/PierreEntryIcon";
 import { middleTruncateAttachmentName } from "./composerInlineChip";
 import { PullRequestContextDetails } from "./PullRequestContextDetails";
@@ -731,25 +733,18 @@ export function GitHubRefDetails(props: {
 export function SlackThreadDetails(props: {
   record: Pick<
     SlackThreadContextRecord,
-    "channelLabel" | "scope" | "replyCount" | "url" | "markdown"
+    "channelLabel" | "scope" | "replyCount" | "url" | "markdown" | "messages"
   >;
   onOpenLink: (event: MouseEvent<HTMLElement>, url: string) => void;
 }) {
-  const { record } = props;
-  const what =
-    record.scope === "message"
-      ? "Message"
-      : `Thread · ${record.replyCount} ${record.replyCount === 1 ? "reply" : "replies"}`;
   return (
-    <div className="flex flex-col gap-2">
-      <IssueDetailsHeader
-        summary={`${record.channelLabel} · ${what}`}
-        url={record.url}
-        linkLabel="Open in Slack"
-        onOpenLink={props.onOpenLink}
-      />
-      <IssueMarkdownBody text={record.markdown} />
-    </div>
+    <ChatThreadDetails
+      icon={<SlackIcon />}
+      linkLabel="Open in Slack"
+      record={props.record}
+      onOpenLink={props.onOpenLink}
+      fallback={<IssueMarkdownBody text={props.record.markdown} />}
+    />
   );
 }
 
@@ -757,25 +752,18 @@ export function SlackThreadDetails(props: {
 export function DiscordThreadDetails(props: {
   record: Pick<
     DiscordThreadContextRecord,
-    "channelLabel" | "scope" | "replyCount" | "url" | "markdown"
+    "channelLabel" | "scope" | "replyCount" | "url" | "markdown" | "messages"
   >;
   onOpenLink: (event: MouseEvent<HTMLElement>, url: string) => void;
 }) {
-  const { record } = props;
-  const what =
-    record.scope === "message"
-      ? "Message"
-      : `Thread · ${record.replyCount} ${record.replyCount === 1 ? "reply" : "replies"}`;
   return (
-    <div className="flex flex-col gap-2">
-      <IssueDetailsHeader
-        summary={`${record.channelLabel} · ${what}`}
-        url={record.url}
-        linkLabel="Open in Discord"
-        onOpenLink={props.onOpenLink}
-      />
-      <IssueMarkdownBody text={record.markdown} />
-    </div>
+    <ChatThreadDetails
+      icon={<DiscordIcon />}
+      linkLabel="Open in Discord"
+      record={props.record}
+      onOpenLink={props.onOpenLink}
+      fallback={<IssueMarkdownBody text={props.record.markdown} />}
+    />
   );
 }
 

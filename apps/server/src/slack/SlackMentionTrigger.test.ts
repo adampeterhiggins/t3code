@@ -99,6 +99,7 @@ const harness = Effect.gen(function* () {
               title: "fix deploy",
               replyCount: 0,
               markdown: "Grace: <@U1> help fix deploy",
+              messages: [],
             }),
     }),
   );

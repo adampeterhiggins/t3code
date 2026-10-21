@@ -30,7 +30,12 @@ const THREAD = [
     text: "<@U3> can you look?",
     files: [{ name: "trace.har" }],
   },
-  { ts: LAST_TS, thread_ts: PARENT_TS, bot_profile: { name: "CI Bot" }, text: "Build green" },
+  {
+    ts: LAST_TS,
+    thread_ts: PARENT_TS,
+    bot_profile: { name: "CI Bot", icons: { image_72: "https://avatars.test/bot.png" } },
+    text: "Build green",
+  },
 ];
 
 function makeHarness(replies: Record<string, unknown> = {}) {
@@ -62,7 +67,13 @@ function makeHarness(replies: Record<string, unknown> = {}) {
             request,
             name === undefined
               ? { ok: false, error: "user_not_found" }
-              : { ok: true, user: { name: name.toLowerCase(), profile: { display_name: name } } },
+              : {
+                  ok: true,
+                  user: {
+                    name: name.toLowerCase(),
+                    profile: { display_name: name, image_72: `https://avatars.test/${id}.png` },
+                  },
+                },
           );
         }
         case "conversations.replies":
@@ -180,6 +191,18 @@ it.effect("snapshots a whole thread with the linked message marked and mentions 
       "**Grace** · 2024-10-01 10:48 UTC · linked message\n@Linus can you look?\nFiles: trace.har (not downloaded)",
     );
     assert.include(context.markdown, "**CI Bot** · 2024-10-01 10:49 UTC\nBuild green");
+    assert.deepEqual(
+      context.messages.map(({ authorName, avatarUrl, linked }) => ({
+        authorName,
+        avatarUrl,
+        linked,
+      })),
+      [
+        { authorName: "Ada", avatarUrl: "https://avatars.test/U1.png", linked: false },
+        { authorName: "Grace", avatarUrl: "https://avatars.test/U2.png", linked: true },
+        { authorName: "CI Bot", avatarUrl: "https://avatars.test/bot.png", linked: false },
+      ],
+    );
     // Each user is looked up once.
     assert.strictEqual(harness.calls.filter((call) => call.method === "users.info").length, 3);
   }).pipe(Effect.provide(harness.layer));

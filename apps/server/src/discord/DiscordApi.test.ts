@@ -17,12 +17,13 @@ const THREAD = "1300000000000000100";
 const REPLY = "1300000000000000200";
 const LAST = "1300000000000000300";
 
-const user = (id: string, name: string) => ({
+const user = (id: string, name: string, avatar: string | null = null) => ({
   id,
   username: name.toLowerCase(),
   global_name: name,
+  avatar,
 });
-const ADA = user("1", "Ada");
+const ADA = user("1", "Ada", "a1b2");
 const GRACE = user("2", "Grace");
 
 const message = (
@@ -131,6 +132,24 @@ it.effect("reads a reply's whole thread, starting from the message the thread ca
     assert.include(markdown, "**Grace** · 2026-10-01 10:47 UTC · linked message");
     assert.include(markdown, "Files: trace.har (not downloaded)");
     assert.notInclude(markdown, "<@1>");
+    assert.deepEqual(
+      thread.messages.map(({ index, avatarUrl, linked }) => ({ index, avatarUrl, linked })),
+      [
+        {
+          index: 0,
+          avatarUrl: "https://cdn.discordapp.com/avatars/1/a1b2.png?size=64",
+          linked: false,
+        },
+        // Grace has no avatar set, so one of Discord's defaults stands in.
+        { index: 1, avatarUrl: "https://cdn.discordapp.com/embed/avatars/0.png", linked: true },
+        {
+          index: 2,
+          avatarUrl: "https://cdn.discordapp.com/avatars/1/a1b2.png?size=64",
+          linked: false,
+        },
+      ],
+    );
+    assert.strictEqual(thread.messages[0]!.postedAt, "2026-10-01T10:47:00.000Z");
   }).pipe(Effect.provide(harness.layer));
 });
 
