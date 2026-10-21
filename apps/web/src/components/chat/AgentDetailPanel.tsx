@@ -45,6 +45,7 @@ import type {
   ThreadId,
   TurnItemId,
 } from "@t3tools/contracts";
+import { shouldPreserveAssistantLineBreaks } from "@t3tools/shared/markdownPipeline";
 import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowDownUpIcon,
@@ -77,6 +78,7 @@ import { useClientSettings } from "~/hooks/useSettings";
 import { cn } from "~/lib/utils";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { useIncrementalTimelineEntries } from "~/hooks/useIncrementalTimelineEntries";
+import { markdownPlainText } from "~/lib/markdownPlainText";
 import { observeResize } from "~/lib/observeResize";
 import { deriveCanInterruptRunningThread } from "~/session-logic";
 import {
@@ -90,6 +92,7 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import { buildThreadRouteParams } from "~/threadRoutes";
 
 import { AgentElapsed, STATUS_VISUALS, StatusDot } from "../AgentStatus";
+import ChatMarkdown from "../ChatMarkdown";
 import { FilterPill } from "../FilterPill";
 import { MenuChoiceLabel } from "../MenuChoiceLabel";
 import { Button } from "../ui/button";
@@ -842,13 +845,25 @@ export function AgentDetailPanel(props: {
             </div>
           ) : null}
           {outcome ? (
-            <HeaderDisclosure
-              label={subject.error ? "Error" : "Result"}
-              preview={outcome}
-              tone={subject.error ? "error" : undefined}
-            >
-              <HeaderText text={outcome} tone={subject.error ? "error" : undefined} />
-            </HeaderDisclosure>
+            subject.error ? (
+              <HeaderDisclosure label="Error" preview={outcome} tone="error">
+                <HeaderText text={outcome} tone="error" />
+              </HeaderDisclosure>
+            ) : (
+              <HeaderDisclosure
+                label="Result"
+                // Bounded so a long report's preview never parses more than the line can show.
+                preview={markdownPlainText(outcome.slice(0, 1_500))}
+              >
+                <ChatMarkdown
+                  text={outcome}
+                  cwd={agentRoot ?? undefined}
+                  threadRef={childRef ?? undefined}
+                  lineBreaks={shouldPreserveAssistantLineBreaks(outcome)}
+                  className="text-xs text-foreground/85"
+                />
+              </HeaderDisclosure>
+            )
           ) : null}
           <Artifacts outputFile={runtime.outputFile} sessionUrl={runtime.runHandles?.sessionUrl} />
           {children.length > 0 ? (
