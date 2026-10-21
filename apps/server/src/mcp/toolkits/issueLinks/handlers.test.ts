@@ -19,7 +19,10 @@ import * as GitHubIssueThreadLinks from "../../../githubIssues/GitHubIssueThread
 import * as GranolaThreadLinks from "../../../granola/GranolaThreadLinks.ts";
 import * as LinearApi from "../../../linear/LinearApi.ts";
 import * as LinearThreadLinks from "../../../linear/LinearThreadLinks.ts";
+import * as NotionApi from "../../../notion/NotionApi.ts";
 import * as NotionThreadLinks from "../../../notion/NotionThreadLinks.ts";
+import * as ServerSettings from "../../../serverSettings.ts";
+import * as SlackApi from "../../../slack/SlackApi.ts";
 import * as SlackThreadLinks from "../../../slack/SlackThreadLinks.ts";
 import * as McpContextLinks from "../../McpContextLinks.ts";
 import * as ThreadManagement from "../../../orchestration-v2/ThreadManagementService.ts";
@@ -56,13 +59,29 @@ const outsideClient: McpInvocationContext.McpInvocationScope = {
 };
 
 /** In-memory link stores keyed by thread; tab groups are the services' own concern. */
-const makeHarness = () => {
+const makeHarness = (settings: Parameters<typeof ServerSettings.layerTest>[0] = {}) => {
   const linear = new Map<ThreadId, LinearThreadLink>();
   const github = new Map<ThreadId, GitHubIssueThreadLink>();
   const issueReads: Array<string> = [];
   const searches: Array<LinearListIssuesInput> = [];
   const notion = new Map<ThreadId, NotionThreadLink>();
+  const integrationSearches: Array<string> = [];
   const layerDependencies = Layer.mergeAll(
+    ServerSettings.layerTest(settings),
+    Layer.mock(SlackApi.SlackApi)({
+      searchMessages: ({ query }) =>
+        Effect.sync(() => {
+          integrationSearches.push(`slack:${query}`);
+          return { messages: [] };
+        }),
+    }),
+    Layer.mock(NotionApi.NotionApi)({
+      searchPages: ({ query }) =>
+        Effect.sync(() => {
+          integrationSearches.push(`notion:${query}`);
+          return { pages: [], hasMore: false };
+        }),
+    }),
     Layer.mock(SlackThreadLinks.SlackThreadLinks)({ forThread: () => Effect.succeed(undefined) }),
     Layer.mock(DiscordThreadLinks.DiscordThreadLinks)({
       forThread: () => Effect.succeed(undefined),
@@ -191,7 +210,7 @@ const makeHarness = () => {
       Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
       Effect.provide(layerDependencies),
     );
-  return { linear, github, notion, issueReads, searches, call };
+  return { linear, github, notion, issueReads, searches, integrationSearches, call };
 };
 
 describe("issue link toolkit handlers", () => {
@@ -368,6 +387,30 @@ describe("issue link toolkit handlers", () => {
         url,
         text: `notion page: Plan\nurl: ${url}\nThe plan.`,
       });
+    }),
+  );
+
+  it.effect("searches Slack and Notion through T3's connections", () =>
+    Effect.gen(function* () {
+      const harness = makeHarness();
+      yield* harness.call("search_slack_messages", { query: "in:#eng deploy" });
+      yield* harness.call("search_notion_pages", { query: "" });
+      expect(harness.integrationSearches).toEqual(["slack:in:#eng deploy", "notion:"]);
+    }),
+  );
+
+  it.effect("refuses to search an integration the user turned off", () =>
+    Effect.gen(function* () {
+      const harness = makeHarness({ enableSlackIntegration: false });
+      const error = yield* harness
+        .call("search_slack_messages", { query: "deploy" })
+        .pipe(Effect.flip);
+      expect(error).toMatchObject({
+        _tag: "OrchestratorMcpFailure",
+        code: "invalid_request",
+        message: expect.stringContaining("Slack integration is turned off"),
+      });
+      expect(harness.integrationSearches).toEqual([]);
     }),
   );
 });

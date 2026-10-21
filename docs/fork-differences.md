@@ -1737,8 +1737,9 @@ the reason; nothing is sent. Links are read only once the caller is allowed to s
 `clientRequestId` retry of a message that already landed does not read them again.
 `read_context_link` reads one of those links (not repositories) through the same integrations and
 returns the text a chip would give the agent, without sending anything, so an agent can read a
-linked Slack thread or Notion page with no MCP server of its own. Agents cannot search Slack or
-Notion over MCP; they read and attach links they already have.
+linked Slack thread or Notion page with no MCP server of its own. `search_slack_messages` (Slack's
+search syntax, newest 20) and `search_notion_pages` (pages shared with the connection) find links
+to read, and refuse while the integration is turned off.
 
 Code: [`McpContextLinks.ts`](../apps/server/src/mcp/McpContextLinks.ts), the link parser in
 [`composerObjectLinks.ts`](../packages/shared/src/composerObjectLinks.ts), and the chip records in

@@ -13,8 +13,12 @@ import {
   LinearThreadLink,
   GranolaThreadLink,
   McpCapabilityUnavailableError,
+  NotionError,
+  NotionSearchPagesResult,
   NotionThreadLink,
   OrchestratorMcpFailure,
+  SlackError,
+  SlackSearchMessagesResult,
   SlackThreadLink,
   ThreadId,
   TrimmedNonEmptyString,
@@ -33,6 +37,9 @@ import * as GranolaThreadLinks from "../../../granola/GranolaThreadLinks.ts";
 import * as LinearApi from "../../../linear/LinearApi.ts";
 import * as LinearThreadLinks from "../../../linear/LinearThreadLinks.ts";
 import * as NotionThreadLinks from "../../../notion/NotionThreadLinks.ts";
+import * as NotionApi from "../../../notion/NotionApi.ts";
+import * as ServerSettings from "../../../serverSettings.ts";
+import * as SlackApi from "../../../slack/SlackApi.ts";
 import * as SlackThreadLinks from "../../../slack/SlackThreadLinks.ts";
 
 const dependencies = [
@@ -45,6 +52,9 @@ const dependencies = [
   NotionThreadLinks.NotionThreadLinks,
   GranolaThreadLinks.GranolaThreadLinks,
   LinearApi.LinearApi,
+  SlackApi.SlackApi,
+  NotionApi.NotionApi,
+  ServerSettings.ServerSettingsService,
   McpContextLinks.McpContextLinks,
 ];
 
@@ -96,6 +106,8 @@ export const IssueLinkToolError = Schema.Union([
   NoLinkedLinearIssueError,
   LinearError,
   GitHubIssueError,
+  SlackError,
+  NotionError,
 ]);
 export type IssueLinkToolError = typeof IssueLinkToolError.Type;
 
@@ -310,6 +322,38 @@ const ListLinearFilterOptionsTool = Tool.make("list_linear_filter_options", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, true);
 
+const SearchSlackMessagesTool = Tool.make("search_slack_messages", {
+  description: `Search Slack messages the connected Slack account can see, newest first, with Slack's own search syntax (in:#channel, from:@name, before:2026-01-01). Returns up to 20 message previews with their permalinks; pass a url to read_context_link for the whole thread. Uses T3 Code's own Slack connection (Settings > Integrations > Slack), so it works without a Slack MCP server. Fails when Slack is disconnected or turned off.`,
+  parameters: Schema.Struct({
+    query: TrimmedNonEmptyString.check(Schema.isMaxLength(256)),
+  }),
+  success: SlackSearchMessagesResult,
+  failure: IssueLinkToolError,
+  dependencies,
+})
+  .annotate(Tool.Title, "Search Slack messages")
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, true);
+
+const SearchNotionPagesTool = Tool.make("search_notion_pages", {
+  description: `Search Notion pages by title among the pages shared with T3 Code's Notion connection (Settings > Integrations > Notion), not the whole workspace. Returns page titles and urls; pass a url to read_context_link for the page's contents. Works without a Notion MCP server. Fails when Notion is disconnected or turned off.`,
+  parameters: Schema.Struct({
+    query: Schema.String.check(Schema.isMaxLength(256)).annotate({
+      description: "Title text to match. Empty lists recently edited pages.",
+    }),
+  }),
+  success: NotionSearchPagesResult,
+  failure: IssueLinkToolError,
+  dependencies,
+})
+  .annotate(Tool.Title, "Search Notion pages")
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, true);
+
 export const IssueLinksToolkit = Toolkit.make(
   LinkLinearIssueTool,
   UnlinkLinearIssueTool,
@@ -320,4 +364,6 @@ export const IssueLinksToolkit = Toolkit.make(
   ReadLinearIssueTool,
   SearchLinearIssuesTool,
   ListLinearFilterOptionsTool,
+  SearchSlackMessagesTool,
+  SearchNotionPagesTool,
 );

@@ -71,6 +71,8 @@ export type T3McpToolSummaryAction =
   | "read-issue"
   | "read-link"
   | "search-issues"
+  | "search-messages"
+  | "search-pages"
   | "write-pr-guides"
   | "read-pr-guide"
   | "browser"
@@ -130,6 +132,8 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   read_context_link: tool(["Read", "Reading", "Read", "a linked item"], "read-link"),
   read_linear_issue: tool(["Read", "Reading", "Read", "a Linear issue"], "read-issue"),
   search_linear_issues: tool(["Search", "Searching", "Searched", "Linear issues"], "search-issues"),
+  search_slack_messages: tool(["Search", "Searching", "Searched", "Slack"], "search-messages"),
+  search_notion_pages: tool(["Search", "Searching", "Searched", "Notion pages"], "search-pages"),
   list_linear_filter_options: tool(
     ["Check", "Checking", "Checked", "Linear filter options"],
     "search-issues",

@@ -447,6 +447,16 @@ export function summarizeT3ToolCalls(
         `Linear issues${selected.length === 1 ? "" : ` ${times}`}`,
       );
       break;
+    case "search-messages":
+      label = phrase("Searched", "search", `Slack${selected.length === 1 ? "" : ` ${times}`}`);
+      break;
+    case "search-pages":
+      label = phrase(
+        "Searched",
+        "search",
+        `Notion pages${selected.length === 1 ? "" : ` ${times}`}`,
+      );
+      break;
     case "write-pr-guides": {
       // One call writes many guides, and reports a refusal per guide rather than failing.
       const outcomes = selected.flatMap((call) =>

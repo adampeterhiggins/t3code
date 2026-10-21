@@ -19,7 +19,9 @@ import * as MessageDrafts from "../../../messageDrafts/MessageDrafts.ts";
 import * as DiscordThreadLinks from "../../../discord/DiscordThreadLinks.ts";
 import * as GranolaThreadLinks from "../../../granola/GranolaThreadLinks.ts";
 import * as LinearApi from "../../../linear/LinearApi.ts";
+import * as NotionApi from "../../../notion/NotionApi.ts";
 import * as NotionThreadLinks from "../../../notion/NotionThreadLinks.ts";
+import * as SlackApi from "../../../slack/SlackApi.ts";
 import * as SlackThreadLinks from "../../../slack/SlackThreadLinks.ts";
 import * as LinearThreadLinks from "../../../linear/LinearThreadLinks.ts";
 import * as ProviderAdapterRegistry from "../../../orchestration-v2/ProviderAdapterRegistry.ts";
@@ -64,6 +66,8 @@ const layerStubServices = Layer.mergeAll(
   Layer.mock(LinearThreadLinks.LinearThreadLinks)({}),
   Layer.mock(LinearApi.LinearApi)({}),
   Layer.mock(SlackThreadLinks.SlackThreadLinks)({}),
+  Layer.mock(SlackApi.SlackApi)({}),
+  Layer.mock(NotionApi.NotionApi)({}),
   Layer.mock(DiscordThreadLinks.DiscordThreadLinks)({}),
   Layer.mock(NotionThreadLinks.NotionThreadLinks)({}),
   Layer.mock(GranolaThreadLinks.GranolaThreadLinks)({}),
