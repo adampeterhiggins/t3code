@@ -167,6 +167,23 @@ export function useLinkedObjectRecord(
 }
 
 /**
+ * The chip's card for a link, read as soon as it mounts. Shows the URL until the record arrives,
+ * or when it can't be read.
+ */
+export function LinkedObjectPreviewBody(props: {
+  objectLink: PreviewableObjectLink;
+  environmentId: EnvironmentId;
+  threadRef: ScopedThreadRef | null;
+}) {
+  const openLink = useLinkClickHandler(props.threadRef);
+  const { record } = useLinkedObjectRecord(props.environmentId, props.objectLink, true);
+  if (record === null) {
+    return <p className="break-all text-xs text-muted-foreground">{props.objectLink.url}</p>;
+  }
+  return <ContextPreviewBody kind={record.kind} preview={{ record, onOpenLink: openLink }} />;
+}
+
+/**
  * A link in message text to something a chip could hold: an issue, a Slack or Discord message, a
  * Notion page, a Granola note, a GitHub release or commit, a repository, or a prompt link.
  * Hovering it reads the object once and shows the card its chip would show. A link that can't be
