@@ -286,6 +286,13 @@ export function formatComposerContextProviderPayload(record: KnownComposerContex
         `state: ${record.stateName}`,
         record.markdown,
       ].join("\n");
+    case "linear-object":
+      return [
+        `linear ${record.objectType}: ${record.title}`,
+        `url: ${record.url}`,
+        ...(record.status === null ? [] : [`status: ${record.status}`]),
+        record.markdown,
+      ].join("\n");
     case "github-issue":
       return [
         `github issue: ${record.repository}#${record.number}`,

@@ -51,6 +51,7 @@ const contextChipVariants = cva(
         citation: "[--context-chip-accent:oklch(0.62_0.16_259)]",
         "thread-tab": "[--context-chip-accent:oklch(0.62_0.134_120)]",
         "linear-issue": "[--context-chip-accent:oklch(0.62_0.16_270)]",
+        "linear-object": "[--context-chip-accent:oklch(0.62_0.16_270)]",
         "github-issue": "[--context-chip-accent:oklch(0.62_0.02_259)]",
         repository: "[--context-chip-accent:oklch(0.62_0.12_195)]",
         checkout: "[--context-chip-accent:oklch(0.62_0.1_200)]",
@@ -73,6 +74,7 @@ const contextChipVariants = cva(
       {
         kind: [
           "linear-issue",
+          "linear-object",
           "github-issue",
           "repository",
           "checkout",
@@ -110,6 +112,7 @@ const contextChipVariants = cva(
           "citation",
           "thread-tab",
           "linear-issue",
+          "linear-object",
           "github-issue",
           "repository",
           "checkout",

@@ -30,6 +30,7 @@ function loadingLinkChipKind(link: ComposerObjectLink): ContextChipKind {
 function loadingLinkIcon(link: ComposerObjectLink) {
   switch (link.kind) {
     case "linear-issue":
+    case "linear-object":
       return <LinearIcon />;
     case "github-issue":
       return <GitHubIcon />;

@@ -12,7 +12,7 @@ import { CheckoutAccess } from "./checkouts.ts";
 import { ContextRepositoryDirectoryName, ContextRepositoryOutcome } from "./contextRepositories.ts";
 import { GITHUB_ISSUE_MARKDOWN_MAX_CHARS } from "./githubIssues.ts";
 import { GITHUB_REF_MARKDOWN_MAX_CHARS, GitHubRefType } from "./githubRefs.ts";
-import { LINEAR_ISSUE_MARKDOWN_MAX_CHARS } from "./linear.ts";
+import { LINEAR_ISSUE_MARKDOWN_MAX_CHARS, LinearObjectType } from "./linear.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import { GRANOLA_NOTE_MARKDOWN_MAX_CHARS } from "./granola.ts";
 import { NOTION_PAGE_MARKDOWN_MAX_CHARS } from "./notion.ts";
@@ -34,6 +34,7 @@ export const COMPOSER_CONTEXT_KINDS = [
   "skill",
   "thread-tab",
   "linear-issue",
+  "linear-object",
   "github-issue",
   "repository",
   "checkout",
@@ -302,6 +303,19 @@ export const LinearIssueContextRecord = Schema.Struct({
   markdown: BoundedString(LINEAR_ISSUE_MARKDOWN_MAX_CHARS),
 });
 export type LinearIssueContextRecord = typeof LinearIssueContextRecord.Type;
+
+/** Fork: a Linear project, document, or initiative rendered as markdown when the chip was inserted. */
+export const LinearObjectContextRecord = Schema.Struct({
+  ...recordBase,
+  kind: Schema.Literal("linear-object"),
+  objectType: LinearObjectType,
+  objectId: TrimmedNonEmptyString.check(Schema.isMaxLength(CONTEXT_ID_MAX_CHARS)),
+  title: ShortString,
+  url: ShortString,
+  status: NullableShortString,
+  markdown: BoundedString(LINEAR_ISSUE_MARKDOWN_MAX_CHARS),
+});
+export type LinearObjectContextRecord = typeof LinearObjectContextRecord.Type;
 
 /** A GitHub issue with its description and comments, rendered when the chip was inserted. */
 export const GitHubIssueContextRecord = Schema.Struct({
@@ -587,6 +601,7 @@ const KnownComposerContextRecordGroupB = Schema.Union([
   GitHubRefContextRecord,
   UnreadLinkContextRecord,
   ModelContextRecord,
+  LinearObjectContextRecord,
 ]);
 export const KnownComposerContextRecord = Schema.Union([
   KnownComposerContextRecordGroupA,

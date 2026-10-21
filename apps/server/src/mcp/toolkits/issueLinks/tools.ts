@@ -235,7 +235,7 @@ const ListThreadLinksTool = Tool.make("list_thread_links", {
   .annotate(Tool.OpenWorld, false);
 
 const ReadContextLinkTool = Tool.make("read_context_link", {
-  description: `Read a Slack or Discord message (with its thread), Notion page, Granola note, Linear issue, GitHub issue, or GitHub release, tag, branch, or commit link through T3 Code's own connections, and return the same text a user attaching it to a message would send. Works without a separate MCP server for that service. Fails when the integration is disconnected or turned off, or cannot see the object. To give the link to another thread, use contextLinks on t3_thread_send instead.`,
+  description: `Read a Slack or Discord message (with its thread), Notion page, Granola note, Linear issue, project, document, or initiative, GitHub issue, or GitHub release, tag, branch, or commit link through T3 Code's own connections, and return the same text a user attaching it to a message would send. Works without a separate MCP server for that service. Fails when the integration is disconnected or turned off, or cannot see the object. To give the link to another thread, use contextLinks on t3_thread_send instead.`,
   parameters: Schema.Struct({
     url: TrimmedNonEmptyString.check(Schema.isMaxLength(4_096)).annotate({
       description: "The object's web link, as a user would paste it.",

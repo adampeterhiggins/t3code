@@ -1,5 +1,6 @@
 import {
   type GitHubRefLink,
+  type LinearObjectType,
   parseGranolaNoteId,
   parseNotionPageId,
   parseGitHubIssueUrl,
@@ -10,13 +11,23 @@ import { parseNewThreadLink, parseThreadLinkPrompt, promptLinkAppPath } from "./
 
 /**
  * A link in composer text to something the composer can attach as a chip instead: a Linear
- * issue, a GitHub issue, a pull request, a GitHub repository root, a GitHub release, tag, branch,
- * or commit, a Slack or Discord message, a Notion page, a Granola note, or a T3 Code prompt link.
+ * issue, project, document, or initiative, a GitHub issue, a pull request, a GitHub repository
+ * root, a GitHub release, tag, branch, or commit, a Slack or Discord message, a Notion page, a
+ * Granola note, or a T3 Code prompt link.
  */
 export type ComposerObjectLink =
   | { readonly kind: "notion-page"; readonly url: string; readonly pageId: string }
   | { readonly kind: "granola-note"; readonly url: string; readonly noteId: string }
   | { readonly kind: "linear-issue"; readonly url: string; readonly identifier: string }
+  | {
+      readonly kind: "linear-object";
+      readonly url: string;
+      readonly objectType: LinearObjectType;
+      /** The URL slug id, such as `bc857ff37b9f`, which Linear looks objects up by. */
+      readonly slugId: string;
+      /** The name the URL spells, such as `Structured discussion guide`, when it has one. */
+      readonly name: string | null;
+    }
   | {
       readonly kind: "slack-message";
       readonly url: string;
@@ -58,6 +69,13 @@ const LEADING_URL = /^https?:\/\/[^\s<>"'`]+/iu;
 // Sentence punctuation and closing brackets that end prose rather than the link.
 const TRAILING_PUNCTUATION = /[.,;:!?)\]}>]+$/u;
 const LINEAR_ISSUE_IDENTIFIER = /^[A-Za-z][A-Za-z0-9]*-\d+$/u;
+// Linear names these by `<title-slug>-<slug id>`; a bare slug id also opens them.
+const LINEAR_SLUG = /^(?:(.*)-)?([0-9a-f]{12})$/iu;
+const LINEAR_OBJECT_TYPES: ReadonlySet<string> = new Set<LinearObjectType>([
+  "project",
+  "document",
+  "initiative",
+]);
 const SLACK_CHANNEL_ID = /^[CDG][A-Z0-9]{2,}$/u;
 // `p` and the message timestamp without its dot: the last six digits are the fraction.
 const SLACK_PERMALINK_TS = /^p(\d{7,})$/u;
@@ -184,12 +202,26 @@ export function parseComposerObjectLink(url: string): ComposerObjectLink | null 
   if (granolaNoteId !== null) return { kind: "granola-note", url, noteId: granolaNoteId };
   const segments = parsed.pathname.split("/").filter(Boolean);
 
-  // https://linear.app/<workspace>/issue/<ENG-123>/<slug>
+  // https://linear.app/<workspace>/issue/<ENG-123>/<slug>, or
+  // https://linear.app/<workspace>/project/<slug>-<slug id>/<tab> (and documents and initiatives)
   if (parsed.hostname.toLowerCase() === "linear.app") {
-    const identifier = segments[1] === "issue" ? segments[2] : undefined;
-    return identifier !== undefined && LINEAR_ISSUE_IDENTIFIER.test(identifier)
-      ? { kind: "linear-issue", url, identifier: identifier.toUpperCase() }
-      : null;
+    const [, type, name] = segments;
+    if (type === undefined || name === undefined) return null;
+    if (type === "issue") {
+      return LINEAR_ISSUE_IDENTIFIER.test(name)
+        ? { kind: "linear-issue", url, identifier: name.toUpperCase() }
+        : null;
+    }
+    const slug = LINEAR_SLUG.exec(name);
+    if (!LINEAR_OBJECT_TYPES.has(type) || slug === null) return null;
+    const words = slug[1]?.replaceAll("-", " ").trim() ?? "";
+    return {
+      kind: "linear-object",
+      url,
+      objectType: type as LinearObjectType,
+      slugId: slug[2]!.toLowerCase(),
+      name: words === "" ? null : `${words.charAt(0).toUpperCase()}${words.slice(1)}`,
+    };
   }
   if (parsed.hostname.toLowerCase().endsWith(".slack.com")) {
     return parseSlackMessageLink(url, parsed, segments);
@@ -225,10 +257,17 @@ export function commentAnchor(hash: string): string {
     : "";
 }
 
+const LINEAR_OBJECT_NOUNS: Record<LinearObjectType, string> = {
+  project: "Linear project",
+  document: "Linear document",
+  initiative: "Linear initiative",
+};
+
 /**
  * The short name a bare link reads as once it is recognised: `owner/repo#7` for a pull request
  * or issue (`owner/repo#7 L4-L14` for lines of one of its files, `owner/repo#7issuecomment-1` for
- * one remark on it), `ENG-123` for a Linear issue, `owner/repo` for a repository, and
+ * one remark on it), `ENG-123` for a Linear issue, the name a Linear project, document, or
+ * initiative link spells (`Roadmap`), `owner/repo` for a repository, and
  * `owner/repo@v1.2.0` for a release, tag, branch, or commit (`owner/repo@abc1234`). Null for ordinary links, and for Slack or Discord messages and prompt links:
  * an attached one is already a chip, so a bare one was not attached and should not read as if it
  * were.
@@ -244,6 +283,8 @@ export function objectLinkLabel(url: string): string | null {
       return "Granola note";
     case "linear-issue":
       return link.identifier;
+    case "linear-object":
+      return link.name ?? LINEAR_OBJECT_NOUNS[link.objectType];
     case "slack-message":
     case "discord-message":
     case "prompt-link":
@@ -283,6 +324,7 @@ const OBJECT_LINK_NOUNS: Record<ComposerObjectLink["kind"], string> = {
   "notion-page": "Notion page",
   "granola-note": "Granola note",
   "linear-issue": "Linear issue",
+  "linear-object": "Linear project, document, or initiative",
   "slack-message": "Slack message",
   "discord-message": "Discord message",
   "github-issue": "GitHub issue",

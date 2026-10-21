@@ -34,6 +34,7 @@ const CONTEXT_CHIP_PRESENTATIONS = {
   },
   skill: { accent: "#b261be", icon: "skill" },
   "linear-issue": { accent: "#617de6", icon: "ticket" },
+  "linear-object": { accent: "#617de6", icon: "ticket" },
   "github-issue": { accent: "#009f6e", icon: "circle-dot" },
   "github-ref": { accent: "#7f8793", icon: "tag" },
   "slack-thread": { accent: "#c6589c", icon: "hash" },

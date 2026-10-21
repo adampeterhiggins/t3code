@@ -2,6 +2,7 @@ import { assert, it } from "@effect/vitest";
 import {
   type DiscordGetThreadInput,
   type DiscordThreadContext,
+  type LinearGetObjectInput,
   type LinearIssueContext,
   NotionError,
   type SlackGetThreadInput,
@@ -71,12 +72,27 @@ const discordThread = (input: DiscordGetThreadInput): DiscordThreadContext => ({
 
 let discordRequests: Array<DiscordGetThreadInput> = [];
 
+const LINEAR_PROJECT_URL =
+  "https://linear.app/acme/project/structured-discussion-guide-bc857ff37b9f/issues?layout=list";
+let linearObjectRequests: Array<LinearGetObjectInput> = [];
+
 const layer = (settings: Parameters<typeof ServerSettings.layerTest>[0] = {}) =>
   McpContextLinks.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
         Layer.mock(LinearApi.LinearApi, {
           getIssue: () => Effect.succeed(linearIssue),
+          getObject: (input) => {
+            linearObjectRequests.push(input);
+            return Effect.succeed({
+              objectType: input.objectType,
+              id: "8a6f4f0e-0000-4000-8000-000000000002",
+              title: "Structured discussion guide",
+              url: LINEAR_PROJECT_URL,
+              status: "In Progress",
+              markdown: "# Project: Structured discussion guide",
+            });
+          },
         }),
         Layer.mock(SlackApi.SlackApi, {
           getThread: (input) => {
@@ -116,6 +132,19 @@ const attach = (text: string, links: ReadonlyArray<string> | undefined) =>
   McpContextLinks.McpContextLinks.pipe(
     Effect.flatMap((service) => service.attach({ text, links })),
   );
+
+it.effect("reads a Linear project link by its slug id", () =>
+  Effect.gen(function* () {
+    linearObjectRequests = [];
+    const result = yield* attach("Plan", [LINEAR_PROJECT_URL]);
+
+    assert.deepStrictEqual(linearObjectRequests, [{ objectType: "project", id: "bc857ff37b9f" }]);
+    assert.deepStrictEqual(
+      result.context?.records.map((record) => [record.kind, record.label]),
+      [["linear-object", "Structured discussion guide"]],
+    );
+  }).pipe(Effect.provide(layer())),
+);
 
 it.effect("turns links into the composer's chips, in place when the message mentions them", () =>
   Effect.gen(function* () {

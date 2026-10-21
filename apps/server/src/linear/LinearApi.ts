@@ -3,7 +3,9 @@ import {
   type LinearError,
   type LinearFilterOptions,
   type LinearGetIssueInput,
+  type LinearGetObjectInput,
   type LinearIssueContext,
+  type LinearObjectContext,
   type LinearIssueSort,
   type LinearIssueSummary,
   type LinearListIssuesInput,
@@ -18,6 +20,7 @@ import * as HttpClient from "effect/http/HttpClient";
 import { LinearAuth } from "./LinearAuth.ts";
 import { linearGraphqlRequest } from "./linearGraphql.ts";
 import { parseLinearIssueRef, renderLinearIssueMarkdown } from "./linearIssueMarkdown.ts";
+import { type LinearObjectDetail, renderLinearObjectMarkdown } from "./linearObjectMarkdown.ts";
 import {
   toLinearIdentifierPrefixFilter,
   toLinearIssueFilter,
@@ -85,6 +88,35 @@ const ISSUE_DETAIL_QUERY = `query LinearIssueDetail($id: String!) {
     children(first: 50) { nodes { identifier title state { name } } }
     attachments(first: 25) { nodes { title url } }
     comments(first: 50) { nodes { body createdAt user { name } } }
+  }
+}`;
+
+// Projects, documents, and initiatives each take a UUID or their URL slug id.
+const PROJECT_DETAIL_QUERY = `query LinearProjectDetail($id: String!) {
+  project(id: $id) {
+    id name url description content priorityLabel startDate targetDate progress
+    status { name }
+    lead { name }
+    teams(first: 10) { nodes { name } }
+    projectMilestones(first: 25) { nodes { name targetDate } }
+    issues(first: 50) { nodes { identifier title state { name } } }
+  }
+}`;
+
+const DOCUMENT_DETAIL_QUERY = `query LinearDocumentDetail($id: String!) {
+  document(id: $id) {
+    id title url content
+    creator { name }
+    project { name }
+    initiative { name }
+  }
+}`;
+
+const INITIATIVE_DETAIL_QUERY = `query LinearInitiativeDetail($id: String!) {
+  initiative(id: $id) {
+    id name url description content status targetDate
+    owner { name }
+    projects(first: 50) { nodes { name status { name } } }
   }
 }`;
 
@@ -201,6 +233,51 @@ const STATE_TYPE_ORDER = ["triage", "backlog", "unstarted", "started", "complete
 const DEFAULT_SORT: LinearIssueSort = { field: "updated", direction: "desc" };
 const IssueDetailData = Schema.Struct({ issue: IssueDetailNode });
 
+const ProjectDetailData = Schema.Struct({
+  project: Schema.Struct({
+    id: Schema.String,
+    name: Schema.String,
+    url: Schema.String,
+    description: Schema.NullishOr(Schema.String),
+    content: Schema.NullishOr(Schema.String),
+    priorityLabel: Schema.NullishOr(Schema.String),
+    startDate: Schema.NullishOr(Schema.String),
+    targetDate: Schema.NullishOr(Schema.String),
+    progress: Schema.Number,
+    status: Named,
+    lead: Schema.NullishOr(Named),
+    teams: Nodes(Named),
+    projectMilestones: Nodes(
+      Schema.Struct({ name: Schema.String, targetDate: Schema.NullishOr(Schema.String) }),
+    ),
+    issues: Nodes(Schema.Struct({ identifier: Schema.String, title: Schema.String, state: Named })),
+  }),
+});
+const DocumentDetailData = Schema.Struct({
+  document: Schema.Struct({
+    id: Schema.String,
+    title: Schema.String,
+    url: Schema.String,
+    content: Schema.NullishOr(Schema.String),
+    creator: Schema.NullishOr(Named),
+    project: Schema.NullishOr(Named),
+    initiative: Schema.NullishOr(Named),
+  }),
+});
+const InitiativeDetailData = Schema.Struct({
+  initiative: Schema.Struct({
+    id: Schema.String,
+    name: Schema.String,
+    url: Schema.String,
+    description: Schema.NullishOr(Schema.String),
+    content: Schema.NullishOr(Schema.String),
+    status: Schema.String,
+    targetDate: Schema.NullishOr(Schema.String),
+    owner: Schema.NullishOr(Named),
+    projects: Nodes(Schema.Struct({ name: Schema.String, status: Named })),
+  }),
+});
+
 function toSummary(node: IssueSummaryNode): LinearIssueSummary {
   return {
     id: node.id,
@@ -241,6 +318,10 @@ export class LinearApi extends Context.Service<
       input: LinearGetIssueInput,
     ) => Effect.Effect<LinearIssueContext, LinearError>;
     readonly getFilterOptions: Effect.Effect<LinearFilterOptions, LinearError>;
+    /** Fork: a project, document, or initiative, rendered for a context chip. */
+    readonly getObject: (
+      input: LinearGetObjectInput,
+    ) => Effect.Effect<LinearObjectContext, LinearError>;
     /** The issue's summary fields alone, for linking and live status. */
     readonly getIssueSummary: (
       input: LinearGetIssueInput,
@@ -413,6 +494,112 @@ export const make = Effect.gen(function* () {
     return toSummary(issue);
   });
 
+  const readObject = (input: LinearGetObjectInput) => {
+    const variables = { id: input.id };
+    switch (input.objectType) {
+      case "project":
+        return query(PROJECT_DETAIL_QUERY, variables, ProjectDetailData).pipe(
+          Effect.map(({ project }) => ({
+            id: project.id,
+            status: project.status.name,
+            detail: {
+              objectType: "project",
+              title: project.name,
+              url: project.url,
+              facts: [
+                ["Status", project.status.name],
+                ["Summary", project.description ?? null],
+                ["Lead", project.lead?.name ?? null],
+                ["Teams", project.teams.nodes.map((team) => team.name).join(", ")],
+                [
+                  "Priority",
+                  project.priorityLabel === "No priority" ? null : (project.priorityLabel ?? null),
+                ],
+                ["Start date", project.startDate ?? null],
+                ["Target date", project.targetDate ?? null],
+                ["Progress", `${Math.round(project.progress * 100)}%`],
+              ],
+              content: project.content ?? null,
+              lists: [
+                {
+                  heading: "Milestones",
+                  items: project.projectMilestones.nodes.map((milestone) =>
+                    milestone.targetDate
+                      ? `${milestone.name} (${milestone.targetDate})`
+                      : milestone.name,
+                  ),
+                },
+                {
+                  heading: "Issues",
+                  items: project.issues.nodes.map(
+                    (issue) => `${issue.identifier} ${issue.title} (${issue.state.name})`,
+                  ),
+                },
+              ],
+            } satisfies LinearObjectDetail,
+          })),
+        );
+      case "document":
+        return query(DOCUMENT_DETAIL_QUERY, variables, DocumentDetailData).pipe(
+          Effect.map(({ document }) => ({
+            id: document.id,
+            status: null,
+            detail: {
+              objectType: "document",
+              title: document.title,
+              url: document.url,
+              facts: [
+                ["Project", document.project?.name ?? null],
+                ["Initiative", document.initiative?.name ?? null],
+                ["Author", document.creator?.name ?? null],
+              ],
+              content: document.content ?? null,
+              lists: [],
+            } satisfies LinearObjectDetail,
+          })),
+        );
+      case "initiative":
+        return query(INITIATIVE_DETAIL_QUERY, variables, InitiativeDetailData).pipe(
+          Effect.map(({ initiative }) => ({
+            id: initiative.id,
+            status: initiative.status,
+            detail: {
+              objectType: "initiative",
+              title: initiative.name,
+              url: initiative.url,
+              facts: [
+                ["Status", initiative.status],
+                ["Summary", initiative.description ?? null],
+                ["Owner", initiative.owner?.name ?? null],
+                ["Target date", initiative.targetDate ?? null],
+              ],
+              content: initiative.content ?? null,
+              lists: [
+                {
+                  heading: "Projects",
+                  items: initiative.projects.nodes.map(
+                    (project) => `${project.name} (${project.status.name})`,
+                  ),
+                },
+              ],
+            } satisfies LinearObjectDetail,
+          })),
+        );
+    }
+  };
+
+  const getObject = Effect.fn("linear.get_object")(function* (input: LinearGetObjectInput) {
+    const { id, status, detail } = yield* readObject(input);
+    return {
+      objectType: input.objectType,
+      id,
+      title: detail.title,
+      url: detail.url,
+      status,
+      markdown: renderLinearObjectMarkdown(detail, LINEAR_ISSUE_MARKDOWN_MAX_CHARS),
+    } satisfies LinearObjectContext;
+  });
+
   const listAssignedIssues = query(TRIGGER_ISSUES_QUERY, {}, TriggerIssuesData).pipe(
     Effect.map((data): LinearAssignedIssues => ({
       accountId: data.viewer.id,
@@ -430,6 +617,7 @@ export const make = Effect.gen(function* () {
     getIssue,
     getFilterOptions: getFilterOptions(),
     getIssueSummary,
+    getObject,
     listAssignedIssues,
   });
 });

@@ -29,6 +29,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.linearGetFilterOptions]: "linear",
   [WS_METHODS.linearGetIssue]: "linear",
   [WS_METHODS.linearGetIssueSummary]: "linear",
+  [WS_METHODS.linearGetObject]: "linear",
   [WS_METHODS.linearSubscribeThreadLinks]: "linear",
   [WS_METHODS.linearLinkThread]: "linear",
   [WS_METHODS.linearUnlinkThread]: "linear",

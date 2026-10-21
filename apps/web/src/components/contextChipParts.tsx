@@ -1,5 +1,6 @@
 import type {
   GitHubRefContextRecord,
+  LinearObjectContextRecord,
   GranolaNoteContextRecord,
   NotionPageContextRecord,
   PromptLinkContextRecord,
@@ -650,6 +651,36 @@ export function LinearIssueDetails(props: {
         onOpenLink={props.onOpenLink}
       />
       <LinearIssueMarkdown markdown={props.markdown} url={props.url} />
+    </div>
+  );
+}
+
+const LINEAR_OBJECT_KIND_LABELS: Record<LinearObjectContextRecord["objectType"], string> = {
+  project: "Linear project",
+  document: "Linear document",
+  initiative: "Linear initiative",
+};
+
+export function linearObjectKindLabel(objectType: LinearObjectContextRecord["objectType"]) {
+  return LINEAR_OBJECT_KIND_LABELS[objectType];
+}
+
+/** An attached Linear project, document, or initiative: the snapshot the agent received. */
+export function LinearObjectDetails(props: {
+  record: Pick<LinearObjectContextRecord, "objectType" | "status" | "url" | "markdown">;
+  onOpenLink: (event: MouseEvent<HTMLElement>, url: string) => void;
+}) {
+  const { record } = props;
+  const kind = linearObjectKindLabel(record.objectType);
+  return (
+    <div className="flex flex-col gap-2">
+      <IssueDetailsHeader
+        summary={record.status === null ? kind : `${kind} · ${record.status}`}
+        url={record.url}
+        linkLabel="Open in Linear"
+        onOpenLink={props.onOpenLink}
+      />
+      <LinearIssueMarkdown markdown={record.markdown} url={record.url} />
     </div>
   );
 }

@@ -375,7 +375,7 @@ Linear issues, a path opens checkouts, `#owner/repo` opens repositories, and an 
 tab you insert from most. A folder name that matches a local checkout opens Checkouts.
 Items you inserted recently are listed first and match as you type, without waiting for a search.
 
-On web and desktop, pasting or typing a link to a Linear issue, a GitHub issue, a pull request, a
+On web and desktop, pasting or typing a link to a Linear issue, project, document, or initiative, a GitHub issue, a pull request, a
 GitHub repository, a Notion page, a Granola note, or a Slack or Discord message turns the link into the same chip attaching it would make. A T3 Code prompt link becomes a chip named after its prompt; hover it to read the prompt without decoding the URL. A GitHub release, branch, tag, or commit link becomes a chip such as `repo@v1.2.0`; the agent receives the release notes or the commit message, and hovering the chip shows them. Hovering any of these links in a message, including one an agent wrote, shows the same card its chip would. A typed link
 converts when you type a space or new line after it. While the item loads, the link shows as a
 dashed chip named from the link, such as `owner/repo#162`; Backspace removes it. The full chip

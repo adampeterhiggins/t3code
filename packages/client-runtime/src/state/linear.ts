@@ -18,7 +18,10 @@ import {
 } from "./runtime.ts";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 
-export { linearIssueContextRecord } from "@t3tools/shared/integrationContextRecords";
+export {
+  linearIssueContextRecord,
+  linearObjectContextRecord,
+} from "@t3tools/shared/integrationContextRecords";
 
 export function createLinearEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
@@ -103,6 +106,17 @@ export function createLinearEnvironmentAtoms<R, E>(
     getIssue: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:linear:get-issue",
       tag: WS_METHODS.linearGetIssue,
+    }),
+    // A project, document, or initiative's snapshot, for hover cards over bare links.
+    object: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:linear:object",
+      tag: WS_METHODS.linearGetObject,
+      staleTimeMs: 60_000,
+    }),
+    // Fetched once when a project, document, or initiative link becomes a chip.
+    getObject: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:linear:get-object",
+      tag: WS_METHODS.linearGetObject,
     }),
     // A linked issue's live status, without the body and comments.
     issueSummary: createEnvironmentRpcQueryAtomFamily(runtime, {
