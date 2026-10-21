@@ -2,6 +2,8 @@ import { assert, describe, it } from "@effect/vitest";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import type * as Electron from "electron";
@@ -150,7 +152,11 @@ describe("ElectronMenu", () => {
 
   it.effect("defers popupTemplate side effects until the returned Effect runs", () =>
     Effect.gen(function* () {
-      const popupMock = vi.fn();
+      const popupMock = vi.fn(
+        (options: { callback?: () => void; frame?: Electron.WebFrameMain }) => {
+          options.callback?.();
+        },
+      );
       buildFromTemplateMock.mockImplementation(() => ({ popup: popupMock }));
 
       const electronMenu = yield* ElectronMenu.ElectronMenu;
@@ -169,6 +175,31 @@ describe("ElectronMenu", () => {
       assert.equal(buildFromTemplateMock.mock.calls.length, 1);
       assert.equal(popupMock.mock.calls.length, 1);
       assert.strictEqual(popupMock.mock.calls[0]?.[0].frame, frame);
+    }).pipe(Effect.provide(layerTest)),
+  );
+
+  it.effect("keeps popupTemplate running until the menu closes", () =>
+    Effect.gen(function* () {
+      let closeMenu: (() => void) | undefined;
+      buildFromTemplateMock.mockImplementation(() => ({
+        popup: (options: { callback?: () => void }) => {
+          closeMenu = options.callback;
+        },
+      }));
+
+      const electronMenu = yield* ElectronMenu.ElectronMenu;
+      const fiber = yield* electronMenu
+        .popupTemplate({
+          window: { id: 7 } as Electron.BrowserWindow,
+          template: [{ label: "Copy" }],
+        })
+        .pipe(Effect.forkChild({ startImmediately: true }));
+
+      assert.isUndefined(fiber.pollUnsafe());
+      const close = closeMenu;
+      assert.isDefined(close);
+      close();
+      assert.isTrue(Exit.isSuccess(yield* Fiber.await(fiber)));
     }).pipe(Effect.provide(layerTest)),
   );
 

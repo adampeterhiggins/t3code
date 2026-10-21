@@ -361,24 +361,17 @@ export const pasteAsText = DesktopIpc.makeIpcMethod({
   payload: Schema.Undefined,
   result: Schema.Void,
   handler: Effect.fn("desktop.ipc.window.pasteAsText")(function* (_input, event) {
-    const electronWindow = yield* ElectronWindow.ElectronWindow;
-    const window = yield* electronWindow.main;
-    if (
-      event === undefined ||
-      Option.isNone(window) ||
-      window.value.isDestroyed() ||
-      window.value.webContents.id !== event.sender.id
-    ) {
+    // The renderer arms its paste bypass, then asks to paste. Only the trusted
+    // window that asked may paste, and only into contents that belong to it.
+    const requester = yield* NativeWindowInteraction.resolveTrustedAppSender(event);
+    if (Option.isNone(requester) || requester.value.isDestroyed()) return;
+    const focused = Electron.webContents.getFocusedWebContents();
+    if (focused === undefined || focused === null || focused.isDestroyed()) return;
+    const owner = Electron.BrowserWindow.fromWebContents(focused);
+    if (owner === null || owner === undefined || owner.isDestroyed() || owner !== requester.value) {
       return;
     }
-    const focused = Electron.webContents.getFocusedWebContents();
-    if (
-      focused &&
-      !focused.isDestroyed() &&
-      Electron.BrowserWindow.fromWebContents(focused) === window.value
-    ) {
-      focused.paste();
-    }
+    focused.paste();
   }),
 });
 

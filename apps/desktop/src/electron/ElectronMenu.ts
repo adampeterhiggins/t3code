@@ -211,21 +211,36 @@ export const make = Effect.gen(function* () {
     popupTemplate: (input) =>
       input.template.length === 0
         ? Effect.void
-        : Effect.try({
-            try: () =>
+        : Effect.callback<void>((resume) => {
+            // macOS returns from popup() before the menu is on screen, so the
+            // owner's blur can arrive while this effect is still running.
+            // Callers hold a native-interaction count until it settles.
+            let settled = false;
+            const settle = (effect: Effect.Effect<void>) => {
+              if (settled) return;
+              settled = true;
+              resume(effect);
+            };
+            try {
               Electron.Menu.buildFromTemplate([...input.template]).popup({
                 window: input.window,
                 ...(input.frame ? { frame: input.frame } : {}),
-              }),
-            catch: (cause) =>
-              new ElectronMenuOperationError({
-                operation: "popup-template",
-                platform,
-                windowId: input.window.id,
-                itemCount: input.template.length,
-                cause,
-              }),
-          }).pipe(Effect.orDie),
+                callback: () => settle(Effect.void),
+              });
+            } catch (cause) {
+              settle(
+                Effect.die(
+                  new ElectronMenuOperationError({
+                    operation: "popup-template",
+                    platform,
+                    windowId: input.window.id,
+                    itemCount: input.template.length,
+                    cause,
+                  }),
+                ),
+              );
+            }
+          }),
     showContextMenu: (input) =>
       Effect.callback<Option.Option<string>>((resume) => {
         const normalizedItems = normalizeContextMenuItems(input.items);

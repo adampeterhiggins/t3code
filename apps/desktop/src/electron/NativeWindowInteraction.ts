@@ -76,3 +76,20 @@ export const resolveNativeInteractionOwner = Effect.fn(
   }
   return yield* electronWindow.focusedMainOrFirst;
 });
+
+// The paste acknowledgement has to name its own window. A missing, destroyed,
+// guest, or unregistered sender fails closed: falling back to the focused main
+// window would paste into a different composer.
+export const resolveTrustedAppSender = Effect.fn("desktop.electron.resolveTrustedAppSender")(
+  function* (event: NativeInteractionSenderEvent | undefined) {
+    const electronWindow = yield* ElectronWindow.ElectronWindow;
+    const candidate = senderWindow(event);
+    if (Option.isNone(candidate) || candidate.value.isDestroyed()) return Option.none();
+    const main = yield* electronWindow.main;
+    if (Option.isSome(main) && !main.value.isDestroyed() && main.value === candidate.value) {
+      return candidate;
+    }
+    if (ElectronWindow.isAuxiliaryWindow(candidate.value)) return candidate;
+    return Option.none();
+  },
+);

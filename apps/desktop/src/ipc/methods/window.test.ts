@@ -246,47 +246,136 @@ describe("getWindowFullscreenState", () => {
 });
 
 describe("pasteAsText", () => {
+  interface AppContents {
+    readonly id: number;
+    isDestroyed: () => boolean;
+    getType: () => "window" | "webview";
+    paste: ReturnType<typeof vi.fn>;
+  }
+
+  function appWindow(id: number, destroyed = false) {
+    const contents: AppContents = {
+      id,
+      isDestroyed: () => destroyed,
+      getType: () => "window",
+      paste: vi.fn(),
+    };
+    const window = {
+      id,
+      isDestroyed: () => destroyed,
+      webContents: contents,
+    } as unknown as Electron.BrowserWindow;
+    return { window, contents };
+  }
+
+  function present(
+    ...entries: ReadonlyArray<{
+      readonly contents: AppContents;
+      readonly window: Electron.BrowserWindow | null;
+    }>
+  ) {
+    const byId = new Map(entries.map((entry) => [entry.contents.id, entry]));
+    webContentsFromId.mockImplementation((id: number) => byId.get(id)?.contents);
+    ownerWindow.mockImplementation(
+      (contents: AppContents) => byId.get(contents?.id)?.window ?? null,
+    );
+  }
+
+  const windowLayer = (main: Option.Option<Electron.BrowserWindow>) =>
+    Layer.mock(ElectronWindow.ElectronWindow)({
+      main: Effect.succeed(main),
+      focusedMainOrFirst: Effect.die("paste must not fall back to another window"),
+    });
+
+  beforeEach(() => {
+    webContentsFromId.mockReset();
+    ownerWindow.mockReset();
+    focusedWebContents.mockReset();
+  });
+
   it.effect(
     "pastes into the focused guest only after the main renderer acknowledges the menu action",
     () => {
-      const paste = vi.fn();
-      const mainPaste = vi.fn();
-      const window = {
-        webContents: { id: 42, paste: mainPaste },
+      const main = appWindow(42);
+      const focused: AppContents = {
+        id: 77,
         isDestroyed: () => false,
-      } as unknown as Electron.BrowserWindow;
-      focusedWebContents.mockReturnValue({ paste, isDestroyed: () => false });
-      ownerWindow.mockReturnValue(window);
+        getType: () => "webview",
+        paste: vi.fn(),
+      };
+      present(main, { contents: focused, window: main.window });
+      focusedWebContents.mockReturnValue(focused);
 
       return Effect.gen(function* () {
         yield* pasteAsText.handler(undefined, { sender: { id: 42 } });
-        assert.equal(paste.mock.calls.length, 1);
-        assert.equal(mainPaste.mock.calls.length, 0);
+        assert.equal(focused.paste.mock.calls.length, 1);
+        assert.equal(main.contents.paste.mock.calls.length, 0);
 
         yield* pasteAsText.handler(undefined, { sender: { id: 99 } });
-        assert.equal(paste.mock.calls.length, 1);
-        ownerWindow.mockReturnValue({}); // A focused PiP/other BrowserWindow.
+        assert.equal(focused.paste.mock.calls.length, 1);
+
+        present(main, { contents: focused, window: appWindow(8).window });
         yield* pasteAsText.handler(undefined, { sender: { id: 42 } });
-        assert.equal(paste.mock.calls.length, 1);
-        ownerWindow.mockReturnValue(null); // Detached contents.
+        assert.equal(focused.paste.mock.calls.length, 1);
+
+        present(main, { contents: focused, window: null });
         yield* pasteAsText.handler(undefined, { sender: { id: 42 } });
-        assert.equal(paste.mock.calls.length, 1);
-        ownerWindow.mockReturnValue(window);
-        focusedWebContents.mockReturnValue({ paste, isDestroyed: () => true });
+        assert.equal(focused.paste.mock.calls.length, 1);
+
+        present(main, {
+          contents: { ...focused, isDestroyed: () => true },
+          window: main.window,
+        });
+        focusedWebContents.mockReturnValue({ ...focused, isDestroyed: () => true });
         yield* pasteAsText.handler(undefined, { sender: { id: 42 } });
-        assert.equal(paste.mock.calls.length, 1);
+        assert.equal(focused.paste.mock.calls.length, 1);
+
         focusedWebContents.mockReturnValue(null);
         yield* pasteAsText.handler(undefined, { sender: { id: 42 } });
-        assert.equal(paste.mock.calls.length, 1);
-      }).pipe(
-        Effect.provide(
-          Layer.mock(ElectronWindow.ElectronWindow)({
-            main: Effect.succeedSome(window),
-          }),
-        ),
-      );
+        assert.equal(focused.paste.mock.calls.length, 1);
+
+        yield* pasteAsText.handler(undefined);
+        assert.equal(focused.paste.mock.calls.length, 1);
+      }).pipe(Effect.provide(windowLayer(Option.some(main.window))));
     },
   );
+
+  it.effect("pastes for a quick-message window only into that same window", () => {
+    const main = appWindow(1);
+    const quick = appWindow(2);
+    const stranger = appWindow(8);
+    ElectronWindow.markAuxiliaryWindow(quick.window);
+    const guest: AppContents = {
+      id: 99,
+      isDestroyed: () => false,
+      getType: () => "webview",
+      paste: vi.fn(),
+    };
+    const destroyed = appWindow(3, true);
+    ElectronWindow.markAuxiliaryWindow(destroyed.window);
+    present(main, quick, stranger, destroyed, { contents: guest, window: main.window });
+    focusedWebContents.mockReturnValue(quick.contents);
+
+    return Effect.gen(function* () {
+      yield* pasteAsText.handler(undefined, { sender: { id: quick.contents.id } });
+      assert.equal(quick.contents.paste.mock.calls.length, 1);
+      assert.equal(main.contents.paste.mock.calls.length, 0);
+
+      focusedWebContents.mockReturnValue(guest);
+      yield* pasteAsText.handler(undefined, { sender: { id: quick.contents.id } });
+      assert.equal(quick.contents.paste.mock.calls.length, 1);
+      assert.equal(guest.paste.mock.calls.length, 0);
+
+      yield* pasteAsText.handler(undefined, { sender: { id: guest.id } });
+      yield* pasteAsText.handler(undefined, { sender: { id: stranger.contents.id } });
+      yield* pasteAsText.handler(undefined, { sender: { id: destroyed.contents.id } });
+      focusedWebContents.mockReturnValue(stranger.contents);
+      yield* pasteAsText.handler(undefined, { sender: { id: stranger.contents.id } });
+      assert.equal(quick.contents.paste.mock.calls.length, 1);
+      assert.equal(stranger.contents.paste.mock.calls.length, 0);
+      assert.equal(main.contents.paste.mock.calls.length, 0);
+    }).pipe(Effect.provide(windowLayer(Option.some(main.window))));
+  });
 });
 
 describe("revealWindow", () => {

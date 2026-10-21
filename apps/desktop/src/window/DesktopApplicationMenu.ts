@@ -45,9 +45,12 @@ const dispatchMenuAction = Effect.fn("desktop.menu.dispatchMenuAction")(function
   action: string,
 ): Effect.fn.Return<void, DesktopWindow.DesktopWindowError, DesktopWindow.DesktopWindow> {
   const desktopWindow = yield* DesktopWindow.DesktopWindow;
-  yield* desktopWindow.dispatchMenuAction(action, {
-    reveal: action !== "paste-as-text",
-  });
+  // Paste must reach the composer that is already focused. Revealing here would
+  // raise a different window. Every other menu action stays on the main window.
+  yield* desktopWindow.dispatchMenuAction(
+    action,
+    action === "paste-as-text" ? { reveal: false, target: "focused-trusted" } : undefined,
+  );
 });
 
 const zoomMainWindow = Effect.fn("desktop.menu.zoomMainWindow")(function* (
