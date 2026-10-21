@@ -16,6 +16,7 @@ import * as ServerEnvironment from "../../../environment/ServerEnvironment.ts";
 import * as GitWorkflowService from "../../../git/GitWorkflowService.ts";
 import * as GitHubIssueThreadLinks from "../../../githubIssues/GitHubIssueThreadLinks.ts";
 import * as MessageDrafts from "../../../messageDrafts/MessageDrafts.ts";
+import * as LinearApi from "../../../linear/LinearApi.ts";
 import * as LinearThreadLinks from "../../../linear/LinearThreadLinks.ts";
 import * as ProviderAdapterRegistry from "../../../orchestration-v2/ProviderAdapterRegistry.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
@@ -57,6 +58,7 @@ const layerStubServices = Layer.mergeAll(
   Layer.mock(ProjectSetupScriptRunner.ProjectSetupScriptRunner)({}),
   Layer.mock(VcsStatusBroadcaster.VcsStatusBroadcaster)({}),
   Layer.mock(LinearThreadLinks.LinearThreadLinks)({}),
+  Layer.mock(LinearApi.LinearApi)({}),
   Layer.mock(GitHubIssueThreadLinks.GitHubIssueThreadLinks)({}),
   Layer.mock(MessageDrafts.MessageDrafts)({}),
   Layer.mock(GitVcsDriver.GitVcsDriver)({}),
