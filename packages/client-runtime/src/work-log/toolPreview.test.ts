@@ -447,6 +447,16 @@ describe("resolveToolPreview", () => {
         ]),
       ),
     ).toEqual({ kind: "slack-messages", messages: [] });
+    expect(
+      resolveToolPreview(
+        tool("mcp__slack__slack_search_public", {}, [
+          {
+            type: "text",
+            text: JSON.stringify({ results: "# Search Results for: \n\nNo results found.\n" }),
+          },
+        ]),
+      ),
+    ).toEqual({ kind: "slack-messages", messages: [] });
   });
 
   it("shows a cancellation's reason and a launched thread's title and branch", () => {

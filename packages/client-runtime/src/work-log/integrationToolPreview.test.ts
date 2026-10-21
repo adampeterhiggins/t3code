@@ -340,6 +340,139 @@ describe("Slack", () => {
   });
 });
 
+describe("Slack directory and concise reads", () => {
+  const slack = (name: string, input: unknown, body: Record<string, string>) =>
+    resolveToolPreview(
+      tool(`mcp__slack__${name}`, input, [{ type: "text", text: JSON.stringify(body) }]),
+    );
+
+  it("splits a concise channel read into messages, keeping blank lines inside one", () => {
+    const messages =
+      "Channel: DM (D1)\n\nMatt Gill: <https://github.com/o/r/pull/7|github.com/o/r/pull/7> [2026-10-21 16:32:08 BST]\n\nAdam: First paragraph\n\n• second [2026-10-20 14:28:15 BST]";
+    expect(slack("slack_read_channel", { response_format: "concise" }, { messages })).toMatchObject(
+      {
+        kind: "records",
+        summary: "DM",
+        items: [
+          { title: "Matt Gill", meta: ["2026-10-21 16:32:08 BST"], body: "github.com/o/r/pull/7" },
+          { title: "Adam", meta: ["2026-10-20 14:28:15 BST"], body: "First paragraph\n\n• second" },
+        ],
+      },
+    );
+  });
+
+  it("shows a profile's filled fields, without its No flags", () => {
+    const result =
+      "User ID: U1\nUsername: sam\nDisplay Name: Sam\nReal Name: Sam Rivera\nPronouns: \nEmail: sam@example.com\nTimezone: Europe/London\nAdmin: No\nBot: No\n";
+    expect(slack("slack_read_user_profile", {}, { result })).toEqual(
+      expect.objectContaining({
+        kind: "properties",
+        title: "Sam Rivera",
+        rows: [
+          ["User ID", "U1"],
+          ["Username", "sam"],
+          ["Display Name", "Sam"],
+          ["Real Name", "Sam Rivera"],
+          ["Email", "sam@example.com"],
+          ["Timezone", "Europe/London"],
+        ],
+      }),
+    );
+  });
+
+  it("lists the user's channels and a channel's members", () => {
+    const channels =
+      '## My Channels (showing 2, more results available)\n\n### #general\n- **ID:** C1\n- **Type:** Public Channel\n- **Topic:** Announcements\n- **Archived:** No\n\n### #old\n- **ID:** C2\n- **Type:** Private Channel\n- **Archived:** Yes\n\n---\nPagination: More results available. Use cursor: "x"\n';
+    expect(slack("slack_list_user_channels", {}, { result: channels })).toMatchObject({
+      notes: ["More channels on the next page"],
+      items: [
+        { title: "#general", subtitle: "Public Channel", meta: [], body: "Announcements" },
+        { title: "#old", subtitle: "Private Channel", meta: ["archived"], body: null },
+      ],
+    });
+    const detailed =
+      "# Channel Members (1)\n\n## Member 1\nUser ID: U1\nUsername: @sam\nDisplay Name: Sam\nReal Name: Sam Rivera\nEmail: sam@example.com\n\n";
+    expect(slack("slack_list_channel_members", {}, { members: detailed })).toMatchObject({
+      items: [{ title: "Sam Rivera", subtitle: "@sam", meta: ["sam@example.com"] }],
+    });
+    expect(
+      slack("slack_list_channel_members", {}, { members: "# Channel Members (1)\n\n@jo (Jo)\n" }),
+    ).toMatchObject({ items: [{ title: "Jo", subtitle: "@jo" }] });
+  });
+
+  it("shows detailed channel search results", () => {
+    const results =
+      "# Search Results for: \n\n## Channels (1 results)\n### Result 1 of 1\nName: #notif-requests\nCreator: Oli (<@U9)\nCreated: 2021-11-26 09:26:26 GMT\nPurpose: demo requests\nPermalink: [link](https://slack.com/archives/C1)\nIs Archived: false\n";
+    expect(slack("slack_search_channels", {}, { results })).toMatchObject({
+      items: [
+        {
+          title: "#notif-requests",
+          meta: ["Oli", "2021-11-26 09:26:26 GMT"],
+          url: "https://slack.com/archives/C1",
+          body: "demo requests",
+        },
+      ],
+    });
+  });
+
+  it("shows reactions and custom emojis", () => {
+    expect(
+      slack(
+        "slack_get_reactions",
+        {},
+        { result: "Reactions on message:\n\n:white_check_mark: × 2 — Sam (U1), Jo (U2)" },
+      ),
+    ).toMatchObject({ kind: "properties", rows: [[":white_check_mark: × 2", "Sam, Jo"]] });
+    expect(
+      slack(
+        "slack_search_emojis",
+        { query: "ship" },
+        {
+          results:
+            'Found 2 custom emojis matching "ship":\n:ship-it-parrot:, :shipit: (alias for :squirrel:)',
+        },
+      ),
+    ).toMatchObject({
+      summary: 'Found 2 custom emojis matching "ship"',
+      items: [
+        { title: ":ship-it-parrot:", subtitle: null },
+        { title: ":shipit:", subtitle: "alias for :squirrel:" },
+      ],
+    });
+  });
+
+  it("shows a scheduled message and a new canvas", () => {
+    expect(
+      slack(
+        "slack_schedule_message",
+        { channel_id: "C1", message: "Standup", post_at: 1792596728 },
+        { result: "Scheduled" },
+      ),
+    ).toMatchObject({ markdown: "Standup", notes: ["Scheduled for 2026-10-21T15:32:08.000Z"] });
+    expect(
+      slack(
+        "slack_create_canvas",
+        { title: "Plan", content: "# Goals" },
+        { canvas_url: "https://slack.com/docs/F1" },
+      ),
+    ).toMatchObject({
+      title: "Plan",
+      markdown: "# Goals",
+      link: { label: "Open canvas", url: "https://slack.com/docs/F1" },
+    });
+  });
+
+  it("reads Codex's codex_apps.slack tools like Slack's own", () => {
+    expect(
+      resolveToolPreview(
+        tool("codex_apps.slack.slack_read_user_profile", {}, [
+          { type: "text", text: JSON.stringify({ result: "Real Name: Sam\nEmail: s@x.com\n" }) },
+        ]),
+      ),
+    ).toMatchObject({ kind: "properties", title: "Sam" });
+  });
+});
+
 describe("Linear and T3 history", () => {
   it("shows an issue as its title and description", () => {
     expect(

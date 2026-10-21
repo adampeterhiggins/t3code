@@ -670,7 +670,8 @@ function slackPreview(text: string | null): SlackMessagesPreview | null {
           });
   // A search that found nothing still reads as a Slack search, not as its raw fields.
   const emptySearch =
-    /^## Messages \(0 results\)$/m.test(text) || /^# Search Results for:[^\n]*\s*$/.test(text);
+    /^## Messages \(0 results\)$/m.test(text) ||
+    /^# Search Results for:[^\n]*\s*(?:No results found\.\s*)?$/.test(text);
   return messages.length > 0 || emptySearch ? { kind: "slack-messages", messages } : null;
 }
 
