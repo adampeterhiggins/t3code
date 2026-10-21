@@ -50,6 +50,7 @@ import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderS
 import * as McpProviderSession from "@t3tools/provider-core/server/mcpSession";
 import { CursorTransportFailure } from "./transportFailure.ts";
 import { cursorContextWindowTokens, cursorSdkModelSelection } from "./sdkModel.ts";
+import { cursorModelUsageRule } from "./usageLimits.ts";
 import {
   discoverCursorSkills,
   hasCursorSkillMention,
@@ -2399,12 +2400,13 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
         });
 
         const subscriptionLimit = adapterOptions.subscriptionLimit;
-        const readSubscriptionLimit = Effect.fnUntraced(function* () {
+        const readSubscriptionLimit = Effect.fnUntraced(function* (model: string) {
           if (subscriptionLimit === undefined) return null;
           return SubscriptionLimitPolicy.subscriptionLimitFailure({
             limits: yield* subscriptionLimit.checkUsage,
             nowMs: DateTime.toEpochMillis(yield* DateTime.now),
             provider: "Cursor",
+            ...cursorModelUsageRule(model),
           });
         });
         if (subscriptionLimit !== undefined) {
@@ -2421,7 +2423,7 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
             ) {
               return;
             }
-            const failure = yield* readSubscriptionLimit();
+            const failure = yield* readSubscriptionLimit(context.input.modelSelection.model);
             // The run already passed the check before it started, so a failed read leaves it
             // running until a later poll can tell.
             if (failure?.class !== "usage_limit" || context.finalized) return;
@@ -2451,7 +2453,7 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
                 turnInput.modelSelection,
               ))
             ) {
-              const failure = yield* readSubscriptionLimit();
+              const failure = yield* readSubscriptionLimit(turnInput.modelSelection.model);
               if (failure !== null) {
                 return yield* new SubscriptionLimitPolicy.SubscriptionLimitStopError({ failure });
               }

@@ -178,7 +178,7 @@ export const CursorDriver: ProviderDriver<
         models: draft.models.map((model) =>
           withSubscriptionLimitOption(
             model,
-            "Stop when Cursor reports an included usage pool used up, even if on-demand usage is enabled. Usage is checked about once a minute; this is not a billing cap.",
+            "Stop when Cursor reports the included usage this model draws from used up, even if on-demand usage is enabled. Usage is checked about once a minute; this is not a billing cap.",
           ),
         ),
         setup: { canAuthenticate: !auth.usesApiKey, canInstall: false },

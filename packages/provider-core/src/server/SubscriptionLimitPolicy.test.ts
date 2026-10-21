@@ -55,6 +55,45 @@ describe("subscriptionLimitFailure", () => {
     assert.include(failure?.message ?? "", "Codex subscription limit reached");
   });
 
+  it("with stopWhen all, stops only once every counted window is used up, at the earliest reset", () => {
+    const oneLeft = subscriptionLimitFailure({
+      limits: limits([
+        { id: "included", usedPercent: 100, resetsAt: "2026-10-25T00:00:00.000Z" },
+        { id: "fallback", usedPercent: 40 },
+      ]),
+      nowMs,
+      provider: "Cursor",
+      windowIds: ["included", "fallback"],
+      stopWhen: "all",
+    });
+    assert.isNull(oneLeft);
+
+    const failure = subscriptionLimitFailure({
+      limits: limits([
+        { id: "included", usedPercent: 100, resetsAt: "2026-10-25T00:00:00.000Z" },
+        { id: "fallback", usedPercent: 100, resetsAt: "2026-10-22T00:00:00.000Z" },
+        { id: "other", usedPercent: 100 },
+      ]),
+      nowMs,
+      provider: "Cursor",
+      windowIds: ["included", "fallback"],
+      stopWhen: "all",
+    });
+    assert.equal(failure?.class, "usage_limit");
+    assert.equal(failure?.resetAt, "2026-10-22T00:00:00.000Z");
+  });
+
+  it("with stopWhen all, fails closed when a counted window is missing", () => {
+    const failure = subscriptionLimitFailure({
+      limits: limits([{ id: "fallback", usedPercent: 100 }]),
+      nowMs,
+      provider: "Cursor",
+      windowIds: ["included", "fallback"],
+      stopWhen: "all",
+    });
+    assert.equal(failure?.class, "provider_error");
+  });
+
   it("fails closed with the reader's reason when usage is unavailable", () => {
     const failure = subscriptionLimitFailure({
       limits: {

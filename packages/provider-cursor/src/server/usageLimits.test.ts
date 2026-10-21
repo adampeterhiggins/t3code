@@ -7,7 +7,11 @@ import * as Path from "effect/Path";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import * as CursorKeychain from "./CursorKeychain.ts";
-import { cursorUsageResponseToLimits, readCursorUsageLimits } from "./usageLimits.ts";
+import {
+  cursorModelUsageRule,
+  cursorUsageResponseToLimits,
+  readCursorUsageLimits,
+} from "./usageLimits.ts";
 
 const withNodeServices = <A, E>(
   effect: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path | CursorKeychain.CursorKeychain>,
@@ -19,6 +23,25 @@ const withNodeServices = <A, E>(
     Effect.provideService(CursorKeychain.CursorKeychain, { accessToken }),
     Effect.provide(NodeServices.layer),
   );
+
+describe("cursorModelUsageRule", () => {
+  const bothPools = { windowIds: ["autoPercentUsed", "apiPercentUsed"], stopWhen: "all" };
+
+  it("stops Grok and Composer only once both pools are used up", () => {
+    expect(cursorModelUsageRule("composer-2.5")).toEqual(bothPools);
+    expect(cursorModelUsageRule("grok-4-fast")).toEqual(bothPools);
+  });
+
+  it("gives Auto the same both-pools rule", () => {
+    expect(cursorModelUsageRule("auto")).toEqual(bothPools);
+  });
+
+  it("stops every other model on the API pool", () => {
+    const apiPool = { windowIds: ["apiPercentUsed"], stopWhen: "any" };
+    expect(cursorModelUsageRule("claude-4.5-sonnet")).toEqual(apiPool);
+    expect(cursorModelUsageRule("gpt-5.2")).toEqual(apiPool);
+  });
+});
 
 describe("Cursor usage limits", () => {
   const checkedAt = "2026-09-16T00:00:00.000Z";

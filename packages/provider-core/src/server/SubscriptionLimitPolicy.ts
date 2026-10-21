@@ -70,8 +70,13 @@ export function subscriptionLimitFailure(input: {
   readonly provider: string;
   /** The windows that gate paid usage; every reported window when omitted. */
   readonly windowIds?: ReadonlyArray<string>;
+  /**
+   * "any" when each counted window is its own allowance; "all" when the provider falls back
+   * from one counted window to the next and reaches paid usage only once every one is used up.
+   */
+  readonly stopWhen?: "any" | "all";
 }): OrchestrationV2ProviderFailure | null {
-  const { limits, windowIds } = input;
+  const { limits, windowIds, stopWhen = "any" } = input;
   const windows =
     limits?.windows.filter((window) => windowIds === undefined || windowIds.includes(window.id)) ??
     [];
@@ -80,15 +85,18 @@ export function subscriptionLimitFailure(input: {
       window.usedPercent >= 100 &&
       (window.resetsAt === undefined || Date.parse(window.resetsAt) > input.nowMs),
   );
-  if (
-    limits !== undefined &&
-    limits.unavailable === undefined &&
+  // A fallback pool missing from the report could be the one still holding room, or not.
+  const counted =
     windows.length > 0 &&
-    exhausted.length === 0
-  ) {
+    (stopWhen === "any" ||
+      windowIds === undefined ||
+      windowIds.every((id) => windows.some((window) => window.id === id)));
+  const stops =
+    stopWhen === "any" ? exhausted.length > 0 : counted && exhausted.length === windows.length;
+  if (limits !== undefined && limits.unavailable === undefined && counted && !stops) {
     return null;
   }
-  if (exhausted.length === 0) {
+  if (!stops) {
     const detail = limits?.unavailable?.message;
     return makeProviderFailure({
       class: "provider_error",
@@ -97,16 +105,34 @@ export function subscriptionLimitFailure(input: {
       message: `${input.provider} subscription usage could not be checked${detail === undefined ? "" : ` (${detail})`}. Retry the turn, or disable Stop at subscription limit in application and thread settings to continue without this check.`,
     });
   }
-  const resetTimes = exhausted.map((window) => window.resetsAt);
   return makeProviderFailure({
     class: "usage_limit",
     retryable: false,
     code: "subscription_limit_guard",
     message: `${input.provider} subscription limit reached. This thread stopped because Stop at subscription limit is enabled.`,
-    resetAt: resetTimes.every((time) => time !== undefined)
-      ? resetTimes.reduce((latest, time) => (time > latest ? time : latest))
-      : null,
+    resetAt: stopWhen === "any" ? latestReset(exhausted) : earliestReset(exhausted),
   });
+}
+
+/**
+ * With "any", the turn can run again only once every exhausted window has reset, and one
+ * with no reset time leaves that unknown.
+ */
+function latestReset(windows: ServerProviderUsageLimits["windows"]): string | null {
+  const times = windows.map((window) => window.resetsAt);
+  return times.every((time) => time !== undefined)
+    ? times.reduce((latest, time) => (time > latest ? time : latest))
+    : null;
+}
+
+/** With "all", the first window to reset gives the turn included usage again. */
+function earliestReset(windows: ServerProviderUsageLimits["windows"]): string | null {
+  const times = windows.flatMap((window) =>
+    window.resetsAt === undefined ? [] : [window.resetsAt],
+  );
+  return times.length === 0
+    ? null
+    : times.reduce((earliest, time) => (time < earliest ? time : earliest));
 }
 
 /** Whether the guard applies to a thread, and when that may have changed. */

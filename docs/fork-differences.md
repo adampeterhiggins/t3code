@@ -1927,9 +1927,12 @@ an allowance is used up or usage cannot be read; the run fails as a usage limit,
 Limited recovery and resume-after-reset apply and resuming does not bypass the
 guard. During a turn, Claude stops on streamed exhaustion or overage events (closing
 its process and native background work), Codex on its rate-limit notifications, and
-Cursor on a one-minute usage poll. Agents use `stopAtSubscriptionLimit` through
-model options. Other providers do not advertise or enforce it, and provider
-reports can lag, so it is not a hard billing cap.
+Cursor on a one-minute usage poll. Cursor checks only the pools the turn's model draws
+from: Grok, Composer, and Auto fall back from the Cursor Models pool to the API pool,
+so they stop once both are used up, and other models stop on the API pool. Agents use
+`stopAtSubscriptionLimit` through model options. Other
+providers do not advertise or enforce it, and provider reports can lag, so it is
+not a hard billing cap.
 
 Code: [shared policy](../packages/provider-core/src/server/SubscriptionLimitPolicy.ts),
 [live thread guard](../apps/server/src/orchestration-v2/SubscriptionLimitGuardSync.ts),
