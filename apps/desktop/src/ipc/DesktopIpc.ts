@@ -10,6 +10,11 @@ export interface DesktopIpcInvokeEvent {
 
 export interface DesktopIpcSyncEvent {
   returnValue: unknown;
+  /**
+   * Present for a real Electron sync event. Missing on direct calls, which the
+   * migration boundary rejects instead of treating as a trusted renderer.
+   */
+  readonly sender?: { readonly id: number };
 }
 
 export type DesktopIpcHandleListener = (
@@ -65,7 +70,7 @@ export interface DesktopIpcMethod<E, R> {
 
 export interface DesktopSyncIpcMethod<E, R> {
   readonly channel: string;
-  readonly handler: () => Effect.Effect<unknown, E, R>;
+  readonly handler: (event?: DesktopIpcSyncEvent) => Effect.Effect<unknown, E, R>;
 }
 
 export class DesktopIpc extends Context.Service<
@@ -131,7 +136,7 @@ export const make = (ipcMain: DesktopIpcMain): DesktopIpc["Service"] =>
               event.returnValue = runSync(
                 Effect.gen(function* () {
                   yield* Effect.annotateCurrentSpan({ channel });
-                  return yield* handler();
+                  return yield* handler(event);
                 }).pipe(
                   Effect.annotateLogs({ channel }),
                   Effect.withSpan("desktop.ipc.invokeSync"),
@@ -239,7 +244,7 @@ export interface DesktopSyncIpcMethodRegistration<
     ResultDecodingServices,
     ResultEncodingServices
   >;
-  readonly handler: () => Effect.Effect<Result, E, R>;
+  readonly handler: (event?: DesktopIpcSyncEvent) => Effect.Effect<Result, E, R>;
 }
 
 export const makeSyncIpcMethod = <
@@ -263,9 +268,9 @@ export const makeSyncIpcMethod = <
 
   return {
     channel: method.channel,
-    handler: () =>
+    handler: (event) =>
       method
-        .handler()
+        .handler(event)
         .pipe(
           Effect.flatMap(encode),
           Effect.withSpan("desktop.ipc.method", { attributes: { channel: method.channel } }),

@@ -80,6 +80,55 @@ describe("DesktopIpc", () => {
     }),
   );
 
+  it.effect("forwards an optional sync sender and still runs zero-argument handlers", () =>
+    Effect.gen(function* () {
+      const listeners = new Map<string, DesktopIpc.DesktopIpcSyncListener>();
+      const ipc = DesktopIpc.make(
+        makeIpcMain({
+          on: (channel, registered) => {
+            listeners.set(channel, registered);
+          },
+        }),
+      );
+      let seenId: number | undefined;
+
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          yield* ipc.handleSync({
+            channel: "desktop.test.sync-sender",
+            handler: (event) =>
+              Effect.sync(() => {
+                seenId = event?.sender?.id;
+                return "taken";
+              }),
+          });
+          const event: DesktopIpc.DesktopIpcSyncEvent = {
+            returnValue: undefined,
+            sender: { id: 11 },
+          };
+          listeners.get("desktop.test.sync-sender")!(event);
+          assert.strictEqual(event.returnValue, "taken");
+          assert.strictEqual(seenId, 11);
+
+          let calls = 0;
+          yield* ipc.handleSync({
+            channel: "desktop.test.sync-legacy",
+            handler: () =>
+              Effect.sync(() => {
+                calls += 1;
+                return true;
+              }),
+          });
+          const legacyEvent: DesktopIpc.DesktopIpcSyncEvent = { returnValue: undefined };
+          listeners.get("desktop.test.sync-legacy")!(legacyEvent);
+          assert.strictEqual(legacyEvent.returnValue, true);
+          assert.strictEqual(calls, 1);
+          assert.isUndefined(legacyEvent.sender);
+        }),
+      );
+    }),
+  );
+
   it.effect("preserves sync unregistration context and cause in the finalizer defect", () =>
     Effect.gen(function* () {
       const cause = new Error("sync unregistration failed");
