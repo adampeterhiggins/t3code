@@ -305,7 +305,7 @@ export const make = Effect.gen(function* () {
     record(target, null, {
       text: `T3 Code stopped watching pull request #${target.link.number} (${target.link.url}) because it failed to read it from the host ${READ_FAILURE_LIMIT} times in a row. Check it yourself, and call watch_pull_request to watch it again.`,
       notification: {
-        source: { kind: "monitor" },
+        source: { kind: "monitor", pullRequestUrl: target.link.url },
         outcome: "failed",
         summary: `#${target.link.number}: stopped watching, could not read it`,
       },
@@ -408,7 +408,7 @@ export const make = Effect.gen(function* () {
     record(target, null, {
       text: `Pull request #${target.link.number} (${target.link.url}) was closed, so T3 Code stopped watching it. Call watch_pull_request if it reopens.`,
       notification: {
-        source: { kind: "monitor" },
+        source: { kind: "monitor", pullRequestUrl: target.link.url },
         outcome: "updated",
         summary: `#${target.link.number}: closed, stopped watching`,
       },

@@ -1252,6 +1252,9 @@ The fork adds to it:
   thread settles. Archiving the thread or pressing Stop still ends it.
 - Each watched row on web shows a status line ("Waiting for checks", "Checks failed", "Changes
   requested", ...) and the follow-ups used. Mobile's Git overview shows "Watching" or "Watch paused".
+- On web, the `#123` in a watch's timeline notification ("#123: checks passed") opens the pull
+  request and previews it on hover, like a pull request chip. The notification carries the URL
+  (`pullRequestUrl` on its `monitor` source); older ones find it among the thread's links.
 
 The state rides on upstream's `ThreadPullRequestWatch` (`changesRequested`, `followUps`, `paused`)
 and `thread.pull-request.watch` takes `paused`, behind the `threadPullRequestWatchPause` capability.

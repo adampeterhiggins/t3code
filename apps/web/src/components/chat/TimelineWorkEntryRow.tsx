@@ -33,7 +33,9 @@ import { ChatMarkdownAssetImage } from "./ChatMarkdownMedia";
 import { ChevronRightIcon, CircleAlertIcon, XIcon, RotateCcwIcon } from "lucide-react";
 import { Button, InlineButton } from "../ui/button";
 import { useAssetUrls } from "../../assets/assetUrls";
-import { useThreadShell } from "../../state/entities";
+import { useQuietThreadShell, useThreadShell } from "../../state/entities";
+import { usePreferredOpenPrLink, usePullRequestPreviewTarget } from "~/lib/openPullRequestLink";
+import { PullRequestLinkPreview } from "../pullRequest/PullRequestLinkPreview";
 import {
   threadReadLabelPrefix,
   threadReadTargetId,
@@ -64,6 +66,7 @@ import {
   buildToolCallExpandedBody,
   workEntryIconName,
   remarkThoughtPreview,
+  pullRequestNotificationLabel,
 } from "./TimelineWorkEntryRow.logic";
 
 export function useThreadReadTarget(entry: TimelineWorkEntry, environmentId: EnvironmentId) {
@@ -113,6 +116,40 @@ const toolCallExpandedBodyClassName =
   "max-h-64 cursor-text overflow-auto whitespace-pre-wrap break-words font-mono text-secondary-label text-(length:--font-size-code,var(--text-2xs)) leading-relaxed select-text";
 
 const stopRowToggle = (e: { stopPropagation: () => void }) => e.stopPropagation();
+
+function PullRequestNotificationLabel({
+  label,
+  environmentId,
+}: {
+  label: NonNullable<ReturnType<typeof pullRequestNotificationLabel>>;
+  environmentId: EnvironmentId;
+}) {
+  const { threadRef } = use(TimelineRowCtx);
+  const previewTarget = usePullRequestPreviewTarget(environmentId, label.url);
+  const openPrLink = usePreferredOpenPrLink(threadRef ?? undefined);
+  const link = (
+    <a
+      href={label.url}
+      target="_blank"
+      rel="noreferrer"
+      className="rounded-sm text-foreground underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-ring"
+      onClick={(event) => openPrLink(event, label.url)}
+      onKeyDown={stopRowToggle}
+    >
+      {label.reference}
+    </a>
+  );
+  return (
+    <>
+      {previewTarget === null ? (
+        link
+      ) : (
+        <PullRequestLinkPreview link={link} originalUrl={label.url} target={previewTarget} />
+      )}
+      {label.rest}
+    </>
+  );
+}
 
 export function ReasoningTraceContent({ entries }: { entries: ReadonlyArray<TimelineWorkEntry> }) {
   const ctx = use(TimelineRowCtx);
@@ -182,6 +219,13 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
     workEntry.projectedItem?.item.type === "notification"
       ? notificationChildThreadId(workEntry.projectedItem.item.source)
       : undefined;
+  // The thread's pull request links name the one older watch notifications are about.
+  const watchedThread = useQuietThreadShell(
+    workEntry.projectedItem?.item.type === "notification" &&
+      workEntry.projectedItem.item.source.kind === "monitor"
+      ? (threadRef ?? null)
+      : null,
+  );
   const groupView = use(WorkGroupViewCtx);
   const [expanded, setExpanded] = useState(
     () => groupView?.state.expandedEntries.has(workEntry.id) ?? false,
@@ -361,6 +405,11 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
         ? "text-secondary-label"
         : "text-foreground/80";
   const threadLabel = isReasoning ? null : threadReadLabel(previewText, threadTarget);
+  const pullRequestLabel = pullRequestNotificationLabel(
+    workEntry,
+    previewText,
+    watchedThread?.pullRequests ?? [],
+  );
   const accessiblePreview = [threadLabel?.text ?? previewText, answerPreview]
     .filter(Boolean)
     .join(": ");
@@ -420,6 +469,11 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
                       workEntry.toolLifecycleStatus === "inProgress" ? "Thinking" : "Thought",
                     ],
                   ]}
+                />
+              ) : pullRequestLabel ? (
+                <PullRequestNotificationLabel
+                  label={pullRequestLabel}
+                  environmentId={ctx.activeThreadEnvironmentId}
                 />
               ) : threadLabel ? (
                 <ThreadReadLabel
