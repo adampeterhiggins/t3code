@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   findComposerObjectLinks,
+  findPastedComposerObjectLinks,
   findTypedComposerObjectLink,
   locateComposerObjectLink,
   objectLinkLabel,
@@ -200,6 +201,30 @@ describe("findComposerObjectLinks", () => {
   it("skips markdown link targets", () => {
     expect(findComposerObjectLinks("[the PR](https://github.com/acme/api/pull/7)")).toEqual([]);
   });
+
+  it("skips links in code spans and fences, including an unclosed fence", () => {
+    const url = "https://github.com/acme/api/pull/7";
+    expect(findComposerObjectLinks(`Run \`curl ${url}\` then ${url}`)).toEqual([
+      { link: { kind: "pull-request", url }, index: 17 + url.length },
+    ]);
+    expect(findComposerObjectLinks(`\`\`\`\n${url}\n\`\`\`\n`)).toEqual([]);
+    expect(findComposerObjectLinks(`~~~sh\ncurl ${url}`)).toEqual([]);
+  });
+});
+
+describe("findPastedComposerObjectLinks", () => {
+  const url = "https://github.com/acme/api/pull/7";
+
+  it("places pasted links in the prompt", () => {
+    expect(findPastedComposerObjectLinks(`See ${url}`, url, 4)).toEqual([
+      { link: { kind: "pull-request", url }, index: 4 },
+    ]);
+  });
+
+  it("skips a link pasted into existing code", () => {
+    expect(findPastedComposerObjectLinks(`Run \`${url}\``, url, 5)).toEqual([]);
+    expect(findPastedComposerObjectLinks(`\`\`\`\n${url}\n\`\`\``, url, 4)).toEqual([]);
+  });
 });
 
 describe("locateComposerObjectLink", () => {
@@ -222,6 +247,10 @@ describe("locateComposerObjectLink", () => {
   it("returns null once the link is gone", () => {
     expect(locateComposerObjectLink(`${url}/pull/7`, url, 0)).toBeNull();
   });
+
+  it("ignores occurrences moved into code", () => {
+    expect(locateComposerObjectLink(`\`${url}\``, url, 1)).toBeNull();
+  });
 });
 
 describe("findTypedComposerObjectLink", () => {
@@ -239,6 +268,13 @@ describe("findTypedComposerObjectLink", () => {
   it("waits while the link is still being typed", () => {
     expect(findTypedComposerObjectLink(`See ${url}`, url.length + 4)).toBeNull();
     expect(findTypedComposerObjectLink(`${url} and `, url.length + 5)).toBeNull();
+  });
+
+  it("leaves links typed in code alone", () => {
+    const span = `\`${url} `;
+    expect(findTypedComposerObjectLink(span, span.length)).toBeNull();
+    const fence = `\`\`\`\n${url} `;
+    expect(findTypedComposerObjectLink(fence, fence.length)).toBeNull();
   });
 });
 
