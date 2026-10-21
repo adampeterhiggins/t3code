@@ -59,7 +59,7 @@ function useThreadSearchWithContentMatches(query: string) {
   const threadSearch = useThreadSearch(environmentIds, query);
   const contentMatchByKey = new Map(
     threadSearch.matches.flatMap((match) =>
-      match.source === "user" || match.source === "assistant"
+      match.source === "user" || match.source === "assistant" || match.source === "group_name"
         ? [[threadSearchMatchKey(match), match] as const]
         : [],
     ),
@@ -130,7 +130,8 @@ export function useCommandPaletteThreadItems(input: {
           threadId: thread.id,
         }),
       );
-      return match && (match.source === "user" || match.source === "assistant")
+      return match &&
+        (match.source === "user" || match.source === "assistant" || match.source === "group_name")
         ? {
             source: match.source,
             snippet: match.snippet,
