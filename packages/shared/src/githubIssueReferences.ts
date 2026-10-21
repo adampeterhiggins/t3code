@@ -33,14 +33,18 @@ export function githubIssueReferenceUrl(
   return `${origin}/${qualifier}/issues/${number}`;
 }
 
-/** The web URL of a project's repository when GitHub hosts it, for resolving `#123`. */
+/**
+ * The web URL of a project's repository when GitHub hosts it, for resolving `#123`. The server
+ * sets `webUrl` when gh opens pull requests somewhere other than the identity's remote.
+ */
 export function githubRepositoryUrl(
   identity:
-    | Pick<RepositoryIdentity, "provider" | "canonicalKey" | "displayName">
+    | Pick<RepositoryIdentity, "provider" | "canonicalKey" | "displayName" | "webUrl">
     | null
     | undefined,
 ): string | null {
   if (identity?.provider !== "github") return null;
+  if (identity.webUrl) return identity.webUrl;
   const [host, ...path] = identity.canonicalKey.split("/");
   // The display name keeps the remote's capitalisation; the key is lower-cased.
   const repository = identity.displayName ?? path.join("/");

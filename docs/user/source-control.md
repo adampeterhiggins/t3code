@@ -319,7 +319,8 @@ and their marks follow the same rules as on web and desktop.
 
 `owner/repo#123` in a message links to that issue or pull request, with the same preview as a
 pasted link. In a thread whose project is a GitHub repository, `#123` links to that repository's
-issue or pull request.
+issue or pull request. In a fork with an `upstream` remote, that is the repository `gh` opens pull
+requests in, so run `gh repo set-default` to choose between your fork and upstream.
 
 ## Linked pull requests
 

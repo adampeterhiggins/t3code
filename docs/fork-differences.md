@@ -923,6 +923,11 @@ existing links are left alone.
   ([`linearIssueReferences.ts`](../packages/shared/src/linearIssueReferences.ts)).
 - `owner/repo#123` links to GitHub, and `#123` links when the thread's project is a GitHub
   repository ([`githubIssueReferences.ts`](../packages/shared/src/githubIssueReferences.ts)).
+  The repository is the one gh opens pull requests in, so `gh repo set-default origin` sends a
+  fork's `#123` to the fork rather than its `upstream` remote. The GitHub provider records it as
+  the project identity's `webUrl`
+  ([`GitHubSourceControlProvider.ts`](../packages/source-control-github/src/server/GitHubSourceControlProvider.ts)),
+  which a pull request linked by number also uses.
   Commit SHAs and mentions are not linked in chat.
 
 Web applies these as remark plugins in `ChatMarkdown`; mobile rewrites message markdown in

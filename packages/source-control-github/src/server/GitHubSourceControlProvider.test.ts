@@ -294,6 +294,47 @@ describe("GitHubSourceControlProvider repository resolution", () => {
   });
 });
 
+describe("GitHubSourceControlProvider.refineRepositoryIdentity", () => {
+  const remotes = remotesOutput(
+    ["origin", "https://github.com/Me/Web.git"],
+    ["upstream", "https://github.com/acme/web.git"],
+  );
+  const identity = {
+    canonicalKey: "github.com/acme/web",
+    locator: {
+      source: "git-remote" as const,
+      remoteName: "upstream",
+      remoteUrl: "https://github.com/acme/web.git",
+    },
+    rootPath: "/repo",
+    displayName: "acme/web",
+    provider: "github",
+    origin: { canonicalKey: "github.com/me/web", displayName: "Me/Web" },
+  };
+  const refine = (resolved: string) =>
+    Effect.gen(function* () {
+      const gh = yield* GitHubSourceControlProvider.make;
+      return yield* gh.refineRepositoryIdentity!({
+        identity,
+        resolveContext: () => Effect.succeed(null),
+      });
+    }).pipe(Effect.provide(harness({ remotes, resolved }).layer));
+
+  it.effect("names the repository gh repo set-default chose", () =>
+    Effect.gen(function* () {
+      const refined = yield* refine("remote.origin.gh-resolved base\n");
+      assert.strictEqual(refined.webUrl, "https://github.com/Me/Web");
+      assert.strictEqual(refined.canonicalKey, "github.com/acme/web");
+    }),
+  );
+
+  it.effect("keeps the identity when gh would pick its own remote", () =>
+    Effect.gen(function* () {
+      assert.strictEqual(yield* refine(""), identity);
+    }),
+  );
+});
+
 describe("GitHubSourceControlProvider change request lookups by head", () => {
   const remotes = remotesOutput(["origin", "git@github.com:acme/web.git"]);
 
