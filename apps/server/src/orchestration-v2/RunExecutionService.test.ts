@@ -53,6 +53,8 @@ import type { PendingOrchestrationEffectV2 } from "./EffectOutbox.ts";
 import * as EventSink from "./EventSink.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
+import { SubscriptionLimitStopError } from "@t3tools/provider-core/server/SubscriptionLimitPolicy";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderEventIngestor from "./ProviderEventIngestor.ts";
 import * as McpAppModelContext from "../mcpApps/McpAppModelContext.ts";
@@ -4090,6 +4092,44 @@ it.effect("refreshes pull requests only once when startup failure closes its eve
     assert.equal(observed[0], "run:failed");
     const error = written.find((item) => item.type === "error");
     assert.include(error?.failure.message ?? "", "provider could not start this turn");
+  }),
+);
+
+it.effect("fails a run refused at the subscription limit with the guard's usage limit", () =>
+  Effect.gen(function* () {
+    const ingestionStarted = yield* Deferred.make<void>();
+    const { observed, written } = yield* captureRootRunTermination({
+      key: "subscription-limit-guard",
+      shouldFinalizeRun: () => Effect.succeed(true),
+      events: () =>
+        Stream.unwrap(Deferred.succeed(ingestionStarted, undefined).pipe(Effect.as(Stream.never))),
+      startTurn: (input) =>
+        Deferred.await(ingestionStarted).pipe(
+          Effect.andThen(
+            Effect.fail(
+              new ProviderAdapter.ProviderAdapterTurnStartError({
+                driver,
+                threadId: input.threadId,
+                providerThreadId: input.providerThread.id,
+                runId: input.runId,
+                cause: new SubscriptionLimitStopError({
+                  failure: makeProviderFailure({
+                    class: "usage_limit",
+                    code: "subscription_limit_guard",
+                    message: "Codex subscription limit reached.",
+                    resetAt: "2026-10-25T00:00:00.000Z",
+                  }),
+                }),
+              }),
+            ),
+          ),
+        ),
+    });
+    assert.equal(observed[0], "run:failed");
+    const error = written.find((item) => item.type === "error");
+    assert.equal(error?.failure.class, "usage_limit");
+    assert.equal(error?.failure.code, "subscription_limit_guard");
+    assert.equal(error?.failure.resetAt, "2026-10-25T00:00:00.000Z");
   }),
 );
 

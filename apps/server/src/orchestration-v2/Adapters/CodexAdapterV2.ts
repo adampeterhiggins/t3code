@@ -20,6 +20,7 @@ import {
   codexDefaultReasoningEffortOverride,
 } from "../../provider/CodexProvider.ts";
 import {
+  codexRateLimitsToLimits,
   codexRateLimitsToUpdate,
   mergeCodexRateLimits,
   codexUsageLimitResetAt,
@@ -71,6 +72,7 @@ import type {
   ProviderInstanceId,
   RuntimeMode,
   RuntimeRequestId,
+  ServerProviderUsageLimits,
   ThreadId,
 } from "@t3tools/contracts";
 import { createPatch } from "diff";
@@ -140,6 +142,7 @@ import {
   makeProviderFailureTurnItem,
   makeProviderRetryTurnItem,
 } from "@t3tools/provider-core/server/failure";
+import * as SubscriptionLimitPolicy from "@t3tools/provider-core/server/SubscriptionLimitPolicy";
 import { turnScopedSelectionTransition } from "@t3tools/provider-core/server/selectionTransition";
 import {
   isProviderNativeImageAttachment,
@@ -1245,6 +1248,8 @@ function codexUsageLimitError(
 
 interface ActiveCodexTurnContext {
   closedCommandItemIds?: ReadonlySet<string>;
+  /** Set when the subscription-limit guard interrupts this turn, which then fails with it. */
+  subscriptionLimitStop?: OrchestrationV2ProviderFailure;
   latestProviderFailure?: {
     readonly nativeMessage: string;
     readonly failure: OrchestrationV2ProviderFailure;
@@ -1707,7 +1712,10 @@ export type CodexAdapterV2DriverEnv =
 
 export const createCodexAdapterV2 = Effect.fn("CodexAdapterV2.createCodexAdapterV2")(function* (
   { instanceId, environment, enabled, config }: ProviderAdapterDriverCreateInput<CodexSettings>,
-  hooks: Pick<CodexAdapterV2Options, "onUsageLimits" | "resolveRuntime"> = {},
+  hooks: Pick<
+    CodexAdapterV2Options,
+    "onUsageLimits" | "resolveRuntime" | "subscriptionLimitPolicy"
+  > = {},
 ) {
   const clientFactory = yield* CodexAppServerClientFactory;
   const continuationRequests = yield* ProviderContinuationRequests.ProviderContinuationRequests;
@@ -1798,6 +1806,7 @@ export interface CodexAdapterV2Options {
   readonly environment: NodeJS.ProcessEnv;
   readonly clientFactory: CodexAppServerClientFactoryShape;
   readonly onUsageLimits?: ManagedServerProvider["applyUsageLimits"];
+  readonly subscriptionLimitPolicy?: SubscriptionLimitPolicy.SubscriptionLimitPolicy;
   readonly resolveRuntime?: Effect.Effect<CodexEffectiveRuntime, ProviderSetupError, Scope.Scope>;
   readonly crypto: Crypto.Crypto;
   readonly fileSystem: FileSystem.FileSystem;
@@ -1933,6 +1942,8 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
         });
         const events = yield* Queue.unbounded<ProviderAdapter.ProviderAdapterV2Event>();
         const rateLimitSnapshot = yield* Ref.make<CodexRateLimitSnapshot | undefined>(undefined);
+        // Only the latest update matters: each check reads the merged snapshot.
+        const rateLimitUpdates = yield* Queue.sliding<void>(1);
         const limitedTurnItems = yield* Ref.make(
           new Map<ProviderThreadId, Extract<OrchestrationV2TurnItem, { type: "error" }>>(),
         );
@@ -4523,6 +4534,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               const checkedAt = DateTime.formatIso(yield* DateTime.now);
               yield* adapterOptions.onUsageLimits({ ...update, checkedAt });
             }
+            yield* Queue.offer(rateLimitUpdates, undefined);
           }).pipe(Effect.orDie),
         );
 
@@ -5765,6 +5777,25 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             readonly providerRetry?: ActiveCodexProviderRetry;
           }): Effect.fn.Return<CodexRootTerminalEvent> {
             const terminalStatus = providerTurnStatusToTerminal(input.status);
+            if (
+              terminalStatus === "interrupted" &&
+              input.context.subscriptionLimitStop !== undefined
+            ) {
+              return {
+                type: "turn.terminal",
+                driver: CODEX_PROVIDER,
+                providerThreadId: input.context.providerThread.id,
+                providerTurnId: input.context.providerTurnId,
+                runOrdinal: input.context.input.runOrdinal,
+                failureItemOrdinal: yield* resolveItemOrdinal(
+                  input.context,
+                  `terminal-failure:${input.context.providerTurnId}`,
+                ),
+                status: "failed",
+                failure: input.context.subscriptionLimitStop,
+                threadDisposition: "reusable",
+              };
+            }
             if (terminalStatus === "failed") {
               const previousFailure = input.context.latestProviderFailure ?? input.providerRetry;
               const failureCode =
@@ -6447,6 +6478,55 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           );
         });
 
+        const subscriptionLimitPolicy = adapterOptions.subscriptionLimitPolicy;
+        const subscriptionLimitFailure = Effect.fnUntraced(function* (
+          limits: ServerProviderUsageLimits | undefined,
+        ) {
+          return SubscriptionLimitPolicy.subscriptionLimitFailure({
+            limits,
+            nowMs: DateTime.toEpochMillis(yield* DateTime.now),
+            provider: "Codex",
+          });
+        });
+        // The usage notifications only arrive while Codex works, so a turn needs a fresh read.
+        const readSubscriptionLimit = Effect.fn("CodexAdapterV2.readSubscriptionLimit")(
+          function* () {
+            const response = yield* client
+              .request("account/rateLimits/read", null)
+              .pipe(Effect.timeout("10 seconds"), Effect.option);
+            if (Option.isNone(response)) return yield* subscriptionLimitFailure(undefined);
+            yield* Ref.update(rateLimitSnapshot, (previous) =>
+              mergeCodexRateLimits(previous, response.value.rateLimits),
+            );
+            return yield* subscriptionLimitFailure(
+              codexRateLimitsToLimits({
+                snapshot: response.value.rateLimits,
+                rateLimitsByLimitId: response.value.rateLimitsByLimitId,
+                checkedAt: DateTime.formatIso(yield* DateTime.now),
+              }),
+            );
+          },
+        );
+        const refuseAtSubscriptionLimit = Effect.fnUntraced(function* (
+          turnInput: ProviderAdapter.ProviderAdapterV2TurnInput,
+        ) {
+          if (
+            subscriptionLimitPolicy === undefined ||
+            !(yield* subscriptionLimitPolicy.enabled(turnInput.threadId, turnInput.modelSelection))
+          ) {
+            return;
+          }
+          const failure = yield* readSubscriptionLimit();
+          if (failure === null) return;
+          return yield* new ProviderAdapter.ProviderAdapterTurnStartError({
+            driver: CODEX_PROVIDER,
+            threadId: turnInput.threadId,
+            providerThreadId: turnInput.providerThread.id,
+            runId: turnInput.runId,
+            cause: new SubscriptionLimitPolicy.SubscriptionLimitStopError({ failure }),
+          });
+        });
+
         const startNativeTurn = Effect.fn("CodexAdapterV2.startNativeTurn")(
           function* (
             turnInput: ProviderAdapter.ProviderAdapterV2TurnInput,
@@ -6900,8 +6980,13 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               turnInput.restartContinuationOfRunId === undefined
                 ? parseCodexGoalCommand(turnInput.message.text)
                 : null;
-            if (goalCommand !== null) return runGoalCommand(turnInput, goalCommand);
+            if (goalCommand !== null) {
+              return refuseAtSubscriptionLimit(turnInput).pipe(
+                Effect.andThen(runGoalCommand(turnInput, goalCommand)),
+              );
+            }
             return Effect.gen(function* () {
+              yield* refuseAtSubscriptionLimit(turnInput);
               yield* startNativeTurn(
                 turnInput,
                 turnInput.restartContinuationOfRunId === undefined
@@ -7640,6 +7725,60 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               ),
           ),
         };
+        if (subscriptionLimitPolicy !== undefined) {
+          // A usage update is read as it arrives; switching the guard on needs a fresh read.
+          const stopGuardedTurns = Effect.fnUntraced(function* (fresh: boolean) {
+            const guarded: Array<ActiveCodexTurnContext> = [];
+            for (const context of (yield* Ref.get(activeTurns)).values()) {
+              if (context.subagent !== null || context.subscriptionLimitStop !== undefined)
+                continue;
+              if (
+                yield* subscriptionLimitPolicy.enabled(
+                  context.input.threadId,
+                  context.input.modelSelection,
+                )
+              ) {
+                guarded.push(context);
+              }
+            }
+            if (guarded.length === 0) return;
+            const snapshot = yield* Ref.get(rateLimitSnapshot);
+            const failure =
+              fresh || snapshot === undefined
+                ? yield* readSubscriptionLimit()
+                : yield* subscriptionLimitFailure(
+                    codexRateLimitsToLimits({
+                      snapshot,
+                      checkedAt: DateTime.formatIso(yield* DateTime.now),
+                    }),
+                  );
+            // These turns passed the check before they started, so a failed read leaves them
+            // running until a later update can tell.
+            if (failure?.class !== "usage_limit") return;
+            for (const context of guarded) {
+              context.subscriptionLimitStop = failure;
+              yield* runtime
+                .interruptTurn({
+                  providerThread: context.providerThread,
+                  providerTurnId: context.providerTurnId,
+                })
+                .pipe(
+                  Effect.catchCause((cause) =>
+                    Effect.logWarning("orchestration-v2.codex-subscription-limit-stop-failed", {
+                      providerTurnId: context.providerTurnId,
+                      cause,
+                    }),
+                  ),
+                  Effect.forkIn(scope),
+                );
+            }
+          });
+          yield* Stream.merge(
+            Stream.fromEffectRepeat(Queue.take(rateLimitUpdates)).pipe(Stream.as(false)),
+            subscriptionLimitPolicy.enabledChanges(input.threadId).pipe(Stream.as(true)),
+          ).pipe(Stream.runForEach(stopGuardedTurns), Effect.forkIn(scope));
+        }
+
         return runtime;
       },
       (effect, input) =>

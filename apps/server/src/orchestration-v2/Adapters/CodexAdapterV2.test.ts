@@ -61,6 +61,7 @@ import * as ServerConfig from "../../config.ts";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as SubscriptionLimitPolicy from "@t3tools/provider-core/server/SubscriptionLimitPolicy";
 import * as EffectWorker from "../EffectWorker.ts";
 import * as Orchestrator from "../Orchestrator.ts";
 import * as ProviderReplayHarness from "../testkit/ProviderReplayHarness.ts";
@@ -2020,6 +2021,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
       Effect.void,
     onRequest: (method: string, params: unknown) => Effect.Effect<void> = () => Effect.void,
     readChildMetadata?: Parameters<typeof withCodexReplayChildMetadata>[2],
+    subscriptionLimitPolicy?: SubscriptionLimitPolicy.SubscriptionLimitPolicy,
   ) =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
@@ -2073,6 +2075,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
               continuationRequests.push(request);
             }),
         },
+        ...(subscriptionLimitPolicy === undefined ? {} : { subscriptionLimitPolicy }),
       });
       const threadId = ThreadId.make(`thread-${transcript.scenario}`);
       const runtime = yield* adapter.openSession({
@@ -7332,6 +7335,152 @@ describe("CodexAdapterV2 post-settle continuation", () => {
         Effect.provide(
           Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
         ),
+      ),
+    ),
+  );
+
+  const guardedPolicy: SubscriptionLimitPolicy.SubscriptionLimitPolicy = {
+    enabled: () => Effect.succeed(true),
+    enabledChanges: () => Stream.never,
+  };
+  const rateLimitsRead = (id: number, usedPercent: number) =>
+    [
+      {
+        type: "expect_outbound",
+        label: "account/rateLimits/read",
+        frame: { id, method: "account/rateLimits/read", params: null },
+      },
+      {
+        type: "emit_inbound",
+        label: "account/rateLimits/read",
+        frame: {
+          id,
+          result: {
+            rateLimits: {
+              limitId: "codex",
+              primary: { usedPercent, resetsAt: 2000100000, windowDurationMins: 300 },
+            },
+          },
+        },
+      },
+    ] satisfies Array<CodexReplay.CodexAppServerReplayEntry>;
+
+  it.effect("refuses a guarded turn before Codex starts it once the allowance is used up", () =>
+    Effect.gen(function* () {
+      const preamble = codexReplayPreamble({
+        nativeThreadId: "native-guard-refused",
+        nativeTurnId: "turn-guard-refused",
+        prompt: "Continue.",
+      });
+      const transcript = makeCodexReplayTranscript({
+        scenario: "codex-subscription-guard-refused",
+        entries: [...preamble.slice(0, 5), ...rateLimitsRead(3, 100)],
+      });
+      const harness = yield* makeCodexReplayHarness(
+        transcript,
+        undefined,
+        undefined,
+        undefined,
+        guardedPolicy,
+      );
+      const error = yield* harness.runtime
+        .startTurn(
+          makeCodexTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            text: "Continue.",
+            attemptId: RunAttemptId.make("attempt-guard-refused"),
+          }),
+        )
+        .pipe(Effect.flip);
+      const failure = SubscriptionLimitPolicy.findSubscriptionLimitStop(error);
+      assert.equal(failure?.class, "usage_limit");
+      assert.equal(failure?.code, "subscription_limit_guard");
+      assert.equal(failure?.resetAt, "2033-05-19T07:20:00.000Z");
+      assert.lengthOf(harness.terminalEvents(), 0);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+
+  it.effect("stops a running guarded turn when Codex reports the allowance used up", () =>
+    Effect.gen(function* () {
+      const nativeThreadId = "native-guard-live";
+      const nativeTurnId = "turn-guard-live";
+      const preamble = codexReplayPreamble({ nativeThreadId, nativeTurnId, prompt: "Continue." });
+      const transcript = makeCodexReplayTranscript({
+        scenario: "codex-subscription-guard-live",
+        entries: [
+          ...preamble.slice(0, 5),
+          ...rateLimitsRead(3, 40),
+          ...preamble.slice(5).map((entry) => withReplayRequestId(entry, 4)),
+          {
+            type: "emit_inbound",
+            label: "account/rateLimits/updated",
+            frame: {
+              method: "account/rateLimits/updated",
+              params: {
+                rateLimits: {
+                  limitId: "codex",
+                  primary: { usedPercent: 100, resetsAt: 2000100000, windowDurationMins: 300 },
+                },
+              },
+            },
+          },
+          {
+            type: "expect_outbound",
+            label: "turn/interrupt",
+            frame: {
+              id: 5,
+              method: "turn/interrupt",
+              params: { threadId: nativeThreadId, turnId: nativeTurnId },
+            },
+          },
+          { type: "emit_inbound", label: "turn/interrupt", frame: { id: 5, result: {} } },
+          {
+            type: "emit_inbound",
+            label: "turn/completed",
+            frame: {
+              method: "turn/completed",
+              params: {
+                threadId: nativeThreadId,
+                turn: makeCodexReplayTurn({ id: nativeTurnId, status: "interrupted" }),
+              },
+            },
+          },
+        ],
+      });
+      const harness = yield* makeCodexReplayHarness(
+        transcript,
+        undefined,
+        undefined,
+        undefined,
+        guardedPolicy,
+      );
+      yield* harness.runtime.startTurn(
+        makeCodexTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now: yield* DateTime.now,
+          text: "Continue.",
+          attemptId: RunAttemptId.make("attempt-guard-live"),
+        }),
+      );
+      yield* harness.firstTerminal;
+      const terminal = harness.terminalEvents()[0];
+      assert.equal(terminal?.status, "failed");
+      if (terminal?.status !== "failed") return;
+      assert.equal(terminal.failure.class, "usage_limit");
+      assert.equal(terminal.failure.code, "subscription_limit_guard");
+      assert.equal(terminal.failure.resetAt, "2033-05-19T07:20:00.000Z");
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
       ),
     ),
   );

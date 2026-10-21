@@ -1904,36 +1904,34 @@ Code: [`providerServiceStatus.ts`](../apps/server/src/provider/providerServiceSt
 `collectDegradedServices` in [`usageLimits.ts`](../packages/shared/src/usageLimits.ts). User
 guide: [usage.md](./user/usage.md#track-subscription-limits).
 
-## Stop Claude threads at subscription limits
+## Stop threads at subscription limits
 
-**Settings > General > Stop at subscription limit** (mobile: **Settings > Threads >
-Usage limits**) protects all Claude threads on the selected environments, including
-delegated work. It overrides a thread's Off option and immediately checks running
-sessions when enabled. With the application setting off, threads can opt in through
-the same-named Claude model option, also offered in the thread's context menu on web,
-desktop, and mobile. Changing that option updates a Claude session that is already
-running, and the application setting still overrides Off. Both settings default
-to off. Settings remain on the server, so the guard also applies when clients
-disconnect overnight.
+**Stop at subscription limit** stops Claude, Codex, and Cursor threads at their
+subscription allowance instead of letting them continue on paid usage (Claude extra
+usage, Codex credits, Cursor on-demand usage). **Settings > General** (mobile:
+**Settings > Threads > Usage limits**) protects every such thread on the selected
+environments, including delegated work, overrides a thread's Off option, and
+rechecks running sessions when enabled. With it off, threads opt in through the
+same-named model option, also in the thread's context menu on web, desktop, and
+mobile; changing it applies to a running turn. Both default to off and live on
+the server, so the guard holds when clients disconnect overnight.
 
-The server checks fresh subscription usage before protected turns, refuses to send
-a prompt if usage is unavailable or the session/weekly allowance is exhausted, and
-closes the Claude process when streamed events report exhaustion or active overage.
-Closing stops its native background work too. Active turns use the existing Limited
-status and usage-limit recovery controls, including optional resume after reset;
-resuming does not bypass the guard.
+Before a protected turn the adapter reads fresh usage and refuses the prompt when
+an allowance is used up or usage cannot be read; the run fails as a usage limit, so
+Limited recovery and resume-after-reset apply and resuming does not bypass the
+guard. During a turn, Claude stops on streamed exhaustion or overage events (closing
+its process and native background work), Codex on its rate-limit notifications, and
+Cursor on a one-minute usage poll. Agents use `stopAtSubscriptionLimit` through
+model options. Other providers do not advertise or enforce it, and provider
+reports can lag, so it is not a hard billing cap.
 
-Agents use `stopAtSubscriptionLimit` through model options. Without the application
-setting, delegated threads follow normal same-provider-and-model option inheritance.
-Other providers do not advertise or enforce this guard yet. Provider reports may
-lag, so it is not a hard billing cap.
-
-Code: [Claude model catalog](../apps/server/src/provider/ClaudeModelCatalog.ts),
-[Claude driver](../apps/server/src/provider/Drivers/ClaudeDriver.ts), and
-[Claude adapter](../apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts),
+Code: [shared policy](../packages/provider-core/src/server/SubscriptionLimitPolicy.ts),
 [live thread guard](../apps/server/src/orchestration-v2/SubscriptionLimitGuardSync.ts),
-and [thread menu toggle](../packages/client-runtime/src/state/subscriptionLimitGuard.ts).
-User guide: [Claude usage limits](./user/providers-claude.md#usage-limits).
+[Claude adapter](../apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts),
+[Codex adapter](../apps/server/src/orchestration-v2/Adapters/CodexAdapterV2.ts),
+[Cursor adapter](../packages/provider-cursor/src/server/adapter.ts), and
+[thread menu toggle](../packages/client-runtime/src/state/subscriptionLimitGuard.ts).
+User guide: [Stop at subscription limits](./user/usage.md#stop-at-subscription-limits).
 
 ## Usage-limit recovery
 

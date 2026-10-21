@@ -20,6 +20,8 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Queue from "effect/Queue";
+import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
@@ -29,6 +31,7 @@ import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
+import { findSubscriptionLimitStop } from "@t3tools/provider-core/server/SubscriptionLimitPolicy";
 import {
   CursorProviderCapabilitiesV2,
   cursorMcpServers,
@@ -1180,6 +1183,8 @@ describe("CursorAdapterV2", () => {
           { id: "thinking", value: "high" },
           { id: "contextWindow", value: "1m" },
           { id: "fastMode", value: true },
+          // T3's own thread option never reaches Cursor.
+          { id: "stopAtSubscriptionLimit", value: true },
         ],
       }),
       {
@@ -1675,6 +1680,182 @@ describe("CursorAdapterV2", () => {
         isProtocolError(inactive.cause) ? inactive.cause.detail : undefined,
         `Cursor provider turn ${providerTurnId} is not active.`,
       );
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(NodeServices.layer, IdAllocator.layer, McpProviderSessions.layer),
+      ),
+    ),
+  );
+});
+
+describe("CursorAdapterV2 subscription-limit guard", () => {
+  const makeGuardedSession = Effect.fn(function* (input: {
+    readonly name: string;
+    readonly usedPercent: Ref.Ref<number>;
+    readonly guardSwitchedOn: Queue.Queue<void>;
+    readonly cancelled: Deferred.Deferred<void>;
+  }) {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const workspace = yield* fileSystem.makeTempDirectoryScoped({ prefix: "cursor-v2-guard-" });
+    const instanceId = ProviderInstanceId.make("cursor");
+    const threadId = ThreadId.make(`cursor-guard-${input.name}`);
+    const modelSelection = { instanceId, model: "composer-2.5" };
+    const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      cwd: workspace,
+    });
+    const sends = yield* Ref.make(0);
+    const adapter = yield* makeCursorAdapterV2({
+      instanceId,
+      settings: yield* decodeCursorSettings({}),
+      environment: { HOME: workspace },
+      subscriptionLimit: {
+        policy: {
+          enabled: () => Effect.succeed(true),
+          enabledChanges: () => Stream.fromQueue(input.guardSwitchedOn),
+        },
+        checkUsage: Effect.gen(function* () {
+          return {
+            checkedAt: "2026-10-21T08:00:00.000Z",
+            windows: [
+              {
+                id: "apiPercentUsed",
+                kind: "monthly" as const,
+                label: "API",
+                usedPercent: yield* Ref.get(input.usedPercent),
+                resetsAt: "2033-05-19T07:20:00.000Z",
+              },
+            ],
+          };
+        }),
+      },
+    }).pipe(
+      Effect.provideService(CursorAgentSdk.CursorAgentSdkRunner, {
+        assertComplete: Effect.void,
+        open: () =>
+          Effect.succeed({
+            agentId: `native-cursor-guard-${input.name}`,
+            listMessages: Effect.succeed([]),
+            close: Effect.void,
+            send: () =>
+              Ref.update(sends, (count) => count + 1).pipe(
+                Effect.as({
+                  agentId: `native-cursor-guard-${input.name}`,
+                  runId: `native-cursor-guard-run-${input.name}`,
+                  wait: Deferred.await(input.cancelled).pipe(
+                    Effect.as({
+                      id: `native-cursor-guard-run-${input.name}`,
+                      requestId: "native-request",
+                      status: "cancelled" as const,
+                      model: { id: "composer-2.5" },
+                      durationMs: 1,
+                    }),
+                  ),
+                  cancel: Deferred.succeed(input.cancelled, undefined).pipe(Effect.asVoid),
+                  steer: () => Effect.succeed("complete_delivered" as const),
+                }),
+              ),
+          }),
+      }),
+      Effect.provide(TestProviderHost.layer({ cwd: workspace })),
+    );
+    const runtime = yield* adapter.openSession({
+      threadId,
+      providerSessionId: ProviderSessionId.make(`cursor-guard-session-${input.name}`),
+      modelSelection,
+      runtimePolicy,
+    });
+    const providerThread = yield* runtime.ensureThread({ threadId, modelSelection, runtimePolicy });
+    const now = yield* DateTime.now;
+    const startTurn = runtime.startTurn({
+      threadId,
+      providerThread,
+      modelSelection,
+      runtimePolicy,
+      runId: RunId.make(`cursor-guard-run-${input.name}`),
+      runOrdinal: 1,
+      providerTurnOrdinal: 1,
+      attemptId: RunAttemptId.make(`cursor-guard-attempt-${input.name}`),
+      rootNodeId: NodeId.make(`cursor-guard-root-${input.name}`),
+      appThread: {
+        id: threadId,
+        projectId: ProjectId.make("cursor-guard-project"),
+        createdBy: "user",
+        creationSource: "web",
+        title: "Cursor guard",
+        providerInstanceId: instanceId,
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+        activeProviderThreadId: providerThread.id,
+        lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId },
+        forkedFrom: null,
+        createdAt: now,
+        updatedAt: now,
+        archivedAt: null,
+        settledOverride: null,
+        settledAt: null,
+        lastVisitedAt: null,
+        deletedAt: null,
+      },
+      message: {
+        messageId: MessageId.make(`cursor-guard-message-${input.name}`),
+        createdBy: "user",
+        creationSource: "web",
+        text: "Keep going.",
+        attachments: [],
+      },
+    });
+    return { runtime, startTurn, sends };
+  });
+
+  it.effect("refuses a guarded turn before Cursor runs it once an allowance is used up", () =>
+    Effect.gen(function* () {
+      const session = yield* makeGuardedSession({
+        name: "refused",
+        usedPercent: yield* Ref.make(100),
+        guardSwitchedOn: yield* Queue.unbounded<void>(),
+        cancelled: yield* Deferred.make<void>(),
+      });
+      const error = yield* session.startTurn.pipe(Effect.flip);
+      const failure = findSubscriptionLimitStop(error);
+      assert.equal(failure?.class, "usage_limit");
+      assert.equal(failure?.resetAt, "2033-05-19T07:20:00.000Z");
+      assert.equal(yield* Ref.get(session.sends), 0);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(NodeServices.layer, IdAllocator.layer, McpProviderSessions.layer),
+      ),
+    ),
+  );
+
+  it.effect("cancels a running guarded turn once a recheck finds the allowance used up", () =>
+    Effect.gen(function* () {
+      const usedPercent = yield* Ref.make(40);
+      const guardSwitchedOn = yield* Queue.unbounded<void>();
+      const session = yield* makeGuardedSession({
+        name: "live",
+        usedPercent,
+        guardSwitchedOn,
+        cancelled: yield* Deferred.make<void>(),
+      });
+      yield* session.startTurn;
+      yield* Ref.set(usedPercent, 100);
+      yield* Queue.offer(guardSwitchedOn, undefined);
+      const terminal = yield* session.runtime.events.pipe(
+        Stream.filter((event) => event.type === "turn.terminal"),
+        Stream.runHead,
+      );
+      const event = Option.getOrUndefined(terminal);
+      assert.equal(event?.type === "turn.terminal" ? event.status : undefined, "failed");
+      if (event?.type !== "turn.terminal" || event.status !== "failed") return;
+      assert.equal(event.failure.class, "usage_limit");
+      assert.equal(event.failure.code, "subscription_limit_guard");
     }).pipe(
       Effect.scoped,
       Effect.provide(

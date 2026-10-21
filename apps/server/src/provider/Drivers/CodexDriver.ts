@@ -86,6 +86,8 @@ import * as CodexInstallation from "../CodexInstallation.ts";
 import * as ServerSecretStore from "../../auth/ServerSecretStore.ts";
 import * as ServerEnvironment from "../../environment/ServerEnvironment.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as SubscriptionLimitGuards from "@t3tools/provider-core/server/SubscriptionLimitGuards";
+import { makeSubscriptionLimitPolicy } from "@t3tools/provider-core/server/SubscriptionLimitPolicy";
 const decodeCodexSettings = Schema.decodeSync(CodexSettings);
 
 const DRIVER_KIND = ProviderDriverKind.make("codex");
@@ -284,7 +286,13 @@ export const CodexDriver: ProviderDriver<
         enabled,
         config,
       },
-      { onUsageLimits: (update) => snapshot.applyUsageLimits(update) },
+      {
+        onUsageLimits: (update) => snapshot.applyUsageLimits(update),
+        subscriptionLimitPolicy: makeSubscriptionLimitPolicy({
+          settings: host.settings,
+          guards: yield* Effect.serviceOption(SubscriptionLimitGuards.SubscriptionLimitGuards),
+        }),
+      },
     ).pipe(
       Effect.mapError(
         (cause) =>

@@ -50,6 +50,7 @@ import {
   makeProviderFailure,
   makeProviderFailureTurnItem,
 } from "@t3tools/provider-core/server/failure";
+import { findSubscriptionLimitStop } from "@t3tools/provider-core/server/SubscriptionLimitPolicy";
 import * as RunFinalizationService from "./RunFinalizationService.ts";
 import * as TurnItemPositionStore from "./TurnItemPositionStore.ts";
 
@@ -1609,10 +1610,11 @@ export const layer: Layer.Layer<
                           },
                           openRunOwnedSubagents: openSubagents,
                           terminal: makeFailedTerminalEvent(
-                            makeProviderFailure({
-                              cause: Cause.squash(cause),
-                              class: Exit.isFailure(shouldStart) ? "unknown" : "provider_error",
-                            }),
+                            findSubscriptionLimitStop(Cause.squash(cause)) ??
+                              makeProviderFailure({
+                                cause: Cause.squash(cause),
+                                class: Exit.isFailure(shouldStart) ? "unknown" : "provider_error",
+                              }),
                             latestItemOrdinal + 1,
                           ),
                           failureItemPersisted: false,

@@ -2433,7 +2433,7 @@ export function GeneralSettingsPanel() {
         <SettingsRow
           serverScoped
           {...searchableSetting("stop-at-subscription-limit")}
-          description="Stop all Claude threads at subscription limits, even when paid extra usage is available. Overrides thread options and rechecks running sessions when enabled. Provider reports can lag; this is not a billing cap."
+          description="Stop all Claude, Codex, and Cursor threads at subscription limits, even when paid usage is available. Overrides thread options and rechecks running sessions when enabled. Provider reports can lag; this is not a billing cap."
           settingKeys={["stopAtSubscriptionLimit"]}
           control={
             <ScopedSwitch

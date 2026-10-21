@@ -181,7 +181,7 @@ function AutoSettleSettingsRows() {
           <SettingsSwitchRow
             icon="clock"
             label="Stop at subscription limit"
-            subtitle="Stop all Claude threads before paid extra usage, overriding thread options. Rechecks running sessions when enabled. Provider reports can lag; this is not a billing cap."
+            subtitle="Stop all Claude, Codex, and Cursor threads before paid usage, overriding thread options. Rechecks running sessions when enabled. Provider reports can lag; this is not a billing cap."
             value={uniformMobileSetting(displayTargets, "stopAtSubscriptionLimit")}
             disabled={disabled}
             onValueChange={(value) => writeToAll({ stopAtSubscriptionLimit: value })}
