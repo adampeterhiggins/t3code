@@ -19,7 +19,11 @@ function decodeEntities(text: string): string {
   return text.replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&amp;", "&");
 }
 
-function convertToken(body: string, names: ReadonlyMap<string, string>): string {
+function convertToken(
+  body: string,
+  names: ReadonlyMap<string, string>,
+  groups: ReadonlyMap<string, string>,
+): string {
   const bar = body.indexOf("|");
   const target = bar === -1 ? body : body.slice(0, bar);
   const label = bar === -1 ? "" : body.slice(bar + 1);
@@ -34,7 +38,8 @@ function convertToken(body: string, names: ReadonlyMap<string, string>): string 
       const command = target.slice(1);
       if (BROADCASTS.has(command)) return `@${command}`;
       if (label) return label;
-      return `@${command.replace(/^subteam\^/, "")}`;
+      const group = command.replace(/^subteam\^/, "");
+      return `@${groups.get(group) ?? group}`;
     }
     default:
       return label ? `[${label}](${target})` : target;
@@ -44,12 +49,21 @@ function convertToken(body: string, names: ReadonlyMap<string, string>): string 
 /**
  * Converts Slack mrkdwn's angle-bracket tokens (mentions, channel links,
  * broadcasts, links) to markdown and decodes Slack's three HTML entities.
- * `names` maps user ids to the names to show.
+ * `names` maps user ids to the names to show, and `groups` user group ids to their handles.
  */
-export function slackTextToMarkdown(text: string, names: ReadonlyMap<string, string>): string {
+export function slackTextToMarkdown(
+  text: string,
+  names: ReadonlyMap<string, string>,
+  groups: ReadonlyMap<string, string> = new Map(),
+): string {
   return decodeEntities(
-    text.replace(/<([^<>]+)>/g, (_, body: string) => convertToken(body, names)),
+    text.replace(/<([^<>]+)>/g, (_, body: string) => convertToken(body, names, groups)),
   );
+}
+
+/** The user group ids `text` mentions without a label, for resolving their handles. */
+export function mentionedGroupIds(text: string): ReadonlyArray<string> {
+  return [...text.matchAll(/<!subteam\^([A-Z0-9]+)>/g)].map((match) => match[1]!);
 }
 
 /** The user ids `text` mentions, for resolving their names. */
