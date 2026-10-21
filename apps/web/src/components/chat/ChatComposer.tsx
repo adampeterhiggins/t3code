@@ -331,6 +331,7 @@ import {
   isComposerReferenceItem as isReferenceMenuItem,
 } from "./composerReferenceMenu.logic";
 import { useComposerReferenceMenu } from "./useComposerReferenceMenu";
+import { useSplitPaneFocus } from "./splitPane";
 import {
   ComposerFooterModeControls,
   ComposerFooterPrimaryActions,
@@ -2340,6 +2341,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const stashInFlightRef = useRef<Set<string>>(new Set());
   const pendingImageCompressionsRef = useRef<Map<string, number>>(new Map());
   const pendingThreadImportsRef = useRef<Map<string, number>>(new Map());
+  const unfocusedSplitPane = useSplitPaneFocus() === "unfocused";
   const isRevertingCheckpointRef = useRef(isRevertingCheckpoint);
   useLayoutEffect(() => {
     isRevertingCheckpointRef.current = isRevertingCheckpoint;
@@ -5521,6 +5523,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   }
 
   useEffect(() => {
+    // Both split panes mount a composer; only the focused one answers window-level keys.
+    if (unfocusedSplitPane) return;
     const handler = (event: globalThis.KeyboardEvent) => {
       const command = resolveShortcutCommand(event, keybindings, {
         context: {
@@ -5565,6 +5569,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     stashCurrentPromptStable,
     isRevertingCheckpoint,
     terminalOpen,
+    unfocusedSplitPane,
     canSaveMessageDraft,
     saveMessageDraftStable,
   ]);
