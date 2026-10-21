@@ -55,6 +55,12 @@ Long issues are trimmed, dropping the oldest comments first.
 The issue is copied when you attach it, so later edits in Linear don't change a message you
 already sent. Chips in an unsent draft don't survive a reload; attach the issue again.
 
+## Issue identifiers in messages
+
+When Linear is connected, an issue identifier such as `ENG-123` in a message links to that issue,
+with the same preview as a pasted issue link. Only your workspace's team keys match, written in
+capitals, so text like `UTF-8` or a branch name like `eng-123-fix-login` stays as written.
+
 ## Link an issue to a thread
 
 A linked issue stays with the thread and all of its chat tabs, so you can see which issue the work
