@@ -1,11 +1,14 @@
 import { assert, describe, it } from "@effect/vitest";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Scope from "effect/Scope";
 import * as TestClock from "effect/testing/TestClock";
+import type * as Electron from "electron";
 import { beforeEach, vi } from "vite-plus/test";
 
 const { handleMock, netFetchMock, unhandleMock } = vi.hoisted(() => ({
@@ -281,6 +284,99 @@ describe("ElectronProtocol", () => {
         assert.strictEqual(error.cause, cause);
         assert.equal(error.message, 'Failed to unregister Electron protocol scheme "t3code".');
       }
+    }).pipe(Effect.provide(layerProtocol)),
+  );
+
+  it.effect("registers a custom session beside the default and releases only that session", () =>
+    Effect.gen(function* () {
+      const customHandle = vi.fn();
+      const customUnhandle = vi.fn();
+      const session = {
+        protocol: { handle: customHandle, unhandle: customUnhandle },
+      } as unknown as Electron.Session;
+      let handler: ((request: Request) => Promise<Response>) | undefined;
+      customHandle.mockImplementation((_scheme: string, next: typeof handler) => {
+        handler = next;
+      });
+      netFetchMock.mockResolvedValue(new Response("from-session"));
+      const protocol = yield* ElectronProtocol.ElectronProtocol;
+      const input = {
+        scheme: "t3code",
+        targetOrigin: new URL("http://127.0.0.1:3773/"),
+        clerkFrontendApiHostname: "clerk.t3.codes",
+      };
+      const defaultScope = yield* Scope.make();
+      const customScope = yield* Scope.make();
+
+      yield* protocol
+        .registerDesktopProtocol(input)
+        .pipe(Effect.provideService(Scope.Scope, defaultScope));
+      yield* protocol
+        .registerDesktopProtocol(input)
+        .pipe(Effect.provideService(Scope.Scope, defaultScope));
+      yield* protocol
+        .registerDesktopProtocol({ ...input, session })
+        .pipe(Effect.provideService(Scope.Scope, customScope));
+      yield* protocol
+        .registerDesktopProtocol({ ...input, session })
+        .pipe(Effect.provideService(Scope.Scope, customScope));
+
+      assert.deepEqual(
+        handleMock.mock.calls.map((call) => call[0]),
+        ["t3code"],
+      );
+      assert.deepEqual(
+        customHandle.mock.calls.map((call) => call[0]),
+        ["t3code"],
+      );
+      assert.isDefined(handler);
+      const response = yield* Effect.promise(() =>
+        handler!(new Request("t3code://app/api/health?verbose=1")),
+      );
+      assert.equal(yield* Effect.promise(() => response.text()), "from-session");
+      assert.include(
+        response.headers.get("content-security-policy") ?? "",
+        "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://clerk.t3.codes https://challenges.cloudflare.com",
+      );
+      assert.equal(netFetchMock.mock.calls[0]?.[0], "http://127.0.0.1:3773/api/health?verbose=1");
+      assert.equal(netFetchMock.mock.calls.length, 1);
+
+      yield* Scope.close(defaultScope, Exit.void);
+      assert.deepEqual(unhandleMock.mock.calls, [["t3code"]]);
+      assert.equal(customUnhandle.mock.calls.length, 0);
+
+      const again = yield* Scope.make();
+      yield* protocol
+        .registerDesktopProtocol(input)
+        .pipe(Effect.provideService(Scope.Scope, again));
+      assert.equal(handleMock.mock.calls.length, 2);
+      yield* Scope.close(again, Exit.void);
+      assert.deepEqual(unhandleMock.mock.calls, [["t3code"], ["t3code"]]);
+      assert.equal(customUnhandle.mock.calls.length, 0);
+
+      yield* Scope.close(customScope, Exit.void);
+      assert.deepEqual(customUnhandle.mock.calls, [["t3code"]]);
+    }).pipe(Effect.provide(layerProtocol)),
+  );
+
+  it.effect("does not keep a protocol registration that failed", () =>
+    Effect.gen(function* () {
+      handleMock.mockImplementationOnce(() => {
+        throw new Error("protocol registration failed");
+      });
+      const protocol = yield* ElectronProtocol.ElectronProtocol;
+      const input = {
+        scheme: "t3code",
+        targetOrigin: new URL("http://127.0.0.1:3773/"),
+        clerkFrontendApiHostname: undefined,
+      };
+
+      const error = yield* protocol.registerDesktopProtocol(input).pipe(Effect.scoped, Effect.flip);
+      assert.instanceOf(error, ElectronProtocol.ElectronProtocolRegistrationError);
+      yield* protocol.registerDesktopProtocol(input).pipe(Effect.scoped);
+
+      assert.equal(handleMock.mock.calls.length, 2);
+      assert.deepEqual(unhandleMock.mock.calls, [["t3code"]]);
     }).pipe(Effect.provide(layerProtocol)),
   );
 

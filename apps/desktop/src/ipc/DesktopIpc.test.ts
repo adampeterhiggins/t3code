@@ -80,6 +80,89 @@ describe("DesktopIpc", () => {
     }),
   );
 
+  it.effect("forwards an optional sync sender and still runs zero-argument handlers", () =>
+    Effect.gen(function* () {
+      const listeners = new Map<string, DesktopIpc.DesktopIpcSyncListener>();
+      const ipc = DesktopIpc.make(
+        makeIpcMain({
+          on: (channel, registered) => {
+            listeners.set(channel, registered);
+          },
+        }),
+      );
+      let seenId: number | undefined;
+
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          yield* ipc.handleSync({
+            channel: "desktop.test.sync-sender",
+            handler: (event) =>
+              Effect.sync(() => {
+                seenId = event?.sender?.id;
+                return "taken";
+              }),
+          });
+          const event: DesktopIpc.DesktopIpcSyncEvent = {
+            returnValue: undefined,
+            sender: { id: 11 },
+          };
+          listeners.get("desktop.test.sync-sender")!(event);
+          assert.strictEqual(event.returnValue, "taken");
+          assert.strictEqual(seenId, 11);
+
+          let calls = 0;
+          yield* ipc.handleSync({
+            channel: "desktop.test.sync-legacy",
+            handler: () =>
+              Effect.sync(() => {
+                calls += 1;
+                return true;
+              }),
+          });
+          const legacyEvent: DesktopIpc.DesktopIpcSyncEvent = { returnValue: undefined };
+          listeners.get("desktop.test.sync-legacy")!(legacyEvent);
+          assert.strictEqual(legacyEvent.returnValue, true);
+          assert.strictEqual(calls, 1);
+          assert.isUndefined(legacyEvent.sender);
+        }),
+      );
+    }),
+  );
+
+  it.effect("lets a failing sync handler throw without assigning returnValue", () =>
+    Effect.gen(function* () {
+      const listeners = new Map<string, DesktopIpc.DesktopIpcSyncListener>();
+      const ipc = DesktopIpc.make(
+        makeIpcMain({
+          on: (channel, registered) => {
+            listeners.set(channel, registered);
+          },
+        }),
+      );
+      const failure = new Error("sync handler failed");
+
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          yield* ipc.handleSync({
+            channel: "desktop.test.sync-failure",
+            handler: () => Effect.fail(failure),
+          });
+          const event: DesktopIpc.DesktopIpcSyncEvent = { returnValue: "unset" };
+          const listener = listeners.get("desktop.test.sync-failure");
+          assert.isDefined(listener);
+          let thrown: unknown;
+          try {
+            listener!(event);
+          } catch (error) {
+            thrown = error;
+          }
+          assert.strictEqual(thrown, failure);
+          assert.strictEqual(event.returnValue, "unset");
+        }),
+      );
+    }),
+  );
+
   it.effect("preserves sync unregistration context and cause in the finalizer defect", () =>
     Effect.gen(function* () {
       const cause = new Error("sync unregistration failed");

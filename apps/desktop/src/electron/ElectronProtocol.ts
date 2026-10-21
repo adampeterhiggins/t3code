@@ -55,6 +55,11 @@ export class ElectronProtocolUnregistrationError extends Schema.TaggedError<Elec
 export type DesktopProtocolRegistrationInput = {
   readonly scheme: string;
   readonly clerkFrontendApiHostname: string | undefined;
+  /**
+   * Isolated window sessions register on their own protocol. Omit this to keep
+   * the default session, which is what existing windows use.
+   */
+  readonly session?: Electron.Session;
 } & ({ readonly targetOrigin: URL } | { readonly assetDirectory: string });
 
 export class ElectronProtocol extends Context.Service<
@@ -248,20 +253,40 @@ const serveDesktopAsset = Effect.fn("desktop.protocol.serveAsset")(function* (
 
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {
-  const registered = yield* Ref.make(false);
+  const registrations = yield* Ref.make(new Map<object, ReadonlySet<string>>());
   const context = yield* Effect.context<FileSystem.FileSystem | Path.Path>();
   const runPromise = Effect.runPromiseWith(context);
 
   const registerDesktopProtocol = Effect.fn("desktop.electron.protocol.registerDesktopProtocol")(
     function* (input: DesktopProtocolRegistrationInput) {
-      if (yield* Ref.get(registered)) return;
+      // Omitted session stays on Electron.protocol, the default session.
+      // A provided session must not fall through to that default if its protocol is missing.
+      const destination = input.session === undefined ? Electron.protocol : input.session.protocol;
+      if ((yield* Ref.get(registrations)).get(destination)?.has(input.scheme)) return;
 
       const contentSecurityPolicy = makeDesktopContentSecurityPolicy(input);
+      const remember = Ref.update(registrations, (current) => {
+        const next = new Map(current);
+        const schemes = new Set(next.get(destination));
+        schemes.add(input.scheme);
+        next.set(destination, schemes);
+        return next;
+      });
+      const forget = Ref.update(registrations, (current) => {
+        const schemes = current.get(destination);
+        if (schemes?.has(input.scheme) !== true) return current;
+        const next = new Map(current);
+        const remaining = new Set(schemes);
+        remaining.delete(input.scheme);
+        if (remaining.size === 0) next.delete(destination);
+        else next.set(destination, remaining);
+        return next;
+      });
 
       yield* Effect.acquireRelease(
         Effect.try({
           try: () => {
-            Electron.protocol.handle(input.scheme, async (request) => {
+            destination.handle(input.scheme, async (request) => {
               if ("assetDirectory" in input) {
                 return withContentSecurityPolicy(
                   await runPromise(serveDesktopAsset(request, input.assetDirectory)),
@@ -278,16 +303,18 @@ export const make = Effect.gen(function* () {
             });
           },
           catch: (cause) => new ElectronProtocolRegistrationError({ scheme: input.scheme, cause }),
-        }).pipe(Effect.andThen(Ref.set(registered, true))),
+        }).pipe(Effect.andThen(remember)),
         () =>
           Effect.try({
-            try: () => Electron.protocol.unhandle(input.scheme),
+            try: () => {
+              destination.unhandle(input.scheme);
+            },
             catch: (cause) =>
               new ElectronProtocolUnregistrationError({
                 scheme: input.scheme,
                 cause,
               }),
-          }).pipe(Effect.andThen(Ref.set(registered, false)), Effect.orDie),
+          }).pipe(Effect.andThen(forget), Effect.orDie),
       );
     },
   );
