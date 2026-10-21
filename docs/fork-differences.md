@@ -330,6 +330,13 @@ thread details panel, one row each, newest first, and removed the right-panel Ag
   A Claude workflow member's usage is the tokens, tool calls and duration from its progress entry,
   because those agents never appear on the event stream (`claudeWorkflowMemberUsage` in
   [`ClaudeAdapterV2.ts`](../apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts)).
+- **Per model call.** Each Claude tool call carries `modelCallId`, the Anthropic message id of
+  the response that produced it. The lowest-ordinal tool call of that response also carries
+  `modelCallUsage`: input with cache included, cached input, and output once the CLI has
+  finalized it. A delegated Claude thread (the main agent of its own thread) takes output from
+  `message_delta`, including when that delta arrives after the tool result. A native subagent's
+  snapshots repeat the opening output count and never receive that delta, so those items leave
+  `outputTokens` off. Code: [`ClaudeAdapterV2.ts`](../apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts).
 - **Agent detail.** Clicking an agent in the Agents panel inspects it in place, with **Back** to
   the fleet. The header has the agent's status, compact model with effort (from its child thread's
   model selection), `run N` past its first run, elapsed time, the prompt clamped to four lines

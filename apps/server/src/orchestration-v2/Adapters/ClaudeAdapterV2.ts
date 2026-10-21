@@ -91,6 +91,7 @@ import {
   type OrchestrationV2AppThread,
   type OrchestrationV2SubagentWorkflow,
   type OrchestrationV2WorkflowRunHandles,
+  type OrchestrationV2ModelCallUsage,
   type OrchestrationV2SubagentUsage,
   type OrchestrationV2TurnItem,
   type OrchestrationV2WebSearchResult,
@@ -2685,8 +2686,9 @@ interface ClaudeSubagentCallUsage {
  * copies of the subagent's entry.
  */
 interface ClaudeSubagentUsageTally {
-  // This run's calls by message id. Each content block's snapshot repeats its
-  // call's usage, and the last one is final.
+  // This run's calls by message id. Each content block repeats the opening
+  // usage. That output count is not final: the CLI never sends a subagent's
+  // message_delta. The tally still sums what arrived.
   readonly calls: Map<string, ClaudeSubagentCallUsage>;
   // Everything the subagent's earlier runs used.
   priorRuns: OrchestrationV2SubagentUsage | undefined;
@@ -2725,6 +2727,64 @@ function recordClaudeSubagentCall(
     cachedInputTokens,
     outputTokens: clampClaudeUsageCount(usage.output_tokens),
   });
+}
+
+function claudeAssistantModelCallId(message: SDKMessage): string | undefined {
+  if (message.type !== "assistant" || message.message.model === "<synthetic>") return undefined;
+  const id = message.message.id;
+  return typeof id === "string" && id.length > 0 ? id : undefined;
+}
+
+function claudeThinkingOutputTokens(usage: object): number | undefined {
+  const details = Reflect.get(usage, "output_tokens_details");
+  if (typeof details !== "object" || details === null) return undefined;
+  const thinking = Reflect.get(details, "thinking_tokens");
+  return typeof thinking === "number" && Number.isFinite(thinking)
+    ? clampClaudeUsageCount(thinking)
+    : undefined;
+}
+
+/**
+ * One Claude message's own usage. Assistant snapshots repeat the opening
+ * output count, so output is included only once `message_delta` has finalized
+ * it. Native subagent calls never receive that delta.
+ */
+function claudeModelCallUsage(
+  usage: {
+    readonly input_tokens: number;
+    readonly cache_creation_input_tokens?: number | null;
+    readonly cache_read_input_tokens?: number | null;
+    readonly output_tokens?: number;
+  },
+  includeOutput: boolean,
+  reasoningOutputTokens?: number,
+): OrchestrationV2ModelCallUsage {
+  const cachedInputTokens = clampClaudeUsageCount(usage.cache_read_input_tokens ?? 0);
+  return {
+    inputTokens:
+      clampClaudeUsageCount(usage.input_tokens) +
+      clampClaudeUsageCount(usage.cache_creation_input_tokens ?? 0) +
+      cachedInputTokens,
+    cachedInputTokens,
+    ...(includeOutput && usage.output_tokens !== undefined
+      ? { outputTokens: clampClaudeUsageCount(usage.output_tokens) }
+      : {}),
+    ...(includeOutput && reasoningOutputTokens !== undefined && reasoningOutputTokens > 0
+      ? { reasoningOutputTokens }
+      : {}),
+  };
+}
+
+function claudeModelCallUsageEqual(
+  left: OrchestrationV2ModelCallUsage | undefined,
+  right: OrchestrationV2ModelCallUsage,
+): boolean {
+  return (
+    left?.inputTokens === right.inputTokens &&
+    left?.cachedInputTokens === right.cachedInputTokens &&
+    left?.outputTokens === right.outputTokens &&
+    left?.reasoningOutputTokens === right.reasoningOutputTokens
+  );
 }
 
 /** A workflow member's usage, as the progress snapshot reports it. Absent until tokens arrive. */
@@ -3683,12 +3743,19 @@ interface ActiveClaudeTurnContext {
   // as zeros, so they only fill in input the stream has not reported. A
   // compaction makes the usage stale (null) without forgetting the request.
   // `requestedAt` is when a streamed request started; its prompt cache lifetime starts then.
+  // `outputFinal` is set once message_delta replaces the opening output count.
   streamUsage: {
     readonly messageId: string;
     requestedAt?: DateTime.Utc;
     usage: ClaudeMessageUsage | null;
+    outputFinal: boolean;
+    reasoningOutputTokens?: number;
   } | null;
   readonly toolCalls: Map<string, ActiveClaudeToolCall>;
+  // The tool call that carries each model call's usage, by Anthropic message
+  // id, for this turn's root and native subagent frames. A workflow member's
+  // transcript tracks its own in `carriedModelCallId`.
+  readonly modelCallCarriers: Map<string, ActiveClaudeToolCall>;
   // A successful status can precede the boundary that supplies its token counts.
   compaction: Extract<OrchestrationV2TurnItem, { type: "compaction" }> | null;
   readonly ignoredTaskIds: Set<string>;
@@ -3779,6 +3846,35 @@ interface ActiveClaudeToolCall {
   readonly ordinal: number;
   readonly startedAt: DateTime.Utc;
   readonly presentation?: ClaudeToolPresentation;
+  modelCallId?: string;
+  modelCallUsage?: OrchestrationV2ModelCallUsage;
+}
+
+interface ClaudeToolModelCall {
+  readonly id: string;
+  readonly usage?: OrchestrationV2ModelCallUsage;
+}
+
+function applyClaudeModelCallStamp(
+  call: ActiveClaudeToolCall,
+  modelCall: ClaudeToolModelCall | undefined,
+): boolean {
+  if (modelCall === undefined) return false;
+  let changed = false;
+  if (call.modelCallId === undefined) {
+    call.modelCallId = modelCall.id;
+    changed = true;
+  }
+  const next = modelCall.usage;
+  if (next !== undefined && call.modelCallId === modelCall.id) {
+    const current = call.modelCallUsage;
+    const regressesOutput = current?.outputTokens !== undefined && next.outputTokens === undefined;
+    if (!regressesOutput && !claudeModelCallUsageEqual(current, next)) {
+      call.modelCallUsage = next;
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 /** Where a subagent's conversation items land: its child thread and root node. */
@@ -3787,6 +3883,9 @@ interface ClaudeSubagentProjectionTarget {
   readonly childRootNodeId: OrchestrationV2ExecutionNode["id"];
   readonly nextOrdinal: () => number;
   readonly toolCalls: Map<string, ActiveClaudeToolCall>;
+  // A transcript writes a message's blocks on consecutive lines, so only the
+  // latest message can still gain tool calls.
+  carriedModelCallId?: string;
 }
 
 /**
@@ -4325,6 +4424,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               readonly transcriptCursor: WorkflowAgentTranscriptCursor;
               readonly nextItemOrdinal: number;
               readonly toolCalls: Map<string, ActiveClaudeToolCall>;
+              readonly carriedModelCallId: string | undefined;
               readonly textShown: boolean;
               // The transcript reached the end of the member's last turn.
               readonly turnEnded: boolean;
@@ -4424,6 +4524,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
         // answer one, so a later steer waits on it rather than asking again.
         const backgroundMovesByToolUseId = new Map<string, Fiber.Fiber<void>>();
         const subagentToolCalls = new Map<string, ActiveClaudeToolCall>();
+        // A root carrier's latest item while its message_delta is pending, by
+        // message id, re-emitted once output is final. Subagent calls never get
+        // a message_delta, so they have no run and never wait here.
+        const carriersAwaitingOutput = new Map<string, OrchestrationV2TurnItem>();
         // A subagent call stays here until its result arrives, including after a
         // settle or status update ended it, so a late result completes the call it
         // belongs to rather than an anonymous `tool` row that overwrites it.
@@ -5133,6 +5237,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           readonly updatedAt: DateTime.Utc;
           readonly presentation: ClaudeToolPresentation | undefined;
           readonly toolNonExecutionKind?: string;
+          readonly modelCallId?: string;
+          readonly modelCallUsage?: OrchestrationV2ModelCallUsage;
         }) => {
           const completedAt = input.status === "running" ? null : input.updatedAt;
           const nodeId = idAllocator.derive.nodeFromProviderItem({
@@ -5205,6 +5311,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             startedAt: input.startedAt,
             completedAt,
             updatedAt: input.updatedAt,
+            ...(input.modelCallId === undefined ? {} : { modelCallId: input.modelCallId }),
+            ...(input.modelCallUsage === undefined ? {} : { modelCallUsage: input.modelCallUsage }),
           } satisfies Pick<
             OrchestrationV2TurnItem,
             | "id"
@@ -5221,6 +5329,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             | "startedAt"
             | "completedAt"
             | "updatedAt"
+            | "modelCallId"
+            | "modelCallUsage"
           >;
           const viewedImagePath =
             readPath &&
@@ -5309,6 +5419,47 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             type: "turn_item.updated",
             driver: CLAUDE_PROVIDER,
             turnItem: artifacts.turnItem,
+          });
+          // Only a carrier has usage, and only a root one has a run.
+          const item = artifacts.turnItem;
+          if (
+            item.runId === null ||
+            item.modelCallId === undefined ||
+            item.modelCallUsage === undefined
+          ) {
+            return;
+          }
+          if (item.modelCallUsage.outputTokens === undefined) {
+            carriersAwaitingOutput.set(item.modelCallId, item);
+          } else {
+            carriersAwaitingOutput.delete(item.modelCallId);
+          }
+        });
+
+        const publishClaudeModelCallOutput = Effect.fnUntraced(function* (
+          context: ActiveClaudeTurnContext,
+          messageId: string,
+          usage: ClaudeMessageUsage,
+          reasoningOutputTokens: number | undefined,
+        ) {
+          const last = carriersAwaitingOutput.get(messageId);
+          carriersAwaitingOutput.delete(messageId);
+          const carrier = context.modelCallCarriers.get(messageId);
+          if (carrier === undefined) return;
+          const next = claudeModelCallUsage(usage, true, reasoningOutputTokens);
+          if (claudeModelCallUsageEqual(carrier.modelCallUsage, next)) return;
+          carrier.modelCallUsage = next;
+          if (last === undefined) return;
+          const updatedAt = yield* DateTime.now;
+          const turnItem: OrchestrationV2TurnItem = {
+            ...last,
+            modelCallUsage: next,
+            updatedAt,
+          };
+          yield* emitProviderEvent({
+            type: "turn_item.updated",
+            driver: CLAUDE_PROVIDER,
+            turnItem,
           });
         });
 
@@ -5652,6 +5803,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               childRootNodeId,
               nextOrdinal: () => ++nextItemOrdinal,
               toolCalls,
+              ...(restarted || previous?.carriedModelCallId === undefined
+                ? {}
+                : { carriedModelCallId: previous.carriedModelCallId }),
             };
             const endOpenToolCalls = Effect.fnUntraced(function* () {
               if (toolCalls.size === 0) return;
@@ -5790,6 +5944,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 transcriptCursor,
                 nextItemOrdinal,
                 toolCalls,
+                carriedModelCallId: target.carriedModelCallId,
                 textShown,
                 turnEnded,
                 resultShown,
@@ -6438,6 +6593,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           }
         };
 
+        const modelCallArtifactFields = (call: ActiveClaudeToolCall) => ({
+          ...(call.modelCallId === undefined ? {} : { modelCallId: call.modelCallId }),
+          ...(call.modelCallUsage === undefined ? {} : { modelCallUsage: call.modelCallUsage }),
+        });
+
         const ensureToolCallStarted = Effect.fnUntraced(function* (input: {
           readonly context: ActiveClaudeTurnContext;
           readonly nativeItemId: string;
@@ -6445,12 +6605,37 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           readonly toolInput: ClaudeNativeToolInput;
           readonly parentToolUseId: string | null;
           readonly presentation?: ClaudeToolPresentation | undefined;
+          readonly modelCall?: ClaudeToolModelCall | undefined;
         }) {
           const existing = findToolCall(input.context, input.nativeItemId);
           if (existing !== undefined) {
             // The permission callback can start a call before its assistant
             // frame arrives with the tool's display name and icon.
+            const stamped = applyClaudeModelCallStamp(existing, input.modelCall);
             if (input.presentation === undefined || existing.presentation !== undefined) {
+              if (stamped) {
+                const updatedAt = yield* DateTime.now;
+                yield* emitToolCallArtifacts(
+                  buildToolCallArtifacts({
+                    context: input.context,
+                    nativeItemId: existing.nativeItemId,
+                    toolName: existing.toolName,
+                    classification: existing.classification,
+                    toolInput: existing.input,
+                    threadId: existing.threadId,
+                    runId: existing.runId,
+                    rootNodeId: existing.rootNodeId,
+                    parentNodeId: existing.parentNodeId,
+                    ordinal: existing.ordinal,
+                    output: NO_CLAUDE_NATIVE_TOOL_OUTPUT,
+                    status: "running",
+                    startedAt: existing.startedAt,
+                    updatedAt,
+                    presentation: existing.presentation,
+                    ...modelCallArtifactFields(existing),
+                  }),
+                );
+              }
               return existing;
             }
             const presented = { ...existing, presentation: input.presentation };
@@ -6473,6 +6658,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 startedAt: presented.startedAt,
                 updatedAt,
                 presentation: input.presentation,
+                ...modelCallArtifactFields(presented),
               }),
             );
             return presented;
@@ -6489,10 +6675,14 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             startedAt: yield* DateTime.now,
           };
           if (subagent !== undefined) {
-            return yield* startSubagentToolCall(subagentProjectionTarget(subagent), call);
+            return yield* startSubagentToolCall(subagentProjectionTarget(subagent), {
+              ...call,
+              ...(input.modelCall === undefined ? {} : { modelCall: input.modelCall }),
+            });
           }
           return yield* startToolCall({
             ...call,
+            ...(input.modelCall === undefined ? {} : { modelCall: input.modelCall }),
             context: input.context,
             threadId: input.context.input.threadId,
             runId: input.context.input.runId,
@@ -6514,6 +6704,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           readonly ordinal: number;
           readonly startedAt: DateTime.Utc;
           readonly registry: Map<string, ActiveClaudeToolCall>;
+          readonly modelCall?: ClaudeToolModelCall;
         }) {
           const toolCall: ActiveClaudeToolCall = {
             nativeItemId: input.nativeItemId,
@@ -6527,6 +6718,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             ordinal: input.ordinal,
             startedAt: input.startedAt,
             ...(input.presentation === undefined ? {} : { presentation: input.presentation }),
+            ...(input.modelCall === undefined ? {} : { modelCallId: input.modelCall.id }),
+            ...(input.modelCall?.usage === undefined
+              ? {}
+              : { modelCallUsage: input.modelCall.usage }),
           };
           input.registry.set(input.nativeItemId, toolCall);
           if (toolCall.runId === null) {
@@ -6549,6 +6744,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               startedAt: toolCall.startedAt,
               updatedAt: toolCall.startedAt,
               presentation: input.presentation,
+              ...modelCallArtifactFields(toolCall),
             }),
           );
           return toolCall;
@@ -6571,6 +6767,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             readonly toolInput: ClaudeNativeToolInput;
             readonly presentation: ClaudeToolPresentation | undefined;
             readonly startedAt: DateTime.Utc;
+            readonly modelCall?: ClaudeToolModelCall;
           },
         ) =>
           startToolCall({
@@ -6621,6 +6818,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               startedAt: toolCall.startedAt,
               updatedAt: input.completedAt,
               presentation: toolCall.presentation,
+              ...modelCallArtifactFields(toolCall),
             }),
           );
           input.registry.delete(toolCall.nativeItemId);
@@ -6683,8 +6881,20 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             Option.getOrUndefined(DateTime.make(text(field(line, "timestamp")) ?? "")) ??
             (yield* DateTime.now);
           const presentations = claudeToolPresentationsFromAssistantMessage(line);
+          const transcriptModelCallId =
+            line.type === "assistant" ? claudeAssistantModelCallId(line) : undefined;
+          const transcriptUsage =
+            transcriptModelCallId !== undefined &&
+            line.type === "assistant" &&
+            line.message.usage !== undefined
+              ? claudeModelCallUsage(line.message.usage, false)
+              : undefined;
           for (const toolUse of claudeToolUseBlocksFromAssistantMessage(line)) {
             if (target.toolCalls.has(toolUse.id)) continue;
+            const carries =
+              transcriptModelCallId !== undefined &&
+              target.carriedModelCallId !== transcriptModelCallId;
+            if (carries) target.carriedModelCallId = transcriptModelCallId;
             yield* startSubagentToolCall(target, {
               nativeItemId: toolUse.id,
               toolName: toolUse.name,
@@ -6695,6 +6905,16 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                   toolName: toolUse.name.replace(/^mcp__claude_ai_/u, "mcp__"),
                 }),
               startedAt: at,
+              ...(transcriptModelCallId === undefined
+                ? {}
+                : {
+                    modelCall: {
+                      id: transcriptModelCallId,
+                      ...(carries && transcriptUsage !== undefined
+                        ? { usage: transcriptUsage }
+                        : {}),
+                    },
+                  }),
             });
           }
           for (const { toolResult, output } of claudeToolResultEntriesFromMessage(line)) {
@@ -6917,6 +7137,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 startedAt: toolCall.startedAt,
                 updatedAt: input.completedAt,
                 presentation: toolCall.presentation,
+                ...modelCallArtifactFields(toolCall),
               }),
             );
           }
@@ -7017,6 +7238,14 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           for (const toolCall of endingSubagentCalls) {
             subagentToolCalls.delete(toolCall.nativeItemId);
           }
+          // A subagent still running after the turn can stream more blocks of
+          // its current message, so its carrier stays until a later settle.
+          for (const [messageId, carrier] of input.context.modelCallCarriers) {
+            if (!subagentToolCalls.has(carrier.nativeItemId)) {
+              input.context.modelCallCarriers.delete(messageId);
+            }
+          }
+          carriersAwaitingOutput.clear();
 
           if (
             input.context.assistant.emittedNativeItemIds.size === 0 &&
@@ -8029,14 +8258,25 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               reasoning.streamBlocks.clear();
               const usage: ClaudeMessageUsage | undefined = event.message.usage;
               context.streamUsage =
-                usage === undefined ? null : { messageId: event.message.id, usage };
+                usage === undefined
+                  ? null
+                  : { messageId: event.message.id, usage, outputFinal: false };
               if (usage !== undefined) yield* emitContextUsage(context, usage, true);
             } else if (event.type === "message_delta") {
               const usage: typeof event.usage | undefined = event.usage;
               const stream = context.streamUsage;
               if (stream?.usage && usage !== undefined) {
+                const thinking = claudeThinkingOutputTokens(usage);
+                if (thinking !== undefined && thinking > 0) stream.reasoningOutputTokens = thinking;
                 stream.usage = mergeClaudeStreamUsage(stream.usage, usage);
+                stream.outputFinal = true;
                 yield* emitContextUsage(context, stream.usage);
+                yield* publishClaudeModelCallOutput(
+                  context,
+                  stream.messageId,
+                  stream.usage,
+                  stream.reasoningOutputTokens,
+                );
               }
             } else if (
               event.type === "content_block_start" &&
@@ -8394,7 +8634,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               const stream = context.streamUsage;
               if (stream === null || stream.messageId !== message.message.id) {
                 // Remember the request so a compaction can mark its later snapshots stale.
-                context.streamUsage = { messageId: message.message.id, usage: snapshotUsage };
+                context.streamUsage = {
+                  messageId: message.message.id,
+                  usage: snapshotUsage,
+                  outputFinal: false,
+                };
                 yield* emitContextUsage(context, snapshotUsage);
               } else if (
                 stream.usage !== null &&
@@ -8706,6 +8950,44 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           }
 
           const toolPresentations = claudeToolPresentationsFromAssistantMessage(message);
+          const modelCallId =
+            message.type === "assistant" ? claudeAssistantModelCallId(message) : undefined;
+          let modelCallUsage: OrchestrationV2ModelCallUsage | undefined;
+          if (modelCallId !== undefined && message.type === "assistant") {
+            const stream = context.streamUsage;
+            const finalized =
+              stream !== null &&
+              stream.messageId === modelCallId &&
+              stream.outputFinal &&
+              stream.usage !== null;
+            const source =
+              stream !== null && stream.usage !== null && finalized
+                ? stream.usage
+                : message.message.usage;
+            if (source !== undefined) {
+              modelCallUsage = claudeModelCallUsage(
+                source,
+                finalized,
+                finalized ? stream.reasoningOutputTokens : undefined,
+              );
+            }
+          }
+          let carrierId =
+            modelCallId === undefined
+              ? undefined
+              : context.modelCallCarriers.get(modelCallId)?.nativeItemId;
+          if (modelCallId !== undefined && carrierId === undefined) {
+            let lowestOrdinal = Number.POSITIVE_INFINITY;
+            for (const toolUse of claudeToolUseBlocksFromAssistantMessage(message)) {
+              if (toolUse.name === "Agent") continue;
+              const existing = findToolCall(context, toolUse.id);
+              if (existing !== undefined && existing.ordinal < lowestOrdinal) {
+                lowestOrdinal = existing.ordinal;
+                carrierId = existing.nativeItemId;
+              }
+            }
+          }
+          let assignNewCarrier = modelCallId !== undefined && carrierId === undefined;
           for (const toolUse of claudeToolUseBlocksFromAssistantMessage(message)) {
             const nativeToolInput = claudeNativeToolInputFromUnknown(toolUse.input);
             if (toolUse.name === "Agent") {
@@ -8727,7 +9009,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 steps: claudeTodoSteps(nativeToolInput),
               }).pipe(Effect.orDie);
             }
-            yield* ensureToolCallStarted({
+            const carries =
+              modelCallId !== undefined &&
+              (carrierId === undefined ? assignNewCarrier : toolUse.id === carrierId);
+            const call = yield* ensureToolCallStarted({
               context,
               nativeItemId: toolUse.id,
               toolName: toolUse.name,
@@ -8738,7 +9023,20 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 mcpToolPresentation({
                   toolName: toolUse.name.replace(/^mcp__claude_ai_/u, "mcp__"),
                 }),
+              ...(modelCallId === undefined
+                ? {}
+                : {
+                    modelCall: {
+                      id: modelCallId,
+                      ...(carries && modelCallUsage !== undefined ? { usage: modelCallUsage } : {}),
+                    },
+                  }),
             });
+            if (carries && modelCallId !== undefined) {
+              context.modelCallCarriers.set(modelCallId, call);
+              carrierId = call.nativeItemId;
+              assignNewCarrier = false;
+            }
             const heldPlan = heldProposedPlansByToolUseId.get(toolUse.id);
             if (heldPlan !== undefined) {
               heldProposedPlansByToolUseId.delete(toolUse.id);
@@ -10044,6 +10342,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               },
               streamUsage: null,
               toolCalls: new Map(),
+              modelCallCarriers: new Map(),
               compaction: null,
               ignoredTaskIds: new Set(),
               announcedUsageLimits: new Set(),
