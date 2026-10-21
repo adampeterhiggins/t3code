@@ -50,18 +50,21 @@ describe("formatLinearMarkdownForPreview", () => {
   });
 });
 
-describe("remarkLinearIssueReferences", () => {
-  const links = (markdown: string) => {
-    const tree = unified().use(remarkParse).use(remarkGfm).parse(markdown) as MarkdownNode;
-    remarkLinearIssueReferences(linearIssueReferences("acme", ["ENG"])!)(tree);
-    const found: string[] = [];
-    const visit = (node: MarkdownNode) => {
-      if (node.type === "link") found.push(`${node.children?.[0]?.value} ${node.url}`);
-      node.children?.forEach(visit);
-    };
-    visit(tree);
-    return found;
+function linksAfter(markdown: string, transform: (tree: MarkdownNode) => void) {
+  const tree = unified().use(remarkParse).use(remarkGfm).parse(markdown) as MarkdownNode;
+  transform(tree);
+  const found: string[] = [];
+  const visit = (node: MarkdownNode) => {
+    if (node.type === "link") found.push(`${node.children?.[0]?.value} ${node.url}`);
+    node.children?.forEach(visit);
   };
+  visit(tree);
+  return found;
+}
+
+describe("remarkLinearIssueReferences", () => {
+  const links = (markdown: string) =>
+    linksAfter(markdown, remarkLinearIssueReferences(linearIssueReferences("acme", ["ENG"])!));
 
   it("links bare identifiers but leaves code and existing links alone", () => {
     expect(

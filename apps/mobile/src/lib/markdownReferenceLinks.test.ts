@@ -1,7 +1,7 @@
 import { linearIssueReferences } from "@t3tools/shared/linearIssueReferences";
 import { describe, expect, it } from "vite-plus/test";
 
-import { markdownWithLinearIssueLinks } from "./markdownDocument";
+import { markdownWithGitHubIssueLinks, markdownWithLinearIssueLinks } from "./markdownDocument";
 
 const references = linearIssueReferences("acme", ["ENG"]);
 
@@ -20,5 +20,22 @@ describe("markdownWithLinearIssueLinks", () => {
 
   it("does nothing until the workspace's teams are known", () => {
     expect(markdownWithLinearIssueLinks("ENG-12", null)).toBe("ENG-12");
+  });
+});
+
+describe("markdownWithGitHubIssueLinks", () => {
+  it("links qualified references, and bare ones only with the thread's repository", () => {
+    expect(markdownWithGitHubIssueLinks("acme/api#7 and #8", null)).toBe(
+      "[acme/api#7](https://github.com/acme/api/issues/7) and #8",
+    );
+    expect(markdownWithGitHubIssueLinks("Fixed in #8.", "https://github.com/acme/web")).toBe(
+      "Fixed in [#8](https://github.com/acme/web/issues/8).",
+    );
+  });
+
+  it("leaves code and existing links as written", () => {
+    const markdown =
+      "`#1` [#2](https://github.com/acme/api/pull/2) https://github.com/acme/api/pull/3";
+    expect(markdownWithGitHubIssueLinks(markdown, "https://github.com/acme/api")).toBe(markdown);
   });
 });

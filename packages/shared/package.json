@@ -291,6 +291,10 @@
       "types": "./src/promptLinks.ts",
       "import": "./src/promptLinks.ts"
     },
+    "./githubIssueReferences": {
+      "types": "./src/githubIssueReferences.ts",
+      "import": "./src/githubIssueReferences.ts"
+    },
     "./linearIssueReferences": {
       "types": "./src/linearIssueReferences.ts",
       "import": "./src/linearIssueReferences.ts"

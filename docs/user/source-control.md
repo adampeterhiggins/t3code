@@ -315,6 +315,12 @@ and their marks follow the same rules as on web and desktop.
 - **A review cannot load:** open it on the host website while resolving connectivity, permissions,
   or rate limits.
 
+## Issue references in messages
+
+`owner/repo#123` in a message links to that issue or pull request, with the same preview as a
+pasted link. In a thread whose project is a GitHub repository, `#123` links to that repository's
+issue or pull request.
+
 ## Linked pull requests
 
 A thread can hold several pull requests, including reviews from another repository on the same host.

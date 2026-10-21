@@ -207,8 +207,9 @@ import { ThreadMcpApp } from "./McpAppWebView";
 import { assetEnvironment, useAssetUrl, useRefreshAssetUrl } from "../../state/assets";
 import { useAtomQueryRunner } from "../../state/use-atom-query-runner";
 import { usePreparedConnection } from "../../state/session";
-import { useLiveThreadLinkLabels } from "../../state/entities";
-import { useLinearIssueLinks } from "../../state/linear";
+import { useLiveThreadLinkLabels, useProject, useQuietThreadShell } from "../../state/entities";
+import { githubRepositoryUrl } from "@t3tools/shared/githubIssueReferences";
+import { ThreadGitHubRepositoryContext, useReferenceLinks } from "../../state/referenceLinks";
 import { useThreadSelection } from "../../state/use-thread-selection";
 import { composerDocumentAttachmentRecord } from "../../lib/composerContext";
 import * as Option from "effect/Option";
@@ -794,7 +795,7 @@ const AssistantMarkdownContent = memo(function AssistantMarkdownContent(props: {
   readonly renderImage: MarkdownImageRenderer;
   readonly skills?: ReadonlyArray<SelectableMarkdownSkill> | undefined;
 }) {
-  const liveMarkdown = useLinearIssueLinks(
+  const liveMarkdown = useReferenceLinks(
     useLiveThreadLinkLabels(props.markdown, props.environmentId),
     props.environmentId,
   );
@@ -1477,7 +1478,7 @@ function UserMessageContent(props: UserMessageContentProps) {
   const [selected, setSelected] = useState<{ contextId: string; label: string } | null>(null);
   const navigation = useNavigation();
   const { selectedThread } = useThreadSelection();
-  const liveText = useLinearIssueLinks(
+  const liveText = useReferenceLinks(
     useLiveThreadLinkLabels(props.text, props.environmentId),
     props.environmentId,
   );
@@ -1683,6 +1684,17 @@ function ThreadFeedPlaceholder(props: {
 export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   const { listRef, onEndFollowEnabledChange, onHeaderMaterialVisibilityChange } = props;
   const workflowOpening = useWorkflowOpening(props.environmentId, props.threadId);
+  const feedThread = useQuietThreadShell({
+    environmentId: props.environmentId,
+    threadId: props.threadId,
+  });
+  const githubRepository = githubRepositoryUrl(
+    useProject(
+      feedThread === null
+        ? null
+        : { environmentId: feedThread.environmentId, projectId: feedThread.projectId },
+    )?.repositoryIdentity,
+  );
   const deviceType = useDeviceType();
   const duoColumns = useNativeWorkspaceColumnsSupported() && isDuoDevice(deviceType);
   const openPullRequest = useOpenPullRequest();
@@ -2497,7 +2509,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     );
   }
 
-  return (
+  const feed = (
     <PresentationSource identifier={fileShareSourceIdentifier} style={{ flex: 1 }}>
       <View className="flex-1" onLayout={handleViewportLayout}>
         <View className="flex-1">
@@ -2661,6 +2673,9 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
         <FilePreviewModal source={expandedFile} onRequestClose={() => setExpandedFile(null)} />
       </View>
     </PresentationSource>
+  );
+  return (
+    <ThreadGitHubRepositoryContext value={githubRepository}>{feed}</ThreadGitHubRepositoryContext>
   );
 });
 

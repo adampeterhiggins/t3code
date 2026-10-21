@@ -201,13 +201,18 @@ import {
   type RemoteOpenMode,
 } from "../remoteOpen";
 import { useRightPanelStore } from "../rightPanelStore";
-import { readThreadShell, useProjects } from "../state/entities";
+import { readThreadShell, useProject, useProjects, useQuietThreadShell } from "../state/entities";
 import { serverEnvironment } from "../state/server";
 import { slackEnvironment } from "../state/slack";
 import { discordEnvironment } from "../state/discord";
 import { granolaEnvironment } from "../state/granola";
 import { linearEnvironment } from "../state/linear";
 import { remarkLinearIssueReferences } from "../lib/linearMarkdown";
+import { remarkGitHubIssueReferences } from "../lib/githubIssueMarkdown";
+import {
+  githubRepositoryUrl,
+  mayHaveGitHubIssueReference,
+} from "@t3tools/shared/githubIssueReferences";
 import {
   type LinearIssueReferences,
   mayHaveLinearIssueReference,
@@ -3838,14 +3843,29 @@ function ChatMarkdown({
       ? linearEnvironment.issueReferences(linearEnvironmentId)
       : NO_LINEAR_ISSUE_REFERENCES_ATOM,
   );
-  const linearRemarkPlugins: NonNullable<ReactMarkdownOptions["remarkPlugins"]> =
-    linearIssueReferences === null
-      ? EMPTY_REMARK_PLUGINS
-      : [[remarkLinearIssueReferences, linearIssueReferences]];
+  const hasGitHubIssueReference = mayHaveGitHubIssueReference(text);
+  const githubThread = useQuietThreadShell(
+    hasGitHubIssueReference ? (props.threadRef ?? null) : null,
+  );
+  const githubProject = useProject(
+    githubThread === null
+      ? null
+      : { environmentId: githubThread.environmentId, projectId: githubThread.projectId },
+  );
+  const referenceRemarkPlugins: NonNullable<ReactMarkdownOptions["remarkPlugins"]> = [];
+  if (linearIssueReferences !== null) {
+    referenceRemarkPlugins.push([remarkLinearIssueReferences, linearIssueReferences]);
+  }
+  if (hasGitHubIssueReference) {
+    referenceRemarkPlugins.push([
+      remarkGitHubIssueReferences,
+      githubRepositoryUrl(githubProject?.repositoryIdentity),
+    ]);
+  }
   const remarkPlugins = [
     ...(lineBreaks ? CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS : CHAT_MARKDOWN_REMARK_PLUGINS),
     ...extraRemarkPlugins,
-    ...linearRemarkPlugins,
+    ...referenceRemarkPlugins,
     ...(incrementalParsing ? [createIncrementalMarkdownPlugin()] : []),
   ];
   if (componentState.mathEnabled)

@@ -4,6 +4,11 @@ import remarkParse from "remark-parse";
 import remarkGfm from "remark-gfm";
 import { objectLinkLabel } from "@t3tools/shared/composerObjectLinks";
 import {
+  GITHUB_ISSUE_REFERENCE,
+  githubIssueReferenceUrl,
+  mayHaveGitHubIssueReference,
+} from "@t3tools/shared/githubIssueReferences";
+import {
   type LinearIssueReferences,
   linearIssueReferenceUrl,
 } from "@t3tools/shared/linearIssueReferences";
@@ -192,7 +197,33 @@ export function markdownWithLinearIssueLinks(
   markdown: string,
   references: LinearIssueReferences | null,
 ): string {
-  if (references === null || markdown.search(references.pattern) === -1) return markdown;
+  if (references === null) return markdown;
+  return markdownWithTextLinks(markdown, references.pattern, (match) =>
+    linearIssueReferenceUrl(references.workspaceUrlKey, match[0]),
+  );
+}
+
+/**
+ * Fork: `owner/repo#123`, and `#123` when the thread's repository is on GitHub, link to GitHub as
+ * on the web, so they read as the issue or pull request's link pill.
+ */
+export function markdownWithGitHubIssueLinks(
+  markdown: string,
+  repositoryUrl: string | null,
+): string {
+  if (!mayHaveGitHubIssueReference(markdown)) return markdown;
+  return markdownWithTextLinks(markdown, GITHUB_ISSUE_REFERENCE, (match) =>
+    githubIssueReferenceUrl(match[1], match[2]!, repositoryUrl),
+  );
+}
+
+/** Links each match of a global pattern in prose; code, existing links, and escapes stay. */
+function markdownWithTextLinks(
+  markdown: string,
+  pattern: RegExp,
+  urlFor: (match: RegExpExecArray) => string | null,
+): string {
+  if (markdown.search(pattern) === -1) return markdown;
   const edits: Array<{ start: number; end: number; content: string }> = [];
   const visit = (node: MarkdownNode) => {
     if (node.type === "link" || node.type === "linkReference") return;
@@ -202,8 +233,9 @@ export function markdownWithLinearIssueLinks(
       // Escapes and entities make the source differ from the text; such runs stay as written.
       if (start === undefined || end === undefined || markdown.slice(start, end) !== node.value)
         return;
-      for (const match of node.value.matchAll(references.pattern)) {
-        const url = linearIssueReferenceUrl(references.workspaceUrlKey, match[0]);
+      for (const match of node.value.matchAll(pattern)) {
+        const url = urlFor(match);
+        if (url === null) continue;
         const offset = start + match.index;
         edits.push({
           start: offset,
