@@ -939,7 +939,8 @@ palette, and starting a thread from an issue links it. The link lives in the for
 `fork_linear_thread_links` table, keyed by tab group, and streams to clients over
 `linear.subscribeThreadLinks`. Only the issue's identity is stored; its row in the web thread details panel's
 Links section (`apps/web/src/components/chat/ThreadLinks.tsx`) reads its status live, and offers
-open, change, and unlink. Mobile shows a chip beside the tab
+open, change, and unlink. The section's **+** menu links any kind the group does not have yet,
+with the same permission and integration checks as the command palette. Mobile shows a chip beside the tab
 switcher (`apps/mobile/src/features/threads/ThreadLinearLink.tsx`). Agents link and unlink it
 through the thread MCP's `link_linear_issue` / `unlink_linear_issue`, and read the thread's Linear
 and GitHub issue links with `list_thread_issues`
