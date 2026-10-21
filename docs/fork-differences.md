@@ -1401,8 +1401,11 @@ request it names. A github.com release (`/releases/tag/<tag>`), branch or tag (`
 commit (`/commit/<sha>`) link becomes a chip labelled `repo@<ref>` (`repo@<sha7>` for a commit),
 with an icon for its kind; hovering it shows, and the agent receives, the release notes or the
 commit message. A `/tree/` link to a folder is not a ref and stays a link. The text goes in as
-usual, then each link becomes a chip once its object loads; sending, saving a draft, stashing, and
-rewinding wait for it, and a link pasted before switching threads still converts in the draft it
+usual, but while its object loads the editor draws each link as a dashed chip labelled from the URL
+alone (`owner/repo#162`, `ENG-123`), which sweeps twice and then rests
+([`composerLoadingLinks.tsx`](../apps/web/src/components/composerLoadingLinks.tsx)); deleting into
+it removes the link. The real chip replaces it once the object loads; sending, saving a draft,
+stashing, and rewinding wait for it, and a link pasted before switching threads still converts in the draft it
 was pasted into. A link that was tried and could not be read (not connected, not found, a comment
 or lines the host did not return), or that took longer than 20 seconds
 ([`composerObjectLinkChip.ts`](../apps/web/src/components/chat/composerObjectLinkChip.ts)),
