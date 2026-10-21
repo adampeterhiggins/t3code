@@ -135,7 +135,15 @@ export const make = Effect.gen(function* () {
     });
     ElectronWindow.markAuxiliaryWindow(window);
     window.setAlwaysOnTop(true, isMac ? "floating" : "normal");
-    if (isMac) window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    if (isMac) {
+      window.setVisibleOnAllWorkspaces(true, {
+        visibleOnFullScreen: true,
+        // Electron otherwise briefly turns the whole app into a UIElement process, after which
+        // macOS stops treating it as a foreground app: no Dock dot, another app's menu bar, and
+        // the first click into the main window only activates it.
+        skipTransformProcessType: true,
+      });
+    }
     window.on("blur", () => {
       if (!window.isDestroyed()) window.hide();
     });
