@@ -7,8 +7,10 @@ import type { DesktopWindowRole } from "@t3tools/contracts";
  */
 export const QUICK_MESSAGE_WINDOW_ROLE_ARGUMENT = "--t3code-window-role=quick-message";
 
-export function parseDesktopWindowRole(argv: readonly string[]): DesktopWindowRole {
-  return argv.includes(QUICK_MESSAGE_WINDOW_ROLE_ARGUMENT) ? "quick-message" : "main";
+// Electron supplies renderer argv. A missing list is still the main window, so
+// bridge setup finishes when a host stub omits argv.
+export function parseDesktopWindowRole(argv?: readonly string[]): DesktopWindowRole {
+  return argv?.includes(QUICK_MESSAGE_WINDOW_ROLE_ARGUMENT) ? "quick-message" : "main";
 }
 
 /**

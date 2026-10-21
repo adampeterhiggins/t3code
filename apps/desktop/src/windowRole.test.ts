@@ -31,12 +31,7 @@ describe("parseDesktopWindowRole", () => {
     expect(parseDesktopWindowRole(rendererArgv("--t3code-window-role=main"))).toBe("main");
   });
 
-  it("reads the same role from an unchanged argv, including after a reload", () => {
-    const quickMessageArgv = rendererArgv(QUICK_MESSAGE_WINDOW_ROLE_ARGUMENT);
-    const mainArgv = rendererArgv();
-    expect(parseDesktopWindowRole(quickMessageArgv)).toBe(parseDesktopWindowRole(quickMessageArgv));
-    expect(parseDesktopWindowRole(quickMessageArgv)).toBe("quick-message");
-    expect(parseDesktopWindowRole(mainArgv)).toBe(parseDesktopWindowRole(mainArgv));
-    expect(parseDesktopWindowRole(mainArgv)).toBe("main");
+  it("defaults to main when argv is missing", () => {
+    expect(parseDesktopWindowRole(undefined)).toBe("main");
   });
 });

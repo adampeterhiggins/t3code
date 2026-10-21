@@ -10,6 +10,7 @@ const expectedDesktopBridgeApis = [
   "getClientPlatform",
   "getLocalEnvironmentBootstraps",
   "getPathForFile",
+  "getWindowRole",
   "pickFolder",
 ];
 const clerkPasskeysGlobal = "__clerk_internal_electron_passkeys";
@@ -87,8 +88,11 @@ const createSandboxModules = (exposedGlobals) => {
   ]);
 };
 
-const executeBundle = (source, sandboxModules) => {
+const executeBundle = (source, sandboxModules, argv) => {
   const sandboxProcess = {
+    // additionalArguments stay on the renderer argv for the life of the window.
+    // The preload reads that list before exposing the bridge.
+    argv,
     contextIsolated: true,
     // oxlint-disable-next-line t3code/no-global-process-runtime -- This standalone CI verifier supplies the preload's host platform without loading Effect.
     platform: process.platform,
@@ -116,7 +120,7 @@ const executeBundle = (source, sandboxModules) => {
   );
 };
 
-export const verifyPreloadBundle = (source) => {
+export const verifyPreloadBundle = (source, options = {}) => {
   const runtimeImports = inspectBundle(source);
   const exposedGlobals = new Map();
   const sandboxModules = createSandboxModules(exposedGlobals);
@@ -130,7 +134,8 @@ export const verifyPreloadBundle = (source) => {
     );
   }
 
-  executeBundle(source, sandboxModules);
+  // An omitted list has no quick-message marker, so the bundle resolves the main window.
+  executeBundle(source, sandboxModules, options.argv ?? []);
 
   const desktopBridge = exposedGlobals.get("desktopBridge");
   const missingApis = expectedDesktopBridgeApis.filter(
@@ -142,6 +147,8 @@ export const verifyPreloadBundle = (source) => {
   if (missingApis.length > 0) {
     throw new Error(`Desktop preload bundle is missing executable APIs: ${missingApis.join(", ")}`);
   }
+
+  return desktopBridge;
 };
 
 if (process.argv[1] && NodeURL.pathToFileURL(process.argv[1]).href === import.meta.url) {
