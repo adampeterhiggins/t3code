@@ -1696,8 +1696,8 @@ Upstream's `t3` CLI manages the server process, auth, projects, and themes, and 
 and reads threads. The fork adds commands for its features so scripts reach them without a client:
 `t3 thread` gains `answer`, `resume`, `search`, `export`, thread management, `--pr`, and `--link`;
 `t3 draft`, `t3 schedule`, `t3 settings`, `t3 provider`, `t3 integration` (sign-in and sign-out
-for Linear, Slack, Notion, Granola, and Discord), `t3 usage`, `t3 import`, and `t3 worktree` are
-new.
+for Linear, Slack, Notion, Granola, and Discord), `t3 usage`, `t3 import`, `t3 worktree`, and
+`t3 app network-access` are new.
 
 Thread commands call MCP tools like upstream's `t3 thread`; `answer` and `delete` use
 `/mcp/operate`, where the fork's approval and delete tools live, with a token revoked when the
@@ -1705,7 +1705,13 @@ command ends. The other groups call the same WebSocket RPCs the clients use, thr
 client session the CLI issues and revokes around one command
 ([`liveRpc.ts`](../apps/server/src/cli/liveRpc.ts)). Fork thread subcommands live in
 [`threadFork.ts`](../apps/server/src/cli/threadFork.ts) so upstream's `thread.ts` stays close to
-upstream. User guide: [command-line.md](user/command-line.md).
+upstream.
+
+Network access is a desktop app setting, so `t3 app network-access` sends a `network-access`
+request over the desktop control socket `t3 app` already uses, not over the server's RPC. That keeps
+remote clients and agents from turning off the access they connect through, and lets the desktop
+reply before it relaunches ([`DesktopAppActivation.ts`](../apps/desktop/src/app/DesktopAppActivation.ts)).
+User guide: [command-line.md](user/command-line.md).
 
 ## Agent access over MCP
 

@@ -39,6 +39,8 @@ Use direct pairing when the other device can reach the host's network address.
 On a desktop host, open **Settings → Connections**, enable **Network access**,
 then create a pairing link using an address the other device can reach. Changing
 network access restarts the desktop app. You can turn it off in the same place.
+From a terminal on the same machine, `t3 app network-access on` (or `off`) does
+the same.
 
 For a command-line host, replace `<private-ip>` with the host's LAN or tailnet
 address:

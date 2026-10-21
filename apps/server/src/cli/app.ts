@@ -6,8 +6,12 @@ import {
   DESKTOP_APP_ACTIVATION_PROTOCOL_VERSION,
   DesktopAppActivationErrorCode,
   DesktopAppActivationResponse,
+  DesktopAppNetworkAccessResponse,
   type DesktopAppActivationPlatform,
   type DesktopAppActivationRequest,
+  type DesktopAppControlRequest,
+  type DesktopAppNetworkAccessRequest,
+  type DesktopServerExposureMode,
 } from "@t3tools/contracts";
 import { resolveDesktopAppControlAddress } from "@t3tools/shared/desktopAppControl";
 import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -22,10 +26,12 @@ import { Argument, Command } from "effect/cli";
 
 import { expandHomePath, resolveBaseDir } from "../os-jank.ts";
 import { baseDirFlag } from "./config.ts";
+import { jsonFlag, printJson } from "./liveRpc.ts";
 
 const CLI_RESPONSE_TIMEOUT_MS = 17_000;
 const MAX_RESPONSE_BYTES = 64 * 1024;
 const isDesktopAppActivationResponse = Schema.is(DesktopAppActivationResponse);
+const isDesktopAppNetworkAccessResponse = Schema.is(DesktopAppNetworkAccessResponse);
 
 export class DesktopAppSshUnsupportedError extends Schema.TaggedError<DesktopAppSshUnsupportedError>()(
   "DesktopAppSshUnsupportedError",
@@ -50,7 +56,6 @@ export class DesktopAppUnreachableError extends Schema.TaggedError<DesktopAppUnr
   {
     candidateAddresses: Schema.Array(Schema.String),
     requestId: Schema.String,
-    workspaceRoot: Schema.String,
     cause: Schema.Defect(),
   },
 ) {
@@ -73,16 +78,38 @@ export class DesktopAppRequestFailedError extends Schema.TaggedError<DesktopAppR
   }
 }
 
+export class DesktopAppNetworkAccessFailedError extends Schema.TaggedError<DesktopAppNetworkAccessFailedError>()(
+  "DesktopAppNetworkAccessFailedError",
+  {
+    code: DesktopAppActivationErrorCode,
+    requestId: Schema.String,
+    cause: Schema.Defect(),
+  },
+) {
+  override get message(): string {
+    switch (this.code) {
+      // Desktop builds from before this request reject it as invalid.
+      case "invalid-request":
+        return "This T3 Code desktop app cannot change network access from the command line. Update the desktop app, or use Settings → Connections → Network access.";
+      case "network-address-unavailable":
+        return "T3 Code found no network address other devices can reach. Connect this machine to a network, then try again.";
+      default:
+        return `T3 Code could not change network access (${this.code}).`;
+    }
+  }
+}
+
 function isDesktopPlatform(platform: NodeJS.Platform): platform is DesktopAppActivationPlatform {
   return platform === "darwin" || platform === "linux" || platform === "win32";
 }
 
-function sendDesktopAppActivationRequest(input: {
+function sendDesktopAppControlRequest<Response extends { readonly requestId: string }>(input: {
   readonly address: string;
   readonly fallbackAddress?: string;
-  readonly request: DesktopAppActivationRequest;
+  readonly request: DesktopAppControlRequest;
+  readonly isResponse: (value: unknown) => value is Response;
   readonly timeoutMs?: number;
-}): Promise<DesktopAppActivationResponse> {
+}): Promise<Response> {
   return new Promise((resolve, reject) => {
     const socket = NodeNet.createConnection(input.address);
     socket.setEncoding("utf8");
@@ -92,7 +119,7 @@ function sendDesktopAppActivationRequest(input: {
 
     const finish = (
       result:
-        | { readonly type: "success"; readonly response: DesktopAppActivationResponse }
+        | { readonly type: "success"; readonly response: Response }
         | { readonly type: "failure"; readonly error: Error },
     ) => {
       if (settled) return;
@@ -133,7 +160,7 @@ function sendDesktopAppActivationRequest(input: {
         });
         return;
       }
-      if (!isDesktopAppActivationResponse(parsed)) {
+      if (!input.isResponse(parsed)) {
         finish({ type: "failure", error: new Error("The desktop app response is invalid.") });
         return;
       }
@@ -157,9 +184,10 @@ function sendDesktopAppActivationRequest(input: {
         clearTimeout(timeout);
         socket.destroy();
         resolve(
-          sendDesktopAppActivationRequest({
+          sendDesktopAppControlRequest({
             address: input.fallbackAddress,
             request: input.request,
+            isResponse: input.isResponse,
             ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }),
           }),
         );
@@ -179,9 +207,20 @@ const appEnvironment = Config.all({
   sshTty: Config.String("SSH_TTY").pipe(Config.option),
 });
 
-const runAppCommand = Effect.fn("cli.app")(function* (flags: {
+/**
+ * Resolves the running desktop app's control socket and sends one request.
+ * With no explicit home, a dev desktop is the fallback when the installed one
+ * is not running.
+ */
+const sendToDesktopApp = Effect.fn("cli.app.send")(function* <
+  Response extends { readonly requestId: string },
+>(input: {
   readonly baseDir: Option.Option<string>;
-  readonly workspaceRoot: Option.Option<string>;
+  readonly makeRequest: (
+    requestId: string,
+    platform: DesktopAppActivationPlatform,
+  ) => DesktopAppControlRequest;
+  readonly isResponse: (value: unknown) => value is Response;
 }) {
   const environment = yield* appEnvironment;
   const hostPlatform = yield* HostProcess.Platform;
@@ -193,12 +232,9 @@ const runAppCommand = Effect.fn("cli.app")(function* (flags: {
   }
 
   const path = yield* Path.Path;
-  const configuredBaseDir = Option.getOrUndefined(flags.baseDir) ?? environment.t3Home;
+  const configuredBaseDir = Option.getOrUndefined(input.baseDir) ?? environment.t3Home;
   const baseDir = yield* resolveBaseDir(configuredBaseDir);
-  const allowDevFallback = Option.isNone(flags.baseDir) && !environment.t3Home?.trim();
-  const rawWorkspaceRoot =
-    Option.getOrUndefined(flags.workspaceRoot) ?? (yield* HostProcess.WorkingDirectory);
-  const workspaceRoot = path.resolve(yield* expandHomePath(rawWorkspaceRoot));
+  const allowDevFallback = Option.isNone(input.baseDir) && !environment.t3Home?.trim();
   const userId = yield* HostProcess.UserId;
   const resolveAddress = (stateSubdirectory: "userdata" | "dev") =>
     resolveDesktopAppControlAddress({
@@ -210,30 +246,45 @@ const runAppCommand = Effect.fn("cli.app")(function* (flags: {
     }).address;
   const crypto = yield* Crypto.Crypto;
   const requestId = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
-  const request: DesktopAppActivationRequest = {
-    version: DESKTOP_APP_ACTIVATION_PROTOCOL_VERSION,
-    requestId,
-    type: "open-workspace",
-    workspaceRoot,
-    platform: hostPlatform,
-  };
+  const request = input.makeRequest(requestId, hostPlatform);
   const address = resolveAddress("userdata");
   const fallbackAddress = allowDevFallback ? resolveAddress("dev") : undefined;
 
-  const response = yield* Effect.tryPromise({
+  return yield* Effect.tryPromise({
     try: () =>
-      sendDesktopAppActivationRequest({
+      sendDesktopAppControlRequest({
         address,
         ...(fallbackAddress === undefined ? {} : { fallbackAddress }),
         request,
+        isResponse: input.isResponse,
       }),
     catch: (cause) =>
       new DesktopAppUnreachableError({
         candidateAddresses: fallbackAddress === undefined ? [address] : [address, fallbackAddress],
-        requestId: request.requestId,
-        workspaceRoot,
+        requestId,
         cause,
       }),
+  });
+});
+
+const runAppCommand = Effect.fn("cli.app")(function* (flags: {
+  readonly baseDir: Option.Option<string>;
+  readonly workspaceRoot: Option.Option<string>;
+}) {
+  const path = yield* Path.Path;
+  const rawWorkspaceRoot =
+    Option.getOrUndefined(flags.workspaceRoot) ?? (yield* HostProcess.WorkingDirectory);
+  const workspaceRoot = path.resolve(yield* expandHomePath(rawWorkspaceRoot));
+  const response = yield* sendToDesktopApp({
+    baseDir: flags.baseDir,
+    makeRequest: (requestId, platform): DesktopAppActivationRequest => ({
+      version: DESKTOP_APP_ACTIVATION_PROTOCOL_VERSION,
+      requestId,
+      type: "open-workspace",
+      workspaceRoot,
+      platform,
+    }),
+    isResponse: isDesktopAppActivationResponse,
   });
   if (!response.ok) {
     return yield* new DesktopAppRequestFailedError({
@@ -247,6 +298,67 @@ const runAppCommand = Effect.fn("cli.app")(function* (flags: {
   yield* Console.log(`Opened ${workspaceRoot} in T3 Code.`);
 });
 
+const runNetworkAccessCommand = Effect.fn("cli.app.networkAccess")(function* (flags: {
+  readonly baseDir: Option.Option<string>;
+  readonly mode: Option.Option<DesktopServerExposureMode>;
+  readonly json: boolean;
+}) {
+  const response = yield* sendToDesktopApp({
+    baseDir: flags.baseDir,
+    makeRequest: (requestId): DesktopAppNetworkAccessRequest => ({
+      version: DESKTOP_APP_ACTIVATION_PROTOCOL_VERSION,
+      requestId,
+      type: "network-access",
+      ...(Option.isSome(flags.mode) ? { mode: flags.mode.value } : {}),
+    }),
+    isResponse: isDesktopAppNetworkAccessResponse,
+  });
+  if (!response.ok) {
+    return yield* new DesktopAppNetworkAccessFailedError({
+      code: response.code,
+      requestId: response.requestId,
+      cause: response,
+    });
+  }
+
+  if (flags.json) {
+    const { mode, endpointUrl, restarting } = response;
+    yield* printJson({ mode, endpointUrl, restarting });
+    return;
+  }
+  const enabled = response.mode === "network-accessible";
+  yield* Console.log(
+    enabled
+      ? `Network access is on${response.endpointUrl ? ` at ${response.endpointUrl}` : ""}.`
+      : "Network access is off. The desktop server only listens on this machine.",
+  );
+  if (response.restarting) {
+    yield* Console.log("The desktop app is restarting to apply the change.");
+  }
+  if (enabled) {
+    yield* Console.log("Run `t3 pair` for a link another device can open.");
+  }
+});
+
+const networkAccessCommand = Command.make("network-access", {
+  baseDir: baseDirFlag,
+  mode: Argument.ChoiceWithValue("state", [
+    ["on", "network-accessible"],
+    ["off", "local-only"],
+  ] as const).pipe(
+    Argument.withDescription(
+      "`on` lets other devices on your network reach the desktop server. Omit to show the current state.",
+    ),
+    Argument.optional,
+  ),
+  json: jsonFlag,
+}).pipe(
+  Command.withDescription(
+    "Show or change the desktop app's network access. Changing it restarts the desktop app.",
+  ),
+  Command.withHandler(runNetworkAccessCommand),
+);
+
 export const appCommand = Command.make("app", {
   baseDir: baseDirFlag,
   workspaceRoot: Argument.String("path").pipe(
@@ -256,4 +368,5 @@ export const appCommand = Command.make("app", {
 }).pipe(
   Command.withDescription("Open a project in the running T3 Code desktop app."),
   Command.withHandler(runAppCommand),
+  Command.withSubcommands([networkAccessCommand]),
 );

@@ -8,8 +8,11 @@ import * as NodePath from "node:path";
 
 import {
   DESKTOP_APP_ACTIVATION_PROTOCOL_VERSION,
-  DesktopAppActivationRequest,
+  DesktopAppControlRequest,
   type DesktopAppActivationResponse,
+  type DesktopAppControlResponse,
+  type DesktopAppNetworkAccessRequest,
+  type DesktopAppNetworkAccessResponse,
 } from "@t3tools/contracts";
 import { resolveDesktopAppControlAddress } from "@t3tools/shared/desktopAppControl";
 import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -23,16 +26,18 @@ import * as Scope from "effect/Scope";
 
 import type * as Electron from "electron";
 
+import * as DesktopServerExposure from "../backend/DesktopServerExposure.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import { DESKTOP_APP_ACTIVATION_REQUEST_CHANNEL } from "../ipc/channels.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
 import { DesktopAppActivationBroker } from "./DesktopAppActivationBroker.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
+import * as DesktopLifecycle from "./DesktopLifecycle.ts";
 import { makeComponentLogger } from "./DesktopObservability.ts";
 
 const MAX_REQUEST_BYTES = 64 * 1024;
 const REQUEST_TIMEOUT_MS = 15_000;
-const isDesktopAppActivationRequest = Schema.is(DesktopAppActivationRequest);
+const isDesktopAppControlRequest = Schema.is(DesktopAppControlRequest);
 
 export class DesktopAppActivationStartError extends Schema.TaggedError<DesktopAppActivationStartError>()(
   "DesktopAppActivationStartError",
@@ -51,7 +56,7 @@ interface RunningControlServer {
   readonly close: () => Promise<void>;
 }
 
-function invalidResponse(requestId: string, message: string): DesktopAppActivationResponse {
+function invalidResponse(requestId: string, message: string): DesktopAppControlResponse {
   return {
     version: DESKTOP_APP_ACTIVATION_PROTOCOL_VERSION,
     requestId,
@@ -108,8 +113,10 @@ export async function startDesktopAppControlServer(input: {
   readonly address: string;
   readonly directory: string | null;
   readonly userId: number | undefined;
-  readonly handle: (request: DesktopAppActivationRequest) => Promise<DesktopAppActivationResponse>;
+  readonly handle: (request: DesktopAppControlRequest) => Promise<DesktopAppControlResponse>;
   readonly cancel: (requestId: string) => void;
+  /** Runs once the response is flushed, or straight away when the client already left. */
+  readonly onResponseSent?: (response: DesktopAppControlResponse) => void;
   readonly onReclaimError: (error: unknown) => void;
 }): Promise<RunningControlServer> {
   const sockets = new Set<NodeNet.Socket>();
@@ -123,9 +130,11 @@ export async function startDesktopAppControlServer(input: {
 
     socket.setTimeout(5_000, () => socket.destroy());
 
-    const finish = (response: DesktopAppActivationResponse) => {
+    const finish = (response: DesktopAppControlResponse) => {
       responseSent = true;
-      if (!socket.destroyed) socket.end(`${JSON.stringify(response)}\n`);
+      const sent = () => input.onResponseSent?.(response);
+      if (socket.destroyed) sent();
+      else socket.end(`${JSON.stringify(response)}\n`, sent);
     };
 
     socket.on("data", (chunk) => {
@@ -150,7 +159,7 @@ export async function startDesktopAppControlServer(input: {
         return;
       }
 
-      if (!isDesktopAppActivationRequest(parsed)) {
+      if (!isDesktopAppControlRequest(parsed)) {
         finish(
           invalidResponse(requestIdFromUnknown(parsed), "The desktop app request is invalid."),
         );
@@ -300,9 +309,13 @@ export const make = Effect.gen(function* () {
   const desktopEnvironment = yield* DesktopEnvironment.DesktopEnvironment;
   const desktopWindow = yield* DesktopWindow.DesktopWindow;
   const electronWindow = yield* ElectronWindow.ElectronWindow;
+  const lifecycle = yield* DesktopLifecycle.DesktopLifecycle;
+  const serverExposure = yield* DesktopServerExposure.DesktopServerExposure;
   const path = yield* Path.Path;
   const userId = yield* HostProcess.UserId;
-  const runPromise = Effect.runPromiseWith(yield* Effect.context<never>());
+  const runPromise = Effect.runPromiseWith(
+    yield* Effect.context<DesktopLifecycle.DesktopLifecycleRuntimeServices>(),
+  );
   const address = resolveDesktopAppControlAddress({
     stateDir: path.resolve(desktopEnvironment.stateDir),
     platform: desktopEnvironment.platform,
@@ -324,6 +337,50 @@ export const make = Effect.gen(function* () {
     },
   });
 
+  // Handled here rather than in the renderer: the Connections toggle calls the
+  // same service, and the reply has to go out before the app relaunches.
+  const handleNetworkAccess = Effect.fn("DesktopAppActivation.networkAccess")(
+    function* (request: DesktopAppNetworkAccessRequest) {
+      const change =
+        request.mode === undefined
+          ? { state: yield* serverExposure.getState, requiresRelaunch: false }
+          : yield* serverExposure.setMode(request.mode);
+      return {
+        version: DESKTOP_APP_ACTIVATION_PROTOCOL_VERSION,
+        requestId: request.requestId,
+        ok: true,
+        mode: change.state.mode,
+        endpointUrl: change.state.endpointUrl,
+        restarting: change.requiresRelaunch,
+      } satisfies DesktopAppNetworkAccessResponse;
+    },
+    (effect, request) =>
+      effect.pipe(
+        Effect.catch((error) =>
+          Effect.succeed({
+            version: DESKTOP_APP_ACTIVATION_PROTOCOL_VERSION,
+            requestId: request.requestId,
+            ok: false,
+            code:
+              error._tag === "DesktopServerExposureNoNetworkAddressError"
+                ? "network-address-unavailable"
+                : "internal-error",
+            message: error.message,
+          } satisfies DesktopAppNetworkAccessResponse),
+        ),
+      ),
+  );
+
+  const handle = (request: DesktopAppControlRequest): Promise<DesktopAppControlResponse> =>
+    request.type === "network-access"
+      ? runPromise(handleNetworkAccess(request))
+      : broker.request(request);
+
+  const onResponseSent = (response: DesktopAppControlResponse) => {
+    if (!("restarting" in response) || !response.restarting) return;
+    void runPromise(lifecycle.relaunch(`serverExposureMode=${response.mode}`));
+  };
+
   const clearRegisteredRenderer = () => {
     detachRendererListeners?.();
     detachRendererListeners = null;
@@ -338,8 +395,9 @@ export const make = Effect.gen(function* () {
           startDesktopAppControlServer({
             ...address,
             userId,
-            handle: (request) => broker.request(request),
+            handle,
             cancel: (requestId) => broker.cancel(requestId),
+            onResponseSent,
             onReclaimError: (cause) =>
               void runPromise(
                 logWarning("failed to restore the desktop app control socket", { cause }),
