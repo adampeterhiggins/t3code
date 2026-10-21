@@ -110,6 +110,9 @@ the message to read it from stdin.
 2 when the agent waits for an answer you give in the app. Add `--json` for a
 result that always includes the thread id.
 
+[Command line](./command-line.md) covers the rest of `t3 thread` and the other
+commands that drive a running server.
+
 ## Remove an agent
 
 Approved agents appear under **Settings → Connections** like other clients.

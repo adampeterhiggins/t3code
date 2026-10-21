@@ -1679,6 +1679,23 @@ Code: `packages/client-runtime/src/work-log/commandDisplay.ts`, used by
 [`ToolPathText.tsx`](../apps/web/src/components/chat/ToolPathText.tsx); and
 `packages/provider-core/src/server/runtimeInstructions.ts`.
 
+## Command line drives the running server
+
+Upstream's `t3` CLI manages the server process, auth, projects, and themes, and `t3 thread` starts
+and reads threads. The fork adds commands for its features so scripts reach them without a client:
+`t3 thread` gains `answer`, `resume`, `search`, `export`, thread management, `--pr`, and `--link`;
+`t3 draft`, `t3 schedule`, `t3 settings`, `t3 provider`, `t3 integration` (sign-in and sign-out
+for Linear, Slack, Notion, Granola, and Discord), `t3 usage`, `t3 import`, and `t3 worktree` are
+new.
+
+Thread commands call MCP tools like upstream's `t3 thread`; `answer` and `delete` use
+`/mcp/operate`, where the fork's approval and delete tools live, with a token revoked when the
+command ends. The other groups call the same WebSocket RPCs the clients use, through a standard
+client session the CLI issues and revokes around one command
+([`liveRpc.ts`](../apps/server/src/cli/liveRpc.ts)). Fork thread subcommands live in
+[`threadFork.ts`](../apps/server/src/cli/threadFork.ts) so upstream's `thread.ts` stays close to
+upstream. User guide: [command-line.md](user/command-line.md).
+
 ## Agent access over MCP
 
 Two more MCP servers serve agents outside T3 Code. `/mcp/query` gives read-only access to the
