@@ -90,6 +90,7 @@ export function PullRequestsColumn({
   searchInput,
   sortMenu,
   filtersMenu,
+  appliedFilters,
   rightPanelControl,
   titlebarControls,
   rightPanelOpen,
@@ -110,6 +111,8 @@ export function PullRequestsColumn({
   searchInput: ReactNode;
   sortMenu: ReactNode;
   filtersMenu: ReactNode;
+  /** The applied filters as removable pills, on their own row below the controls. */
+  appliedFilters: ReactNode;
   rightPanelControl: ReactNode;
   titlebarControls: ReactNode;
   rightPanelOpen: boolean;
@@ -260,6 +263,7 @@ export function PullRequestsColumn({
                 <PullRequestRefreshControl refreshing={refreshing} onRefresh={onRefresh} />
               ) : null}
             </div>
+            {appliedFilters}
             <div ref={markerRef} aria-hidden className="-mt-3 h-px w-full" />
           </div>
 

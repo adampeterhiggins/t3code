@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 
 import { shortcutLabelForCommand } from "~/keybindings";
-import { readLocalApi } from "~/localApi";
+import { useLinkClickHandler } from "~/browser/useOpenLink";
 import { primaryServerKeybindingsAtom } from "~/state/server";
 import { Button } from "../ui/button";
 import {
@@ -52,6 +52,7 @@ export function PullRequestActionsMenu({
   reference,
   pullRequestKey,
   detail,
+  threadRef,
   linkThreadRef,
   onThreadPickerOpenChange,
   refreshing,
@@ -91,6 +92,7 @@ export function PullRequestActionsMenu({
   reference: PullRequestRef;
   pullRequestKey: string;
   detail: Pick<PullRequestDetail, "url" | "state" | "isDraft" | "headBranch">;
+  threadRef: ScopedThreadRef | null;
   linkThreadRef: ScopedThreadRef | null;
   onThreadPickerOpenChange: (open: boolean) => void;
   refreshing: boolean;
@@ -129,6 +131,7 @@ export function PullRequestActionsMenu({
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const inlineConfirm = useInlineActionConfirm(pullRequestKey);
   const actionPending = pendingAction !== null;
+  const onLinkClick = useLinkClickHandler(threadRef);
   return (
     <Menu>
       <Tooltip>
@@ -290,7 +293,7 @@ export function PullRequestActionsMenu({
             ) : null}
           </>
         ) : null}
-        <MenuItem onClick={() => void readLocalApi()?.shell.openExternal(detail.url)}>
+        <MenuItem onClick={(event) => onLinkClick(event, detail.url)}>
           <ArrowUpRightIcon className="size-3.5" />
           {openOnHostText}
         </MenuItem>

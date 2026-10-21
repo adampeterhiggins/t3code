@@ -1983,11 +1983,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                   <span className="flex-1" />
                 )}
                 {agentIndicator}
-                {/* Left of the status slot, so hover swapping the label for the
-                    wider row controls does not slide the pin. */}
-                {pinIndicator}
+                {/* Status at rest, hover actions once they fit. The pin is the
+            trailing item, outside that swap, so it cannot slide sideways. */}
                 {sortable?.isDragging ? (
-                  dragDestination
+                  <>
+                    {dragDestination}
+                    {pinIndicator}
+                  </>
                 ) : (
                   <span
                     className={cn(
@@ -2164,6 +2166,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                         </span>
                       ) : null}
                     </span>
+                    {pinIndicator}
                   </span>
                 )}
                 {props.sweepAction !== null ? dragDestination : null}

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import { resolveT3McpToolDefinition } from "@t3tools/shared/t3McpToolPresentation";
+
 import { summarizeT3ToolCalls, type T3ToolSummaryCall } from "./t3ToolSummary.ts";
 
 function completed(input: unknown, output?: unknown): T3ToolSummaryCall {
@@ -79,5 +81,19 @@ describe("summarizeT3ToolCalls", () => {
       label: "Waited on 1 thread",
       failedCount: 0,
     });
+  });
+
+  it.each([
+    ["list_thread_links", "Checked linked items 2 times"],
+    ["read_context_link", "Read 2 links"],
+    ["read_linear_issue", "Read 2 Linear issues"],
+    ["search_linear_issues", "Searched Linear issues 2 times"],
+    ["list_linear_filter_options", "Searched Linear issues 2 times"],
+    ["search_slack_messages", "Searched Slack 2 times"],
+    ["search_notion_pages", "Searched Notion pages 2 times"],
+  ])("labels %s by what it read or searched, not as linked issues", (tool, label) => {
+    const action = resolveT3McpToolDefinition(`mcp__t3-code__${tool}`)?.summaryAction;
+    expect(action).toBeDefined();
+    expect(summarizeT3ToolCalls(action!, [completed({}), completed({})]).label).toBe(label);
   });
 });

@@ -68,6 +68,11 @@ export type T3McpToolSummaryAction =
   | "link-issue"
   | "unlink-issue"
   | "list-issues"
+  | "read-issue"
+  | "read-link"
+  | "search-issues"
+  | "search-messages"
+  | "search-pages"
   | "write-pr-guides"
   | "read-pr-guide"
   | "browser"
@@ -124,14 +129,14 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   link_github_issue: tool(["Link", "Linking", "Linked", "a GitHub issue"], "link-issue"),
   unlink_github_issue: tool(["Unlink", "Unlinking", "Unlinked", "a GitHub issue"], "unlink-issue"),
   list_thread_links: tool(["Check", "Checking", "Checked", "linked items"], "list-issues"),
-  read_context_link: tool(["Read", "Reading", "Read", "a linked item"], "list-issues"),
-  read_linear_issue: tool(["Read", "Reading", "Read", "a Linear issue"], "list-issues"),
-  search_linear_issues: tool(["Search", "Searching", "Searched", "Linear issues"], "list-issues"),
-  search_slack_messages: tool(["Search", "Searching", "Searched", "Slack"], "list-issues"),
-  search_notion_pages: tool(["Search", "Searching", "Searched", "Notion pages"], "list-issues"),
+  read_context_link: tool(["Read", "Reading", "Read", "a linked item"], "read-link"),
+  read_linear_issue: tool(["Read", "Reading", "Read", "a Linear issue"], "read-issue"),
+  search_linear_issues: tool(["Search", "Searching", "Searched", "Linear issues"], "search-issues"),
+  search_slack_messages: tool(["Search", "Searching", "Searched", "Slack"], "search-messages"),
+  search_notion_pages: tool(["Search", "Searching", "Searched", "Notion pages"], "search-pages"),
   list_linear_filter_options: tool(
     ["Check", "Checking", "Checked", "Linear filter options"],
-    "list-issues",
+    "search-issues",
   ),
   write_pull_request_guides: tool(
     ["Write", "Writing", "Started writing", "review guides"],

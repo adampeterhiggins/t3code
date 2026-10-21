@@ -510,21 +510,24 @@ function EnabledThreadPullRequestsPanel({ threadRef }: { threadRef: ScopedThread
           keyExtractor={lineKey}
           extraData={rowInputs}
           renderItem={({ item: line }) => (
-            <LinkRow
-              line={line}
-              threadRef={threadRef}
-              projectId={
-                capabilities?.pullRequests === true
-                  ? (findProjectForChangeRequest(environmentProjects, line.link)?.id ??
-                    thread?.projectId ??
-                    null)
-                  : null
-              }
-              speedMode={speedMode}
-              onUnlink={handleUnlink}
-              onWatch={supportsWatch ? handleWatch : null}
-              canPause={supportsWatchPause}
-            />
+            <>
+              <LinkRow
+                line={line}
+                threadRef={threadRef}
+                projectId={
+                  capabilities?.pullRequests === true
+                    ? (findProjectForChangeRequest(environmentProjects, line.link)?.id ??
+                      thread?.projectId ??
+                      null)
+                    : null
+                }
+                speedMode={speedMode}
+                onUnlink={handleUnlink}
+                onWatch={supportsWatch ? handleWatch : null}
+                canPause={supportsWatchPause}
+              />
+              {supportsWatchPause ? <WatchStatusLine line={line} /> : null}
+            </>
           )}
           estimatedItemSize={44}
           drawDistance={440}

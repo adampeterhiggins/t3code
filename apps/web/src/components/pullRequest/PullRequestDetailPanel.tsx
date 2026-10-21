@@ -108,12 +108,14 @@ import type { PullRequestAgentSelectionInput } from "./PullRequestCodeTab";
 import { openOnHostLabel } from "./pullRequestLinkContextMenu";
 import { PullRequestMarkdownContext } from "./PullRequestMarkdownContext";
 import { PullRequestComposer } from "./PullRequestComposer";
+import { PullRequestQuoteToolbar, type PullRequestQuote } from "./PullRequestQuoteToolbar";
 import { PullRequestSummaryTab } from "./PullRequestSummaryTab";
 import { PullRequestTimelineTab } from "./PullRequestTimelineTab";
 import {
   buildAddSelectionToAgentHandoff,
   buildAskAboutGuideStopHandoff,
   buildAskAboutPullRequestHandoff,
+  buildPullRequestQuoteContext,
   buildExplainPullRequestHandoff,
   buildFixFindingHandoff,
   buildFixFindingsHandoff,
@@ -344,6 +346,7 @@ export function PullRequestDetailPanel({
     setTab(next);
     onTabChange?.(next);
   };
+  const [contentViewport, setContentViewport] = useState<HTMLDivElement | null>(null);
   const [timelineOrder, setTimelineOrder] = useState<"newest" | "oldest">("newest");
   const [codeCommitScope, setCodeCommitScope] = useState<{
     readonly pullRequestKey: string;
@@ -713,6 +716,8 @@ export function PullRequestDetailPanel({
   };
 
   const attachTarget = composerDraftTarget ?? null;
+  // Drafts live on server threads; a new thread's composer already keeps its text locally.
+  const canSaveAgentDraft = typeof attachTarget === "object" && attachTarget !== null;
   const canPrepareWorktree = prepareThread.isAllowed && canOperateThread;
   const canFixFindings = attachTarget !== null || canPrepareWorktree;
   const handoffLabels = pullRequestHandoffLabels(attachTarget !== null);
@@ -1045,8 +1050,31 @@ export function PullRequestDetailPanel({
         comment: selection.comment,
         request: selection.request,
       }),
-      { ...options, delivery: selection.delivery },
+      { ...options, delivery: selection.delivery, questionInChip: true },
     );
+  };
+
+  /**
+   * A citation lands at the caret of the composer beside the panel, as one from a response does.
+   * With no composer there, it opens a thread holding it.
+   */
+  const citeQuote = (quote: PullRequestQuote) => {
+    if (!detail) return;
+    const chip = buildPullRequestQuoteContext({
+      number: detail.number,
+      title: detail.title,
+      url: detail.url,
+      headBranch: detail.headBranch,
+      baseBranch: detail.baseBranch,
+      state: detail.state,
+      isDraft: detail.isDraft,
+      quote,
+    });
+    if (attachTarget !== null) {
+      useComposerDraftStore.getState().addReviewComment(attachTarget, chip);
+      return;
+    }
+    void startAsk(`quote:${chip.id}`, { prompt: "", reviewComments: [chip] });
   };
 
   const startCheckout = (mode: "worktree" | "local") => {
@@ -1067,6 +1095,34 @@ export function PullRequestDetailPanel({
         finding,
       }),
     );
+  };
+
+  /** The fix lands in the thread's composer, then waits there as a draft instead of a send. */
+  const saveFixFindingAsDraft = (finding: PullRequestFinding) => {
+    if (!detail || typeof attachTarget !== "object" || attachTarget === null) return;
+    const heldDraft = composerDraftHasUserContent(
+      useComposerDraftStore.getState().getComposerDraft(attachTarget),
+    );
+    writeTaskToComposer(
+      attachTarget,
+      buildFixFindingHandoff({
+        number: detail.number,
+        title: detail.title,
+        url: detail.url,
+        headBranch: detail.headBranch,
+        baseBranch: detail.baseBranch,
+        finding,
+      }),
+    );
+    if (!heldDraft) {
+      useComposerSubmitRequestStore.getState().request(attachTarget, "save-draft");
+      return;
+    }
+    toastManager.add({
+      type: "success",
+      title: "Added to the composer",
+      description: askLandedDescription(true, "draft"),
+    });
   };
 
   const startFixFindings = () => {
@@ -1302,6 +1358,7 @@ export function PullRequestDetailPanel({
           repositoryUrl={repositoryUrl}
           openOnHostText={openOnHostText}
           onBack={onBack}
+          threadRef={threadRef}
         />
         <div className="mr-4 flex h-7 shrink-0 items-center justify-end gap-1">
           {detail ? (
@@ -1366,6 +1423,7 @@ export function PullRequestDetailPanel({
                 reference={reference}
                 pullRequestKey={pullRequestKey}
                 detail={detail}
+                threadRef={threadRef}
                 linkThreadRef={
                   threadRef ??
                   (typeof composerDraftTarget === "object" ? composerDraftTarget : null)
@@ -1700,6 +1758,7 @@ export function PullRequestDetailPanel({
       </div>
 
       <div
+        ref={setContentViewport}
         className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
         onScrollCapture={(event) => {
           const scroller = scrollerByTab.current[tab];
@@ -1730,10 +1789,12 @@ export function PullRequestDetailPanel({
               : { error: detailQuery.error })}
             refreshing={detailQuery.isPending}
             onRetry={refreshDetail}
+            threadRef={threadRef}
             {...(unavailableGitHubUrl ? { gitHubUrl: unavailableGitHubUrl } : {})}
           />
         ) : detail ? (
           <PullRequestMarkdownContext value={markdownContext}>
+            <PullRequestQuoteToolbar viewport={contentViewport} onCite={citeQuote} />
             {mountedTabs.has("summary") ? (
               <div className={cn("absolute inset-0", tab !== "summary" && "invisible")}>
                 <PullRequestSummaryTab
@@ -1749,6 +1810,9 @@ export function PullRequestDetailPanel({
                   fixFindingLabel={handoffLabels.fixFinding}
                   fixCheckLabel={handoffLabels.fixCheck}
                   {...(canFixFindings ? { onFixFinding: startFixFinding } : {})}
+                  {...(canFixFindings && canSaveAgentDraft
+                    ? { onSaveFixAsDraft: saveFixFindingAsDraft }
+                    : {})}
                   onRefresh={refreshDetail}
                   onRefreshChecks={refreshFromHost}
                 />
@@ -1765,7 +1829,7 @@ export function PullRequestDetailPanel({
                   canComment={
                     detail.capabilities.review.inlineComment && detail.viewerPermissions.comment
                   }
-                  canSaveAgentDraft={attachTarget !== null}
+                  canSaveAgentDraft={canSaveAgentDraft}
                   onAskAboutLines={(comment, request, delivery) =>
                     addSelectionToAgent({ comment, request, delivery }, { keepGuide: true })
                   }
@@ -1811,6 +1875,7 @@ export function PullRequestDetailPanel({
                   <PullRequestCodeTab
                     scrollerRef={scrollerRefs.code}
                     onAddToAgentSelection={addSelectionToAgent}
+                    canSaveAgentDraft={canSaveAgentDraft}
                     environmentId={environmentId}
                     reference={reference}
                     detail={detail}

@@ -1,7 +1,9 @@
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
+import type { ScopedThreadRef } from "@t3tools/contracts";
 import { ArrowLeftIcon, ExternalLinkIcon } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 
+import { useLinkClickHandler, useOpenLink } from "~/browser/useOpenLink";
 import { cn } from "~/lib/utils";
 import { readLocalApi } from "~/localApi";
 import { Button } from "../ui/button";
@@ -16,12 +18,17 @@ interface CrumbsPullRequest {
   readonly title: string;
 }
 
-const openNumberContextMenu = (event: ReactMouseEvent, detail: CrumbsPullRequest): void => {
+const openNumberContextMenu = (
+  event: ReactMouseEvent,
+  detail: CrumbsPullRequest,
+  openLink: (url: string) => Promise<void>,
+): void => {
   event.preventDefault();
   event.stopPropagation();
   void showPullRequestLinkContextMenu({
     url: detail.url,
     openLabel: openOnHostLabel(sourceControlClients.get(detail.provider)),
+    openLink,
     position: { x: event.clientX, y: event.clientY },
   });
 };
@@ -56,11 +63,15 @@ function NumberLink({
   toneClassName,
   openOnHostText,
   focusable,
+  onLinkClick,
+  openLink,
 }: {
   detail: CrumbsPullRequest;
   toneClassName: string;
   openOnHostText: string;
   focusable: boolean;
+  onLinkClick: ReturnType<typeof useLinkClickHandler>;
+  openLink: (url: string) => Promise<void>;
 }) {
   return (
     <Tooltip>
@@ -69,11 +80,11 @@ function NumberLink({
           <button
             type="button"
             {...(focusable ? {} : { tabIndex: -1 })}
-            onClick={() => void readLocalApi()?.shell.openExternal(detail.url)}
+            onClick={(event) => onLinkClick(event, detail.url)}
             onAuxClick={(event) => {
               if (event.button === 1) void readLocalApi()?.shell.openExternal(detail.url);
             }}
-            onContextMenu={(event) => openNumberContextMenu(event, detail)}
+            onContextMenu={(event) => openNumberContextMenu(event, detail, openLink)}
             className={cn(
               "inline-flex shrink-0 cursor-pointer items-center gap-0.5 font-medium underline-offset-2 hover:underline",
               toneClassName,
@@ -101,6 +112,7 @@ export function PullRequestDetailCrumbs({
   repositoryUrl,
   openOnHostText,
   onBack,
+  threadRef,
 }: {
   detail: CrumbsPullRequest | null;
   toneClassName: string | null;
@@ -108,7 +120,10 @@ export function PullRequestDetailCrumbs({
   repositoryUrl: string | null;
   openOnHostText: string;
   onBack: (() => void) | undefined;
+  threadRef: ScopedThreadRef | null;
 }) {
+  const onLinkClick = useLinkClickHandler(threadRef);
+  const openLink = useOpenLink(threadRef);
   const ready = detail !== null && toneClassName !== null;
   return (
     <div className="pl-4 grid h-7 min-w-0 items-center overflow-hidden">
@@ -131,7 +146,7 @@ export function PullRequestDetailCrumbs({
                   repositoryUrl ? (
                     <button
                       type="button"
-                      onClick={() => void readLocalApi()?.shell.openExternal(repositoryUrl)}
+                      onClick={(event) => onLinkClick(event, repositoryUrl)}
                       className="min-w-0 cursor-pointer truncate text-left font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                     >
                       {detail.repository}
@@ -151,6 +166,8 @@ export function PullRequestDetailCrumbs({
               detail={detail}
               toneClassName={toneClassName}
               openOnHostText={openOnHostText}
+              onLinkClick={onLinkClick}
+              openLink={openLink}
               focusable
             />
           </>
@@ -173,6 +190,8 @@ export function PullRequestDetailCrumbs({
               detail={detail}
               toneClassName={toneClassName}
               openOnHostText={openOnHostText}
+              onLinkClick={onLinkClick}
+              openLink={openLink}
               focusable={condensed}
             />
             <Tooltip>
