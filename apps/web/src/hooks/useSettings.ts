@@ -29,6 +29,7 @@ import {
   splitSharedServerPatch,
   supportsSharedSettingsSync,
 } from "@t3tools/client-runtime/state/shared-settings";
+import { isQuickMessageWindow } from "~/components/quickMessage/quickMessageWindow";
 import { ensureLocalApi } from "~/localApi";
 import {
   getThemeDefinition,
@@ -177,6 +178,15 @@ async function hydrateClientSettings(): Promise<void> {
 const defaultClientSettingsPersistence = (settings: ClientSettings): Promise<void> =>
   ensureLocalApi().persistence.setClientSettings(settings);
 
+/**
+ * The quick-message window paints settings the main window owns. A write from
+ * here would store this window's older snapshot over the main window's edits.
+ * `adoptClientSettings` still updates memory and does not write.
+ */
+function isClientSettingsReadOnlyWindow(): boolean {
+  return isQuickMessageWindow;
+}
+
 function enqueueClientSettingsPersistence<A>(work: () => Promise<A>): Promise<A> {
   const result = clientSettingsPersistenceQueue.then(work);
   clientSettingsPersistenceQueue = result.then(
@@ -190,6 +200,9 @@ export function persistClientSettingsPatch(
   patch: ClientSettingsPatch,
   persist: (settings: ClientSettings) => Promise<void> = defaultClientSettingsPersistence,
 ): Promise<void> {
+  if (isClientSettingsReadOnlyWindow()) {
+    return Promise.resolve();
+  }
   // Patches queued before hydration must publish before newer optimistic patches.
   const deferPatch =
     clientSettingsHydrationStatus !== "ready" || deferredClientSettingsPatchCount > 0;
@@ -227,6 +240,9 @@ export async function persistClientSettingsUpdate(
   update: (current: ClientSettings) => ClientSettings,
   persist: (settings: ClientSettings) => Promise<void> = defaultClientSettingsPersistence,
 ): Promise<ClientSettings> {
+  if (isClientSettingsReadOnlyWindow()) {
+    return getClientSettingsSnapshot();
+  }
   return enqueueClientSettingsPersistence(async () => {
     if (clientSettingsHydrationStatus !== "ready") {
       await hydrateClientSettings();

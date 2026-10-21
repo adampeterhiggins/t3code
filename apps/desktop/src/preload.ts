@@ -1,4 +1,5 @@
 import type {
+  DesktopAppearanceSnapshot,
   DesktopBridge,
   DesktopPreviewOpenLinkEvent,
   DesktopPreviewPointerEvent,
@@ -26,6 +27,30 @@ const SNAP_SHOT_EVENT_TYPES = new Set([
   "failed",
   "shortcut-changed",
 ]);
+function isOptionalThemeId(value: unknown): boolean {
+  return value === undefined || typeof value === "string";
+}
+
+function isAppearanceSnapshot(value: unknown): value is DesktopAppearanceSnapshot {
+  if (typeof value !== "object" || value === null) return false;
+  if (!("theme" in value) || typeof value.theme !== "string") return false;
+  if (
+    !("appearanceMode" in value) ||
+    (value.appearanceMode !== "light" &&
+      value.appearanceMode !== "dark" &&
+      value.appearanceMode !== "system")
+  ) {
+    return false;
+  }
+  if (!("halves" in value)) return false;
+  if (value.halves !== null) {
+    if (typeof value.halves !== "object") return false;
+    const halves = value.halves as { light?: unknown; dark?: unknown };
+    if (!isOptionalThemeId(halves.light) || !isOptionalThemeId(halves.dark)) return false;
+  }
+  return "customThemes" in value && Array.isArray(value.customThemes);
+}
+
 function isSnapShotEvent(value: unknown): value is DesktopSnapShotEvent {
   if (typeof value !== "object" || value === null) return false;
   const { type, id } = value as { type?: unknown; id?: unknown };
@@ -143,6 +168,16 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   getClientSettings: () => ipcRenderer.invoke(IpcChannels.GET_CLIENT_SETTINGS_CHANNEL),
   setClientSettings: (settings) =>
     ipcRenderer.invoke(IpcChannels.SET_CLIENT_SETTINGS_CHANNEL, settings),
+  onClientSettings: (listener) => {
+    const wrappedListener = (_event: Electron.IpcRendererEvent, settings: unknown) => {
+      if (typeof settings !== "object" || settings === null) return;
+      listener(settings as Parameters<typeof listener>[0]);
+    };
+    ipcRenderer.on(IpcChannels.CLIENT_SETTINGS_EVENT_CHANNEL, wrappedListener);
+    return () => {
+      ipcRenderer.removeListener(IpcChannels.CLIENT_SETTINGS_EVENT_CHANNEL, wrappedListener);
+    };
+  },
   requestSnapShotPermissions: (includeAccessibility) =>
     ipcRenderer.invoke(IpcChannels.REQUEST_SNAP_SHOT_PERMISSIONS_CHANNEL, includeAccessibility),
   getSnapShotState: () => ipcRenderer.invoke(IpcChannels.GET_SNAP_SHOT_STATE_CHANNEL),
@@ -219,6 +254,19 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   showSavedFileInFolder: (path) =>
     ipcRenderer.invoke(IpcChannels.SHOW_SAVED_FILE_IN_FOLDER_CHANNEL, path),
   setTheme: (theme) => ipcRenderer.invoke(IpcChannels.SET_THEME_CHANNEL, theme),
+  getAppearanceSnapshot: () => ipcRenderer.invoke(IpcChannels.GET_APPEARANCE_SNAPSHOT_CHANNEL),
+  publishAppearanceSnapshot: (snapshot) =>
+    ipcRenderer.invoke(IpcChannels.PUBLISH_APPEARANCE_SNAPSHOT_CHANNEL, snapshot),
+  onAppearanceSnapshot: (listener) => {
+    const wrappedListener = (_event: Electron.IpcRendererEvent, snapshot: unknown) => {
+      if (!isAppearanceSnapshot(snapshot)) return;
+      listener(snapshot);
+    };
+    ipcRenderer.on(IpcChannels.APPEARANCE_SNAPSHOT_CHANNEL, wrappedListener);
+    return () => {
+      ipcRenderer.removeListener(IpcChannels.APPEARANCE_SNAPSHOT_CHANNEL, wrappedListener);
+    };
+  },
   showContextMenu: (items, position) =>
     ipcRenderer.invoke(IpcChannels.CONTEXT_MENU_CHANNEL, {
       items,
