@@ -1634,6 +1634,8 @@ export interface ChatComposerProps {
   phase: SessionPhase;
   canInterrupt: boolean;
   isConnecting: boolean;
+  /** Whether the checkout is a git repository is still unknown, so the send mode isn't settled. */
+  checkoutKindPending: boolean;
   isSendBusy: boolean;
   canResume: boolean;
   isRevertingCheckpoint?: boolean;
@@ -2039,6 +2041,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     phase,
     canInterrupt,
     isConnecting,
+    checkoutKindPending,
     isSendBusy,
     canResume,
     isRevertingCheckpoint = false,
@@ -4670,20 +4673,22 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     loadMessageDraftStable(draft);
   };
   const openMessageDraftStable = useStableCallback(openMessageDraft);
-  // A surface beside the composer asked to send what it just wrote here. Wait out a connect and
-  // attachments it just handed over that are still uploading, then send as Enter would; anything
-  // else that stops it leaves the draft in place to send by hand.
+  // A surface beside the composer asked to send what it just wrote here. Wait out a connect,
+  // attachments it just handed over that are still uploading, and the git status of a draft that
+  // just opened (until it lands, a non-git folder reads as a repo and asks for a base branch),
+  // then send as Enter would; anything else that stops it leaves the draft in place to send by hand.
   const submitRequested = useComposerSubmitRequestStore((state) =>
     state.pending.has(composerDraftTargetKey),
   );
   const attachmentsUploading = attachmentUploadPendingReason !== null;
   useEffect(() => {
-    if (!submitRequested || isConnecting || attachmentsUploading) return;
+    if (!submitRequested || isConnecting || attachmentsUploading || checkoutKindPending) return;
     const intent = useComposerSubmitRequestStore.getState().take(composerDraftTargetKey);
     if (intent === "save-draft") void saveMessageDraftStable();
     else if (intent === "send") submitComposerStable();
   }, [
     attachmentsUploading,
+    checkoutKindPending,
     composerDraftTargetKey,
     isConnecting,
     saveMessageDraftStable,
