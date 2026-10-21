@@ -1164,6 +1164,12 @@ export interface DesktopBridge {
    * cannot change it. Older shells omit it.
    */
   getWindowRole?: () => DesktopWindowRole;
+  /**
+   * True only for a quick-message window constructed with an isolated session.
+   * Older shells omit it. A thread URL is not a substitute: the legacy panel
+   * can load one and still shares the main profile.
+   */
+  isQuickMessageSessionIsolated?: () => boolean;
   setNotificationBadge?: (badge: { count: number; image: string | null }) => Promise<void>;
   onNotificationBadgeClear?: (listener: () => void) => () => void;
   onTrackpadScrollEnd?: (listener: () => void) => () => void;

@@ -21,18 +21,20 @@ export function isQuickMessageWindowRole(
 }
 
 /**
- * Temporary split while the desktop app still opens the legacy panel at `#/quick-message`.
- * A floating chat loads a real thread route in the same quick-message role. The hash is the
- * one present at startup: navigation and a reload of that thread must not flip the window
- * back to the legacy panel.
+ * Draft writers run only in a quick-message window built with an isolated session.
+ * The legacy panel shares the main profile, and loading a thread URL there does
+ * not change that. Shells that omit the getter stay on the shared profile.
+ * The hash is not consulted: navigation and reload cannot grant or revoke it.
  */
 export function isDetachedChatWindowRole(
   getWindowRole: (() => DesktopWindowRole) | undefined,
-  initialHash: string,
+  isQuickMessageSessionIsolated: (() => boolean) | undefined,
 ): boolean {
+  if (typeof getWindowRole !== "function" || getWindowRole() !== "quick-message") {
+    return false;
+  }
   return (
-    isQuickMessageWindowRole(getWindowRole, initialHash) &&
-    !initialHash.startsWith("#/quick-message")
+    typeof isQuickMessageSessionIsolated === "function" && isQuickMessageSessionIsolated() === true
   );
 }
 
@@ -44,4 +46,7 @@ export const isQuickMessageWindow =
 export const isDetachedChatWindow =
   isElectron &&
   typeof window !== "undefined" &&
-  isDetachedChatWindowRole(window.desktopBridge?.getWindowRole, window.location.hash);
+  isDetachedChatWindowRole(
+    window.desktopBridge?.getWindowRole,
+    window.desktopBridge?.isQuickMessageSessionIsolated,
+  );

@@ -1,20 +1,28 @@
 import { assert, describe, it } from "vite-plus/test";
 
-import { QUICK_MESSAGE_WINDOW_ROLE_ARGUMENT } from "../src/windowRole.ts";
+import {
+  QUICK_MESSAGE_SESSION_ISOLATED_ARGUMENT,
+  QUICK_MESSAGE_WINDOW_ROLE_ARGUMENT,
+} from "../src/windowRole.ts";
 import { verifyPreloadBundle } from "./verify-preload-bundle.mjs";
 
 const validPreload = `
   const electron = require("electron");
   const PICK_FOLDER_CHANNEL = "desktop:pick-folder";
-  const windowRole = (process.argv ?? []).includes(${JSON.stringify(QUICK_MESSAGE_WINDOW_ROLE_ARGUMENT)})
+  const argv = process.argv ?? [];
+  const windowRole = argv.includes(${JSON.stringify(QUICK_MESSAGE_WINDOW_ROLE_ARGUMENT)})
     ? "quick-message"
     : "main";
+  const quickMessageSessionIsolated =
+    windowRole === "quick-message" &&
+    argv.includes(${JSON.stringify(QUICK_MESSAGE_SESSION_ISOLATED_ARGUMENT)});
   electron.contextBridge.exposeInMainWorld("__clerk_internal_electron_passkeys", {});
   electron.contextBridge.exposeInMainWorld("desktopBridge", {
     getClientPlatform: () => process.platform,
     getLocalEnvironmentBootstraps: () => [],
     getPathForFile: () => "",
     getWindowRole: () => windowRole,
+    isQuickMessageSessionIsolated: () => quickMessageSessionIsolated,
     pickFolder: (options) => electron.ipcRenderer.invoke(PICK_FOLDER_CHANNEL, options),
   });
 `;
@@ -110,15 +118,41 @@ describe("desktop preload bundle verifier", () => {
 
   it("returns main when the executed preload argv has no quick-message marker", () => {
     const bridge = verifyPreloadBundle(validPreload, {
-      argv: ["/app/electron", "--type=renderer", "--t3code-window-role=main"],
+      argv: [
+        "/app/electron",
+        "--type=renderer",
+        "--t3code-window-role=main",
+        QUICK_MESSAGE_SESSION_ISOLATED_ARGUMENT,
+      ],
     });
     assert.equal(bridge.getWindowRole(), "main");
+    assert.equal(bridge.isQuickMessageSessionIsolated(), false);
   });
 
-  it("returns quick-message when the executed preload argv contains the marker", () => {
+  it("returns quick-message and stays shared when only the role marker is present", () => {
     const bridge = verifyPreloadBundle(validPreload, {
       argv: ["/app/electron", "--type=renderer", QUICK_MESSAGE_WINDOW_ROLE_ARGUMENT],
     });
     assert.equal(bridge.getWindowRole(), "quick-message");
+    assert.equal(bridge.isQuickMessageSessionIsolated(), false);
+  });
+
+  it("reports an isolated session only when both construction markers are present", () => {
+    const bridge = verifyPreloadBundle(validPreload, {
+      argv: [
+        "/app/electron",
+        "--type=renderer",
+        QUICK_MESSAGE_SESSION_ISOLATED_ARGUMENT,
+        QUICK_MESSAGE_WINDOW_ROLE_ARGUMENT,
+      ],
+    });
+    assert.equal(bridge.getWindowRole(), "quick-message");
+    assert.equal(bridge.isQuickMessageSessionIsolated(), true);
+  });
+
+  it("stays shared when argv is missing", () => {
+    const bridge = verifyPreloadBundle(validPreload);
+    assert.equal(bridge.getWindowRole(), "main");
+    assert.equal(bridge.isQuickMessageSessionIsolated(), false);
   });
 });
