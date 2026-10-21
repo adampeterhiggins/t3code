@@ -45,7 +45,7 @@ VP = $(if $(wildcard node_modules/.bin/vp),./node_modules/.bin/vp,vp)
 
 .DEFAULT_GOAL := help
 
-.PHONY: help deps update-cert update-next update-serve update-serve-stop update-status
+.PHONY: help deps phone update-cert update-next update-serve update-serve-stop update-status
 
 ##@ Local update loop
 
@@ -68,6 +68,10 @@ help: ## Show the available targets
 	@printf "\n\033[1mEvery update after that\033[0m\n"
 	@printf "  make update-next            build the next dated fork version\n"
 	@printf "  then click the rocket in the app\n\n"
+	@printf "  make phone                  rebuild and install the iPhone app (see apps/mobile/README.md)\n\n"
+
+phone: deps ## Build and install a self-contained Personal Team iPhone app
+	node scripts/update-phone.ts
 
 # CA:true + trustRoot are both required: find-identity -p codesigning runs a
 # policy eval that drops the cert unless it anchors code-signing trust, and
