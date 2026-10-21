@@ -23,6 +23,7 @@ import { useApplyStartFrom } from "../chat/StartFromPicker";
 import type { resolveBranchStart } from "../chat/StartFromPicker.logic";
 import { createThreadAttachSummaryLoader } from "../chat/threadAttachPickerSummary";
 import { useCaptureThreadTabContext } from "../chat/ThreadTabs";
+import { attachStoredModelToChat } from "../chat/modelReferences";
 import { useAttachCheckout } from "../chat/useComposerCheckoutItems";
 import { toastManager } from "../ui/toast";
 
@@ -142,6 +143,15 @@ function useApplyAttachment(threadRef: ScopedThreadRef) {
         return true;
       case "repository":
         attachRepository(threadRef, attachment);
+        return true;
+      case "model":
+        attachStoredModelToChat(threadRef, {
+          providerInstanceId: attachment.providerInstanceId,
+          driver: attachment.driver,
+          instanceName: attachment.instanceName,
+          model: attachment.model,
+          modelName: attachment.label,
+        });
         return true;
     }
   };

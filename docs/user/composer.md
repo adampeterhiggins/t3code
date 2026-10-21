@@ -413,7 +413,8 @@ come along as their task and result.
 You can name a model in your message, such as the one subagents should use. Type `@` and
 switch to the **Models** tab, or keep typing a model's name (`@grok`, `@opus`), to pick one; the
 buttons under the tabs narrow the list to one provider. On web and desktop you can also choose
-**Model** from the attach (paperclip) menu. Click the chip to set its effort, fast mode or other
+**Model** from the attach (paperclip) menu, including in the desktop quick message composer. Click
+the chip to set its effort, fast mode or other
 options; the chip shows them as a brain with the effort's initial, a bolt and the context size.
 Hovering the chip shows exactly what you asked for and when, and it never changes after you send.
 The agent receives the provider instance, model and options in the form T3 Code's `delegate_task`

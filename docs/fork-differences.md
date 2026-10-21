@@ -490,8 +490,10 @@ a record of what was asked: a sent chip is never updated. See the
   what the model picker offers in columns (model, provider instance, context size, trait glyphs,
   favourite) with a provider filter. A query that starts a word of a model's name opens on Models
   ([`composerModelItems.ts`](../apps/web/src/components/chat/composerModelItems.ts)). The attach
-  menu's **Model** item opens the model picker panel to insert a chip instead of switching models.
-  Clicking a composer chip opens the traits menu for it.
+  menu's **Model** item, in a thread and in the desktop quick message panel, opens the model
+  picker panel to insert a chip instead of switching models. A pick in the quick message panel is
+  applied to the new draft when the message is sent. Clicking a composer chip opens the traits
+  menu for it.
 - **Chip and hover.** The chip shows effort, fast mode and context as glyphs. The hover is the same
   card in the composer and in sent messages: the options as written and when.
 - **Agent payload.** The provider receives the choice as a `delegate_task` target
@@ -2257,8 +2259,9 @@ in **Settings → General → Quick message**. The panel is a separate transpare
 the app's theme and has the in-app composer's controls. The panel collects the message, files,
 project, model, account and modes. Choose **No project** in its project selector to start without a
 checkout on the selected environment. Its **⋯** and attach menu open their pickers in the panel
-itself. The main window then opens a draft, applies the picked start point and attachments to it as
-its own pickers would, and sends it through its own composer.
+itself, including **Model**, which names a model in the new message. The main window then opens a
+draft, applies the picked start point and attachments to it as its own pickers would, and sends it
+through its own composer.
 
 See [the user guide](user/keybindings.md#quick-message).
 Code: [DesktopQuickMessage.ts](../apps/desktop/src/quickMessage/DesktopQuickMessage.ts),

@@ -22,6 +22,7 @@ import {
   SnapShotShortcut,
 } from "./settings.ts";
 import { ModelSelection } from "./modelSelection.ts";
+import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
 import { ProviderInteractionMode, RuntimeMode } from "./providerPolicy.ts";
 import type { EditorId } from "./editor.ts";
 import type { PreviewForwardedShortcut } from "./keybindings.ts";
@@ -313,6 +314,14 @@ export const DesktopQuickMessageAttachment = Schema.Union([
     nameWithOwner: Schema.String,
     remoteUrl: Schema.String,
     label: Schema.String,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("model"),
+    providerInstanceId: ProviderInstanceId,
+    driver: ProviderDriverKind,
+    instanceName: TrimmedNonEmptyString.check(Schema.isMaxLength(2_048)),
+    model: TrimmedNonEmptyString.check(Schema.isMaxLength(255)),
+    label: TrimmedNonEmptyString.check(Schema.isMaxLength(2_048)),
   }),
 ]);
 export type DesktopQuickMessageAttachment = typeof DesktopQuickMessageAttachment.Type;
