@@ -16,6 +16,7 @@ import { AuthAccessTokenResult, AuthSessionState, AuthWebSocketTicketResult } fr
 import { AdvertisedEndpoint } from "./remoteAccess.ts";
 import { ComposerStartFromSelection } from "./composerStartFrom.ts";
 import { ExecutionEnvironmentDescriptor } from "./environment.ts";
+import type { DesktopAppearanceSnapshot } from "./desktopAppearance.ts";
 import {
   type ClientSettings,
   ClientSettingsSchema,
@@ -1202,6 +1203,11 @@ export interface DesktopBridge {
   getLocalEnvironmentBearerToken: () => Promise<string>;
   getClientSettings: () => Promise<ClientSettings | null>;
   setClientSettings: (settings: ClientSettings) => Promise<void>;
+  /**
+   * Settings just written by the main window. Older shells omit this.
+   * A floating window adopts the object in memory and does not write it back.
+   */
+  onClientSettings?: (listener: (settings: ClientSettings) => void) => () => void;
   getConnectionCatalog?: () => Promise<string | null>;
   setConnectionCatalog?: (catalog: string) => Promise<boolean>;
   clearConnectionCatalog?: () => Promise<void>;
@@ -1266,6 +1272,18 @@ export interface DesktopBridge {
   /** Reveals a file saved by `saveTextFile` in the OS file manager. */
   showSavedFileInFolder?: (path: string) => Promise<void>;
   setTheme: (theme: DesktopTheme) => Promise<void>;
+  /**
+   * Committed appearance owned by the main window. Older shells omit these,
+   * and callers keep the local theme engine when any method is missing.
+   *
+   * `getAppearanceSnapshot` resolves the last accepted snapshot, or `null`
+   * when none has been published. `publishAppearanceSnapshot` resolves after
+   * the main window's snapshot is stored. `onAppearanceSnapshot` receives
+   * each accepted snapshot in publish order. The listener returns its unsubscribe.
+   */
+  getAppearanceSnapshot?: () => Promise<DesktopAppearanceSnapshot | null>;
+  publishAppearanceSnapshot?: (snapshot: DesktopAppearanceSnapshot) => Promise<void>;
+  onAppearanceSnapshot?: (listener: (snapshot: DesktopAppearanceSnapshot) => void) => () => void;
   showContextMenu: <T extends string>(
     items: readonly ContextMenuItem<T>[],
     position?: { x: number; y: number },

@@ -38,6 +38,7 @@ import * as NativeWindowInteraction from "../../electron/NativeWindowInteraction
 import * as ElectronShell from "../../electron/ElectronShell.ts";
 import * as ElectronTheme from "../../electron/ElectronTheme.ts";
 import * as ElectronWindow from "../../electron/ElectronWindow.ts";
+import { ensureMainSender } from "../mainAuthority.ts";
 import * as Electron from "electron";
 import * as MacPermissions from "../../permissions/MacPermissions.ts";
 import { safariPermissionCheck } from "../../preview/BrowserImport/SafariPermission.ts";
@@ -281,7 +282,9 @@ export const setTheme = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.SET_THEME_CHANNEL,
   payload: DesktopThemeSchema,
   result: Schema.Void,
-  handler: Effect.fn("desktop.ipc.window.setTheme")(function* (theme) {
+  handler: Effect.fn("desktop.ipc.window.setTheme")(function* (theme, event) {
+    // Native theme is process-wide. A presented window must not paint over it.
+    yield* ensureMainSender(event, "set-theme");
     const electronTheme = yield* ElectronTheme.ElectronTheme;
     yield* electronTheme.setSource(theme);
   }),
