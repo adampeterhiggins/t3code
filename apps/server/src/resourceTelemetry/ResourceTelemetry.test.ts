@@ -603,6 +603,60 @@ describe("ResourceTelemetry", () => {
     }),
   );
 
+  it.effect("samples on demand when an idle sidecar has no recent history", () =>
+    Effect.gen(function* () {
+      yield* TestClock.adjust(Duration.minutes(1));
+      const now = DateTime.toEpochMillis(yield* DateTime.now);
+      const sample = nativeSnapshot({
+        sequence: 1,
+        sampledAtUnixMs: now,
+        childCpuTimeMs: 0,
+        childWriteBytes: 0,
+        externalProcesses: [{ pid: 5_000, startTimeMs: 300 }],
+      });
+      // The sidecar records on-demand samples into the history it serves.
+      const recorded = yield* Ref.make<ReadonlyArray<ResourceMonitorSnapshotEvent>>([]);
+      const sampleCount = yield* Ref.make(0);
+      const nativeLayer = NativeTelemetryClient.layerTest({
+        readHistory: () => Ref.get(recorded),
+        sampleNow: Ref.update(sampleCount, (count) => count + 1).pipe(
+          Effect.andThen(Ref.set(recorded, [sample])),
+          Effect.as(nativeGeneration(sample, 0)),
+        ),
+        health: Effect.succeed({
+          status: "healthy" as const,
+          hello: Option.none(),
+          lastSampleAt: Option.none(),
+          lastError: Option.none(),
+          restartCount: 0,
+          sampleIntervalMs: 0,
+        }),
+      });
+      const layer = ResourceTelemetry.layer.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            nativeLayer,
+            DesktopTelemetryReceiver.layerTest(),
+            ResourceAttribution.layer,
+          ),
+        ),
+      );
+
+      yield* Effect.gen(function* () {
+        const telemetry = yield* ResourceTelemetry.ResourceTelemetry;
+        const usage = yield* telemetry.readUsage;
+        expect(usage?.processCount).toBe(4);
+        expect(usage?.rssBytes).toBe(4 * 1_024);
+        expect(yield* Ref.get(sampleCount)).toBe(1);
+
+        // A sample still inside the usage window is reused rather than taken again.
+        yield* TestClock.adjust(Duration.seconds(6));
+        expect((yield* telemetry.readUsage)?.processCount).toBe(4);
+        expect(yield* Ref.get(sampleCount)).toBe(1);
+      }).pipe(Effect.provide(layer));
+    }),
+  );
+
   it.effect("combines native, Electron, attribution, retry, and history data", () =>
     Effect.gen(function* () {
       const startedAt = DateTime.toEpochMillis(yield* DateTime.now);
