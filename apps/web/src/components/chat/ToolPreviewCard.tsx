@@ -1,6 +1,7 @@
 import { ThreadId, type EnvironmentId } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type {
+  ProviderCapabilitiesToolPreview,
   PullRequestToolPreview,
   RecordsToolPreview,
   ToolPreview,
@@ -238,6 +239,98 @@ function RecordsView(props: {
       })}
       {hidden > 0 ? <li className="text-muted-foreground">+{hidden} more</li> : null}
     </ul>
+  );
+}
+
+function SectionLabel({ children }: { readonly children: ReactNode }) {
+  return <p className="pt-1 text-3xs tracking-wide text-muted-foreground uppercase">{children}</p>;
+}
+
+function ProviderCapabilitiesView({
+  preview,
+}: {
+  readonly preview: ProviderCapabilitiesToolPreview;
+}) {
+  const available = preview.providers.filter((provider) => !provider.unavailableReason);
+  const unavailable = preview.providers.filter((provider) => provider.unavailableReason);
+  return (
+    <>
+      {preview.inheritedModel || preview.modes.length > 0 ? (
+        <div className="flex min-w-0 items-center gap-1.5">
+          {preview.inheritedModel ? (
+            <>
+              <span className="shrink-0 text-muted-foreground">Inherits</span>
+              <span className="min-w-0 truncate font-medium text-foreground">
+                {preview.inheritedModel}
+              </span>
+            </>
+          ) : null}
+          {preview.inheritedProvider ? (
+            <span className="shrink-0 text-muted-foreground">· {preview.inheritedProvider}</span>
+          ) : null}
+          <span className="ml-auto flex shrink-0 gap-1">
+            {preview.modes.map((mode) => (
+              <Badge key={mode} size="sm" variant="outline">
+                {mode}
+              </Badge>
+            ))}
+          </span>
+        </div>
+      ) : null}
+      {available.length > 0 ? (
+        <div>
+          <SectionLabel>Available · {available.length}</SectionLabel>
+          <ul className="divide-y divide-border/60">
+            {available.map((provider) => (
+              <li key={provider.key} className="flex min-w-0 items-start gap-2 py-1">
+                <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-success" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <span className="truncate font-medium text-foreground">{provider.name}</span>
+                    {provider.driver ? (
+                      <span className="shrink-0 font-mono text-2xs text-muted-foreground">
+                        {provider.driver}
+                      </span>
+                    ) : null}
+                    {provider.current ? (
+                      <Badge size="sm" variant="outline">
+                        current
+                      </Badge>
+                    ) : null}
+                  </div>
+                  {provider.models.length > 0 ? (
+                    <p className="truncate text-muted-foreground">
+                      {provider.models.join(", ")}
+                      {provider.modelCount > provider.models.length ? "…" : ""}
+                    </p>
+                  ) : null}
+                </div>
+                <span className="shrink-0 text-muted-foreground tabular-nums">
+                  {provider.modelCount}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {unavailable.length > 0 ? (
+        <div>
+          <SectionLabel>Unavailable · {unavailable.length}</SectionLabel>
+          <ul>
+            {unavailable.map((provider) => (
+              <li
+                key={provider.key}
+                className="flex min-w-0 items-baseline gap-2 py-0.5 text-muted-foreground"
+              >
+                <span className="size-1.5 shrink-0 rounded-full border border-muted-foreground" />
+                <span className="shrink-0">{provider.name}</span>
+                <span className="min-w-0 flex-1 text-right">{provider.unavailableReason}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -735,6 +828,8 @@ function PreviewBody(props: {
           />
         </>
       );
+    case "provider-capabilities":
+      return <ProviderCapabilitiesView preview={preview} />;
     case "html-page":
       return (
         <>
