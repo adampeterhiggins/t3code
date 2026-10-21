@@ -34,8 +34,10 @@ import {
   resolveNewDraftStartFromOrigin,
   resolveNewThreadModelSelectionOverride,
 } from "../lib/chatThreadActions";
+import { isDetachedChatWindow } from "../components/quickMessage/quickMessageWindow";
 import { readT3ProjectFile } from "../lib/t3ProjectFileDefaults";
 import { appAtomRegistry } from "../rpc/atomRegistry";
+import { primaryEnvironmentIdAtom } from "../state/primaryEnvironment";
 import { environmentServerConfigsAtom } from "../state/server";
 import { resolveThreadRouteTarget } from "../threadRoutes";
 import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore";
@@ -77,6 +79,13 @@ export function useNewThreadHandler() {
       environmentSelection?: "manual";
     },
   ): Promise<{ draftId: DraftId; threadId: ThreadId } | null> => {
+    // Scratch and project routes on another machine would leave this window.
+    if (isDetachedChatWindow) {
+      const primaryEnvironmentId = appAtomRegistry.get(primaryEnvironmentIdAtom);
+      if (primaryEnvironmentId === null || projectRef.environmentId !== primaryEnvironmentId) {
+        return Promise.resolve(null);
+      }
+    }
     const projects = readProjects();
     // Read at call time: every provider status push replaces the config map, and
     // subscribing would hand every sidebar row a new handler.
@@ -169,7 +178,7 @@ export function useNewThreadHandler() {
     const hasEnvModeOption = options?.envMode !== undefined;
     const hasStartFromOriginOption = options?.startFromOrigin !== undefined;
     const selectionOptions =
-      options?.environmentSelection === "manual"
+      isDetachedChatWindow || options?.environmentSelection === "manual"
         ? { environmentSelection: "manual" as const, loadBalancedEnvironmentId: null }
         : {};
     const storedDraftThread = getDraftSessionByLogicalProjectKey(logicalProjectKey);

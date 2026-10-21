@@ -20,7 +20,28 @@ export function isQuickMessageWindowRole(
   return getWindowRole() === "quick-message";
 }
 
+/**
+ * Temporary split while the desktop app still opens the legacy panel at `#/quick-message`.
+ * A floating chat loads a real thread route in the same quick-message role. The hash is the
+ * one present at startup: navigation and a reload of that thread must not flip the window
+ * back to the legacy panel.
+ */
+export function isDetachedChatWindowRole(
+  getWindowRole: (() => DesktopWindowRole) | undefined,
+  initialHash: string,
+): boolean {
+  return (
+    isQuickMessageWindowRole(getWindowRole, initialHash) &&
+    !initialHash.startsWith("#/quick-message")
+  );
+}
+
 export const isQuickMessageWindow =
   isElectron &&
   typeof window !== "undefined" &&
   isQuickMessageWindowRole(window.desktopBridge?.getWindowRole, window.location.hash);
+
+export const isDetachedChatWindow =
+  isElectron &&
+  typeof window !== "undefined" &&
+  isDetachedChatWindowRole(window.desktopBridge?.getWindowRole, window.location.hash);

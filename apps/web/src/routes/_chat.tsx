@@ -34,6 +34,7 @@ import { openStartFromPicker } from "~/components/chat/StartFromPicker";
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
 import { primaryServerKeybindingsAtom } from "~/state/server";
 import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
+import { isDetachedChatWindow } from "../components/quickMessage/quickMessageWindow";
 
 function ChatRouteGlobalShortcuts() {
   const clearSelection = useThreadSelectionStore((state) => state.clearSelection);
@@ -243,7 +244,10 @@ function ChatRouteLayout() {
 
 export const Route = createFileRoute("/_chat")({
   beforeLoad: async ({ context }) => {
+    // Pairing is the main window's sign-in screen. The floating chat shows its
+    // own notice instead, and must not be sent to remote sign-in.
     if (
+      !isDetachedChatWindow &&
       context.authGateState.status !== "authenticated" &&
       context.authGateState.status !== "hosted-static"
     ) {

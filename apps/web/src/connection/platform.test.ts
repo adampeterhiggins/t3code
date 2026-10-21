@@ -12,17 +12,25 @@ import * as Fiber from "effect/Fiber";
 import { afterEach, vi } from "vite-plus/test";
 import { ClientCapabilities } from "@t3tools/client-runtime/platform";
 import {
+  BearerConnectionTarget,
   ConnectionBlockedError,
   ConnectionTransientError,
+  RelayConnectionRegistration,
+  RelayConnectionTarget,
+  SshConnectionTarget,
 } from "@t3tools/client-runtime/connection";
 
 import {
   canRetainCachedPlatformRegistrationAfterRefreshFailure,
   canReuseCachedPlatformRegistration,
+  includeSecondaryPlatformRegistrations,
+  isolateDetachedConnectionCatalog,
   layer,
   isRejectedBootstrapCredentialError,
   isRejectedSecondaryBootstrap,
+  makeDesktopSshGateway,
   nextRejectedSecondaryBootstrap,
+  persistedTargetsForDetachedCatalog,
   primaryRegistrationToRetainAfterTopologyRead,
   prepareDesktopSshEnvironment,
   provisionDesktopSshEnvironment,
@@ -508,4 +516,102 @@ describe("primary topology cache", () => {
       }),
     ).toBeUndefined();
   });
+});
+
+describe("floating chat connections", () => {
+  it("registers only the primary local environment", () => {
+    expect(includeSecondaryPlatformRegistrations(true)).toBe(false);
+    expect(includeSecondaryPlatformRegistrations(false)).toBe(true);
+  });
+
+  it.effect("does not open an SSH tunnel", () =>
+    Effect.gen(function* () {
+      const ensureSshEnvironment = vi.fn();
+      const disconnectSshEnvironment = vi.fn();
+      vi.stubGlobal("window", {
+        desktopBridge: { ensureSshEnvironment, disconnectSshEnvironment },
+      });
+      const gateway = makeDesktopSshGateway(true);
+
+      const provisionError = yield* gateway.provision(TARGET).pipe(Effect.flip);
+      const prepareError = yield* gateway
+        .prepare({
+          connectionId: "ssh-1",
+          expectedEnvironmentId: EnvironmentId.make("env-ssh"),
+          target: TARGET,
+          bearerToken: "saved-token",
+        })
+        .pipe(Effect.flip);
+      yield* gateway.disconnect(TARGET);
+
+      expect(provisionError._tag).toBe("ConnectionBlockedError");
+      expect(prepareError._tag).toBe("ConnectionBlockedError");
+      expect(ensureSshEnvironment).not.toHaveBeenCalled();
+      expect(disconnectSshEnvironment).not.toHaveBeenCalled();
+    }),
+  );
+
+  it.effect("does not acquire saved remote, relay, or SSH connections", () =>
+    Effect.gen(function* () {
+      const writes: string[] = [];
+      const relay = new RelayConnectionTarget({
+        environmentId: EnvironmentId.make("env-relay"),
+        label: "Relay",
+      });
+      const ssh = new SshConnectionTarget({
+        environmentId: EnvironmentId.make("env-ssh"),
+        label: "SSH",
+        connectionId: "ssh-1",
+      });
+      const savedUrl = new BearerConnectionTarget({
+        environmentId: EnvironmentId.make("env-url"),
+        label: "URL",
+        connectionId: "url-1",
+      });
+      const saved = [relay, ssh, savedUrl];
+      const isolated = isolateDetachedConnectionCatalog({
+        targets: {
+          list: Effect.succeed(saved),
+          listDisabled: Effect.succeed([relay.environmentId]),
+        },
+        registrations: {
+          register: () =>
+            Effect.sync(() => {
+              writes.push("register");
+            }),
+          setRoutes: () =>
+            Effect.sync(() => {
+              writes.push("routes");
+            }),
+          remove: () =>
+            Effect.sync(() => {
+              writes.push("remove");
+            }),
+          setEnabled: () =>
+            Effect.sync(() => {
+              writes.push("enabled");
+            }),
+        },
+      });
+
+      expect(yield* isolated.targets.list).toEqual([]);
+      expect(yield* isolated.targets.listDisabled).toEqual([]);
+      expect(persistedTargetsForDetachedCatalog(false, saved)).toBe(saved);
+
+      const registration = new RelayConnectionRegistration({ target: relay });
+      const refused = [
+        yield* isolated.registrations.register(registration, [relay]).pipe(Effect.flip),
+        yield* isolated.registrations.setRoutes(relay.environmentId, [relay]).pipe(Effect.flip),
+        yield* isolated.registrations.remove(relay.environmentId).pipe(Effect.flip),
+        yield* isolated.registrations.setEnabled(relay.environmentId, false).pipe(Effect.flip),
+      ];
+      expect(refused.map((error) => error.operation)).toEqual([
+        "register-connection",
+        "set-connection-routes",
+        "remove-connection",
+        "set-connection-enabled",
+      ]);
+      expect(writes).toEqual([]);
+    }),
+  );
 });

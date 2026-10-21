@@ -8,7 +8,10 @@ import { environmentShell } from "./state/shell";
 import { BrowserProfileReporter } from "./browser/BrowserProfileReporter";
 import { ElectronBrowserHost } from "./browser/ElectronBrowserHost";
 import { QuitHoldOverlay } from "./components/QuitHoldOverlay";
-import { isQuickMessageWindow } from "./components/quickMessage/quickMessageWindow";
+import {
+  isDetachedChatWindow,
+  isQuickMessageWindow,
+} from "./components/quickMessage/quickMessageWindow";
 import { appAtomRegistry, AppAtomRegistryProvider } from "./rpc/atomRegistry";
 import type { AppRouter } from "./router";
 
@@ -18,9 +21,12 @@ import type { AppRouter } from "./router";
  * as routed UI.
  */
 export function AppRoot({ router }: { readonly router: AppRouter }) {
+  // The legacy panel shares the main window's draft storage and would race it.
+  // The floating chat has its own partition, so reconciliation is safe there.
+  const legacyQuickMessageWindow = isQuickMessageWindow && !isDetachedChatWindow;
   useEffect(
     () =>
-      isQuickMessageWindow
+      legacyQuickMessageWindow
         ? undefined
         : subscribeComposerDraftModelReconciliation({
             registry: appAtomRegistry,
@@ -28,7 +34,7 @@ export function AppRoot({ router }: { readonly router: AppRouter }) {
             threadRefsAtom: environmentThreadShells.threadRefsAtom,
             shellStateAtom: environmentShell.stateAtom,
           }),
-    [],
+    [legacyQuickMessageWindow],
   );
   return (
     <AppAtomRegistryProvider>

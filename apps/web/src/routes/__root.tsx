@@ -22,14 +22,14 @@ import { CustomSnoozeDialogHost } from "../components/CustomSnoozeDialog";
 import { ThreadTabGroupNameDialogHost } from "../components/ThreadTabGroupNameDialog";
 import { ThreadGroupDialogHost } from "../components/ThreadGroupDialog";
 import { TranscriptExportDialogHost } from "../components/TranscriptExportDialog";
-import { NotionPagePickerHost } from "../components/chat/NotionPagePicker";
-import { GranolaNotePickerHost } from "../components/chat/GranolaNotePicker";
-import { SlackMessagePickerHost } from "../components/chat/SlackMessagePicker";
-import { DiscordMessagePickerHost } from "../components/chat/DiscordMessagePicker";
-import { GitHubIssuePickerHost } from "../components/chat/GitHubIssuePicker";
+import { ChatDialogHosts } from "../components/chat/ChatDialogHosts";
 import { ImportConversationDialogHost } from "../components/ImportConversationDialog";
 import { AddProjectToMachineDialogHost } from "../components/AddProjectToMachineDialog";
-import { ConfirmDialogHost } from "../components/ConfirmDialogHost";
+import {
+  DetachedChatShell,
+  DetachedLocalEnvironmentNotice,
+} from "../components/detachedChat/DetachedChatShell";
+import { isDetachedChatWindow } from "../components/quickMessage/quickMessageWindow";
 import { KeybindingsConfigWarning } from "../components/KeybindingsConfigWarning";
 import { FirstRunGate } from "../components/onboarding/FirstRunGate";
 import { ConnectOnboardingDialog } from "../components/cloud/ConnectOnboardingDialog";
@@ -122,7 +122,8 @@ export const Route = createRootRoute({
       getDesktopSnapShotBridge() &&
       shouldResumeSnapShotSetupOnStartup() &&
       location.pathname !== "/settings/snap-shot" &&
-      location.pathname !== "/quick-message"
+      location.pathname !== "/quick-message" &&
+      !isDetachedChatWindow
     ) {
       throw redirect({ to: "/settings/snap-shot", replace: true });
     }
@@ -172,6 +173,33 @@ function RootRouteView() {
         <BrowserChromeThemeSync key={pathname} />
         <Outlet />
       </>
+    );
+  }
+
+  if (isDetachedChatWindow) {
+    if (isLocalEnvironmentDisabled()) {
+      return (
+        <>
+          <ContrastAppearanceSync />
+          <FontAppearanceSync />
+          <DetachedLocalEnvironmentNotice />
+        </>
+      );
+    }
+    if (!primaryEnvironmentAuthenticated) {
+      return (
+        <>
+          <ContrastAppearanceSync />
+          <FontAppearanceSync />
+          <QuickMessageSignInNotice />
+        </>
+      );
+    }
+    return (
+      <DetachedChatShell>
+        <ContrastAppearanceSync />
+        <FontAppearanceSync />
+      </DetachedChatShell>
     );
   }
 
@@ -265,18 +293,12 @@ function RootRouteView() {
           <SnapShotCoordinator />
           <ThreadNotificationCoordinator />
           <ReopenClosedViewShortcut />
-          <ConfirmDialogHost />
+          <ChatDialogHosts />
           <CustomSnoozeDialogHost />
           <ThreadGroupDialogHost />
           <ThreadTabGroupNameDialogHost />
           <TranscriptExportDialogHost />
-          <GitHubIssuePickerHost />
           <ImportConversationDialogHost />
-          {/* Thread menus and the palette open these from any route, Settings included. */}
-          <SlackMessagePickerHost />
-          <DiscordMessagePickerHost />
-          <NotionPagePickerHost />
-          <GranolaNotePickerHost />
           <SlowRpcRequestToastCoordinator />
           <PermissionUpdateNotice />
           {primaryEnvironmentAuthenticated ? <LegacyThreadMigrationToast /> : null}
