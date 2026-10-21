@@ -37,6 +37,11 @@ SOURCE_FINGERPRINT = { git rev-parse HEAD; git diff HEAD; git ls-files --others 
 SKIP_BUILD ?= 0
 # FORCE=1 lets update-next rebuild even when nothing changed since the last one.
 FORCE ?= 0
+# The repo's pinned vite-plus, not whatever `vp` is on PATH: an older global
+# install can't parse newer task configs and fails to load the task graph.
+# Deferred so a fresh checkout falls back to the global one for its first
+# install, then picks up the local binary in later recipes.
+VP = $(if $(wildcard node_modules/.bin/vp),./node_modules/.bin/vp,vp)
 
 .DEFAULT_GOAL := help
 
@@ -98,7 +103,7 @@ deps: ## Run 'vp i' only if pnpm-lock.yaml changed since the last install
 		printf "  ok    dependencies up to date\n"; \
 	else \
 		echo "--> pnpm-lock.yaml changed, running vp i"; \
-		vp i; \
+		$(VP) i; \
 	fi
 
 update-build-%: deps ## Build version % into release-mock (signed, mock feed, zip)
@@ -108,7 +113,7 @@ update-build-%: deps ## Build version % into release-mock (signed, mock feed, zi
 		exit 1; \
 	fi
 	T3CODE_DESKTOP_IDENTITY="$(IDENTITY)" \
-	  vp run dist:desktop:artifact \
+	  $(VP) run dist:desktop:artifact \
 	  --platform mac --target zip --arch $(ARCH) \
 	  --mock-updates --mock-update-server-port $(PORT) \
 	  $(if $(filter 1,$(SKIP_BUILD)),--skip-build,) \
