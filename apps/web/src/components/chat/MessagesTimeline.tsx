@@ -17,6 +17,8 @@ import { WorkLogBlock, WorkLogButton, WorkLogDetails, WorkLogList, WorkLogRow } 
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import type { WorktreeSetupSnapshot } from "@t3tools/contracts";
 import { useRightPanelStore } from "~/rightPanelStore";
+import { openTimelineWorkspaceFile } from "../quickMessage/detachedTimelineActions";
+import { isDetachedChatWindow } from "../quickMessage/quickMessageWindow";
 import {
   getQuestionAnswerPreview,
   getQuestionAnswerText,
@@ -357,7 +359,7 @@ interface TimelineRowSharedState {
   findActive: boolean;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   displayThreadKey?: string;
-  onOpenTurnDiff: (runId: RunId, filePath?: string) => void;
+  onOpenTurnDiff: ((runId: RunId, filePath?: string) => void) | undefined;
   onOpenThread: (threadId: OrchestrationV2TurnItem["threadId"]) => void;
   workflowOpening: WorkflowOpening | null;
   onForkFromRun: (input: {
@@ -370,7 +372,7 @@ interface TimelineRowSharedState {
   }) => void;
   onToggleTurnFold: (runId: RunId) => void;
   onToggleAttemptFold: (attemptId: RunAttemptId) => void;
-  onFileOpen: (attachment: ChatFileAttachment) => void;
+  onFileOpen: ((attachment: ChatFileAttachment) => void) | undefined;
   onFileDownload: (attachment: ChatFileAttachment) => void;
   openPullRequest: (event: MouseEvent<HTMLElement>, url: string) => void;
   onToggleWorkGroup: (groupId: string, anchorKey: string) => void;
@@ -496,7 +498,7 @@ interface MessagesTimelineProps {
   routeThreadKey: string;
   displayThreadKey?: string;
   paintOnly?: boolean;
-  onOpenTurnDiff: (runId: RunId, filePath?: string) => void;
+  onOpenTurnDiff: ((runId: RunId, filePath?: string) => void) | undefined;
   onOpenThread: (threadId: OrchestrationV2TurnItem["threadId"]) => void;
   parentThreadLink?: {
     readonly threadId: ThreadId;
@@ -527,7 +529,7 @@ interface MessagesTimelineProps {
   onRunShellCommand?: (command: string) => void;
   isRevertingCheckpoint: boolean;
   onImageExpand: (preview: ExpandedImagePreview) => void;
-  onFileOpen?: (attachment: ChatFileAttachment) => void;
+  onFileOpen?: ((attachment: ChatFileAttachment) => void) | undefined;
   onFileDownload?: (attachment: ChatFileAttachment) => void;
   activeThreadEnvironmentId: EnvironmentId;
   markdownCwd: string | undefined;
@@ -629,7 +631,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   onRunShellCommand,
   isRevertingCheckpoint,
   onImageExpand,
-  onFileOpen = NOOP_OPEN_ATTACHMENT,
+  onFileOpen,
   onFileDownload = NOOP_OPEN_ATTACHMENT,
   activeThreadEnvironmentId,
   markdownCwd,
@@ -2521,17 +2523,24 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                 </>
               );
               if (file.downloadable !== false) {
+                const openFile = ctx.onFileOpen;
                 return (
                   <div key={file.id} className="flex min-w-0 items-center gap-1">
-                    <button
-                      type="button"
-                      aria-label={`Preview ${file.name}`}
-                      onClick={() => ctx.onFileOpen(file)}
-                      className="focus-visible:ring-ring/70 flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md py-1 text-left text-sm hover:underline focus-visible:ring-2 focus-visible:ring-inset focus-visible:outline-none"
-                    >
-                      {fileIdentity}
-                      <EyeIcon className="size-4 shrink-0" />
-                    </button>
+                    {openFile ? (
+                      <button
+                        type="button"
+                        aria-label={`Preview ${file.name}`}
+                        onClick={() => openFile(file)}
+                        className="focus-visible:ring-ring/70 flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md py-1 text-left text-sm hover:underline focus-visible:ring-2 focus-visible:ring-inset focus-visible:outline-none"
+                      >
+                        {fileIdentity}
+                        <EyeIcon className="size-4 shrink-0" />
+                      </button>
+                    ) : (
+                      <div className="flex min-w-0 flex-1 items-center gap-2 py-1 text-sm">
+                        {fileIdentity}
+                      </div>
+                    )}
                     <Tooltip>
                       <TooltipTrigger
                         render={
@@ -4223,7 +4232,7 @@ const AssistantChangedFilesSection = memo(function AssistantChangedFilesSection(
   routeThreadKey: string;
   resolvedTheme: "light" | "dark";
   displayThreadKey?: string;
-  onOpenTurnDiff: (runId: RunId, filePath?: string) => void;
+  onOpenTurnDiff: ((runId: RunId, filePath?: string) => void) | undefined;
 }) {
   if (!turnSummary) return null;
   const checkpointFiles = turnSummary.files;
@@ -4252,7 +4261,7 @@ function AssistantChangedFilesSectionInner({
   routeThreadKey: string;
   resolvedTheme: "light" | "dark";
   displayThreadKey?: string;
-  onOpenTurnDiff: (runId: RunId, filePath?: string) => void;
+  onOpenTurnDiff: ((runId: RunId, filePath?: string) => void) | undefined;
 }) {
   const ctx = use(TimelineRowCtx);
   const persistedExpanded = useUiStateStore(
@@ -4305,7 +4314,7 @@ interface UserMessageContextRenderContext {
   row: TimelineRowSharedState;
   onExpandImage: (image: ChatImageAttachment) => void;
   onExpandVideo: (file: ChatFileAttachment) => void;
-  onOpenFile: (file: ChatFileAttachment) => void;
+  onOpenFile: ((file: ChatFileAttachment) => void) | undefined;
   onOpenLink: (event: MouseEvent<HTMLElement>, url: string) => void;
   /** Only a checkout's chip has these. */
   checkoutActions?: { onOpen: () => void; onLink?: () => void };
@@ -4413,8 +4422,12 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
               }
               accessibleLabel={`${isVideo ? "Video" : "File"} attachment, ${record.name}, ${size}`}
               copyMarkdown={context.copyMarkdown}
-              onOpen={() =>
-                isVideo ? context.onExpandVideo(attachment) : context.onOpenFile(attachment)
+              onOpen={
+                isVideo
+                  ? () => context.onExpandVideo(attachment)
+                  : context.onOpenFile
+                    ? () => context.onOpenFile?.(attachment)
+                    : undefined
               }
             />
           ),
@@ -4537,17 +4550,38 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
       chip: (record, context) => {
         if (record.kind !== "mention") return null;
         const { row } = context;
+        const openWorkspaceFile =
+          !isDetachedChatWindow && row.threadRef
+            ? () => {
+                const threadRef = row.threadRef;
+                if (!threadRef) return;
+                openTimelineWorkspaceFile(() =>
+                  useRightPanelStore.getState().openFile(threadRef, record.path),
+                );
+              }
+            : undefined;
         return {
-          trigger: (
+          trigger: openWorkspaceFile ? (
             <ContextChip
               kind="mention"
               render={<button type="button" />}
               aria-label={`Preview ${record.path}`}
               data-markdown-copy={context.copyMarkdown}
-              onClick={() => {
-                if (row.threadRef)
-                  useRightPanelStore.getState().openFile(row.threadRef, record.path);
-              }}
+              onClick={openWorkspaceFile}
+            >
+              <WorkspaceEntryIcon
+                path={record.path}
+                environmentId={row.activeThreadEnvironmentId}
+                cwd={row.workspaceRoot}
+                theme={row.resolvedTheme}
+              />
+              <ContextChipLabel>{record.label}</ContextChipLabel>
+            </ContextChip>
+          ) : (
+            <ContextChip
+              kind="mention"
+              aria-label={record.path}
+              data-markdown-copy={context.copyMarkdown}
             >
               <WorkspaceEntryIcon
                 path={record.path}
@@ -4657,7 +4691,7 @@ type UserMessageContextReferenceChipProps = {
   attachment: ChatImageAttachment | ChatFileAttachment | null;
   onExpandImage: (image: ChatImageAttachment) => void;
   onExpandVideo: (file: ChatFileAttachment) => void;
-  onOpenFile: (file: ChatFileAttachment) => void;
+  onOpenFile: ((file: ChatFileAttachment) => void) | undefined;
 };
 
 /** One inline context chip in a sent message, dispatched by the shared presentation registry. */

@@ -82,6 +82,7 @@ import {
   completeLegacyLocalStorage,
   takeLegacyLocalStorage,
 } from "./methods/legacyLocalStorage.ts";
+import { installNativeWindowInteractionIpc } from "./methods/nativeWindowInteraction.ts";
 import { getWslState, setWslBackendEnabled, setWslDistro, setWslOnly } from "./methods/wsl.ts";
 import {
   getCliCommandState,
@@ -98,6 +99,7 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   yield* ipc.handle(AppActivationIpc.complete);
   yield* ipc.handle(WebLinksIpc.setReady);
 
+  yield* installNativeWindowInteractionIpc();
   yield* ipc.handleSync(takeLegacyLocalStorage);
   yield* ipc.handle(completeLegacyLocalStorage);
   yield* ipc.handleSync(getAppBranding);

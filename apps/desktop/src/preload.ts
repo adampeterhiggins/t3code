@@ -12,6 +12,10 @@ import { exposeClerkBridge } from "@clerk/electron/preload";
 import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 
 import * as IpcChannels from "./ipc/channels.ts";
+import {
+  BEGIN_NATIVE_WINDOW_INTERACTION_CHANNEL,
+  END_NATIVE_WINDOW_INTERACTION_CHANNEL,
+} from "./ipc/nativeWindowInteractionChannels.ts";
 import { mergeLegacyLocalStorage } from "./legacyLocalStorageMerge.ts";
 import { createPreloadSnapshot } from "./preloadSnapshot.ts";
 import {
@@ -547,6 +551,22 @@ contextBridge.exposeInMainWorld("desktopBridge", {
       ipcRenderer.on(IpcChannels.PREVIEW_OPEN_LINK_CHANNEL, wrappedListener);
       return () =>
         ipcRenderer.removeListener(IpcChannels.PREVIEW_OPEN_LINK_CHANNEL, wrappedListener);
+    },
+  },
+  nativeWindowInteraction: {
+    begin: () => {
+      try {
+        return ipcRenderer.sendSync(BEGIN_NATIVE_WINDOW_INTERACTION_CHANNEL) === true;
+      } catch {
+        return false;
+      }
+    },
+    end: () => {
+      try {
+        ipcRenderer.sendSync(END_NATIVE_WINDOW_INTERACTION_CHANNEL);
+      } catch {
+        // A missing handler must not throw into the click that still opens the chooser.
+      }
     },
   },
 } satisfies DesktopBridge);

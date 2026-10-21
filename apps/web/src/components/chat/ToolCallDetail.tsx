@@ -246,12 +246,13 @@ function ToolCallPreviewContent(
     toolPreview?.kind === "agent-message"
       ? toolPreview.threadId
       : null;
+  const openTurnDiff = props.onOpenTurnDiff;
   const headerAction = heading.command
     ? null
-    : item?.type === "file_change" && item.runId !== null
+    : item?.type === "file_change" && item.runId !== null && openTurnDiff
       ? {
           label: "Open diff",
-          onClick: () => props.onOpenTurnDiff(item.runId!, item.fileName),
+          onClick: () => openTurnDiff(item.runId!, item.fileName),
         }
       : item?.type === "fork"
         ? {

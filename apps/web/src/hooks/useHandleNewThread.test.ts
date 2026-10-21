@@ -38,6 +38,7 @@ const testState = vi.hoisted(() => {
       router.state.location.href = `/draft/${request.params.draftId}`;
     }),
   };
+  const noteDetachedNewDraftOpened = vi.fn();
   const draftStore = {
     getComposerDraft: vi.fn(() => ({})),
     getDraftSessionByLogicalProjectKey: vi.fn(() => storedDraft),
@@ -109,6 +110,7 @@ const testState = vi.hoisted(() => {
       };
       router.state.location.href = "/";
       router.navigate.mockClear();
+      noteDetachedNewDraftOpened.mockClear();
       draftStore.setDraftThreadContext.mockClear();
       draftStore.setLogicalProjectDraftThreadId.mockClear();
       draftStore.getDraftSessionByLogicalProjectKey.mockReset();
@@ -117,6 +119,7 @@ const testState = vi.hoisted(() => {
         completeProjectFileRead = resolve;
       });
     },
+    noteDetachedNewDraftOpened,
     router,
   };
 });
@@ -148,6 +151,10 @@ vi.mock("../components/quickMessage/quickMessageWindow", () => ({
   get isDetachedChatWindow() {
     return testState.detached;
   },
+}));
+vi.mock("../components/quickMessage/detachedChatPresentation", () => ({
+  noteDetachedNewDraftOpened: (...args: readonly unknown[]) =>
+    testState.noteDetachedNewDraftOpened(...args),
 }));
 
 vi.mock("@effect/atom-react", () => ({
@@ -459,6 +466,7 @@ describe("floating chat new threads", () => {
       opened!.draftId,
       expect.objectContaining(manualSelection),
     );
+    expect(testState.noteDetachedNewDraftOpened).toHaveBeenCalledWith(opened);
   });
 
   it("forces a manual primary selection when the open draft is empty", async () => {
@@ -480,6 +488,7 @@ describe("floating chat new threads", () => {
 
     expect(opened).toEqual({ draftId: "draft-open", threadId: "thread-open" });
     expect(testState.router.navigate).not.toHaveBeenCalled();
+    expect(testState.noteDetachedNewDraftOpened).not.toHaveBeenCalled();
     expect(testState.draftStore.setLogicalProjectDraftThreadId).toHaveBeenCalledWith(
       "remote-project",
       primaryProjectRef,
@@ -509,6 +518,7 @@ describe("floating chat new threads", () => {
     const opened = await pendingOpen;
 
     expect(opened).toEqual({ draftId: "draft-raced", threadId: "thread-raced" });
+    expect(testState.noteDetachedNewDraftOpened).toHaveBeenCalledWith(opened);
     expect(testState.draftStore.setLogicalProjectDraftThreadId).toHaveBeenCalledWith(
       "remote-project",
       primaryProjectRef,
@@ -528,5 +538,19 @@ describe("floating chat new threads", () => {
     await expect(pendingOpen).resolves.toBeNull();
     expect(testState.router.navigate).not.toHaveBeenCalled();
     expect(testState.draftStore.setLogicalProjectDraftThreadId).not.toHaveBeenCalled();
+    expect(testState.noteDetachedNewDraftOpened).not.toHaveBeenCalled();
+  });
+
+  it("leaves the window alone when the draft route never opens", async () => {
+    testState.reset(null);
+    testState.detached = true;
+    testState.primaryEnvironmentId = "environment-ssh";
+    testState.router.navigate.mockRejectedValueOnce(new Error("navigation failed"));
+
+    const pendingOpen = useNewThreadHandler()(primaryProjectRef);
+    testState.completeProjectFileRead(null);
+
+    await expect(pendingOpen).rejects.toThrow("navigation failed");
+    expect(testState.noteDetachedNewDraftOpened).not.toHaveBeenCalled();
   });
 });

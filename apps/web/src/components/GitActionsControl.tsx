@@ -1850,13 +1850,12 @@ export default function GitActionsControl({
         </ActionGroup>
       )}
 
-      {isPanel && isRepo ? (
+      {isPanel && isRepo && onOpenChanges ? (
         <ThreadDetailsControl
           type="button"
           variant="ghost"
           size="sm"
           part="row"
-          disabled={!onOpenChanges}
           onClick={onOpenChanges}
         >
           <FileDiffIcon className={THREAD_DETAILS_PANEL_ICON_CLASS} aria-hidden />

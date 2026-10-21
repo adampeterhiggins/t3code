@@ -34,6 +34,7 @@ import {
   resolveNewDraftStartFromOrigin,
   resolveNewThreadModelSelectionOverride,
 } from "../lib/chatThreadActions";
+import { noteDetachedNewDraftOpened } from "../components/quickMessage/detachedChatPresentation";
 import { isDetachedChatWindow } from "../components/quickMessage/quickMessageWindow";
 import { readT3ProjectFile } from "../lib/t3ProjectFileDefaults";
 import { appAtomRegistry } from "../rpc/atomRegistry";
@@ -304,6 +305,7 @@ export function useNewThreadHandler() {
           params: { draftId: emptyStoredDraftThread.draftId },
           replace: options?.replace ?? false,
         });
+        noteDetachedNewDraftOpened(opened);
         return opened;
       })();
     }
@@ -368,7 +370,9 @@ export function useNewThreadHandler() {
           params: { draftId: racedDraft.draftId },
           replace: options?.replace ?? false,
         });
-        return { draftId: racedDraft.draftId, threadId: racedDraft.threadId };
+        const opened = { draftId: racedDraft.draftId, threadId: racedDraft.threadId };
+        noteDetachedNewDraftOpened(opened);
+        return opened;
       }
       setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, draftId, {
         ...selectionOptions,
@@ -396,7 +400,9 @@ export function useNewThreadHandler() {
         params: { draftId },
         replace: options?.replace ?? false,
       });
-      return { draftId, threadId };
+      const opened = { draftId, threadId };
+      noteDetachedNewDraftOpened(opened);
+      return opened;
     })();
   };
 }

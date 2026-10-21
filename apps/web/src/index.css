@@ -1764,6 +1764,36 @@ html[data-quick-message] body {
   background: transparent !important;
 }
 
+/* Compact floating chat keeps the window's transparent margin around the shared
+   composer. The page's own backdrop blur cannot see the apps behind the window,
+   so the composer glass is opaque. Expanded clears this and paints the thread. */
+html[data-detached-chat="compact"] {
+  --glass-opacity: 100%;
+  --glass-blur: 0px;
+  background: transparent !important;
+}
+
+html[data-detached-chat="compact"] body {
+  background: transparent !important;
+}
+
+html[data-detached-chat="compact"] [data-chat-canvas] {
+  flex: none;
+  height: auto;
+}
+
+html[data-detached-chat="compact"] [data-slot="sidebar-inset"] {
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+}
+
+html[data-detached-chat="compact"] .dialog-backdrop {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
 /* A dialog's dimmed backdrop would fill the panel's transparent margin, showing as a tinted
    rectangle over the apps behind the window. */
 html[data-quick-message] .dialog-backdrop {

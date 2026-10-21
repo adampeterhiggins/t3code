@@ -34,7 +34,7 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
   allDirectoriesExpanded: boolean;
   resolvedTheme: "light" | "dark";
   onToggleAllDirectories: () => void;
-  onOpenTurnDiff: (runId: RunId, filePath?: string) => void;
+  onOpenTurnDiff?: ((runId: RunId, filePath?: string) => void) | undefined;
   onFileContextMenu?: ChangedFileContextMenuHandler | undefined;
 }) {
   const {
@@ -98,23 +98,25 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
               </TooltipPopup>
             </Tooltip>
           )}
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  type="button"
-                  size="xs"
-                  variant="ghost-muted"
-                  aria-label="Open diff"
-                  onClick={() => onOpenTurnDiff(runId, files[0]?.path)}
-                />
-              }
-            >
-              <FileDiffIcon className="size-3" />
-              <span className="hidden @[24rem]/changed-files:inline">Open diff</span>
-            </TooltipTrigger>
-            <TooltipPopup side="top">Open the full diff</TooltipPopup>
-          </Tooltip>
+          {onOpenTurnDiff ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="ghost-muted"
+                    aria-label="Open diff"
+                    onClick={() => onOpenTurnDiff?.(runId, files[0]?.path)}
+                  />
+                }
+              >
+                <FileDiffIcon className="size-3" />
+                <span className="hidden @[24rem]/changed-files:inline">Open diff</span>
+              </TooltipTrigger>
+              <TooltipPopup side="top">Open the full diff</TooltipPopup>
+            </Tooltip>
+          ) : null}
         </div>
       </div>
       <ChangedFilesTree
@@ -135,7 +137,7 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
   files: ReadonlyArray<TurnDiffFileChange>;
   allDirectoriesExpanded: boolean;
   resolvedTheme: "light" | "dark";
-  onOpenTurnDiff: (runId: RunId, filePath?: string) => void;
+  onOpenTurnDiff?: ((runId: RunId, filePath?: string) => void) | undefined;
   onFileContextMenu?: ChangedFileContextMenuHandler | undefined;
 }) {
   const { files, allDirectoriesExpanded, onOpenTurnDiff, resolvedTheme, runId, onFileContextMenu } =
@@ -209,22 +211,9 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
       );
     }
 
-    return (
-      <button
-        key={`file:${node.path}`}
-        type="button"
-        className="group flex h-7 w-full items-center gap-2 rounded-md py-1.5 pr-2 text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
-        style={{ paddingLeft: `${leftPadding}px` }}
-        onClick={() => onOpenTurnDiff(runId, node.path)}
-        onContextMenu={
-          onFileContextMenu
-            ? (event) => {
-                event.preventDefault();
-                onFileContextMenu(node.path, event);
-              }
-            : undefined
-        }
-      >
+    const openFile = onOpenTurnDiff ? () => onOpenTurnDiff(runId, node.path) : undefined;
+    const fileRow = (
+      <>
         {hasDirectoryNodes || depth > 0 ? (
           <span aria-hidden="true" className="size-3.5 shrink-0" />
         ) : null}
@@ -242,6 +231,36 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
             <DiffStatLabel additions={node.stat.additions} deletions={node.stat.deletions} />
           </span>
         )}
+      </>
+    );
+    const fileContextMenu = onFileContextMenu
+      ? (event: MouseEvent) => {
+          event.preventDefault();
+          onFileContextMenu(node.path, event);
+        }
+      : undefined;
+    if (!openFile) {
+      return (
+        <div
+          key={`file:${node.path}`}
+          className="group flex h-7 w-full items-center gap-2 rounded-md py-1.5 pr-2 text-left"
+          style={{ paddingLeft: `${leftPadding}px` }}
+          onContextMenu={fileContextMenu}
+        >
+          {fileRow}
+        </div>
+      );
+    }
+    return (
+      <button
+        key={`file:${node.path}`}
+        type="button"
+        className="group flex h-7 w-full items-center gap-2 rounded-md py-1.5 pr-2 text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+        style={{ paddingLeft: `${leftPadding}px` }}
+        onClick={openFile}
+        onContextMenu={fileContextMenu}
+      >
+        {fileRow}
       </button>
     );
   };

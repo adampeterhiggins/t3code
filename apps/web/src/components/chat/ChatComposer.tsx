@@ -7,6 +7,8 @@ import { useComposerTypingGuard } from "./useComposerTypingGuard";
 import { resolveComposerSnapshot, type ComposerSnapshot } from "./composerPendingSnapshot";
 import { insertAttachmentReferencesForDraft } from "./composerAttachmentReferences";
 import { DESKTOP_PASTE_AS_TEXT_EVENT } from "../../lib/desktopPasteAsText";
+import { openDetachedComposerFileChooser } from "../quickMessage/detachedFileChooser";
+import { openTimelineWorkspaceFile } from "../quickMessage/detachedTimelineActions";
 import { runtimeModeConfig, runtimeModeOptions as runtimeModes } from "./runtimeModeConfig";
 import { isLocalEnvironmentDisabled } from "../../localEnvironment";
 import { usePrimaryEnvironmentId } from "../../state/environments";
@@ -2254,7 +2256,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       if (preview) onExpandImage(preview);
     },
     openFile: setPreviewFileId,
-    openMention: (path: string) => useRightPanelStore.getState().openFile(routeThreadRef, path),
+    openMention: (path: string) =>
+      openTimelineWorkspaceFile(() => useRightPanelStore.getState().openFile(routeThreadRef, path)),
     expandVideo: (fileId: string) => {
       const file = composerFiles.find((candidate) => candidate.id === fileId);
       if (!file || !isVideoAttachment(file)) return;
@@ -2643,6 +2646,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     names: new Set(),
   });
   const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const fileChooserCleanupRef = useRef<(() => void) | null>(null);
+  useEffect(
+    () => () => {
+      fileChooserCleanupRef.current?.();
+      fileChooserCleanupRef.current = null;
+    },
+    [],
+  );
   const composerFormRef = useRef<HTMLFormElement>(null);
   const composerSurfaceRef = useRef<HTMLDivElement>(null);
   const providerInputRejectedRef = useRef(false);
@@ -8370,7 +8381,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         pullRequestsAvailable={pullRequestProjectId !== null}
                         githubIssuesAvailable={githubIssueCwd !== null}
                         checkoutsAvailable={checkoutMenu.hasLocalCandidates}
-                        onAttachFiles={() => attachmentInputRef.current?.click()}
+                        onAttachFiles={() => {
+                          fileChooserCleanupRef.current?.();
+                          fileChooserCleanupRef.current = openDetachedComposerFileChooser(
+                            attachmentInputRef.current,
+                          );
+                        }}
                       />
                     </>
                   ) : null}

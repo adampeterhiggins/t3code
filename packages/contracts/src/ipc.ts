@@ -1336,6 +1336,15 @@ export interface DesktopBridge {
     setPresentation?: (presentation: DesktopQuickMessagePresentation) => Promise<void>;
     onShow: (listener: (event: DesktopQuickMessageShowEvent) => void) => () => void;
   };
+  /**
+   * Synchronous hold for Chromium's file chooser, which blurs the compact
+   * window. `begin` is acknowledged in the same turn as the click; `false`
+   * means the click is not protected. Older shells omit it.
+   */
+  nativeWindowInteraction?: {
+    begin: () => boolean;
+    end: () => void;
+  };
   appActivation?: {
     setReady: (ready: boolean) => Promise<void>;
     complete: (response: DesktopAppActivationResponse) => Promise<void>;
