@@ -548,6 +548,161 @@ describe("Linear and T3 history", () => {
   });
 });
 
+describe("integration preview gaps", () => {
+  const call = (toolName: string, input: unknown, body: unknown) =>
+    resolveToolPreview(tool(toolName, input, [{ type: "text", text: JSON.stringify(body) }]));
+
+  it("shows Linear status updates and notifications by what they say", () => {
+    expect(
+      call(
+        "mcp__claude_ai_Linear__get_status_updates",
+        { type: "project" },
+        {
+          statusUpdates: [
+            {
+              id: "9f",
+              body: "**Rebuilt** the client",
+              health: "atRisk",
+              url: "https://linear.app/u",
+              createdAt: "2026-08-14T12:47:56.028Z",
+              user: { name: "Dan" },
+              project: { name: "Auto-Translation" },
+            },
+          ],
+          hasNextPage: false,
+        },
+      ),
+    ).toMatchObject({
+      items: [
+        {
+          title: "Auto-Translation",
+          subtitle: "at risk",
+          meta: ["Dan", "2026-08-14"],
+          body: "**Rebuilt** the client",
+        },
+      ],
+    });
+    expect(
+      call(
+        "mcp__claude_ai_Linear__get_notifications",
+        {},
+        {
+          notifications: [
+            {
+              id: "3b",
+              type: "pullRequestReviewRequested",
+              title: "Publish an OpenAPI client",
+              subtitle: "Sam requested review",
+              url: "https://linear.app/r",
+              createdAt: "2026-10-21T15:52:08.481Z",
+              readAt: null,
+            },
+          ],
+          hasNextPage: true,
+        },
+      ),
+    ).toMatchObject({
+      notes: ["More results on the next page"],
+      items: [
+        {
+          title: "Publish an OpenAPI client",
+          subtitle: "Sam requested review",
+          meta: ["unread", "2026-10-21 15:52"],
+        },
+      ],
+    });
+  });
+
+  it("shows a Linear issue fetched for its description alone, and empty review threads", () => {
+    expect(
+      call(
+        "mcp__claude_ai_Linear__get_issue",
+        { id: "PSET-1243", fields: ["description"] },
+        { id: "uuid-1", description: "## What we're doing" },
+      ),
+    ).toMatchObject({ kind: "document", title: "PSET-1243", markdown: "## What we're doing" });
+    expect(
+      call(
+        "mcp__claude_ai_Linear__get_diff_threads",
+        { urlOrId: "https://github.com/o/r/pull/5" },
+        { threads: [], drafts: [], hasNextPage: false },
+      ),
+    ).toMatchObject({ kind: "records", items: [] });
+  });
+
+  it("reads Codex's Notion fetch as a page, and a removal as what it removed", () => {
+    expect(
+      call(
+        "codex_apps.notion.fetch",
+        { id: "3f7" },
+        {
+          title: "Schema rationale",
+          text: "The schema changes",
+          url: "https://app.notion.com/p/3f7",
+        },
+      ),
+    ).toMatchObject({
+      kind: "document",
+      title: "Schema rationale",
+      url: "https://app.notion.com/p/3f7",
+      markdown: "The schema changes",
+    });
+    expect(
+      call(
+        "codex_apps.notion.notion-update-page",
+        {
+          page_id: "3dc",
+          command: "update_content",
+          content_updates: [{ old_str: "<mention-page>Draft</mention-page>", new_str: "" }],
+        },
+        { page_id: "3dc" },
+      ),
+    ).toMatchObject({ kind: "thread-action", headline: "Removed 1 passage" });
+  });
+
+  it("links Gmail threads with their sender, and shows an empty search as empty", () => {
+    expect(
+      resolveToolPreview(
+        tool(
+          "mcp__claude_ai_Gmail__search_threads",
+          { query: "in:inbox" },
+          {
+            content: JSON.stringify({
+              threads: [
+                {
+                  id: "t1",
+                  messages: [
+                    {
+                      subject: "Security alert",
+                      sender: "no-reply@google.com",
+                      date: "2026-10-09T15:46:06Z",
+                      snippet: "If you didn&#39;t allow this",
+                      viewUrl: "https://mail.google.com/t1",
+                    },
+                  ],
+                },
+              ],
+            }),
+          },
+        ),
+      ),
+    ).toMatchObject({
+      summary: "in:inbox",
+      items: [
+        {
+          title: "Security alert",
+          meta: ["no-reply@google.com", "2026-10-09T15:46:06Z"],
+          url: "https://mail.google.com/t1",
+          body: "If you didn't allow this",
+        },
+      ],
+    });
+    expect(
+      resolveToolPreview(tool("mcp__claude_ai_Gmail__search_threads", { query: "x" }, "{}")),
+    ).toMatchObject({ kind: "records", summary: "x", items: [] });
+  });
+});
+
 describe("other servers", () => {
   it("shows Forge orders, respondents and quality checks", () => {
     expect(

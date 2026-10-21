@@ -167,9 +167,26 @@ function header(message: Record_, name: string): string | null {
   return str(headers.find((entry) => str(entry.name)?.toLowerCase() === name.toLowerCase())?.value);
 }
 
-function gmailPreview(input: Record_, result: unknown): ToolPreview | null {
+/** Gmail snippets keep HTML entities such as `&#39;`. */
+function decodeEntities(text: string | null): string | null {
+  return (
+    text
+      ?.replace(/&#(\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)))
+      .replaceAll("&quot;", '"')
+      .replaceAll("&lt;", "<")
+      .replaceAll("&gt;", ">")
+      .replaceAll("&amp;", "&") ?? null
+  );
+}
+
+function gmailPreview(tool: string, input: Record_, result: unknown): ToolPreview | null {
   const data = isRecord(result) ? result : null;
-  const threads = Array.isArray(data?.threads) ? data.threads.filter(isRecord) : null;
+  // A search that matched nothing returns `{}`.
+  const threads = Array.isArray(data?.threads)
+    ? data.threads.filter(isRecord)
+    : tool === "search_threads" && data
+      ? []
+      : null;
   if (!threads) return null;
   return records(
     threads.map((thread, index) => {
@@ -179,11 +196,11 @@ function gmailPreview(input: Record_, result: unknown): ToolPreview | null {
         key: str(thread.id) ?? String(index),
         title: header(first, "Subject") ?? str(thread.snippet) ?? "(No subject)",
         subtitle: messages.length > 1 ? `${messages.length} messages` : null,
-        meta: [header(first, "From"), header(first, "Date")].filter(
+        meta: [header(first, "From") ?? str(first.sender), header(first, "Date")].filter(
           (meta): meta is string => meta !== null,
         ),
-        url: null,
-        body: str(thread.snippet) ?? str(first.snippet),
+        url: str(thread.viewUrl) ?? str(first.viewUrl),
+        body: decodeEntities(str(thread.snippet) ?? str(first.snippet)),
         threadId: null,
       };
     }),
@@ -231,7 +248,7 @@ export function serviceToolPreview(
 ): ToolPreview | null {
   if (server.startsWith("posthog") && tool === "exec") return postHogPreview(input, result, text);
   if (server === "langsmith" && tool === "fetch_runs") return langSmithPreview(input, result);
-  if (server === "gmail") return gmailPreview(input, result);
+  if (server === "gmail") return gmailPreview(tool, input, result);
   if (server === "codex_apps") return codexAppPreview(tool, result);
   return null;
 }
