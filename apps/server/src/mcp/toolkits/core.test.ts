@@ -58,6 +58,21 @@ import * as McpToolAccessTestkit from "../McpToolAccess.testkit.ts";
 import { dispatchFailure } from "../threadAccess.ts";
 import * as EnvironmentHandlers from "./environment/handlers.ts";
 import * as AttachmentHandlers from "./attachment/handlers.ts";
+import { ApprovalToolkit } from "./approval/tools.ts";
+import { AttachmentToolkit } from "./attachment/tools.ts";
+import { DeviceToolkit } from "./device/tools.ts";
+import { EnvironmentToolkit } from "./environment/tools.ts";
+import { HtmlToolkit } from "./html/tools.ts";
+import { IssueLinksToolkit } from "./issueLinks/tools.ts";
+import { MessageDraftsToolkit } from "./messageDrafts/tools.ts";
+import { OrchestratorToolkit } from "./orchestrator/tools.ts";
+import { PreviewToolkit } from "./preview/tools.ts";
+import { PreviewControlsToolkit } from "./previewControls/tools.ts";
+import { ProjectToolkit } from "./project/tools.ts";
+import { PullRequestsToolkit } from "./pullRequests/tools.ts";
+import { ThreadToolkit } from "./thread/tools.ts";
+import { ThreadDeleteToolkit } from "./threadDelete/tools.ts";
+import { WorktreeToolkit } from "./worktree/tools.ts";
 
 const layerOrchestratorToolkit = McpHttpServer.layerOrchestratorToolkit.pipe(
   Layer.provide(Layer.mock(ThreadLaunchService.ThreadLaunchService)({})),
@@ -94,6 +109,29 @@ const layerThreadToolkitWith = (
     Layer.provide(moveServices),
   );
 const layerThreadToolkit = layerThreadToolkitWith(layerThreadMoveServices);
+
+// All toolkits share one MCP server, so a duplicate name silently shadows a tool.
+it("publishes unique tool names across every toolkit", () => {
+  const names = [
+    ApprovalToolkit,
+    AttachmentToolkit,
+    DeviceToolkit,
+    EnvironmentToolkit,
+    HtmlToolkit,
+    IssueLinksToolkit,
+    MessageDraftsToolkit,
+    OrchestratorToolkit,
+    PreviewToolkit,
+    PreviewControlsToolkit,
+    ProjectToolkit,
+    PullRequestsToolkit,
+    ThreadToolkit,
+    ThreadDeleteToolkit,
+    WorktreeToolkit,
+  ].flatMap((toolkit) => Object.values(toolkit.tools).map((tool) => tool.name));
+  expect(names.filter((name, index) => names.indexOf(name) !== index)).toEqual([]);
+  expect(names).toEqual(expect.arrayContaining(["link_linear_issue", "t3_draft_create"]));
+});
 
 const threadId = ThreadId.make("mcp-core-thread");
 const scope: McpInvocationContext.McpInvocationScope = {
