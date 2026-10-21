@@ -1048,7 +1048,8 @@ A message or its whole thread attaches as a `slack-thread` context chip: from a 
 permalink, the attach menu's picker (Slack search syntax, right-click for the message alone), a
 `#` menu tab shown once Slack is connected, the command palette, and the mobile attach menu. The
 server renders the thread to capped markdown when it is attached. That markdown always keeps the
-first message and the linked one, fills the rest newest first, and resolves mentions to names.
+first message and the linked one, fills the rest newest first, and resolves user and user group
+mentions to names (groups through `usergroups.list`, which needs `usergroups:read`).
 The snapshot is inlined into the prompt for every provider. The snapshot also carries the messages
 that markdown kept, with each author's avatar, so the web and desktop hover card
 ([`ChatThreadDetails`](../apps/web/src/components/ChatThreadDetails.tsx)) draws the thread the way
