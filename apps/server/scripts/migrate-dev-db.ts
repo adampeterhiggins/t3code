@@ -223,10 +223,20 @@ const rootIsVisible = (sql: SqlClient.SqlClient) => sql`
   AND json_extract(root.payload_json, '$.deletedAt') IS NULL
   AND json_extract(root.payload_json, '$.archivedAt') IS NULL`;
 
+// The copy cannot tell live families from stopped ones (that needs the
+// migrated schema), so live families take recency slots here that the prune
+// later gives to older stopped ones. Real data has a few per project at most.
+const SELECTION_SLACK = 10;
+
 /**
  * One transaction reads the source, so the copy is consistent while the real server writes.
+ * That transaction holds back the real server's WAL checkpoints, and once its WAL fills the
+ * server stalls every write until the read ends, so only families the prune could keep are read.
  */
-const copySourceSlice = Effect.fn("copyDevDbSourceSlice")(function* (sourcePath: string) {
+const copySourceSlice = Effect.fn("copyDevDbSourceSlice")(function* (
+  sourcePath: string,
+  input: RunMigrateDevDbInput,
+) {
   const sql = yield* SqlClient.SqlClient;
   yield* sql`ATTACH DATABASE ${`${NodeURL.pathToFileURL(sourcePath).href}?mode=ro`} AS src`;
   const schema = yield* sql<{ type: string; name: string; sql: string }>`
@@ -244,11 +254,40 @@ const copySourceSlice = Effect.fn("copyDevDbSourceSlice")(function* (sourcePath:
       for (const table of tables) yield* sql.unsafe(table.sql).unprepared;
       if (filtered) {
         yield* sql`CREATE TEMP TABLE copied_threads (thread_id TEXT PRIMARY KEY)`;
+        // Mirrors pruneSnapshot's ranking without its live-thread check.
         yield* sql`INSERT OR IGNORE INTO copied_threads
-          SELECT family.thread_id FROM src.orchestration_v2_projection_threads family
-          JOIN src.orchestration_v2_projection_threads root ON root.thread_id =
-            COALESCE(json_extract(family.payload_json, '$.lineage.rootThreadId'), family.thread_id)
-          WHERE ${rootIsVisible(sql)}`;
+          WITH families AS (
+            SELECT thread_id, updated_at,
+              COALESCE(json_extract(payload_json, '$.lineage.rootThreadId'), thread_id) AS root_id
+            FROM src.orchestration_v2_projection_threads
+          ),
+          visible_families AS (
+            SELECT f.root_id, root.project_id, MAX(f.updated_at) AS updated_at, COUNT(*) AS size
+            FROM families f
+            JOIN src.orchestration_v2_projection_threads root ON root.thread_id = f.root_id
+            JOIN src.projection_projects p
+              ON p.project_id = root.project_id AND p.deleted_at IS NULL
+            WHERE ${rootIsVisible(sql)}
+            GROUP BY f.root_id, root.project_id
+          ),
+          recent_projects AS (
+            SELECT project_id FROM visible_families
+            GROUP BY project_id
+            ORDER BY MAX(updated_at) DESC
+            LIMIT ${input.projects + SELECTION_SLACK}
+          ),
+          recent_families AS (
+            SELECT root_id FROM (
+              SELECT root_id,
+                ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY updated_at DESC) AS recency_rank
+              FROM visible_families
+              WHERE size <= ${input.threadsPerProject}
+                AND project_id IN (SELECT project_id FROM recent_projects)
+            )
+            WHERE recency_rank <= ${input.threadsPerProject + SELECTION_SLACK}
+          )
+          SELECT thread_id FROM families
+          WHERE root_id IN (SELECT root_id FROM recent_families)`;
       }
       for (const { name } of tables) {
         if (CLEARED_TABLES.includes(name)) continue;
@@ -477,8 +516,8 @@ export const runMigrateDevDb = Effect.fn("runMigrateDevDb")(function* (
 
   yield* removeDatabaseFiles(snapshotPath);
   const { executedMigrations, pruned } = yield* Effect.gen(function* () {
-    yield* Console.log(`Copying visible threads from ${sourcePath} (read-only)...`);
-    yield* copySourceSlice(sourcePath).pipe(
+    yield* Console.log(`Copying recent threads from ${sourcePath} (read-only)...`);
+    yield* copySourceSlice(sourcePath, input).pipe(
       Effect.provide(NodeSqliteClient.layer({ filename: snapshotPath })),
       wrapPhase("snapshot", sourcePath),
     );
