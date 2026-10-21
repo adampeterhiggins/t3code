@@ -90,6 +90,39 @@ T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID=com.example.t3code \
 vp run ios:release
 ```
 
+### Updating a personal iPhone installation
+
+From the repository root, `make phone` rebuilds a self-contained Release app and installs it onto
+your connected, trusted iPhone. Run it after pulling fork updates or to renew an expired Personal
+Team installation. It is separate from the desktop's `make update-next`.
+
+Copy `.env.example` to `.env` for T3 Connect, then add these settings to the repository root's
+gitignored `.env.local` (keep the same bundle ID and team when updating an existing installation):
+
+```dotenv
+T3CODE_IOS_TEAM_ID=YOURTEAMID
+T3CODE_IOS_DEVICE_ID=YOUR_IPHONE_UDID
+T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID=com.example.t3code
+```
+
+Find your device ID with `xcrun devicectl list devices`. Your Apple Development certificate's
+Organizational Unit is the Team ID:
+
+```sh
+security find-certificate -c 'Apple Development' -p | openssl x509 -noout -subject
+```
+
+Install Xcode and CocoaPods, accept Xcode's license, sign into Xcode, and create an Apple
+Development certificate under **Settings → Accounts → Manage Certificates**. Enable Developer
+Mode on the phone and keep it connected and unlocked during installation. On first launch,
+trust the developer under **Settings → General → VPN & Device Management**.
+
+The target regenerates the ignored `apps/mobile/ios` project; keep native changes in Expo config
+or plugins. It reuses compiler output in `.t3/mobile-release`. The app includes T3 Connect, omits
+Personal Team unsupported capabilities, and disables upstream over-the-air updates so they cannot
+replace the fork's bundled code. Free Personal Team provisioning normally needs renewal every seven
+days. Reinstall with `make phone`; it keeps the app's data when the bundle ID and team stay the same.
+
 Build and run the local iOS preview app:
 
 ```bash

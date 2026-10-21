@@ -1657,6 +1657,14 @@ The install and status targets follow the desktop package's product name, with `
 `APP_PATH` overrides for another installation. These targets build and serve locally; publishing a
 GitHub release remains a separate step.
 
+## Personal iPhone updates
+
+[`make phone`](../Makefile) builds and installs a self-contained Personal Team Release app onto a
+connected iPhone. Device, team, and bundle ID settings live in a gitignored `.env.local`. The app
+includes T3 Connect and disables upstream over-the-air updates, so updating the fork or renewing
+provisioning uses the same command. See [setup and renewal](../apps/mobile/README.md#updating-a-personal-iphone-installation).
+Code: [`update-phone.ts`](../scripts/update-phone.ts) and [`app.config.ts`](../apps/mobile/app.config.ts).
+
 ## Commands and file paths shown relative to the workspace
 
 Tool calls in the web, desktop, and mobile timelines, and subagent tool calls in the web and
