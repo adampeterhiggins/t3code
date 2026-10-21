@@ -13,6 +13,7 @@ export * from "./relayClient.ts";
 export * from "./desktopBootstrap.ts";
 export * from "./desktopBrowser.ts";
 export * from "./desktopAppActivation.ts";
+export * from "./desktopAppearance.ts";
 export * from "./remoteAccess.ts";
 export * from "./ipc.ts";
 export * from "./terminal.ts";

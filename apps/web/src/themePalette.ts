@@ -22,6 +22,8 @@ import {
   type ThemeVariants,
 } from "@t3tools/shared/themePalettes";
 
+import { notifyCommittedAppearanceChange } from "./appearanceSnapshot";
+
 export {
   DEFAULT_TERMINAL_ANSI_COLORS,
   EMBER_THEME,
@@ -83,6 +85,8 @@ type CustomThemeLibrarySnapshot =
   | Readonly<{ status: "unavailable"; reason: "storage-unavailable"; cause: unknown }>;
 
 let customThemeLibrarySnapshot: CustomThemeLibrarySnapshot | null = null;
+// null means the stored library. An array, including empty, is a presented snapshot.
+let presentedCustomThemes: ReadonlyArray<ThemeDefinition> | null = null;
 const themePreviewListeners = new Set<() => void>();
 let themePreviewAppearance: ThemeAppearance | null = null;
 
@@ -247,8 +251,40 @@ export function invalidateCustomThemes() {
 const EMPTY_CUSTOM_THEMES: ReadonlyArray<ThemeDefinition> = [];
 
 export function getCustomThemes(): ReadonlyArray<ThemeDefinition> {
+  if (presentedCustomThemes !== null) return presentedCustomThemes;
   const snapshot = getCustomThemeLibrarySnapshot();
   return snapshot.status === "ready" ? snapshot.themes : EMPTY_CUSTOM_THEMES;
+}
+
+const EMPTY_STORED_CUSTOM_THEMES: ReadonlyArray<unknown> = [];
+
+/** Raw stored library, including entries the parser will drop. Ignores a presented overlay. */
+export function readStoredCustomThemes(): ReadonlyArray<unknown> {
+  const snapshot = getCustomThemeLibrarySnapshot();
+  return snapshot.status === "ready" ? snapshot.storedThemes : EMPTY_STORED_CUSTOM_THEMES;
+}
+
+/**
+ * In-memory library for a renderer that was handed a snapshot. Invalid entries
+ * are dropped by the stored-theme parser. This does not write localStorage or
+ * publish a committed appearance change.
+ */
+export function replacePresentedCustomThemes(
+  storedThemes: ReadonlyArray<unknown>,
+): ReadonlyArray<ThemeDefinition> {
+  const themes = parseStoredThemes(storedThemes);
+  if (presentedCustomThemes !== null && Equal.equals(presentedCustomThemes, themes)) {
+    return presentedCustomThemes;
+  }
+  presentedCustomThemes = themes;
+  notifyCustomThemeListeners();
+  return themes;
+}
+
+export function clearPresentedCustomThemes(): void {
+  if (presentedCustomThemes === null) return;
+  presentedCustomThemes = null;
+  notifyCustomThemeListeners();
 }
 
 export function getEnvironmentThemes(): ReadonlyArray<ThemeDefinition> {
@@ -1110,6 +1146,7 @@ function saveCustomThemes(
     });
   }
   notifyCustomThemeListeners();
+  notifyCommittedAppearanceChange();
 }
 
 function requireWritableCustomThemeLibrary(
