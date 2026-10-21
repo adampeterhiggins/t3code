@@ -119,7 +119,9 @@ import {
   LinearError,
   LinearFilterOptions,
   LinearGetIssueInput,
+  LinearGetObjectInput,
   LinearIssueContext,
+  LinearObjectContext,
   LinearIssueSummary,
   LinearLinkThreadInput,
   LinearListIssuesInput,
@@ -718,6 +720,7 @@ export const WS_METHODS = {
   linearGetIssue: "linear.getIssue",
   linearGetFilterOptions: "linear.getFilterOptions",
   linearGetIssueSummary: "linear.getIssueSummary",
+  linearGetObject: "linear.getObject",
   linearSubscribeThreadLinks: "linear.subscribeThreadLinks",
   linearLinkThread: "linear.linkThread",
   linearUnlinkThread: "linear.unlinkThread",
@@ -1061,6 +1064,12 @@ const WsLinearGetFilterOptionsRpc = Rpc.make(WS_METHODS.linearGetFilterOptions, 
 const WsLinearGetIssueSummaryRpc = Rpc.make(WS_METHODS.linearGetIssueSummary, {
   payload: LinearGetIssueInput,
   success: LinearIssueSummary,
+  error: LinearRpcError,
+});
+
+const WsLinearGetObjectRpc = Rpc.make(WS_METHODS.linearGetObject, {
+  payload: LinearGetObjectInput,
+  success: LinearObjectContext,
   error: LinearRpcError,
 });
 
@@ -2710,6 +2719,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsLinearGetIssueRpc,
   WsLinearGetFilterOptionsRpc,
   WsLinearGetIssueSummaryRpc,
+  WsLinearGetObjectRpc,
   WsLinearSubscribeThreadLinksRpc,
   WsLinearLinkThreadRpc,
   WsLinearUnlinkThreadRpc,

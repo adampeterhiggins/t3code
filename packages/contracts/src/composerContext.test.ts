@@ -123,6 +123,17 @@ const knownRecords: Record<(typeof COMPOSER_CONTEXT_KINDS)[number], Record<strin
     stateName: "In Progress",
     markdown: "# ENG-123: Fix login\n\n## Description\nThe button does nothing.",
   },
+  "linear-object": {
+    ...base,
+    kind: "linear-object",
+    label: "Roadmap",
+    objectType: "project",
+    objectId: "3f2c9a1e-0000-4000-8000-000000000001",
+    title: "Roadmap",
+    url: "https://linear.app/acme/project/roadmap-bc857ff37b9f",
+    status: "In Progress",
+    markdown: "# Project: Roadmap\n\nStatus: In Progress",
+  },
   "github-issue": {
     ...base,
     kind: "github-issue",

@@ -57,6 +57,10 @@ const DEFINITIONS = [
     capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
   },
   {
+    kind: "linear-object",
+    capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
+  },
+  {
     kind: "github-issue",
     capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
   },

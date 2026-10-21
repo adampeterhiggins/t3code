@@ -961,6 +961,13 @@ capped markdown when it is attached, and that snapshot is inlined into the promp
 provider. An **Open Linear links in** setting can send issue links to the Linear desktop app
 (`linear://`), which the desktop shell's external-URL allowlist permits.
 
+A pasted link to a Linear project, document, or initiative becomes a `linear-object` chip
+([user guide](user/linear.md#projects-documents-and-initiatives)). The parser reads the 12-character slug id at the end of
+the URL's name segment ([`composerObjectLinks.ts`](../packages/shared/src/composerObjectLinks.ts)),
+which Linear's API accepts in place of the UUID, and `linear.getObject` renders the object to
+markdown ([`LinearApi.ts`](../apps/server/src/linear/LinearApi.ts)). Agents can attach the same
+links through `contextLinks` and read them with `read_context_link`.
+
 A thread's chat-tab group can also be linked to one issue, from the thread menu or the command
 palette, and starting a thread from an issue links it. The link lives in the fork-owned
 `fork_linear_thread_links` table, keyed by tab group, and streams to clients over

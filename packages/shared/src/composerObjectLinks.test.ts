@@ -14,7 +14,29 @@ describe("parseComposerObjectLink", () => {
     expect(
       parseComposerObjectLink("https://linear.app/acme/issue/eng-123/fix-the-thing"),
     ).toMatchObject({ kind: "linear-issue", identifier: "ENG-123" });
+  });
+
+  it("reads Linear project, document, and initiative links by their slug id", () => {
+    expect(
+      parseComposerObjectLink(
+        "https://linear.app/focaldata/project/structured-discussion-guide-bc857ff37b9f/issues?layout=list&ordering=priority",
+      ),
+    ).toMatchObject({
+      kind: "linear-object",
+      objectType: "project",
+      slugId: "bc857ff37b9f",
+      name: "Structured discussion guide",
+    });
+    expect(
+      parseComposerObjectLink("https://linear.app/acme/document/launch-plan-0123456789AB"),
+    ).toMatchObject({ kind: "linear-object", objectType: "document", slugId: "0123456789ab" });
+    expect(
+      parseComposerObjectLink("https://linear.app/acme/initiative/0123456789ab/overview"),
+    ).toMatchObject({ kind: "linear-object", objectType: "initiative", name: null });
+    // Without a slug id there is nothing Linear can look up.
     expect(parseComposerObjectLink("https://linear.app/acme/project/roadmap-abc")).toBeNull();
+    expect(parseComposerObjectLink("https://linear.app/acme/view/my-view-0123456789ab")).toBeNull();
+    expect(parseComposerObjectLink("https://linear.app/acme/projects/all")).toBeNull();
   });
 
   it("tells pull requests, issues, and repository roots apart", () => {
@@ -160,6 +182,12 @@ describe("objectLinkLabel", () => {
       "acme/api#12issuecomment-42",
     );
     expect(objectLinkLabel("https://linear.app/acme/issue/eng-123/fix-the-thing")).toBe("ENG-123");
+    expect(
+      objectLinkLabel("https://linear.app/acme/project/q3-roadmap-0123456789ab/overview"),
+    ).toBe("Q3 roadmap");
+    expect(objectLinkLabel("https://linear.app/acme/initiative/0123456789ab")).toBe(
+      "Linear initiative",
+    );
     expect(objectLinkLabel("https://github.com/acme/api.git")).toBe("acme/api");
   });
 

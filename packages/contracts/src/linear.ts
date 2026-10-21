@@ -145,6 +145,31 @@ export const LinearIssueContext = Schema.Struct({
 });
 export type LinearIssueContext = typeof LinearIssueContext.Type;
 
+/** Fork: the Linear objects besides issues that a link can attach. */
+export const LinearObjectType = Schema.Literals(["project", "document", "initiative"]);
+export type LinearObjectType = typeof LinearObjectType.Type;
+
+export const LinearGetObjectInput = Schema.Struct({
+  objectType: LinearObjectType,
+  /** UUID or the URL slug id, such as `bc857ff37b9f`. */
+  id: TrimmedNonEmptyString.check(Schema.isMaxLength(128)),
+});
+export type LinearGetObjectInput = typeof LinearGetObjectInput.Type;
+
+/**
+ * Fork: a project, document, or initiative snapshot with a server-rendered markdown body.
+ * `status` is null for documents, which have none.
+ */
+export const LinearObjectContext = Schema.Struct({
+  objectType: LinearObjectType,
+  id: Schema.String,
+  title: Schema.String,
+  url: Schema.String,
+  status: Schema.NullOr(Schema.String),
+  markdown: Schema.String.check(Schema.isMaxLength(LINEAR_ISSUE_MARKDOWN_MAX_CHARS)),
+});
+export type LinearObjectContext = typeof LinearObjectContext.Type;
+
 /**
  * A Linear issue linked to a thread and its chat tabs. `groupId` is the tab group's id (the
  * thread itself when it has no tabs) and `threadIds` lists the group's threads. The identifier,

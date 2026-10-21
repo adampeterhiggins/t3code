@@ -12,6 +12,7 @@ import type {
   UnreadLinkContextRecord,
   ModelContextRecord,
   LinearIssueContextRecord,
+  LinearObjectContextRecord,
   DiscordThreadContextRecord,
   SlackThreadContextRecord,
   SubagentContextRecord,
@@ -20,11 +21,12 @@ import type {
 
 /**
  * An attached snapshot fetched from another service (a Linear or GitHub issue, a Slack or Discord
- * thread, a Notion page, a Granola note) or, in the fork, a referenced subagent, a T3 Code prompt link, or a
- * GitHub release, tag, branch, or commit.
+ * thread, a Notion page, a Granola note) or, in the fork, a referenced subagent, a T3 Code prompt
+ * link, a GitHub release, tag, branch, or commit, or a Linear project, document, or initiative.
  */
 export type IssueContextRecord =
   | LinearIssueContextRecord
+  | LinearObjectContextRecord
   | GitHubIssueContextRecord
   | SlackThreadContextRecord
   | DiscordThreadContextRecord

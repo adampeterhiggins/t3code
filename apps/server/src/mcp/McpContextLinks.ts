@@ -6,6 +6,7 @@ import {
   GitHubGetRefInput,
   GranolaGetNoteInput,
   LinearGetIssueInput,
+  LinearGetObjectInput,
   NotionGetPageInput,
   type OrchestrationMessageContext,
   OrchestratorMcpFailure,
@@ -23,6 +24,7 @@ import {
   gitHubRefContextRecord,
   granolaNoteContextRecord,
   linearIssueContextRecord,
+  linearObjectContextRecord,
   notionPageContextRecord,
   promptLinkContextRecord,
   repositoryContextRecord,
@@ -66,6 +68,7 @@ export class McpContextLinks extends Context.Service<
 >()("t3/mcp/McpContextLinks") {}
 
 const decodeLinearGetIssueInput = Schema.decodeUnknownEffect(LinearGetIssueInput);
+const decodeLinearGetObjectInput = Schema.decodeUnknownEffect(LinearGetObjectInput);
 const decodeGitHubGetIssueInput = Schema.decodeUnknownEffect(GitHubGetIssueInput);
 const decodeGitHubGetRefInput = Schema.decodeUnknownEffect(GitHubGetRefInput);
 const decodeNotionGetPageInput = Schema.decodeUnknownEffect(NotionGetPageInput);
@@ -82,7 +85,7 @@ const unreadable = (verb: Verb, url: string) => (error: { readonly message: stri
   invalid(`Could not ${verb} ${url}: ${error.message}`);
 
 const UNRECOGNIZED_LINK =
-  "Use a Slack or Discord message, Notion page, Granola note, Linear issue, GitHub issue, GitHub repository, GitHub release, tag, branch, or commit, or T3 Code prompt link.";
+  "Use a Slack or Discord message, Notion page, Granola note, Linear issue, project, document, or initiative, GitHub issue, GitHub repository, GitHub release, tag, branch, or commit, or T3 Code prompt link.";
 
 export const make = Effect.gen(function* () {
   const linear = yield* LinearApi.LinearApi;
@@ -120,6 +123,14 @@ export const make = Effect.gen(function* () {
             linear.getIssue(input).pipe(Effect.mapError(unreadable(verb, url))),
           ),
           Effect.map(linearIssueContextRecord),
+        );
+      case "linear-object":
+        return decodeLinearGetObjectInput({ objectType: link.objectType, id: link.slugId }).pipe(
+          Effect.mapError(malformed(url)),
+          Effect.flatMap((input) =>
+            linear.getObject(input).pipe(Effect.mapError(unreadable(verb, url))),
+          ),
+          Effect.map(linearObjectContextRecord),
         );
       case "github-issue":
         return decodeGitHubGetIssueInput({ url }).pipe(

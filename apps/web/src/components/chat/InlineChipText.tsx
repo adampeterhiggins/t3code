@@ -42,6 +42,7 @@ const CHIP_ICONS: Partial<Record<ContextChipKind, ReactNode>> = {
   subagent: <BotIcon />,
   "prompt-link": <MessageSquareTextIcon />,
   "linear-issue": <LinearIcon />,
+  "linear-object": <LinearIcon />,
   "github-issue": <GitHubIcon />,
   "github-ref": <GitHubIcon />,
   "slack-thread": <SlackIcon />,

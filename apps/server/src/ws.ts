@@ -2748,6 +2748,7 @@ export const layerWsRpc = (
         [WS_METHODS.linearGetFilterOptions]: (_input) => linearApi.getFilterOptions,
         [WS_METHODS.linearGetIssue]: (input) => linearApi.getIssue(input),
         [WS_METHODS.linearGetIssueSummary]: (input) => linearApi.getIssueSummary(input),
+        [WS_METHODS.linearGetObject]: (input) => linearApi.getObject(input),
         [WS_METHODS.linearSubscribeThreadLinks]: (_input) => linearThreadLinks.links,
         [WS_METHODS.linearLinkThread]: (input) => linearThreadLinks.link(input),
         [WS_METHODS.linearUnlinkThread]: (input) =>

@@ -6,6 +6,7 @@ import {
 } from "@t3tools/client-runtime/state/github-issues";
 import {
   linearIssueContextRecord,
+  linearObjectContextRecord,
   promptLinkContextRecord,
 } from "@t3tools/shared/integrationContextRecords";
 import {
@@ -209,6 +210,7 @@ export function useResolveComposerObjectLink(input: {
   const notionEnabled = useEnvironmentSettings(environmentId, (s) => s.enableNotionIntegration);
   const granolaEnabled = useEnvironmentSettings(environmentId, (s) => s.enableGranolaIntegration);
   const getLinearIssue = useAtomCommand(linearEnvironment.getIssue, { reportFailure: false });
+  const getLinearObject = useAtomCommand(linearEnvironment.getObject, { reportFailure: false });
   const getGitHubIssue = useAtomCommand(githubIssueEnvironment.getIssue, { reportFailure: false });
   const getGitHubRef = useAtomCommand(githubIssueEnvironment.getRef, { reportFailure: false });
   const getNotionPage = useAtomCommand(notionEnvironment.getPage, { reportFailure: false });
@@ -274,6 +276,18 @@ export function useResolveComposerObjectLink(input: {
         const record = linearIssueContextRecord(result.value);
         return {
           reference: { kind: "linear-issue", contextId: record.contextId, label: record.label },
+          commit: () => useIssueContextStore.getState().upsert(threadRef.threadId, record),
+        };
+      }
+      case "linear-object": {
+        const result = await getLinearObject({
+          environmentId,
+          input: { objectType: link.objectType, id: link.slugId },
+        });
+        if (result._tag === "Failure") return "unreadable";
+        const record = linearObjectContextRecord(result.value);
+        return {
+          reference: { kind: "linear-object", contextId: record.contextId, label: record.label },
           commit: () => useIssueContextStore.getState().upsert(threadRef.threadId, record),
         };
       }

@@ -10,6 +10,8 @@ import type {
   GranolaNoteContextRecord,
   LinearIssueContext,
   LinearIssueContextRecord,
+  LinearObjectContext,
+  LinearObjectContextRecord,
   ModelContextOption,
   ModelContextRecord,
   NotionPageContext,
@@ -47,6 +49,22 @@ export function linearIssueContextRecord(issue: LinearIssueContext): LinearIssue
     url: issue.url,
     stateName: issue.stateName,
     markdown: issue.markdown,
+  };
+}
+
+export function linearObjectContextRecord(object: LinearObjectContext): LinearObjectContextRecord {
+  return {
+    version: 1,
+    kind: "linear-object",
+    // Linear ids are UUIDs, which already fit the context id pattern.
+    contextId: `linear-object_${object.id}` as ComposerContextId,
+    label: sanitizeComposerContextLabel(object.title, "linear-object"),
+    objectType: object.objectType,
+    objectId: object.id,
+    title: object.title.slice(0, 2_048),
+    url: object.url.slice(0, 2_048),
+    status: object.status?.slice(0, 2_048) ?? null,
+    markdown: object.markdown,
   };
 }
 

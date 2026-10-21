@@ -321,6 +321,7 @@ function UnavailableUserMessageContextChip(props: UserMessageContextRenderContex
 
 const LINKED_OBJECT_KINDS = [
   "linear-issue",
+  "linear-object",
   "github-issue",
   "repository",
   "slack-thread",

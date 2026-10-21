@@ -57,6 +57,7 @@ export interface ContextPreviewPropsByKind {
   skill: SkillPreviewProps;
   "thread-tab": ComponentProps<typeof ThreadTabSummaryDetails>;
   "linear-issue": LinkedObjectPreviewProps;
+  "linear-object": LinkedObjectPreviewProps;
   "github-issue": LinkedObjectPreviewProps;
   repository: LinkedObjectPreviewProps;
   checkout: ComponentProps<typeof CheckoutDetails>;
@@ -185,6 +186,7 @@ export const CONTEXT_PRESENTATION_DEFINITIONS: ContextPresentationDefinitions = 
     preview: { details: "popover", Body: ThreadTabSummaryDetails },
   },
   "linear-issue": { capabilities: COMPACT, preview: linkedObjectPreview },
+  "linear-object": { capabilities: COMPACT, preview: linkedObjectPreview },
   "github-issue": { capabilities: COMPACT, preview: linkedObjectPreview },
   repository: { capabilities: COMPACT, preview: linkedObjectPreview },
   checkout: { capabilities: COMPACT, preview: { details: "popover", Body: CheckoutDetails } },

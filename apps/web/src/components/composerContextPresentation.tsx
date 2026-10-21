@@ -8,6 +8,7 @@ import type {
   GranolaNoteContextRecord,
   KnownComposerContextKind,
   LinearIssueContextRecord,
+  LinearObjectContextRecord,
   NotionPageContextRecord,
   PreviewAnnotationPayload,
   PromptLinkContextRecord,
@@ -110,6 +111,7 @@ export type ComposerDraftContextRecord =
   | { kind: "thread-tab"; record: ThreadTabContextRecord }
   | { kind: "model"; record: ModelContextRecord }
   | { kind: "linear-issue"; record: LinearIssueContextRecord }
+  | { kind: "linear-object"; record: LinearObjectContextRecord }
   | { kind: "github-issue"; record: GitHubIssueContextRecord }
   | { kind: "repository"; record: RepositoryContextRecord }
   | { kind: "checkout"; record: CheckoutContextRecord }
@@ -242,6 +244,8 @@ function issueDraftContextRecord(record: IssueContextRecord): ComposerDraftConte
       return { kind: "granola-note", record };
     case "linear-issue":
       return { kind: "linear-issue", record };
+    case "linear-object":
+      return { kind: "linear-object", record };
     case "github-issue":
       return { kind: "github-issue", record };
     case "slack-thread":
@@ -527,6 +531,7 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
           : null,
     },
     "linear-issue": linkedObjectHandler("linear-issue"),
+    "linear-object": linkedObjectHandler("linear-object"),
     "github-issue": linkedObjectHandler("github-issue"),
     repository: linkedObjectHandler("repository"),
     checkout: {

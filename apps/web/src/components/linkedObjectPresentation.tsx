@@ -4,6 +4,7 @@ import type {
   GitHubRefContextRecord,
   GranolaNoteContextRecord,
   LinearIssueContextRecord,
+  LinearObjectContextRecord,
   NotionPageContextRecord,
   PromptLinkContextRecord,
   RepositoryContextRecord,
@@ -19,6 +20,8 @@ import {
   GitHubRefDetails,
   GranolaNoteDetails,
   LinearIssueDetails,
+  LinearObjectDetails,
+  linearObjectKindLabel,
   NotionPageDetails,
   PromptLinkDetails,
   RepositoryDetails,
@@ -34,6 +37,7 @@ import { DiscordIcon, GitHubIcon, GranolaIcon, LinearIcon, NotionIcon, SlackIcon
  */
 export type LinkedObjectContextRecord =
   | LinearIssueContextRecord
+  | LinearObjectContextRecord
   | GitHubIssueContextRecord
   | GitHubRefContextRecord
   | RepositoryContextRecord
@@ -47,6 +51,7 @@ export type LinkedObjectContextKind = LinkedObjectContextRecord["kind"];
 
 export const LINKED_OBJECT_CONTEXT_KINDS = [
   "linear-issue",
+  "linear-object",
   "github-issue",
   "github-ref",
   "repository",
@@ -72,6 +77,7 @@ export function isLinkedObjectContextRecord(record: {
 export function linkedObjectIcon(record: LinkedObjectContextRecord) {
   switch (record.kind) {
     case "linear-issue":
+    case "linear-object":
       return <LinearIcon />;
     case "github-issue":
       return <GitHubIcon />;
@@ -97,6 +103,8 @@ export function linkedObjectKindLabel(record: LinkedObjectContextRecord): string
   switch (record.kind) {
     case "linear-issue":
       return "Linear issue";
+    case "linear-object":
+      return linearObjectKindLabel(record.objectType);
     case "github-issue":
       return "GitHub issue";
     case "github-ref":
@@ -134,6 +142,8 @@ export function LinkedObjectDetails(props: {
           onOpenLink={openLinearLink}
         />
       );
+    case "linear-object":
+      return <LinearObjectDetails record={record} onOpenLink={openLinearLink} />;
     case "github-issue":
       return <GitHubIssueDetails record={record} onOpenLink={onOpenLink} />;
     case "github-ref":

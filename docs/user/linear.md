@@ -55,6 +55,14 @@ Long issues are trimmed, dropping the oldest comments first.
 The issue is copied when you attach it, so later edits in Linear don't change a message you
 already sent. Chips in an unsent draft don't survive a reload; attach the issue again.
 
+## Projects, documents, and initiatives
+
+On web and desktop, paste a link to a Linear project, document, or initiative into the composer and
+it becomes a chip named after it. The agent receives a copy of it: a project's status, lead,
+dates, progress, description, milestones, and up to 50 of its issues; a document's text; or an
+initiative's status, owner, description, and projects. A link to any tab of a project, such as its
+issue list, attaches the whole project. Linear views and cycles stay as plain links.
+
 ## Issue identifiers in messages
 
 When Linear is connected, an issue identifier such as `ENG-123` in a message links to that issue,

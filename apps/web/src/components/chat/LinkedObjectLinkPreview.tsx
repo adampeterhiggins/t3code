@@ -11,6 +11,7 @@ import type { ComposerObjectLink } from "@t3tools/shared/composerObjectLinks";
 import {
   discordThreadContextRecord,
   linearIssueContextRecord,
+  linearObjectContextRecord,
   promptLinkContextRecord,
   slackThreadContextRecord,
 } from "@t3tools/shared/integrationContextRecords";
@@ -58,6 +59,14 @@ export function useLinkedObjectRecord(
   const linear = useEnvironmentQuery(
     open && link.kind === "linear-issue"
       ? linearEnvironment.issue({ environmentId, input: { id: link.identifier } })
+      : null,
+  );
+  const linearObject = useEnvironmentQuery(
+    open && link.kind === "linear-object"
+      ? linearEnvironment.object({
+          environmentId,
+          input: { objectType: link.objectType, id: link.slugId },
+        })
       : null,
   );
   const gitHubIssue = useEnvironmentQuery(
@@ -124,6 +133,12 @@ export function useLinkedObjectRecord(
           available: true,
           record: linear.data && linearIssueContextRecord(linear.data),
           failed: linear.error !== null,
+        };
+      case "linear-object":
+        return {
+          available: true,
+          record: linearObject.data && linearObjectContextRecord(linearObject.data),
+          failed: linearObject.error !== null,
         };
       case "github-issue":
         return {
