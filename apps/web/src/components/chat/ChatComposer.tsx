@@ -6479,6 +6479,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // Links already converted or tried, per draft. Typing never retries them, so undoing a chip or
   // deleting one stays as text. Pasting is explicit and does.
   const handledObjectLinksRef = useRef(new Map<string, Set<string>>());
+  // Links whose objects are loading, and the draft each was written in, for placeholder chips.
+  const [loadingObjectLinks, setLoadingObjectLinks] = useState<
+    ReadonlyArray<{ readonly url: string; readonly workKey: string }>
+  >([]);
   const handledObjectLinks = () => {
     const key = composerDraftTargetKeyRef.current;
     let handled = handledObjectLinksRef.current.get(key);
@@ -6567,6 +6571,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     const handled = handledObjectLinks();
     for (const { link, index } of links) {
       handled.add(link.url);
+      const loading = { url: link.url, workKey: started.workKey };
+      setLoadingObjectLinks((current) => [...current, loading]);
       const retry = () => {
         if (composerDraftTargetKeyRef.current !== started.draftKey) return;
         unreadLinkActionsRef.current?.retry(unreadLinkContextRecord(link, "unreadable"));
@@ -6584,7 +6590,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             typeof result === "string" ? unreadLinkChip(threadId, link, result) : result;
           applyResolvedObjectLinkStable(started, link.url, index, resolved);
         })
-        .finally(() => pendingDraftWork.end(started.workKey));
+        .finally(() => {
+          pendingDraftWork.end(started.workKey);
+          setLoadingObjectLinks((current) => current.filter((entry) => entry !== loading));
+        });
     }
   };
   useLayoutEffect(() => {
@@ -8299,6 +8308,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     }
                     cursor={composerCursor}
                     contextRecords={composerContextRecords}
+                    loadingLinkUrls={loadingObjectLinks
+                      .filter((entry) => entry.workKey === attachmentTargetKey)
+                      .map((entry) => entry.url)}
                     buildContextClipboardFragment={buildContextClipboardFragmentStable}
                     importContextFragment={importContextFragmentStable}
                     skills={selectedProviderSkills}

@@ -114,6 +114,7 @@ import { ComposerCodeBlockNodeView } from "./chat/ComposerCodeBlockNodeView";
 import { resolveAssistantCitationCommentDismissal } from "./chat/assistantCitationCommentDismissal";
 import { composerCodeBlockHighlight } from "./composerCodeBlockHighlight";
 import { importPastedComposerText } from "./composerInlineTokenPaste";
+import { ComposerLoadingLinksExtension, setComposerLoadingLinks } from "./composerLoadingLinks";
 import { didComposerSelectionChangeVisibly } from "./composerSelection";
 import type { ComposerDraftContextRecords } from "./composerContextPresentation";
 
@@ -139,6 +140,8 @@ export interface ComposerPromptEditorProps {
   richTextEnabled?: boolean;
   literalText?: boolean;
   contextRecords: ComposerDraftContextRecords;
+  /** Links whose objects are loading, drawn as placeholder chips until they resolve. */
+  loadingLinkUrls?: ReadonlyArray<string>;
   buildContextClipboardFragment?:
     | ((contextIds: ReadonlyArray<string>) => string | null)
     | undefined;
@@ -864,6 +867,7 @@ function createComposerExtensions(richText: boolean) {
     ComposerCitationExtension,
     ComposerContextReferenceExtension,
     ComposerMarkersExtension,
+    ComposerLoadingLinksExtension,
     ...(richText
       ? [
           ...ComposerEmphasisExtensions,
@@ -957,6 +961,7 @@ function ComposerPromptEditorTiptapInner(
     richTextEnabled,
     literalText = false,
     contextRecords,
+    loadingLinkUrls,
     buildContextClipboardFragment,
     importContextFragment,
     skills,
@@ -1518,6 +1523,20 @@ function ComposerPromptEditorTiptapInner(
   useEffect(() => {
     editorHolder.current = editor;
   }, [editor]);
+
+  // Before paint, so a pasted link shows its placeholder chip rather than flashing as text.
+  useLayoutEffect(() => {
+    if (!editor) return;
+    const apply = () => setComposerLoadingLinks(editor.view, loadingLinkUrls ?? []);
+    if (editor.isInitialized) {
+      apply();
+      return;
+    }
+    editor.on("create", apply);
+    return () => {
+      editor.off("create", apply);
+    };
+  }, [editor, loadingLinkUrls]);
 
   // Tiptap forwards option changes to the view from a passive effect, so a
   // class change here would reach the ProseMirror element one tick after
