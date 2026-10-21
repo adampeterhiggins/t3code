@@ -53,6 +53,7 @@ const lucideIcons = [
   "messages-square",
   "mouse-pointer-click",
   "terminal",
+  "cpu",
 ];
 
 async function lucideSvg(name) {

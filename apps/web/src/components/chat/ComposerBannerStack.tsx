@@ -384,13 +384,23 @@ function ComposerBannerStackAlert({
         <ComposerBanner.Icon className="h-(--composer-banner-icon-column) self-start">
           {item.icon}
         </ComposerBanner.Icon>
-        <ComposerBanner.Content className="whitespace-nowrap">
-          <NoticeText
-            detailsLabel="Show title details"
-            className="font-medium leading-7 sm:leading-6"
-          >
-            {item.title}
-          </NoticeText>
+        <ComposerBanner.Content
+          className={descriptionBelow ? "flex-col items-stretch gap-0" : "whitespace-nowrap"}
+        >
+          {descriptionDetails && item.description ? (
+            // The description's details button repeats the title, so a clipped
+            // title does not get a second info button of its own.
+            <span className="block min-w-0 truncate font-medium leading-7 sm:leading-6">
+              {item.title}
+            </span>
+          ) : (
+            <NoticeText
+              detailsLabel="Show title details"
+              className="font-medium leading-7 sm:leading-6"
+            >
+              {item.title}
+            </NoticeText>
+          )}
           {item.description ? (
             descriptionBelow ? (
               <ComposerBanner.Scroll className="text-muted-foreground whitespace-normal wrap-anywhere [--inline-button-text-align:start] [--inline-button-white-space:normal] [&_[data-slot=inline-button]]:max-w-full">
@@ -398,7 +408,10 @@ function ComposerBannerStackAlert({
               </ComposerBanner.Scroll>
             ) : descriptionDetails ? (
               <span className="flex-none">
-                <NoticeDetails label="Show notice details">{item.description}</NoticeDetails>
+                <NoticeDetails label="Show notice details">
+                  <span className="block font-medium">{item.title}</span>
+                  <span className="block">{item.description}</span>
+                </NoticeDetails>
               </span>
             ) : (
               <NoticeText

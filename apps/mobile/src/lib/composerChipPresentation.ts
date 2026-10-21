@@ -41,6 +41,7 @@ const CONTEXT_CHIP_PRESENTATIONS = {
   repository: { accent: "#009c9c", icon: "folder-git-2" },
   checkout: { accent: "#0096af", icon: "laptop" },
   "unread-link": { accent: "#d55665", icon: "link" },
+  model: { accent: "#d06217", icon: "cpu" },
   thread: {
     accent: "#009c96",
     icon: "messages-square",

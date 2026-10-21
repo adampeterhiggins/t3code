@@ -8,6 +8,7 @@ import {
   type EnvironmentId,
   type KnownComposerContextRecord,
   type RepositoryContextRecord,
+  type ModelContextRecord,
   type SubagentContextRecord,
   type ThreadContextRecord,
 } from "@t3tools/contracts";
@@ -333,7 +334,32 @@ function formatComposerContextProviderPayload(record: KnownComposerContextRecord
         `link: ${record.url}`,
         "T3 Code could not read what this link points at when the user attached it.",
       ].join("\n");
+    case "model":
+      return formatModelPayload(record);
   }
+}
+
+/**
+ * Fork: the model the user named, in the shape `delegate_task` takes as its `target`, so the agent
+ * passes it on instead of guessing ids from the chip's label.
+ */
+function formatModelPayload(record: ModelContextRecord): string {
+  const target = {
+    providerInstanceId: record.providerInstanceId,
+    model: record.model,
+    ...(record.options.length > 0
+      ? { options: record.options.map((option) => ({ id: option.id, value: option.value })) }
+      : {}),
+  };
+  return [
+    `model: ${record.modelName} (${record.model})`,
+    `provider instance: ${record.instanceName} (${record.providerInstanceId}, ${record.driver})`,
+    record.options.length > 0
+      ? `options: ${record.options.map((option) => `${option.label} ${option.valueLabel}`).join(", ")}`
+      : "options: none set; use the model's defaults.",
+    `target: ${JSON.stringify(target)}`,
+    "The user named this model for the work the message refers to it in, such as subagents you start. Pass target as delegate_task's target, or use the equivalent in your own subagent tool when it supports this model.",
+  ].join("\n");
 }
 
 /**

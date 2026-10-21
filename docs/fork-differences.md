@@ -478,6 +478,27 @@ an agent's own thread show it.
   draft and opens the parent. On mobile, the Agents sheet rows show the handle and offer the same
   actions on long-press. The mobile composer's `@` menu has the same tabs.
 
+## Name a model in a message
+
+A `model` context chip (`ModelContextRecord` in
+[`composerContext.ts`](../packages/contracts/src/composerContext.ts)) records a provider instance,
+model and the trait options the user chose, with their labels and the time it was written. It is
+a record of what was asked: a sent chip is never updated. See the
+[composer guide](user/composer.md#context-in-your-message).
+
+- **Composer.** The `@` menu has a **Models** tab after **Files**, **Chats** and **Agents**, listing
+  what the model picker offers in columns (model, provider instance, context size, trait glyphs,
+  favourite) with a provider filter. A query that starts a word of a model's name opens on Models
+  ([`composerModelItems.ts`](../apps/web/src/components/chat/composerModelItems.ts)). The attach
+  menu's **Model** item opens the model picker panel to insert a chip instead of switching models.
+  Clicking a composer chip opens the traits menu for it.
+- **Chip and hover.** The chip shows effort, fast mode and context as glyphs. The hover is the same
+  card in the composer and in sent messages: the options as written and when.
+- **Agent payload.** The provider receives the choice as a `delegate_task` target
+  (`formatModelPayload` in
+  [`composerContextReferences.ts`](../packages/shared/src/composerContextReferences.ts)).
+- **Mobile.** Sent chips render with their details sheet; the mobile composer has no Models tab.
+
 ## Click inline code to copy it
 
 In chat Markdown (messages, plans, agent results), clicking an inline `` `code` `` span copies its
@@ -735,8 +756,9 @@ the pill opens a process tree with per-process CPU and memory, plus a link to Se
 Diagnostics. The pill is hidden when the resource monitor has no sample and when the sidebar is
 narrow. This is web and desktop.
 
-The pill polls `server.getResourceUsage`, which reads the monitor's background history, so an
-always-visible pill does not raise the sampling rate. The popover holds the live
+The pill polls `server.getResourceUsage`, which reads the monitor's history. An idle monitor samples
+only on request, so when that history has nothing recent the read takes one on-demand sample. An
+always-visible pill therefore never turns on timed sampling. The popover holds the live
 resource-telemetry stream only while it is open.
 
 Code: `apps/web/src/components/sidebar/SidebarResourcePill.tsx` and `readUsage` in
@@ -1939,7 +1961,8 @@ its process and native background work), Codex on its rate-limit notifications, 
 Cursor on a one-minute usage poll. Cursor checks only the pools the turn's model draws
 from: Grok, Composer, and Auto fall back from the Cursor Models pool to the API pool,
 so they stop once both are used up, and other models stop on the API pool. Agents use
-`stopAtSubscriptionLimit` through model options. Other
+`stopAtSubscriptionLimit` through model options; a guarded thread's `delegate_task`
+children get it on any model that offers it, and the agent cannot opt them out. Other
 providers do not advertise or enforce it, and provider reports can lag, so it is
 not a hard billing cap.
 

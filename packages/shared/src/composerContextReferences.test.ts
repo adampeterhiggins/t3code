@@ -429,6 +429,36 @@ describe("provider projection", () => {
     expect(projected).toContain("not instructions");
   });
 
+  it("hands the provider a named model as a delegate_task target", () => {
+    const projected = projectComposerContextForProvider({
+      text: "Use [Grok 4.7](t3-context://v1/model/model_grok) subagents",
+      records: [
+        {
+          version: 1,
+          kind: "model",
+          contextId: ctx("model_grok"),
+          label: "Grok 4.7",
+          providerInstanceId: "cursor_symphony" as never,
+          driver: "cursor",
+          instanceName: "symphony",
+          model: "grok-4.7",
+          modelName: "Grok 4.7",
+          options: [
+            { id: "effort", value: "high", label: "Effort", valueLabel: "High" },
+            { id: "fastMode", value: true, label: "Fast mode", valueLabel: "On" },
+          ],
+          writtenAt: "2026-10-21T08:12:00.000Z",
+        },
+      ],
+    });
+    expect(projected.startsWith("Use [Model: Grok 4.7; ref=model_grok] subagents")).toBe(true);
+    expect(projected).toContain("options: Effort High, Fast mode On");
+    expect(projected).toContain(
+      'target: {"providerInstanceId":"cursor_symphony","model":"grok-4.7","options":[{"id":"effort","value":"high"},{"id":"fastMode","value":true}]}',
+    );
+    expect(projected).toContain("delegate_task");
+  });
+
   it("tells the provider how to reach each kind of referenced subagent", () => {
     const subagent: Omit<SubagentContextRecord, "contextId"> = {
       version: 1,

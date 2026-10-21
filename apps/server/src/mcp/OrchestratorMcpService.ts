@@ -75,6 +75,7 @@ import {
   handoffInstancesDiffer,
   providerAccountLabel,
 } from "@t3tools/shared/modelChangeMarker";
+import { getModelSelectionBooleanOptionValue } from "@t3tools/shared/model";
 import {
   normalizeThreadPullRequestKey,
   visibleThreadPullRequests,
@@ -99,6 +100,7 @@ import {
   subagentResultForRun,
   delegatedTaskProgress,
 } from "@t3tools/provider-core/server/subagentProjection";
+import { SUBSCRIPTION_LIMIT_OPTION_ID } from "@t3tools/provider-core/server/SubscriptionLimitPolicy";
 import {
   DispatchModeLimit,
   type DispatchModeRefusal,
@@ -1549,6 +1551,22 @@ const make = Effect.gen(function* () {
         selections.set(selection.id, selection);
       }
       options = [...selections.values()];
+    }
+    // A guarded thread's delegated work stays guarded on any model that offers the guard, and
+    // the agent cannot opt its child out, as the application setting overrides a thread's Off.
+    if (
+      getModelSelectionBooleanOptionValue(inheritedSelection, SUBSCRIPTION_LIMIT_OPTION_ID) ===
+        true &&
+      provider.models
+        .find((candidate) => candidate.slug === model)
+        ?.capabilities?.optionDescriptors?.some(
+          (descriptor) => descriptor.id === SUBSCRIPTION_LIMIT_OPTION_ID,
+        ) === true
+    ) {
+      options = [
+        ...(options ?? []).filter((selection) => selection.id !== SUBSCRIPTION_LIMIT_OPTION_ID),
+        { id: SUBSCRIPTION_LIMIT_OPTION_ID, value: true },
+      ];
     }
     return {
       modelSelection: { instanceId, model, ...(options === undefined ? {} : { options }) },

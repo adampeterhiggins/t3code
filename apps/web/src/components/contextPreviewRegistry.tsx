@@ -3,6 +3,7 @@ import type { ComponentProps, ComponentType, ReactElement } from "react";
 
 import { isPullRequestSummaryContext } from "~/lib/composerContextRecords";
 import { preloadGhosttyTerminal } from "~/terminal/ghostty/surface";
+import { ModelPreview, type ModelPreviewProps } from "./chat/ModelContextChip";
 import { TerminalPreview, type TerminalPreviewProps } from "./chat/TerminalContextPreview";
 import type { ContextChipKind } from "./ContextChip";
 import {
@@ -68,6 +69,7 @@ export interface ContextPreviewPropsByKind {
   "prompt-link": LinkedObjectPreviewProps;
   "github-ref": LinkedObjectPreviewProps;
   "unread-link": ComponentProps<typeof UnreadLinkDetails>;
+  model: ModelPreviewProps;
 }
 
 export interface ContextPreviewHoverProps<TPreview> {
@@ -201,6 +203,7 @@ export const CONTEXT_PRESENTATION_DEFINITIONS: ContextPresentationDefinitions = 
     capabilities: COMPACT,
     preview: { details: "popover", Body: UnreadLinkDetails },
   },
+  model: { capabilities: COMPACT, preview: { details: "card", Body: ModelPreview } },
 };
 
 export function contextPresentationDefinition<K extends KnownComposerContextKind>(

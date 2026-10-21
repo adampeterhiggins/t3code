@@ -10,6 +10,7 @@ import type {
   GitHubIssueContextRecord,
   GitHubRefContextRecord,
   UnreadLinkContextRecord,
+  ModelContextRecord,
   LinearIssueContextRecord,
   DiscordThreadContextRecord,
   SlackThreadContextRecord,
@@ -32,7 +33,8 @@ export type IssueContextRecord =
   | SubagentContextRecord
   | PromptLinkContextRecord
   | GitHubRefContextRecord
-  | UnreadLinkContextRecord;
+  | UnreadLinkContextRecord
+  | ModelContextRecord;
 
 const EMPTY: ReadonlyArray<IssueContextRecord> = [];
 

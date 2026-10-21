@@ -10,6 +10,7 @@ import {
   type ProviderDriverKind,
   type PullRequestContextMetadata,
   type ScopedThreadRef,
+  type ServerProviderModel,
   type ServerProviderSkill,
   type ServerProviderSlashCommand,
   type SlackMessageSummary,
@@ -24,15 +25,18 @@ import {
   ServerIcon,
   PackageIcon,
   SettingsIcon,
+  StarIcon,
   UserRoundIcon,
   type LucideIcon,
 } from "lucide-react";
 import { GitHubIcon, DiscordIcon, GranolaIcon, LinearIcon, NotionIcon, SlackIcon } from "../Icons";
-import { memo, useLayoutEffect, useRef } from "react";
+import { memo, type ReactNode, useLayoutEffect, useRef } from "react";
 
 import type { AgentFleetEntry } from "@t3tools/client-runtime/state/agent-fleet";
 import { type ComposerSlashCommand, type ComposerTriggerKind } from "../../composer-logic";
 import { cn } from "~/lib/utils";
+import type { AppModelOption } from "~/modelSelection";
+import type { ProviderInstanceEntry } from "~/providerInstances";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
@@ -48,6 +52,8 @@ import {
 } from "./GitHubIssueHoverPreview";
 import { LinearIssueHoverPreview } from "./LinearIssueHoverPreview";
 import { SourceTabs } from "./SourceTabs";
+import { ModelTraitGlyphs, formatModelContextWindow } from "./modelChipParts";
+import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import { resolvePullRequestState } from "../pullRequest/pullRequestPresentation";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 
@@ -169,6 +175,17 @@ export type ComposerCommandItem =
       workspaceRoot: string | null;
       label: string;
       description: string;
+    }
+  | {
+      id: string;
+      type: "model";
+      entry: ProviderInstanceEntry;
+      option: AppModelOption;
+      /** Absent for a custom model the provider does not report. */
+      model: ServerProviderModel | null;
+      isFavorite: boolean;
+      label: string;
+      description: string;
     };
 
 export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
@@ -188,6 +205,8 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
     activeId: string;
     onSelect: (id: string) => void;
   };
+  /** A row of filters between the tabs and the list. */
+  filters?: ReactNode;
   activeItemId: string | null;
   /** Lets Linear and GitHub issue rows fetch their hover preview. */
   environmentId?: EnvironmentId;
@@ -236,6 +255,7 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
         data-composer-command-drawer="true"
       >
         {props.tabs ? <SourceTabs {...props.tabs} className="flex gap-1 px-3 pt-2.5" /> : null}
+        {props.filters}
         {props.items.length > 0 ? (
           <CommandList
             id={props.listId}
@@ -336,6 +356,37 @@ function CheckoutCommandRow(props: { item: Extract<ComposerCommandItem, { type: 
         )}
       >
         {status}
+      </span>
+    </span>
+  );
+}
+
+/** Fixed-width columns so models, instances, and context sizes line up down the list. */
+function ModelCommandRow(props: { item: Extract<ComposerCommandItem, { type: "model" }> }) {
+  const { entry, option, model } = props.item;
+  return (
+    <span className="flex min-w-0 flex-1 items-center gap-2 text-xs">
+      <ProviderInstanceIcon
+        driverKind={entry.driverKind}
+        displayName={entry.displayName}
+        accentColor={entry.accentColor}
+        acpRegistryAgentId={entry.acpRegistryAgentId}
+        acpRegistryIconUrl={entry.acpRegistryIconUrl}
+        size="compact"
+        className="size-4"
+      />
+      <span className="min-w-0 flex-1 truncate font-medium font-sans">{option.name}</span>
+      <span className="w-28 shrink-0 truncate text-secondary-label">{entry.displayName}</span>
+      <span className="w-12 shrink-0 text-end text-secondary-label tabular-nums">
+        {model?.contextWindowTokens ? formatModelContextWindow(model.contextWindowTokens) : ""}
+      </span>
+      <span className="flex shrink-0 text-secondary-label">
+        <ModelTraitGlyphs model={model} />
+      </span>
+      <span className="flex w-3.5 shrink-0 justify-end">
+        {props.item.isFavorite ? (
+          <StarIcon aria-label="Favourite" className="size-3 fill-current text-warning" />
+        ) : null}
       </span>
     </span>
   );
@@ -520,6 +571,8 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
         />
       ) : props.item.type === "checkout" ? (
         <CheckoutCommandRow item={props.item} />
+      ) : props.item.type === "model" ? (
+        <ModelCommandRow item={props.item} />
       ) : props.item.type === "subagent" ? (
         <AgentCommandRow
           parentRef={props.item.parentRef}

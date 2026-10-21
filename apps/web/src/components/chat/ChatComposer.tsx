@@ -34,6 +34,7 @@ import type {
   ThreadId,
   ThreadTabGroup,
   UnreadLinkContextRecord,
+  ModelContextRecord,
   MessageDraft,
   ContextMenuItem,
 } from "@t3tools/contracts";
@@ -283,6 +284,13 @@ import {
   ComposerRestingImagePreviews,
 } from "./ComposerAttachmentStrip";
 import { ComposerAttachMenu, openComposerAttachPicker } from "./ComposerAttachMenu";
+import { ComposerModelChipPicker } from "./ComposerModelChipPicker";
+import { ComposerModelFilters } from "./ComposerModelFilters";
+import { deriveComposerModelItems } from "./composerModelItems";
+import { attachModelToChat } from "./modelReferences";
+import { useEnvironmentModelPreferences } from "~/hooks/useSettings";
+import { useIssueContextStore } from "~/issueContextStore";
+import { providerModelKey } from "~/modelOrdering";
 import { ComposerPrimaryActions, type ComposerSendSurface } from "./ComposerPrimaryActions";
 import { useComposerCheckoutItems } from "./useComposerCheckoutItems";
 import {
@@ -1237,6 +1245,8 @@ export interface ChatComposerProps {
   phase: SessionPhase;
   canInterrupt: boolean;
   isConnecting: boolean;
+  /** Whether the checkout is a git repository is still unknown, so the send mode isn't settled. */
+  checkoutKindPending: boolean;
   isSendBusy: boolean;
   canResume: boolean;
   isRevertingCheckpoint?: boolean;
@@ -1666,6 +1676,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     phase,
     canInterrupt,
     isConnecting,
+    checkoutKindPending,
     isSendBusy,
     canResume,
     isRevertingCheckpoint = false,
@@ -1914,6 +1925,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       unreadLinkActionsRef.current?.retry(record),
     keepUnreadLinkAsText: (record: UnreadLinkContextRecord) =>
       unreadLinkActionsRef.current?.keepAsText(record),
+    updateModelChip: (record: ModelContextRecord) =>
+      useIssueContextStore.getState().upsert(routeThreadRef.threadId, record),
   };
   const composerContextRecords = composerContextRecordsFromDraft({
     terminalContexts: composerTerminalContexts,
@@ -2360,7 +2373,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     selectedProviderSlashCommands,
     showSkillsInSlashMenu: settings.showSkillsInSlashMenu,
   });
-  const composerMenuItems =
+  const pathMenuBase =
     composerTrigger?.kind === "path"
       ? withThreadTabMenuItems(
           composerMenuItemsFromTrigger,
@@ -2369,6 +2382,41 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           composerTrigger.query,
         )
       : composerMenuItemsFromTrigger;
+  const isPathTrigger = composerTrigger?.kind === "path";
+  const pathTriggerQuery = isPathTrigger ? composerTrigger.query : "";
+  const { favorites: favoriteModels } = useEnvironmentModelPreferences(environmentId);
+  const [modelFilterChoice, setModelFilterChoice] = useState<{
+    rangeStart: number;
+    instanceId: ProviderInstanceId | null;
+  } | null>(null);
+  const modelInstanceFilter =
+    isPathTrigger && modelFilterChoice?.rangeStart === composerTrigger.rangeStart
+      ? modelFilterChoice.instanceId
+      : null;
+  const modelMenu = deriveComposerModelItems({
+    enabled: isPathTrigger,
+    query: pathTriggerQuery,
+    entries: providerInstanceEntries,
+    modelOptionsByInstance,
+    favoriteKeys: new Set(
+      favoriteModels.map((favorite) => providerModelKey(favorite.provider, favorite.model)),
+    ),
+    instanceFilter: modelInstanceFilter,
+  });
+  const [pathTabChoice, setPathTabChoice] = useState<{
+    rangeStart: number;
+    tab: "files" | "models";
+  } | null>(null);
+  const [isModelChipPickerOpen, setIsModelChipPickerOpen] = useState(false);
+  const [attachMenuAnchor, setAttachMenuAnchor] = useState<HTMLSpanElement | null>(null);
+  const pathTab =
+    isPathTrigger && pathTabChoice?.rangeStart === composerTrigger.rangeStart
+      ? pathTabChoice.tab
+      : modelMenu.prefersModels
+        ? "models"
+        : "files";
+  const composerMenuItems =
+    isPathTrigger && pathTab === "models" ? [...modelMenu.items] : pathMenuBase;
 
   const composerMenuOpen = Boolean(composerTrigger);
   const composerMenuSearchKey = composerTrigger
@@ -3517,6 +3565,20 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       }
       return;
     }
+    if (item.type === "model") {
+      if (trigger.kind !== "path") return;
+      const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
+        expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
+      });
+      if (!applied) return;
+      setComposerHighlightedItemId(null);
+      attachModelToChat(routeThreadRef, {
+        entry: item.entry,
+        slug: item.option.slug,
+        name: item.option.name,
+      });
+      return;
+    }
     if (item.type === "thread") {
       if (trigger.kind !== "path") return;
       const shell = readThreadShell(item.thread);
@@ -3843,11 +3905,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     state.pending.has(composerDraftTargetKey),
   );
   useEffect(() => {
-    if (!submitRequested || isConnecting || isSendBusy) return;
+    if (!submitRequested || isConnecting || isSendBusy || checkoutKindPending) return;
     const intent = useComposerSubmitRequestStore.getState().take(composerDraftTargetKey);
     if (intent === "save-draft") void saveMessageDraftStable();
     else if (intent === "send") submitComposerStable();
   }, [
+    checkoutKindPending,
     composerDraftTargetKey,
     isConnecting,
     isSendBusy,
@@ -6183,13 +6246,42 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           });
         }}
       />
-      <ComposerAttachMenu
+      <span ref={setAttachMenuAnchor} className="inline-flex">
+        <ComposerAttachMenu
+          environmentId={environmentId}
+          pullRequestsAvailable={pullRequestProjectId !== null}
+          githubIssuesAvailable={githubIssueCwd !== null}
+          checkoutsAvailable={attachCheckouts.hasLocalCandidates}
+          onAttachFiles={() => attachmentInputRef.current?.click()}
+          onPick={(picker) => openComposerAttachPicker(picker, routeThreadRef)}
+          onPickModel={() => setIsModelChipPickerOpen(true)}
+        />
+      </span>
+      <ComposerModelChipPicker
+        open={isModelChipPickerOpen}
+        onOpenChange={setIsModelChipPickerOpen}
+        anchor={attachMenuAnchor}
         environmentId={environmentId}
-        pullRequestsAvailable={pullRequestProjectId !== null}
-        githubIssuesAvailable={githubIssueCwd !== null}
-        checkoutsAvailable={attachCheckouts.hasLocalCandidates}
-        onAttachFiles={() => attachmentInputRef.current?.click()}
-        onPick={(picker) => openComposerAttachPicker(picker, routeThreadRef)}
+        activeInstanceId={selectedInstanceId}
+        model={selectedModelForPickerWithCustomFallback}
+        instanceEntries={providerInstanceEntries}
+        modelOptionsByInstance={modelOptionsByInstance}
+        keybindings={keybindings}
+        terminalOpen={terminalOpen}
+        onPick={(instanceId, model) => {
+          const entry = providerInstanceEntries.find(
+            (candidate) => candidate.instanceId === instanceId,
+          );
+          if (!entry) return;
+          const option = modelOptionsByInstance
+            .get(instanceId)
+            ?.find((candidate) => candidate.slug === model);
+          attachModelToChat(routeThreadRef, {
+            entry,
+            slug: model,
+            name: option?.name ?? model,
+          });
+        }}
       />
     </>
   ) : null;
@@ -6504,10 +6596,48 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     resolvedTheme={resolvedTheme}
                     isLoading={isComposerMenuLoading}
                     triggerKind={composerTriggerKind}
-                    emptyStateText={composerMenuEmptyState}
+                    emptyStateText={
+                      isPathTrigger && pathTab === "models"
+                        ? pathTriggerQuery
+                          ? `No model matches ${pathTriggerQuery}.`
+                          : "No models available."
+                        : composerMenuEmptyState
+                    }
                     activeItemId={activeComposerMenuItem?.id ?? null}
                     onHighlightedItemChange={onComposerMenuItemHighlightedStable}
                     onSelect={onSelectComposerItemStable}
+                    {...(isPathTrigger
+                      ? {
+                          tabs: {
+                            options: [
+                              { id: "files", label: "Files" },
+                              { id: "models", label: "Models" },
+                            ],
+                            activeId: pathTab,
+                            onSelect: (id: string) =>
+                              setPathTabChoice({
+                                rangeStart: composerTrigger.rangeStart,
+                                tab: id === "models" ? "models" : "files",
+                              }),
+                          },
+                          ...(pathTab === "models"
+                            ? {
+                                filters: (
+                                  <ComposerModelFilters
+                                    instances={modelMenu.instances}
+                                    selected={modelInstanceFilter}
+                                    onSelect={(instanceId) =>
+                                      setModelFilterChoice({
+                                        rangeStart: composerTrigger.rangeStart,
+                                        instanceId,
+                                      })
+                                    }
+                                  />
+                                ),
+                              }
+                            : {}),
+                        }
+                      : {})}
                   />
                 </ComposerCommandMenuLayer>
               )}

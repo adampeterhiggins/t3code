@@ -17,6 +17,7 @@ import type {
   ThreadContextRecord,
   ThreadTabContextRecord,
   UnreadLinkContextRecord,
+  ModelContextRecord,
 } from "@t3tools/contracts";
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
 import { videoMimeType } from "@t3tools/shared/video";
@@ -60,6 +61,7 @@ import { basenameOfPath } from "~/pierre-icons";
 import type { ReviewCommentContext } from "~/reviewCommentContext";
 import { FileTagChipContent } from "./chat/FileTagChip";
 import { SkillChipIcon } from "./chat/SkillChipIcon";
+import { ComposerModelChip, modelChipAccessibleLabel } from "./chat/ModelContextChip";
 import { SubagentChipTrigger, subagentChipAccessibleLabel } from "./chat/SubagentContextChip";
 import { TerminalChipTrigger } from "./chat/TerminalContextPreview";
 import { ContextChip } from "./ContextChip";
@@ -106,6 +108,7 @@ export type ComposerDraftContextRecord =
       screenshot?: ComposerImageAttachment | undefined;
     }
   | { kind: "thread-tab"; record: ThreadTabContextRecord }
+  | { kind: "model"; record: ModelContextRecord }
   | { kind: "linear-issue"; record: LinearIssueContextRecord }
   | { kind: "github-issue"; record: GitHubIssueContextRecord }
   | { kind: "repository"; record: RepositoryContextRecord }
@@ -141,6 +144,8 @@ export interface ComposerContextActions {
   openLink: (event: MouseEvent<HTMLElement>, url: string) => void;
   retryUnreadLink: (record: UnreadLinkContextRecord) => void;
   keepUnreadLinkAsText: (record: UnreadLinkContextRecord) => void;
+  /** Replaces a model chip's record, such as after its traits change. */
+  updateModelChip: (record: ModelContextRecord) => void;
 }
 
 export const ComposerContextActionsContext = createContext<ComposerContextActions>({
@@ -153,6 +158,7 @@ export const ComposerContextActionsContext = createContext<ComposerContextAction
   openLink: () => {},
   retryUnreadLink: () => {},
   keepUnreadLinkAsText: () => {},
+  updateModelChip: () => {},
 });
 
 export type ComposerDraftContextRecords = ReadonlyMap<string, ComposerDraftContextRecord>;
@@ -250,6 +256,8 @@ function issueDraftContextRecord(record: IssueContextRecord): ComposerDraftConte
       return { kind: "github-ref", record };
     case "unread-link":
       return { kind: "unread-link", record };
+    case "model":
+      return { kind: "model", record };
   }
 }
 
@@ -576,6 +584,18 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
           },
         };
       },
+    },
+    model: {
+      chip: (entry, { actions }) =>
+        entry.kind === "model"
+          ? {
+              trigger: (
+                <ComposerModelChip record={entry.record} onRecordChange={actions.updateModelChip} />
+              ),
+              accessibleLabel: modelChipAccessibleLabel(entry.record),
+              preview: { record: entry.record },
+            }
+          : null,
     },
   },
   fallback: (_kind, _entry, context) => <UnresolvedContextChip label={context.label} />,

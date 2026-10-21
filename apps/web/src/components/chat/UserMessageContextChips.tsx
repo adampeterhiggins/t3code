@@ -27,6 +27,7 @@ import {
 import { PREFERRED_HIGHLIGHTER } from "../../lib/syntaxHighlighting";
 import ChatMarkdown from "../ChatMarkdown";
 import { ThreadContextChip } from "../ThreadContextChip";
+import { ModelChipTrigger } from "./ModelContextChip";
 import {
   FolderIcon,
   MessageCircleIcon,
@@ -413,6 +414,16 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
       render: (record, context) =>
         record.kind === "thread" ? (
           <ThreadContextChip record={record} copyMarkdown={context.copyMarkdown} />
+        ) : (
+          <UnavailableUserMessageContextChip {...context} />
+        ),
+    },
+    {
+      kind: "model",
+      canRender: (record) => record.kind === "model",
+      render: (record, context) =>
+        record.kind === "model" ? (
+          <ModelChipTrigger record={record} copyMarkdown={context.copyMarkdown} />
         ) : (
           <UnavailableUserMessageContextChip {...context} />
         ),

@@ -2110,6 +2110,110 @@ describe("OrchestratorMcpService provider resolution", () => {
       }
     }),
   );
+  it.effect("keeps a guarded thread's delegated work guarded on any model that offers it", () =>
+    Effect.gen(function* () {
+      const driver = ProviderDriverKind.make("codex");
+      const guardOption = {
+        id: "stopAtSubscriptionLimit",
+        label: "Stop at subscription limit",
+        type: "boolean",
+      } as const;
+      // A different model, so nothing is inherited; the agent also tries to opt the child out.
+      const parentModelSelection = {
+        instanceId: codexInstanceId,
+        model: "gpt-5.4",
+        options: [{ id: "stopAtSubscriptionLimit", value: true }],
+      } as const;
+      const cases = [
+        {
+          name: "offered",
+          model: "gpt-5.4-mini",
+          expected: {
+            instanceId: codexInstanceId,
+            model: "gpt-5.4-mini",
+            options: [{ id: "stopAtSubscriptionLimit", value: true }],
+          },
+        },
+        {
+          name: "not-offered",
+          model: "gpt-5.4-plain",
+          expected: { instanceId: codexInstanceId, model: "gpt-5.4-plain" },
+        },
+      ] as const;
+
+      for (const testCase of cases) {
+        const dispatched = yield* Ref.make<ReadonlyArray<unknown>>([]);
+        const dependencies = Layer.mergeAll(
+          NodeServices.layer,
+          Layer.mock(ThreadManagementService.ThreadManagementService)({
+            ...spawnPolicyReads,
+            hasReceipt: () => Effect.succeed(false),
+            getThreadRecords: (threadId) =>
+              Effect.succeed(
+                threadId === parentThreadId
+                  ? parentProjection([], parentModelSelection)
+                  : childProjection,
+              ),
+            dispatch: (command) =>
+              Ref.update(dispatched, (commands) => [...commands, command]).pipe(
+                Effect.as({ sequence: 1, storedEvents: [] } as never),
+              ),
+          }),
+          Layer.mock(ProviderRegistry.ProviderRegistry)({
+            getProviders: Effect.succeed([
+              {
+                ...providerSnapshot({ instanceId: codexInstanceId, driver, model: "gpt-5.4" }),
+                models: [
+                  { slug: "gpt-5.4", optionDescriptors: [guardOption] },
+                  { slug: "gpt-5.4-mini", optionDescriptors: [guardOption] },
+                  { slug: "gpt-5.4-plain", optionDescriptors: [] },
+                ].map(({ slug, optionDescriptors }) => ({
+                  slug,
+                  name: slug,
+                  isCustom: false,
+                  capabilities: { optionDescriptors },
+                })),
+              },
+            ]),
+          }),
+          adapterRegistryLayer([codexInstanceId]),
+          Layer.mock(ProjectService.ProjectService)({}),
+          Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
+          Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
+          Layer.mock(SecretRequests.SecretRequests)({}),
+          ServerSettings.layerTest(),
+        );
+
+        yield* Effect.gen(function* () {
+          const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+          yield* service
+            .delegateTask(scope, {
+              task: "Summarize the diff.",
+              target: {
+                providerInstanceId: codexInstanceId,
+                model: testCase.model,
+                ...(testCase.name === "offered"
+                  ? { options: [{ id: "stopAtSubscriptionLimit", value: false }] }
+                  : {}),
+              },
+              mode: "async",
+              clientRequestId: `delegate-guard-${testCase.name}`,
+            })
+            .pipe(Effect.ignore);
+          const commands = yield* Ref.get(dispatched);
+          const request = commands[0] as { modelSelection: unknown } | undefined;
+          assert.deepEqual(request?.modelSelection, testCase.expected, testCase.name);
+        }).pipe(
+          Effect.provide(
+            OrchestratorMcpService.layer.pipe(
+              Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),
+              Layer.provide(dependencies),
+            ),
+          ),
+        );
+      }
+    }),
+  );
   describe("scheduled tasks at modes above the caller's", () => {
     const projectId = ProjectId.make("project:scheduled");
     const boundThreadId = ThreadId.make("thread:scheduled-bound");

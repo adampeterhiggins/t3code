@@ -3,6 +3,7 @@ import type { ImageSourcePropType } from "react-native";
 export const CONTEXT_CHIP_ICON_SOURCES = {
   "circle-dashed": require("../../assets/context-chip-icons/circle-dashed.png"),
   "circle-dot": require("../../assets/context-chip-icons/circle-dot.png"),
+  cpu: require("../../assets/context-chip-icons/cpu.png"),
   film: require("../../assets/context-chip-icons/film.png"),
   "folder-git-2": require("../../assets/context-chip-icons/folder-git-2.png"),
   "git-branch": require("../../assets/context-chip-icons/git-branch.png"),

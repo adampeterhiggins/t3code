@@ -177,19 +177,53 @@ it("keeps the usage-limit reset time on the details hover", async () => {
     expect(banner.getBoundingClientRect().height).toBe(height);
   }
 
+  const titleWidth = title.element().getBoundingClientRect().width;
   await userEvent.hover(details);
   const popup = page.getByRole("dialog", { name: "Notice details", exact: true });
   await expect.element(popup).toBeVisible();
   expect(popup.element().textContent ?? "").toContain("Resumes automatically about a minute after");
   const sentence = popup
     .element()
-    .querySelector<HTMLElement>("[data-slot=scroll-area-viewport] > div");
+    .querySelector<HTMLElement>("[data-slot=scroll-area-viewport] > div > :last-child");
   expect(sentence).not.toBeNull();
   const lineHeight = Number.parseFloat(getComputedStyle(sentence!).lineHeight);
   expect(sentence!.getBoundingClientRect().height).toBeLessThanOrEqual(lineHeight * 2 + 1);
-  expect(sentence!.getBoundingClientRect().width).toBeGreaterThan(
-    title.element().getBoundingClientRect().width,
+  expect(sentence!.getBoundingClientRect().width).toBeGreaterThan(titleWidth);
+});
+
+it("offers one details button when the usage-limit title is clipped", async () => {
+  await page.viewport(400, 800);
+  container.style.width = "360px";
+  const runId = RunId.make("run");
+  const resetAt = "2026-10-20T22:30:00.000Z";
+  await act(async () =>
+    root.render(
+      <ComposerBannerStack
+        items={[
+          usageLimitRecoveryBannerItem({
+            runId,
+            resetAt,
+            stoppedAt: "2026-10-20T21:00:00.000Z",
+            snoozedUntil: null,
+            recovery: null,
+            onChange: async () => {},
+            onResumeNow: async () => {},
+            continueElsewhere: null,
+          }),
+        ]}
+      />,
+    ),
   );
+  await nextFrame();
+
+  const title = container.querySelector<HTMLElement>(".truncate.font-medium")!;
+  expect(title.scrollWidth).toBeGreaterThan(title.clientWidth);
+  expect(container.querySelectorAll('[aria-label$="details"]')).toHaveLength(1);
+
+  await userEvent.hover(page.getByRole("button", { name: "Show notice details", exact: true }));
+  const popup = page.getByRole("dialog", { name: "Notice details", exact: true });
+  await expect.element(popup).toBeVisible();
+  expect(popup.element().textContent).toMatch(/^Usage limit reachedResets /);
 });
 
 it.each([320, 800])(
