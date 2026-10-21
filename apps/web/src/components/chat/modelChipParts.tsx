@@ -10,15 +10,22 @@ export function formatModelContextWindow(tokens: number): string {
   return `${Math.round(tokens / 1_000)}k`;
 }
 
-/** What a model lets you set, as the composer footer draws it: effort and fast mode. */
+/**
+ * What a model lets you set, as the composer footer draws it: effort and fast mode. Each glyph
+ * keeps its slot when absent, so the glyphs line up down a list.
+ */
 export function ModelTraitGlyphs(props: { model: ServerProviderModel | null }) {
   const descriptors = props.model?.capabilities?.optionDescriptors ?? [];
   const effort = descriptors.some((d) => d.type === "select" && EFFORT_OPTION.test(d.id));
   const fast = descriptors.some((d) => d.type === "boolean" && FAST_OPTION.test(d.id));
   return (
     <span className="flex items-center gap-1">
-      {effort ? <BrainIcon aria-label="Effort levels" className="size-3" /> : null}
-      {fast ? <ZapIcon aria-label="Fast mode" className="size-3 fill-current" /> : null}
+      <span className="flex size-3 shrink-0">
+        {effort ? <BrainIcon aria-label="Effort levels" className="size-3" /> : null}
+      </span>
+      <span className="flex size-3 shrink-0">
+        {fast ? <ZapIcon aria-label="Fast mode" className="size-3 fill-current" /> : null}
+      </span>
     </span>
   );
 }

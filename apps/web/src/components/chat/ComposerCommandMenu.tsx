@@ -380,7 +380,7 @@ function ModelCommandRow(props: { item: Extract<ComposerCommandItem, { type: "mo
       <span className="w-12 shrink-0 text-end text-secondary-label tabular-nums">
         {model?.contextWindowTokens ? formatModelContextWindow(model.contextWindowTokens) : ""}
       </span>
-      <span className="flex w-9 shrink-0 justify-end text-secondary-label">
+      <span className="flex shrink-0 text-secondary-label">
         <ModelTraitGlyphs model={model} />
       </span>
       <span className="flex w-3.5 shrink-0 justify-end">
