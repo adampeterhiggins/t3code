@@ -7,6 +7,7 @@ import { useComposerTypingGuard } from "./useComposerTypingGuard";
 import { resolveComposerSnapshot, type ComposerSnapshot } from "./composerPendingSnapshot";
 import { insertAttachmentReferencesForDraft } from "./composerAttachmentReferences";
 import { DESKTOP_PASTE_AS_TEXT_EVENT } from "../../lib/desktopPasteAsText";
+import { openDetachedComposerFileChooser } from "../quickMessage/detachedFileChooser";
 import { runtimeModeConfig, runtimeModeOptions as runtimeModes } from "./runtimeModeConfig";
 import { isLocalEnvironmentDisabled } from "../../localEnvironment";
 import { usePrimaryEnvironmentId } from "../../state/environments";
@@ -8370,7 +8371,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         pullRequestsAvailable={pullRequestProjectId !== null}
                         githubIssuesAvailable={githubIssueCwd !== null}
                         checkoutsAvailable={checkoutMenu.hasLocalCandidates}
-                        onAttachFiles={() => attachmentInputRef.current?.click()}
+                        onAttachFiles={() =>
+                          openDetachedComposerFileChooser(attachmentInputRef.current)
+                        }
                       />
                     </>
                   ) : null}

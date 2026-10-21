@@ -34,6 +34,7 @@ import { openStartFromPicker } from "~/components/chat/StartFromPicker";
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
 import { primaryServerKeybindingsAtom } from "~/state/server";
 import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
+import { detachedChatShortcutRuns } from "../components/quickMessage/detachedChatPresentation";
 import { isDetachedChatWindow } from "../components/quickMessage/quickMessageWindow";
 
 function ChatRouteGlobalShortcuts() {
@@ -87,6 +88,10 @@ function ChatRouteGlobalShortcuts() {
       });
 
       if (isCommandPaletteOpen()) {
+        return;
+      }
+
+      if (command !== null && !detachedChatShortcutRuns(command)) {
         return;
       }
 

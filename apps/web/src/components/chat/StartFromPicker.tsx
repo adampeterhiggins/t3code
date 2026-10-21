@@ -44,6 +44,11 @@ import { CommandPaletteContent } from "../CommandPaletteContent";
 import { LinearIcon } from "../Icons";
 import type { EnvironmentPullRequestEntry } from "../pullRequest/pullRequestList.logic";
 import { PULL_REQUEST_STATE_PRESENTATION } from "../pullRequest/pullRequestIcons";
+import {
+  applyDetachedPresentationMilestone,
+  detachedOpenExpandsThread,
+} from "../quickMessage/detachedChatPresentation";
+import { isDetachedChatWindow } from "../quickMessage/quickMessageWindow";
 import { setPendingScheduledTaskDraft } from "../settings/scheduledTaskDraftSeed";
 import {
   type ComposerAutomationSource,
@@ -175,17 +180,26 @@ export function StartFromPickerHost(props: StartFromPickerHostProps) {
       githubIssuesAvailable={props.githubIssuesAvailable}
       linkThreadRef={threadRef}
       onPick={applyPick}
-      onOpen={(href) => void navigate({ href })}
-      onNewAutomation={() => {
-        const source = props.readAutomationSource();
-        if (source === null) return false;
-        setPendingScheduledTaskDraft({
-          environmentId,
-          seed: scheduledTaskSeedFromComposer(source),
-        });
-        void navigate({ to: "/settings/scheduled-tasks", search: { environmentId } });
-        return true;
+      onOpen={(href) => {
+        if (detachedOpenExpandsThread(href)) {
+          applyDetachedPresentationMilestone("existing-thread-opened");
+        }
+        void navigate({ href });
       }}
+      {...(isDetachedChatWindow
+        ? {}
+        : {
+            onNewAutomation: () => {
+              const source = props.readAutomationSource();
+              if (source === null) return false;
+              setPendingScheduledTaskDraft({
+                environmentId,
+                seed: scheduledTaskSeedFromComposer(source),
+              });
+              void navigate({ to: "/settings/scheduled-tasks", search: { environmentId } });
+              return true;
+            },
+          })}
       onClose={closeStartFromPicker}
     />
   );

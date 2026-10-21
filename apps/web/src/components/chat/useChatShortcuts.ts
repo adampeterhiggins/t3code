@@ -8,6 +8,7 @@ import {
   preventTerminalCloseShortcut,
 } from "../../lib/terminalCloseShortcut";
 import { getTerminalFocusOwner, type TerminalFocusOwner } from "../../lib/terminalFocus";
+import { detachedChatShortcutRuns } from "../quickMessage/detachedChatPresentation";
 import { shouldTypeToFocusComposer } from "./composerFocusRedirect";
 
 /** Runs a command. Returning false lets the key event through untouched. */
@@ -75,7 +76,7 @@ export function useChatShortcuts(input: ChatShortcutsInput) {
       const command = resolveChatShortcutCommand(event, keybindings, current.scriptKeybindings, {
         context: shortcutContext,
       });
-      if (!command) return;
+      if (!command || !detachedChatShortcutRuns(command)) return;
       const run = current.commands[command] ?? current.fallback(command);
       if (!run || run({ event, terminalFocusOwner }) === false) return;
       event.preventDefault();

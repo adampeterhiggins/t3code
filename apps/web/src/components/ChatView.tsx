@@ -317,6 +317,12 @@ import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import { shortcutLabelForCommand } from "../keybindings";
 import { PersistentThreadTerminalDrawer } from "./PersistentThreadTerminals";
 import {
+  applyDetachedPresentationMilestone,
+  dismissDetachedChat,
+  useDetachedChatPresentation,
+} from "./quickMessage/detachedChatPresentation";
+import { isDetachedChatWindow } from "./quickMessage/quickMessageWindow";
+import {
   AlarmClockIcon,
   CheckCircle2Icon,
   MessageCircleIcon,
@@ -328,6 +334,7 @@ import {
   ShieldQuestionIcon,
   TargetIcon,
   WifiOffIcon,
+  XIcon,
 } from "lucide-react";
 import { cn, randomUUID } from "~/lib/utils";
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
@@ -1217,6 +1224,8 @@ export default function ChatView(props: ChatViewProps) {
     readEnvironmentScope(environmentId, AuthTerminalOperateScope);
   const canReadTerminal = useEnvironmentScope(environmentId, AuthTerminalReadScope);
   const draftId = routeKind === "draft" ? props.draftId : null;
+  const detachedPresentation = useDetachedChatPresentation();
+  const detachedCompact = detachedPresentation === "compact";
   const handleNewThread = useNewThreadHandler();
   const { settleThread, pinThread, confirmAndUnpinThread } = useThreadActions();
   const { closeTab } = useThreadTabActions();
@@ -5585,6 +5594,7 @@ export default function ChatView(props: ChatViewProps) {
       toastManager.add({ type: "info", title: "This thread is no longer available" });
       return;
     }
+    applyDetachedPresentationMilestone("existing-thread-opened");
     void navigate({
       to: "/$environmentId/$threadId",
       params: buildThreadRouteParams(threadRef),
@@ -6562,6 +6572,7 @@ export default function ChatView(props: ChatViewProps) {
 
   // A focused desktop browser page forwards these chords as menu actions.
   useEffect(() => {
+    if (isDetachedChatWindow) return;
     return window.desktopBridge?.onMenuAction((action) => {
       if (action === "rightPanel.toggle") toggleRightPanelStable();
       else if (action === "rightPanel.toggleMaximized") toggleRightPanelMaximizedStable();
@@ -7021,8 +7032,13 @@ export default function ChatView(props: ChatViewProps) {
         }
       }
       setThreadError(threadId, error instanceof Error ? error.message : "Failed to create thread.");
+      applyDetachedPresentationMilestone("draft-send-failed");
       return;
     }
+    // The launch command returns once preparation is scheduled, before checkout
+    // and the setup script finish. Expand before the route hands off so the
+    // timeline's existing setup card covers that work.
+    applyDetachedPresentationMilestone("thread-created-without-message");
     // With no message or turn, the draft route has no reason to hand over by itself.
     const threadRef = scopeThreadRef(activeThread.environmentId, threadId);
     if (currentRouteThreadKeyRef.current === routeThreadKey) {
@@ -7750,6 +7766,7 @@ export default function ChatView(props: ChatViewProps) {
       }),
     );
     if (multipleModelSelections !== null) {
+      applyDetachedPresentationMilestone("fanout");
       const failedSelections: ModelSelection[] = [];
       let clearedDraft = false;
       let releasedComposer = false;
@@ -7845,11 +7862,13 @@ export default function ChatView(props: ChatViewProps) {
                   },
                 });
               },
-              openThread: (threadId) =>
+              openThread: (threadId) => {
+                applyDetachedPresentationMilestone("existing-thread-opened");
                 void navigate({
                   to: "/$environmentId/$threadId",
                   params: buildThreadRouteParams(scopeThreadRef(environmentId, threadId)),
-                }),
+                });
+              },
             });
             if (started) startedCount += 1;
             else failedSelections.push(target.selection);
@@ -8120,7 +8139,10 @@ export default function ChatView(props: ChatViewProps) {
         submissionIntent === "background" && isLocalDraftThread
           ? scopeThreadRef(environmentId, threadIdForSend)
           : null;
-      if (backgroundThreadRef) beginBackgroundDraftSubmissionByRef(backgroundThreadRef);
+      if (backgroundThreadRef) {
+        beginBackgroundDraftSubmissionByRef(backgroundThreadRef);
+        applyDetachedPresentationMilestone("background-draft");
+      }
       const startPromise = startThreadTurn({
         environmentId,
         input: {
@@ -8194,6 +8216,12 @@ export default function ChatView(props: ChatViewProps) {
         failure = startResult;
       } else {
         turnStartSucceeded = true;
+        if (sentDraftThreadRef && !backgroundThreadRef) {
+          // Same point as an empty create: the command has been accepted and
+          // preparation is only scheduled, so the timeline can show setup
+          // before the draft route promotes.
+          applyDetachedPresentationMilestone("foreground-draft-turn-started");
+        }
         useThreadTabContextStore.getState().clear(threadIdForSend);
         useIssueContextStore.getState().clear(threadIdForSend);
         useRepositoryContextStore.getState().clear(threadIdForSend);
@@ -8239,6 +8267,7 @@ export default function ChatView(props: ChatViewProps) {
       }
     }
     if (failure !== null) {
+      if (isLocalDraftThread) applyDetachedPresentationMilestone("draft-send-failed");
       if (isLocalDraftThread && draftId && draftThread) {
         restoreFailedDraftThread(
           draftId,
@@ -9077,65 +9106,95 @@ export default function ChatView(props: ChatViewProps) {
   const content = (
     <div
       ref={setWorkspaceLayoutElement}
-      className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background"
+      className={
+        detachedCompact
+          ? "relative flex h-auto w-full flex-none flex-col overflow-visible bg-transparent"
+          : "relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background"
+      }
     >
-      <DeviceSetupDialogHost
-        threadKey={activeThreadKey}
-        threadRef={activeThreadRef}
-        state={deviceState}
-      />
-      {rightPanelControlsAtRoot ? panelLayoutControls : null}
+      {isDetachedChatWindow ? null : (
+        <DeviceSetupDialogHost
+          threadKey={activeThreadKey}
+          threadRef={activeThreadRef}
+          state={deviceState}
+        />
+      )}
+      {!isDetachedChatWindow && rightPanelControlsAtRoot ? panelLayoutControls : null}
       <div
         className={cn(
-          "flex min-h-0 min-w-0 flex-col overflow-x-hidden",
-          rightPanelMaximized ? "w-0 flex-none" : "flex-1",
+          "flex min-w-0 flex-col",
+          detachedCompact
+            ? "h-auto w-full flex-none overflow-visible bg-transparent"
+            : cn("min-h-0 overflow-x-hidden", rightPanelMaximized ? "w-0 flex-none" : "flex-1"),
         )}
         data-chat-column-maximized-away={rightPanelMaximized ? "true" : "false"}
         data-chat-column
       >
-        <header
-          ref={threadPanelPopoverAnchorRef}
-          data-chat-header
-          className={cn(
-            "relative bg-background [[data-panel-animations=true]_&]:motion-safe:transition-[padding-left] [[data-panel-animations=true]_&]:motion-safe:duration-(--panel-animation-duration) [[data-panel-animations=true]_&]:motion-safe:ease-out",
-            isElectron
-              ? cn(
-                  "drag-region flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center px-3 sm:px-5",
-                  reserveTitleBarControlInset &&
-                    !inlineRightPanelOwnsTitleBar &&
-                    "wco:pr-(--workspace-native-controls-inset)",
-                )
-              : "flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center pl-(--workspace-gutter-start) pr-(--workspace-gutter-end)",
-            COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
-          )}
-        >
-          {isElectron && rightPanelControlsAtRoot ? (
-            <span
-              aria-hidden
-              className="pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] h-[var(--workspace-topbar-height)] w-28 [-webkit-app-region:no-drag]"
+        {detachedCompact ? null : (
+          <header
+            ref={threadPanelPopoverAnchorRef}
+            data-chat-header
+            className={cn(
+              "relative bg-background [[data-panel-animations=true]_&]:motion-safe:transition-[padding-left] [[data-panel-animations=true]_&]:motion-safe:duration-(--panel-animation-duration) [[data-panel-animations=true]_&]:motion-safe:ease-out",
+              isElectron
+                ? cn(
+                    "drag-region flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center px-3 sm:px-5",
+                    reserveTitleBarControlInset &&
+                      !inlineRightPanelOwnsTitleBar &&
+                      "wco:pr-(--workspace-native-controls-inset)",
+                  )
+                : "flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center pl-(--workspace-gutter-start) pr-(--workspace-gutter-end)",
+              COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
+            )}
+          >
+            {isElectron && rightPanelControlsAtRoot && !isDetachedChatWindow ? (
+              <span
+                aria-hidden
+                className="pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] h-[var(--workspace-topbar-height)] w-28 [-webkit-app-region:no-drag]"
+              />
+            ) : null}
+            {!isDetachedChatWindow && !rightPanelControlsAtRoot && !rightPanelControlsInPanel
+              ? panelLayoutControls
+              : null}
+            {!isDetachedChatWindow && inlineRightPanelOwnsTitleBar
+              ? threadPanelHeaderControl
+              : null}
+            <ChatHeader
+              activeThreadEnvironmentId={activeThread.environmentId}
+              activeThreadId={activeThread.id}
+              isServerThread={isServerThread}
+              threadTabGroup={threadTabGroup}
+              activeModelSelection={activeThread.modelSelection}
+              activeThreadTitle={activeThread.title}
+              activeProject={activeProject ?? null}
+              parentThreadLink={parentThreadLink}
+              onOpenThread={onOpenRelatedThreadStable}
+              rightPanelOpen={inlineRightPanelOwnsTitleBar}
+              onNewThreadInProject={handleNewThreadInActiveProjectStable}
+              {...(activeDraftLogicalProjectKey
+                ? { onOpenProjectSettings: handleOpenDraftProjectSettingsStable }
+                : {})}
             />
-          ) : null}
-          {!rightPanelControlsAtRoot && !rightPanelControlsInPanel ? panelLayoutControls : null}
-          {inlineRightPanelOwnsTitleBar ? threadPanelHeaderControl : null}
-          <ChatHeader
-            activeThreadEnvironmentId={activeThread.environmentId}
-            activeThreadId={activeThread.id}
-            isServerThread={isServerThread}
-            threadTabGroup={threadTabGroup}
-            activeModelSelection={activeThread.modelSelection}
-            activeThreadTitle={activeThread.title}
-            activeProject={activeProject ?? null}
-            parentThreadLink={parentThreadLink}
-            onOpenThread={onOpenRelatedThreadStable}
-            rightPanelOpen={inlineRightPanelOwnsTitleBar}
-            onNewThreadInProject={handleNewThreadInActiveProjectStable}
-            {...(activeDraftLogicalProjectKey
-              ? { onOpenProjectSettings: handleOpenDraftProjectSettingsStable }
-              : {})}
-          />
-        </header>
+            {isDetachedChatWindow ? (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Hide"
+                onClick={dismissDetachedChat}
+              >
+                <XIcon />
+              </Button>
+            ) : null}
+          </header>
+        )}
 
-        <div className="relative flex min-h-0 min-w-0 flex-1">
+        <div
+          className={
+            detachedCompact
+              ? "relative flex w-full flex-none flex-col"
+              : "relative flex min-h-0 min-w-0 flex-1"
+          }
+        >
           <ThreadFindCanvas
             findOptions={{
               skills: timelineSkills,
@@ -9190,7 +9249,11 @@ export default function ChatView(props: ChatViewProps) {
                 }}
               />
             </div>
-            <div className="relative flex min-h-0 flex-1 flex-col bg-background">
+            <div
+              className={
+                detachedCompact ? "hidden" : "relative flex min-h-0 flex-1 flex-col bg-background"
+              }
+            >
               <MessagesTimeline
                 citationRequest={paintOnlyDisplayedTimeline ? null : citationRequest}
                 citationHistoryLoading={threadDetailLoading}
@@ -9351,9 +9414,11 @@ export default function ChatView(props: ChatViewProps) {
               inert={isRevertingCheckpoint}
               data-chat-composer-overlay="true"
               className={
-                isDraftHeroState
-                  ? "pointer-events-none absolute inset-0 z-20 flex items-center"
-                  : "pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-1.5 sm:pt-2"
+                detachedCompact
+                  ? "pointer-events-none relative z-20 flex w-full flex-col"
+                  : isDraftHeroState
+                    ? "pointer-events-none absolute inset-0 z-20 flex items-center"
+                    : "pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-1.5 sm:pt-2"
               }
             >
               <div ref={draftHeroTransitionGroupRef} className="chat-composer-lane w-full">
@@ -9362,7 +9427,7 @@ export default function ChatView(props: ChatViewProps) {
                   className="group/composer-stack pointer-events-auto relative z-10 mx-auto w-full max-w-(--chat-content-max-width)"
                 >
                   {isDraftHeroState ? (
-                    <div className="absolute inset-x-0 bottom-full">
+                    <div className={detachedCompact ? undefined : "absolute inset-x-0 bottom-full"}>
                       <div
                         className="pb-4 group-has-data-[composer-shoulder-tab]/composer-stack:pb-0"
                         style={
@@ -9706,10 +9771,14 @@ export default function ChatView(props: ChatViewProps) {
               </div>
             </div>
 
-            {canOperatePreview && activeThreadRef && activeEnvironmentServerBrowser ? (
+            {!isDetachedChatWindow &&
+            canOperatePreview &&
+            activeThreadRef &&
+            activeEnvironmentServerBrowser ? (
               <PreviewSessionSync threadRef={activeThreadRef} />
             ) : null}
-            {activeThreadRef &&
+            {!isDetachedChatWindow &&
+            activeThreadRef &&
             activePreviewMiniPlayer &&
             previewMiniPlayerVisible &&
             (activePreviewMiniPlayer.source.kind === "device" || canOperatePreview) ? (
@@ -9773,28 +9842,37 @@ export default function ChatView(props: ChatViewProps) {
           </ThreadFindCanvas>
         </div>
 
-        {mountedTerminalThreadRefs.map(({ key: mountedThreadKey, threadRef: mountedThreadRef }) => (
-          <PersistentThreadTerminalDrawer
-            key={mountedThreadKey}
-            threadRef={mountedThreadRef}
-            threadId={mountedThreadRef.threadId}
-            active={mountedThreadKey === activeThreadKey}
-            composerHeight={mountedThreadKey === activeThreadKey ? composerReservedHeight : 0}
-            launchContext={
-              mountedThreadKey === activeThreadKey ? (activeTerminalLaunchContext ?? null) : null
-            }
-            focusRequestId={mountedThreadKey === activeThreadKey ? terminalFocusRequestId : 0}
-            splitShortcutLabel={splitTerminalShortcutLabel ?? undefined}
-            splitVerticalShortcutLabel={splitTerminalVerticalShortcutLabel ?? undefined}
-            newShortcutLabel={newTerminalShortcutLabel ?? undefined}
-            closeShortcutLabel={closeTerminalShortcutLabel ?? undefined}
-            keybindings={keybindings}
-            onAddTerminalContext={addTerminalContextToDraft}
-          />
-        ))}
+        {isDetachedChatWindow
+          ? null
+          : mountedTerminalThreadRefs.map(
+              ({ key: mountedThreadKey, threadRef: mountedThreadRef }) => (
+                <PersistentThreadTerminalDrawer
+                  key={mountedThreadKey}
+                  threadRef={mountedThreadRef}
+                  threadId={mountedThreadRef.threadId}
+                  active={mountedThreadKey === activeThreadKey}
+                  composerHeight={mountedThreadKey === activeThreadKey ? composerReservedHeight : 0}
+                  launchContext={
+                    mountedThreadKey === activeThreadKey
+                      ? (activeTerminalLaunchContext ?? null)
+                      : null
+                  }
+                  focusRequestId={mountedThreadKey === activeThreadKey ? terminalFocusRequestId : 0}
+                  splitShortcutLabel={splitTerminalShortcutLabel ?? undefined}
+                  splitVerticalShortcutLabel={splitTerminalVerticalShortcutLabel ?? undefined}
+                  newShortcutLabel={newTerminalShortcutLabel ?? undefined}
+                  closeShortcutLabel={closeTerminalShortcutLabel ?? undefined}
+                  keybindings={keybindings}
+                  onAddTerminalContext={addTerminalContextToDraft}
+                />
+              ),
+            )}
       </div>
 
-      {rightPanelPresent && !shouldUsePlanSidebarSheet && activeThreadRef ? (
+      {!isDetachedChatWindow &&
+      rightPanelPresent &&
+      !shouldUsePlanSidebarSheet &&
+      activeThreadRef ? (
         <RightPanelTabs
           mode="inline"
           open={rightPanelOpen}
@@ -9843,7 +9921,10 @@ export default function ChatView(props: ChatViewProps) {
           {rightPanelContent}
         </RightPanelTabs>
       ) : null}
-      {rightPanelPresent && shouldUsePlanSidebarSheet && activeThreadRef ? (
+      {!isDetachedChatWindow &&
+      rightPanelPresent &&
+      shouldUsePlanSidebarSheet &&
+      activeThreadRef ? (
         <RightPanelSheet
           animationDurationMs={panelAnimationsActive ? panelAnimationDurationMs : 0}
           open={rightPanelOpen}

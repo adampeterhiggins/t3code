@@ -7,6 +7,11 @@ import ChatView from "./ChatView";
 import { resolveDraftPromotionNavigationTarget, threadHasStarted } from "./ChatView.logic";
 import { waitForDraftHeroTransition } from "./chat/draftHeroTransition";
 import { SplitChatPanes } from "./chat/SplitChatPanes";
+import {
+  floatingSplitPartnerInput,
+  useDetachedChatPresentation,
+} from "./quickMessage/detachedChatPresentation";
+import { isDetachedChatWindow } from "./quickMessage/quickMessageWindow";
 import { SPLIT_VIEW_HIDDEN_MEDIA_QUERY, useSplitPartner } from "./chat/splitPane";
 import { SidebarInset } from "./ui/sidebar";
 import { useMediaQuery } from "../hooks/useMediaQuery";
@@ -117,8 +122,13 @@ export function ThreadRouteView({ target }: { target: ThreadRouteTarget }) {
   });
   const serverThreadStarted = threadHasStarted(serverThreadShell);
   const splitHidden = useMediaQuery(SPLIT_VIEW_HIDDEN_MEDIA_QUERY);
+  const detachedPresentation = useDetachedChatPresentation();
   const splitPartner = useSplitPartner(
-    target.kind === "server" && !splitHidden ? target.threadRef : null,
+    floatingSplitPartnerInput({
+      detached: isDetachedChatWindow,
+      splitHidden,
+      serverThreadRef: target.kind === "server" ? target.threadRef : null,
+    }),
   );
   const environmentHasAnyThreads = environmentThreadRefs.length > 0 || environmentHasDraftThreads;
 
@@ -209,7 +219,13 @@ export function ThreadRouteView({ target }: { target: ThreadRouteTarget }) {
   }
 
   return (
-    <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none md:h-dvh">
+    <SidebarInset
+      className={
+        detachedPresentation === "compact"
+          ? "h-auto min-h-0 flex-none self-start overflow-visible"
+          : "h-svh min-h-0 overflow-hidden overscroll-y-none md:h-dvh"
+      }
+    >
       {view}
     </SidebarInset>
   );
