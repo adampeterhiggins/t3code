@@ -1006,7 +1006,9 @@ function ComposerCommandMenuLayer(props: { anchor: HTMLElement | null; children:
   );
 }
 import { toastManager } from "../ui/toast";
-import { CircleAlertIcon, PlayIcon, ShieldIcon } from "lucide-react";
+import { Button } from "../ui/button";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { CircleAlertIcon, EllipsisIcon, PlayIcon, ShieldIcon } from "lucide-react";
 import { proposedPlanTitle } from "@t3tools/shared/proposedPlanText";
 import { hasProviderSetup } from "./ProviderStatusBanner";
 import {
@@ -1265,7 +1267,8 @@ export interface ChatComposerProps {
   isLocalDraftThread: boolean;
   forceExpandedOnMobile: boolean;
   projectSelectionRequired: boolean;
-
+  /** Present on the new-thread splash: opens the "start from PR, branch, or issue" picker. */
+  onStartFrom?: () => void;
   phase: SessionPhase;
   canInterrupt: boolean;
   isConnecting: boolean;
@@ -1702,6 +1705,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     isLocalDraftThread: _isLocalDraftThread,
     forceExpandedOnMobile,
     projectSelectionRequired,
+    onStartFrom,
     phase,
     canInterrupt,
     isConnecting,
@@ -4785,6 +4789,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     composerSubmissionError !== null ||
     providerInputSubmissionError !== null ||
     hasImageAttachmentAttention;
+  const startFromShortcutLabel = onStartFrom
+    ? shortcutLabelForCommand(keybindings, "chat.startFrom", {
+        context: { terminalFocus: false, terminalOpen, modelPickerOpen: false },
+      })
+    : null;
   const isComposerResting = shouldUseRestingComposerLayout({
     isExistingThread: routeKind === "server" && activeThreadId !== null,
     isMobileViewport,
@@ -6886,6 +6895,28 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 isComposerResting && "py-2 sm:py-2",
               )}
             >
+              {onStartFrom && !isComposerResting ? (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className="absolute end-2 top-2 z-10 sm:end-2.5 sm:top-2.5"
+                        aria-label="Start from a pull request, branch, issue, or automation"
+                        onClick={onStartFrom}
+                      />
+                    }
+                  >
+                    <EllipsisIcon />
+                  </TooltipTrigger>
+                  <TooltipPopup>
+                    Start from a PR, branch, issue, or automation
+                    {startFromShortcutLabel ? ` (${startFromShortcutLabel})` : null}
+                  </TooltipPopup>
+                </Tooltip>
+              ) : null}
               {isStashMenuOpen && !composerMenuOpen && (
                 <ComposerCommandMenuLayer anchor={composerMenuAnchor}>
                   <ComposerStashMenu
@@ -7029,7 +7060,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     buildContextClipboardFragment={buildContextClipboardFragmentStable}
                     importContextFragment={importContextFragmentStable}
                     skills={selectedProviderSkills}
-                    containerClassName={cn(isComposerResting && "min-w-0 flex-1")}
+                    containerClassName={cn(
+                      isComposerResting && "min-w-0 flex-1",
+                      onStartFrom && !isComposerResting && "pe-7",
+                    )}
                     className={cn(
                       showMobilePendingAnswerActions && "max-sm:pb-12",
                       isComposerResting &&
