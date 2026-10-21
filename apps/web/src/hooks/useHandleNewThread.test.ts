@@ -6,6 +6,7 @@ const testState = vi.hoisted(() => {
   let projectFileRead = Promise.resolve<null>(null);
   let projectRemoved = false;
   let detached = false;
+  let draftHasUserContent = false;
   let primaryEnvironmentId: string | null = "environment-primary";
   let routeTarget: { readonly kind: "draft"; readonly draftId: string } | null = null;
   let activeDraftSession: {
@@ -68,6 +69,12 @@ const testState = vi.hoisted(() => {
     set detached(value: boolean) {
       detached = value;
     },
+    get draftHasUserContent() {
+      return draftHasUserContent;
+    },
+    set draftHasUserContent(value: boolean) {
+      draftHasUserContent = value;
+    },
     get primaryEnvironmentId() {
       return primaryEnvironmentId;
     },
@@ -99,6 +106,7 @@ const testState = vi.hoisted(() => {
       storedDraft = nextStoredDraft;
       projectRemoved = false;
       detached = false;
+      draftHasUserContent = false;
       primaryEnvironmentId = "environment-primary";
       routeTarget = null;
       activeDraftSession = null;
@@ -211,7 +219,7 @@ vi.mock("../composerDraftStore", () => {
     getState: () => testState.draftStore,
   });
   return {
-    composerDraftHasUserContent: () => false,
+    composerDraftHasUserContent: () => testState.draftHasUserContent,
     markPromotedDraftThreadByRef: vi.fn(),
     useComposerDraftStore,
   };
@@ -523,6 +531,33 @@ describe("floating chat new threads", () => {
       "remote-project",
       primaryProjectRef,
       "draft-raced",
+      expect.objectContaining(manualSelection),
+    );
+  });
+
+  it("mints a fresh draft when the stored one already has text", async () => {
+    testState.reset({
+      draftId: "draft-existing",
+      environmentId: "environment-ssh",
+      promotedTo: null,
+      threadId: "thread-existing",
+    });
+    testState.detached = true;
+    testState.primaryEnvironmentId = "environment-ssh";
+    testState.draftHasUserContent = true;
+
+    const pendingOpen = useNewThreadHandler()(primaryProjectRef);
+    testState.completeProjectFileRead(null);
+    const opened = await pendingOpen;
+
+    expect(opened).toEqual({ draftId: "draft-delayed", threadId: "thread-delayed" });
+    expect(testState.router.navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ params: { draftId: "draft-delayed" } }),
+    );
+    expect(testState.draftStore.setLogicalProjectDraftThreadId).toHaveBeenCalledWith(
+      "remote-project",
+      primaryProjectRef,
+      "draft-delayed",
       expect.objectContaining(manualSelection),
     );
   });

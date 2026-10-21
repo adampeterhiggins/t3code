@@ -36,6 +36,8 @@ import { primaryServerKeybindingsAtom } from "~/state/server";
 import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
 import { detachedChatShortcutRuns } from "../components/quickMessage/detachedChatPresentation";
 import { isDetachedChatWindow } from "../components/quickMessage/quickMessageWindow";
+import { useUiStateStore } from "../uiStateStore";
+import { applyChatNewShortcut, selectPreferredPrimaryProjectRef } from "./detachedChatBootstrap";
 
 function ChatRouteGlobalShortcuts() {
   const clearSelection = useThreadSelectionStore((state) => state.clearSelection);
@@ -51,6 +53,12 @@ function ChatRouteGlobalShortcuts() {
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const projects = useProjects();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const projectOrder = useUiStateStore((store) => store.projectOrder);
+  const preferredPrimaryProjectRef = selectPreferredPrimaryProjectRef({
+    projects,
+    primaryEnvironmentId,
+    projectOrder,
+  });
   const { scratchEnvironmentId, startScratchThread } = useScratchProject();
   const projectChoiceCount = countSidebarProjectChoices(
     buildSidebarProjectSnapshots({
@@ -149,18 +157,29 @@ function ChatRouteGlobalShortcuts() {
       }
 
       if (command === "chat.new") {
-        event.preventDefault();
-        event.stopPropagation();
-        if (!legacySidebarEnabled && projectChoiceCount > 1) {
-          openCommandPalette({ open: "new-thread-in" });
-          return;
-        }
-        void startNewThreadFromContext({
-          activeDraftThread,
-          activeThread: activeThread ?? undefined,
-          defaultProjectRef,
-          handleNewThread,
-        });
+        applyChatNewShortcut(
+          event,
+          {
+            detached: isDetachedChatWindow,
+            legacySidebarEnabled,
+            projectChoiceCount,
+            activeThread,
+            activeDraftThread,
+            primaryEnvironmentId,
+            preferredPrimaryProjectRef,
+          },
+          {
+            openCommandPalette: () => openCommandPalette({ open: "new-thread-in" }),
+            startNewThread: (projectRef) => handleNewThread(projectRef),
+            startNewThreadFromContext: () =>
+              startNewThreadFromContext({
+                activeDraftThread,
+                activeThread: activeThread ?? undefined,
+                defaultProjectRef,
+                handleNewThread,
+              }),
+          },
+        );
         return;
       }
 
@@ -226,6 +245,7 @@ function ChatRouteGlobalShortcuts() {
     selectedThreadKeysSize,
     startScratchThread,
     legacySidebarEnabled,
+    preferredPrimaryProjectRef,
     terminalOpen,
   ]);
 
