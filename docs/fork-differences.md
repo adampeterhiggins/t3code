@@ -1939,7 +1939,8 @@ its process and native background work), Codex on its rate-limit notifications, 
 Cursor on a one-minute usage poll. Cursor checks only the pools the turn's model draws
 from: Grok, Composer, and Auto fall back from the Cursor Models pool to the API pool,
 so they stop once both are used up, and other models stop on the API pool. Agents use
-`stopAtSubscriptionLimit` through model options. Other
+`stopAtSubscriptionLimit` through model options; a guarded thread's `delegate_task`
+children get it on any model that offers it, and the agent cannot opt them out. Other
 providers do not advertise or enforce it, and provider reports can lag, so it is
 not a hard billing cap.
 

@@ -149,7 +149,9 @@ subscription limit** stops a thread at the allowance instead.
 - For selected threads only, leave that setting off and enable **Stop at subscription limit** in the
   thread's model options or its right-click menu (long-press on mobile). Changing it also applies
   to a turn that is already running. Agents can set `stopAtSubscriptionLimit: true` through model
-  options; delegated threads inherit it under the normal same-provider-and-model rules.
+  options. A protected thread's delegated threads are protected too, on any Claude, Codex, or
+  Cursor model, and its agent cannot turn that off. Turning a thread's option on or off later does
+  not change delegated threads it already started.
 
 T3 checks fresh usage before each protected turn and refuses to send the prompt if an allowance is
 used up or usage cannot be read. While a turn runs, it stops the turn when the provider reports the
