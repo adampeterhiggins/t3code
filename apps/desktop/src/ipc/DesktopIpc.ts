@@ -12,7 +12,7 @@ export interface DesktopIpcSyncEvent {
   returnValue: unknown;
   /**
    * Present for a real Electron sync event. Missing on direct calls, which the
-   * migration boundary rejects instead of treating as a trusted renderer.
+   * migration boundary denies instead of treating as a trusted renderer.
    */
   readonly sender?: { readonly id: number };
 }

@@ -17,8 +17,9 @@ export class LegacyLocalStorageUnauthorizedSenderError extends Schema.TaggedErro
   }
 }
 
-// loadURL runs the preload before createMain assigns the main ref. currentMainOrFirst
-// still resolves that first live window, and it excludes marked auxiliary renderers.
+// createMain assigns the main ref in the same turn as the un-awaited loadURL,
+// before the preload can send this IPC. When that ref is empty, currentMainOrFirst
+// uses the first live window that is not marked auxiliary.
 const ensureMainRendererSender = Effect.fn("desktop.ipc.legacyLocalStorage.ensureMainRenderer")(
   function* (sender: { readonly id: number } | undefined) {
     if (sender === undefined) {
@@ -35,13 +36,18 @@ const ensureMainRendererSender = Effect.fn("desktop.ipc.legacyLocalStorage.ensur
 export const takeLegacyLocalStorage = DesktopIpc.makeSyncIpcMethod({
   channel: IpcChannels.TAKE_LEGACY_LOCAL_STORAGE_CHANNEL,
   result: Schema.NullOr(Schema.Record(Schema.String, Schema.String)),
-  handler: Effect.fn("desktop.ipc.legacyLocalStorage.take")(function* (
-    event?: DesktopIpc.DesktopIpcSyncEvent,
-  ) {
-    yield* ensureMainRendererSender(event?.sender);
-    const legacy = yield* DesktopLegacyLocalStorage.DesktopLegacyLocalStorage;
-    return Option.getOrNull(yield* legacy.take);
-  }),
+  handler: Effect.fn("desktop.ipc.legacyLocalStorage.take")(
+    function* (event?: DesktopIpc.DesktopIpcSyncEvent) {
+      yield* ensureMainRendererSender(event?.sender);
+      const legacy = yield* DesktopLegacyLocalStorage.DesktopLegacyLocalStorage;
+      return Option.getOrNull(yield* legacy.take);
+    },
+    // runSync throws out of ipcMain.on before returnValue is set. Null is already
+    // the empty take result, and the preload ignores it. Other failures still throw.
+    Effect.catchTags({
+      LegacyLocalStorageUnauthorizedSenderError: () => Effect.succeed(null),
+    }),
+  ),
 });
 
 export const completeLegacyLocalStorage = DesktopIpc.makeIpcMethod({

@@ -54,18 +54,6 @@ function syncEvent(webContentsId: number, role?: string): DesktopIpc.DesktopIpcS
   } as DesktopIpc.DesktopIpcSyncEvent;
 }
 
-function callSync(
-  listener: DesktopIpc.DesktopIpcSyncListener,
-  event: DesktopIpc.DesktopIpcSyncEvent,
-) {
-  try {
-    listener(event);
-    return undefined;
-  } catch (error) {
-    return error;
-  }
-}
-
 const expectRejected = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   Effect.gen(function* () {
     const exit = yield* Effect.exit(effect);
@@ -126,13 +114,9 @@ describe("legacy local storage migration", () => {
         const electronWindow = yield* ElectronWindow.ElectronWindow;
         assert.isTrue(Option.isNone(yield* electronWindow.main));
 
-        const auxiliaryError = yield* expectRejected(
-          takeLegacyLocalStorage.handler(syncEvent(22, "main")),
-        );
-        assert.equal(auxiliaryError.message, "Legacy local storage migration was rejected.");
-
-        yield* expectRejected(takeLegacyLocalStorage.handler());
-        yield* expectRejected(takeLegacyLocalStorage.handler({ returnValue: undefined }));
+        assert.isNull(yield* takeLegacyLocalStorage.handler(syncEvent(22, "main")));
+        assert.isNull(yield* takeLegacyLocalStorage.handler());
+        assert.isNull(yield* takeLegacyLocalStorage.handler({ returnValue: undefined }));
         assert.deepEqual(yield* Ref.get(items), Option.some(payload));
 
         assert.deepEqual(yield* takeLegacyLocalStorage.handler(syncEvent(33)), payload);
@@ -153,10 +137,10 @@ describe("legacy local storage migration", () => {
         assert.isTrue(Option.isNone(yield* electronWindow.main));
 
         getAllWindows.mockReturnValue([auxiliary]);
-        yield* expectRejected(takeLegacyLocalStorage.handler(syncEvent(22)));
+        assert.isNull(yield* takeLegacyLocalStorage.handler(syncEvent(22)));
 
         getAllWindows.mockReturnValue([destroyed]);
-        yield* expectRejected(takeLegacyLocalStorage.handler(syncEvent(44)));
+        assert.isNull(yield* takeLegacyLocalStorage.handler(syncEvent(44)));
         assert.deepEqual(yield* Ref.get(items), Option.some(payload));
 
         getAllWindows.mockReturnValue([auxiliary, main]);
@@ -168,7 +152,7 @@ describe("legacy local storage migration", () => {
     ),
   );
 
-  it.effect("rejects a different renderer once the main window is assigned", () =>
+  it.effect("returns null for a different renderer once the main window is assigned", () =>
     withLegacy(({ items }) =>
       Effect.gen(function* () {
         const splash = makeWindow({ id: 1, webContentsId: 11 });
@@ -177,7 +161,7 @@ describe("legacy local storage migration", () => {
         const electronWindow = yield* ElectronWindow.ElectronWindow;
         yield* electronWindow.setMain(main);
 
-        yield* expectRejected(takeLegacyLocalStorage.handler(syncEvent(11)));
+        assert.isNull(yield* takeLegacyLocalStorage.handler(syncEvent(11)));
         assert.deepEqual(yield* Ref.get(items), Option.some(payload));
         assert.deepEqual(yield* takeLegacyLocalStorage.handler(syncEvent(33)), payload);
       }),
@@ -196,7 +180,10 @@ describe("legacy local storage migration", () => {
           sender: { id: 22 },
           role: "main",
         } as DesktopIpc.DesktopIpcInvokeEvent;
-        yield* expectRejected(completeLegacyLocalStorage.handler(undefined, auxiliarySender));
+        const auxiliaryError = yield* expectRejected(
+          completeLegacyLocalStorage.handler(undefined, auxiliarySender),
+        );
+        assert.equal(auxiliaryError.message, "Legacy local storage migration was rejected.");
         yield* expectRejected(completeLegacyLocalStorage.handler(undefined));
         assert.equal(completions.count, 0);
         assert.equal(fromId.mock.calls.length, 0);
@@ -210,13 +197,15 @@ describe("legacy local storage migration", () => {
     ),
   );
 
-  it.effect("returns the payload synchronously through the sync IPC listener", () =>
-    withLegacy(({ items }) =>
+  it.effect("replies null from the registered sync listener for an unauthorized sender", () =>
+    withLegacy(({ items, completions }) =>
       Effect.gen(function* () {
         const main = makeWindow({ id: 3, webContentsId: 33 });
         const auxiliary = makeWindow({ id: 2, webContentsId: 22 });
         ElectronWindow.markAuxiliaryWindow(auxiliary);
         getAllWindows.mockReturnValue([auxiliary, main]);
+        const electronWindow = yield* ElectronWindow.ElectronWindow;
+        yield* electronWindow.setMain(main);
         const listeners = new Map<string, DesktopIpc.DesktopIpcSyncListener>();
         const ipc = DesktopIpc.make({
           removeHandler: () => undefined,
@@ -237,19 +226,30 @@ describe("legacy local storage migration", () => {
               returnValue: "unset",
               sender: { id: 22 },
             };
-            const thrown = callSync(listener!, auxiliaryEvent);
-            assert.instanceOf(thrown, LegacyLocalStorageUnauthorizedSenderError);
-            assert.strictEqual(auxiliaryEvent.returnValue, "unset");
+            listener!(auxiliaryEvent);
+            assert.isNull(auxiliaryEvent.returnValue);
+
+            const missingSender: DesktopIpc.DesktopIpcSyncEvent = { returnValue: "unset" };
+            listener!(missingSender);
+            assert.isNull(missingSender.returnValue);
             assert.deepEqual(yield* Ref.get(items), Option.some(payload));
+
+            yield* expectRejected(
+              completeLegacyLocalStorage.handler(undefined, { sender: { id: 22 } }),
+            );
+            yield* expectRejected(completeLegacyLocalStorage.handler(undefined));
+            assert.equal(completions.count, 0);
+            assert.equal(fromId.mock.calls.length, 0);
+            assert.equal(flushStorageData.mock.calls.length, 0);
 
             const mainEvent: DesktopIpc.DesktopIpcSyncEvent = {
               returnValue: undefined,
               sender: { id: 33 },
             };
-            const returned = listener!(mainEvent);
-            assert.isUndefined(returned);
+            listener!(mainEvent);
             assert.deepEqual(mainEvent.returnValue, payload);
             assert.isFalse(mainEvent.returnValue instanceof Promise);
+            assert.deepEqual(yield* Ref.get(items), Option.none());
           }),
         );
       }),
