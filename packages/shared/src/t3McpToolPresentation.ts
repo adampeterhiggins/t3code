@@ -423,16 +423,22 @@ function resolveT3McpToolName(value: string): string | null {
   return longest;
 }
 
+/** Tools renamed since; threads from before a rename still carry the old name. */
+const RENAMED_T3_MCP_TOOLS: Readonly<Record<string, string>> = {
+  list_thread_issues: "list_thread_links",
+};
+
 export function resolveT3McpToolId(toolName: string | null | undefined): string | null {
-  const name = toolName == null ? null : resolveT3McpToolName(toolName);
+  const resolved = toolName == null ? null : resolveT3McpToolName(toolName);
+  const name = resolved === null ? null : (RENAMED_T3_MCP_TOOLS[resolved] ?? resolved);
   return name !== null && Object.hasOwn(T3_MCP_TOOLS, name) ? name : null;
 }
 
 export function resolveT3McpToolDefinition(
   toolName: string | null | undefined,
 ): T3McpToolDefinition | null {
-  const name = toolName == null ? null : resolveT3McpToolName(toolName);
-  return name !== null && Object.hasOwn(T3_MCP_TOOLS, name) ? T3_MCP_TOOLS[name]! : null;
+  const name = resolveT3McpToolId(toolName);
+  return name === null ? null : T3_MCP_TOOLS[name]!;
 }
 
 export function resolveT3McpToolPresentation(
