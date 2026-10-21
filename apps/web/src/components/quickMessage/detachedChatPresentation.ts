@@ -1,7 +1,13 @@
-import type { ClientSettings, DesktopQuickMessagePresentation } from "@t3tools/contracts";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import type {
+  ClientSettings,
+  DesktopQuickMessagePresentation,
+  ScopedThreadRef,
+} from "@t3tools/contracts";
 import { useSyncExternalStore } from "react";
 
 import { projectScriptIdFromCommand } from "../../projectScripts";
+import { isThreadRoutePathname, resolveThreadRouteTarget } from "../../threadRoutes";
 import { isDetachedChatWindow } from "./quickMessageWindow";
 
 /**
@@ -200,21 +206,68 @@ export async function settleDetachedSendPresentation(input: {
   });
 }
 
+type DetachedRouterMatch = {
+  readonly status: string;
+  readonly params: object;
+};
+
+/**
+ * The slice of TanStack router state that says which thread is on screen.
+ * `status` stays pending after a client commit, so it is not part of this.
+ */
+type DetachedRouterState = {
+  readonly isLoading: boolean;
+  readonly location: { readonly pathname: string };
+  readonly matches: ReadonlyArray<DetachedRouterMatch>;
+};
+
+function matchRouteParam(
+  params: object,
+  key: "environmentId" | "threadId" | "draftId",
+): string | undefined {
+  const value = (params as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+/**
+ * `location` moves before matches commit, and client navigations leave
+ * `status` pending. The settled destination is the leaf match once loading
+ * has finished. A failed match, or a route that won instead, does not count.
+ */
+function detachedRouterSelectsThread(
+  state: DetachedRouterState,
+  destination: ScopedThreadRef,
+): boolean {
+  if (state.isLoading) return false;
+  const leaf = state.matches[state.matches.length - 1];
+  if (!leaf || leaf.status !== "success") return false;
+  const target = resolveThreadRouteTarget({
+    environmentId: matchRouteParam(leaf.params, "environmentId"),
+    threadId: matchRouteParam(leaf.params, "threadId"),
+    draftId: matchRouteParam(leaf.params, "draftId"),
+  });
+  if (target?.kind !== "server") return false;
+  if (scopedThreadKey(target.threadRef) !== scopedThreadKey(destination)) return false;
+  return isThreadRoutePathname(state.location.pathname, destination);
+}
+
 /**
  * An explicit open of a server thread. Expand only after that navigation
- * finishes and still owns the route, so a failed or superseded open leaves
- * the window where the newer choice put it.
+ * finishes and the router itself is on the thread, so a failed or superseded
+ * open leaves the window where the newer choice put it. The sending view's
+ * route ref is not consulted: that view unmounts, and its cleanup clears it.
  */
 export async function openDetachedExistingThread(input: {
   readonly navigate: () => Promise<unknown>;
-  readonly routeStillSelected: () => boolean;
+  readonly router: { readonly state: DetachedRouterState };
+  readonly destination: ScopedThreadRef;
 }): Promise<boolean> {
   try {
     await input.navigate();
   } catch {
     return false;
   }
-  if (!input.routeStillSelected()) return false;
+  if (!detachedRouterSelectsThread(input.router.state, input.destination)) return false;
   applyDetachedPresentationMilestone("existing-thread-opened");
   return true;
 }

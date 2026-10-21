@@ -7893,8 +7893,8 @@ export default function ChatView(props: ChatViewProps) {
                       to: "/$environmentId/$threadId",
                       params: buildThreadRouteParams(threadRef),
                     }),
-                  routeStillSelected: () =>
-                    currentRouteThreadKeyRef.current === scopedThreadKey(threadRef),
+                  router,
+                  destination: threadRef,
                 });
               },
             });
@@ -8285,8 +8285,8 @@ export default function ChatView(props: ChatViewProps) {
                           to: "/$environmentId/$threadId",
                           params: buildThreadRouteParams(threadRef),
                         }),
-                      routeStillSelected: () =>
-                        currentRouteThreadKeyRef.current === scopedThreadKey(threadRef),
+                      router,
+                      destination: threadRef,
                     });
                   },
                 },

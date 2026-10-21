@@ -1,4 +1,11 @@
-import type { ClientSettings } from "@t3tools/contracts";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { EnvironmentId, ThreadId, type ClientSettings } from "@t3tools/contracts";
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+} from "@tanstack/react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 const detached = vi.hoisted(() => ({ value: false }));
@@ -10,6 +17,7 @@ vi.mock("./quickMessageWindow", () => ({
 }));
 
 import { commandForProjectScript } from "../../projectScripts";
+import { buildThreadRouteParams } from "../../threadRoutes";
 import {
   adoptDetachedChatPresentation,
   applyDetachedPresentationMilestone,
@@ -33,6 +41,27 @@ import {
 } from "./detachedChatPresentation";
 
 const settings = { theme: "dark" } as unknown as ClientSettings;
+const destinationThread = scopeThreadRef(EnvironmentId.make("env-1"), ThreadId.make("thread-1"));
+
+function createFloatingThreadRouter(
+  initialEntry: string,
+  threadBeforeLoad?: () => Promise<void> | void,
+) {
+  const root = createRootRoute();
+  const thread = createRoute({
+    getParentRoute: () => root,
+    path: "/$environmentId/$threadId",
+    ...(threadBeforeLoad ? { beforeLoad: threadBeforeLoad } : {}),
+  });
+  const draft = createRoute({
+    getParentRoute: () => root,
+    path: "/draft/$draftId",
+  });
+  return createRouter({
+    routeTree: root.addChildren([draft, thread]),
+    history: createMemoryHistory({ initialEntries: [initialEntry] }),
+  });
+}
 
 describe("detached chat presentation", () => {
   const setPresentation = vi.fn(async () => undefined);
@@ -276,42 +305,94 @@ describe("detached chat presentation", () => {
     expect(setPresentation).toHaveBeenCalledWith("compact");
   });
 
-  it("expands after an explicit thread open lands, and not when it fails or loses the route", async () => {
-    let selected = false;
-    let resolveNavigation: (() => void) | undefined;
+  it("expands after the open settles on the destination, even when the source view ref is null", async () => {
+    let releaseDestination: () => void = () => undefined;
+    const destinationReady = new Promise<void>((resolve) => {
+      releaseDestination = resolve;
+    });
+    const router = createFloatingThreadRouter("/draft/draft-source", () => destinationReady);
+    await router.load();
+    // Open runs after the sending view has unmounted and cleared its route ref.
+    const sourceRouteThreadKeyRef = { current: "draft-source" as string | null };
+    sourceRouteThreadKeyRef.current = null;
+
     const opening = openDetachedExistingThread({
       navigate: () =>
-        new Promise<void>((resolve) => {
-          resolveNavigation = () => {
-            selected = true;
-            resolve();
-          };
+        router.navigate({
+          to: "/$environmentId/$threadId",
+          params: buildThreadRouteParams(destinationThread),
         }),
-      routeStillSelected: () => selected,
+      router,
+      destination: destinationThread,
     });
+    await Promise.resolve();
     expect(readDetachedChatPresentation()).toBe("compact");
     expect(setPresentation).not.toHaveBeenCalled();
-    resolveNavigation?.();
+    expect(sourceRouteThreadKeyRef.current).toBeNull();
+
+    releaseDestination();
     await expect(opening).resolves.toBe(true);
     expect(readDetachedChatPresentation()).toBe("expanded");
+    expect(setPresentation).toHaveBeenCalledWith("expanded");
+    expect(router.state.location.pathname).toBe("/env-1/thread-1");
+    expect(sourceRouteThreadKeyRef.current).toBeNull();
+  });
 
-    adoptDetachedChatPresentation("compact");
-    setPresentation.mockClear();
+  it("does not expand when the open fails or a later route wins", async () => {
+    const router = createFloatingThreadRouter("/draft/draft-source");
+    await router.load();
     await expect(
       openDetachedExistingThread({
         navigate: () => Promise.reject(new Error("navigation blocked")),
-        routeStillSelected: () => true,
+        router,
+        destination: destinationThread,
       }),
     ).resolves.toBe(false);
     expect(readDetachedChatPresentation()).toBe("compact");
-    expect(setPresentation).not.toHaveBeenCalled();
+    expect(router.state.location.pathname).toBe("/draft/draft-source");
 
+    const blocked = createFloatingThreadRouter("/draft/draft-source", () => {
+      throw new Error("navigation blocked");
+    });
+    await blocked.load();
     await expect(
       openDetachedExistingThread({
-        navigate: () => Promise.resolve(),
-        routeStillSelected: () => false,
+        navigate: () =>
+          blocked.navigate({
+            to: "/$environmentId/$threadId",
+            params: buildThreadRouteParams(destinationThread),
+          }),
+        router: blocked,
+        destination: destinationThread,
       }),
     ).resolves.toBe(false);
+    expect(blocked.state.location.pathname).toBe("/env-1/thread-1");
+    expect(blocked.state.matches.at(-1)?.status).toBe("error");
+    expect(readDetachedChatPresentation()).toBe("compact");
+
+    let releaseDestination: () => void = () => undefined;
+    const destinationReady = new Promise<void>((resolve) => {
+      releaseDestination = resolve;
+    });
+    const superseded = createFloatingThreadRouter("/draft/draft-source", () => destinationReady);
+    await superseded.load();
+    const opening = openDetachedExistingThread({
+      navigate: () =>
+        superseded.navigate({
+          to: "/$environmentId/$threadId",
+          params: buildThreadRouteParams(destinationThread),
+        }),
+      router: superseded,
+      destination: destinationThread,
+    });
+    const later = superseded.navigate({
+      to: "/draft/$draftId",
+      params: { draftId: "draft-later" },
+    });
+    releaseDestination();
+    await expect(opening).resolves.toBe(false);
+    await later;
+    expect(superseded.state.location.pathname).toBe("/draft/draft-later");
     expect(readDetachedChatPresentation()).toBe("compact");
     expect(setPresentation).not.toHaveBeenCalled();
   });
