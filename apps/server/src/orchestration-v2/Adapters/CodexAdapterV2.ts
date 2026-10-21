@@ -59,6 +59,7 @@ import type {
   OrchestrationV2ProviderTurn,
   OrchestrationV2PlanStep,
   OrchestrationV2RuntimeRequest,
+  OrchestrationV2ModelCallUsage,
   OrchestrationV2Subagent,
   OrchestrationV2SubagentUsage,
   OrchestrationV2TurnItem,
@@ -1277,6 +1278,207 @@ interface ActiveCodexTurnContext {
     string,
     { readonly ordinal: number; readonly startedAt: DateTime.Utc }
   >;
+  // Tool calls of each model response in this turn. Usage arrives after the
+  // response's items, with no item id, so the open call is the one in progress.
+  readonly modelCalls: CodexModelCallState;
+}
+
+const CODEX_MODEL_CALL_TOOL_TYPES = new Set<OrchestrationV2TurnItem["type"]>([
+  "command_execution",
+  "file_change",
+  "file_search",
+  "web_search",
+  "dynamic_tool",
+]);
+
+function isCodexNativeToolItem(type: string): boolean {
+  return (
+    type === "commandExecution" ||
+    type === "fileChange" ||
+    type === "webSearch" ||
+    type === "mcpToolCall" ||
+    type === "dynamicToolCall"
+  );
+}
+
+type CodexReportedTokenTotal =
+  CodexSchema.V2ThreadTokenUsageUpdatedNotification["tokenUsage"]["total"];
+
+interface CodexModelCallTool {
+  readonly nativeItemId: string;
+  ordinal: number;
+  turnItem?: OrchestrationV2TurnItem;
+}
+
+interface CodexClosedModelCall {
+  readonly id: string;
+  readonly tools: Array<CodexModelCallTool>;
+  readonly usage?: OrchestrationV2ModelCallUsage;
+}
+
+interface CodexModelCallState {
+  nextIndex: number;
+  reportedTotal?: CodexReportedTokenTotal;
+  open: { readonly id: string; readonly tools: Array<CodexModelCallTool> } | null;
+  readonly closedByItemId: Map<string, CodexClosedModelCall>;
+}
+
+function makeCodexModelCallState(): CodexModelCallState {
+  return { nextIndex: 1, open: null, closedByItemId: new Map() };
+}
+
+function codexReportedTotalsMatch(
+  previous: CodexReportedTokenTotal,
+  next: CodexReportedTokenTotal,
+): boolean {
+  return (
+    previous.inputTokens === next.inputTokens &&
+    previous.cachedInputTokens === next.cachedInputTokens &&
+    previous.outputTokens === next.outputTokens &&
+    previous.reasoningOutputTokens === next.reasoningOutputTokens &&
+    previous.totalTokens === next.totalTokens
+  );
+}
+
+// `last` is that response's own usage. Omit a non-finite number; a reported
+// zero stays, because Codex did measure it.
+function codexModelCallUsage(
+  last: CodexReportedTokenTotal,
+): OrchestrationV2ModelCallUsage | undefined {
+  const reported = (value: number) =>
+    Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : undefined;
+  const inputTokens = reported(last.inputTokens);
+  const cachedInputTokens = reported(last.cachedInputTokens);
+  const outputTokens = reported(last.outputTokens);
+  const reasoningOutputTokens = reported(last.reasoningOutputTokens);
+  const usage: OrchestrationV2ModelCallUsage = {
+    ...(inputTokens === undefined ? {} : { inputTokens }),
+    ...(cachedInputTokens === undefined ? {} : { cachedInputTokens }),
+    ...(outputTokens === undefined ? {} : { outputTokens }),
+    ...(reasoningOutputTokens === undefined ? {} : { reasoningOutputTokens }),
+  };
+  return Object.keys(usage).length === 0 ? undefined : usage;
+}
+
+function withCodexModelCall(
+  turnItem: OrchestrationV2TurnItem,
+  modelCallId: string,
+  modelCallUsage: OrchestrationV2ModelCallUsage | undefined,
+): OrchestrationV2TurnItem {
+  if (modelCallUsage !== undefined) {
+    return { ...turnItem, modelCallId, modelCallUsage };
+  }
+  const { modelCallUsage: _dropped, ...rest } = turnItem;
+  return { ...rest, modelCallId };
+}
+
+function lowestOrdinalTool(
+  tools: ReadonlyArray<CodexModelCallTool>,
+): CodexModelCallTool | undefined {
+  return tools.reduce<CodexModelCallTool | undefined>(
+    (best, tool) => (best === undefined || tool.ordinal < best.ordinal ? tool : best),
+    undefined,
+  );
+}
+
+function ensureOpenModelCall(
+  state: CodexModelCallState,
+  providerTurnId: ProviderTurnId,
+): NonNullable<CodexModelCallState["open"]> {
+  if (state.open === null) {
+    state.open = { id: `${providerTurnId}:call:${state.nextIndex}`, tools: [] };
+  }
+  return state.open;
+}
+
+function noteCodexModelCallTool(
+  state: CodexModelCallState,
+  providerTurnId: ProviderTurnId,
+  nativeItemId: string,
+  ordinal: number,
+): void {
+  if (state.closedByItemId.has(nativeItemId)) return;
+  const open = ensureOpenModelCall(state, providerTurnId);
+  if (open.tools.some((tool) => tool.nativeItemId === nativeItemId)) return;
+  open.tools.push({ nativeItemId, ordinal });
+}
+
+function stampCodexModelCall(
+  state: CodexModelCallState,
+  providerTurnId: ProviderTurnId,
+  turnItem: OrchestrationV2TurnItem,
+): OrchestrationV2TurnItem {
+  if (!CODEX_MODEL_CALL_TOOL_TYPES.has(turnItem.type)) return turnItem;
+  const nativeItemId = turnItem.nativeItemRef?.nativeId;
+  if (nativeItemId === undefined || nativeItemId === null || nativeItemId.length === 0) {
+    return turnItem;
+  }
+
+  const closed = state.closedByItemId.get(nativeItemId);
+  if (closed !== undefined) {
+    const tool = closed.tools.find((candidate) => candidate.nativeItemId === nativeItemId);
+    const isCarrier = lowestOrdinalTool(closed.tools)?.nativeItemId === nativeItemId;
+    const stamped = withCodexModelCall(turnItem, closed.id, isCarrier ? closed.usage : undefined);
+    if (tool !== undefined) {
+      tool.turnItem = stamped;
+      tool.ordinal = turnItem.ordinal;
+    }
+    return stamped;
+  }
+
+  noteCodexModelCallTool(state, providerTurnId, nativeItemId, turnItem.ordinal);
+  const open = state.open;
+  const tool = open?.tools.find((candidate) => candidate.nativeItemId === nativeItemId);
+  const stamped = withCodexModelCall(
+    turnItem,
+    open?.id ?? `${providerTurnId}:call:${state.nextIndex}`,
+    undefined,
+  );
+  if (tool !== undefined) {
+    tool.turnItem = stamped;
+    tool.ordinal = turnItem.ordinal;
+  }
+  return stamped;
+}
+
+/**
+ * Close the model response that just reported usage. Codex sends
+ * `thread/tokenUsage/updated` after that response's items have started.
+ * `rawResponse/completed` would name the response, but it is internal-only and
+ * is not delivered. An unchanged thread total is the same response again, so
+ * it does not open another call. A drop is a compaction or rollback: `last`
+ * is still that response's usage.
+ *
+ * Returns the one tool item that should be updated with usage, when it was
+ * already emitted. A response with no tool calls returns nothing.
+ */
+function closeCodexModelCall(
+  state: CodexModelCallState,
+  total: CodexReportedTokenTotal,
+  usage: OrchestrationV2ModelCallUsage | undefined,
+): OrchestrationV2TurnItem | undefined {
+  if (state.reportedTotal !== undefined && codexReportedTotalsMatch(state.reportedTotal, total)) {
+    return undefined;
+  }
+  state.reportedTotal = total;
+  const open = state.open;
+  state.open = null;
+  state.nextIndex += 1;
+  if (open === null || open.tools.length === 0) return undefined;
+
+  const closed: CodexClosedModelCall = {
+    id: open.id,
+    tools: open.tools,
+    ...(usage === undefined ? {} : { usage }),
+  };
+  for (const tool of open.tools) state.closedByItemId.set(tool.nativeItemId, closed);
+  const carrier = lowestOrdinalTool(open.tools);
+  // The carrier is emitted later, on its own first turn item, when it does not
+  // exist yet. No usage means there is nothing to attach after the fact.
+  if (carrier?.turnItem === undefined || usage === undefined) return undefined;
+  const stamped = withCodexModelCall(carrier.turnItem, closed.id, usage);
+  carrier.turnItem = stamped;
+  return stamped;
 }
 
 interface ActiveCodexProviderRetry {
@@ -2159,6 +2361,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             itemPositions: new Map(),
             fileChangeKindsByItem: new Map(),
             runningCompactionItemIds: new Set(),
+            modelCalls: makeCodexModelCallState(),
           };
           yield* Ref.update(limitedTurnItems, (current) => {
             const next = new Map(current);
@@ -2437,7 +2640,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             yield* emitProviderEvent({
               type: "turn_item.updated",
               driver: CODEX_PROVIDER,
-              turnItem,
+              turnItem: stampCodexModelCall(context.modelCalls, context.providerTurnId, turnItem),
             });
           }
         });
@@ -2522,12 +2725,12 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             yield* emitProviderEvent({
               type: "turn_item.updated",
               driver: CODEX_PROVIDER,
-              turnItem: {
+              turnItem: stampCodexModelCall(context.modelCalls, context.providerTurnId, {
                 ...artifacts.turnItem,
                 status,
                 completedAt,
                 updatedAt: completedAt,
-              },
+              }),
             });
           }
           yield* Ref.update(runningDynamicToolsByTurn, (current) => {
@@ -2741,6 +2944,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               itemPositions: new Map(),
               fileChangeKindsByItem: new Map(),
               runningCompactionItemIds: new Set(),
+              modelCalls: makeCodexModelCallState(),
             };
             beginTurnTokenUsage(activeContext);
             endSessionApprovalsOnModeChange(activeContext);
@@ -3711,7 +3915,10 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               ? {}
               : { exitCode: item.exitCode }),
           };
-          return { node, turnItem };
+          return {
+            node,
+            turnItem: stampCodexModelCall(context.modelCalls, context.providerTurnId, turnItem),
+          };
         });
 
         const buildFileChangeArtifacts = Effect.fn("CodexAdapterV2.buildFileChangeArtifacts")(
@@ -3775,7 +3982,10 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               fileName: firstChange.path,
               ...codexFileChangeDiff(item.changes),
             };
-            return { node, turnItem };
+            return {
+              node,
+              turnItem: stampCodexModelCall(context.modelCalls, context.providerTurnId, turnItem),
+            };
           },
         );
 
@@ -3836,7 +4046,14 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               ...(patterns.length === 0 ? {} : { patterns: [...patterns] }),
               ...(results.length === 0 ? {} : { results: [...results] }),
             };
-            return { node, turnItem };
+            return {
+              node,
+              turnItem: stampCodexModelCall(
+                input.context.modelCalls,
+                input.context.providerTurnId,
+                turnItem,
+              ),
+            };
           },
         );
 
@@ -3891,7 +4108,10 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               type: "dynamic_tool",
               ...projection,
             };
-            return { node, turnItem };
+            return {
+              node,
+              turnItem: stampCodexModelCall(context.modelCalls, context.providerTurnId, turnItem),
+            };
           },
         );
 
@@ -3989,13 +4209,16 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 }
                 return;
               }
-              const turnItem =
+              const turnItem = stampCodexModelCall(
+                context.modelCalls,
+                context.providerTurnId,
                 reference === undefined || artifacts.turnItem.type !== "dynamic_tool"
                   ? artifacts.turnItem
                   : {
                       ...artifacts.turnItem,
                       output: { [MCP_APP_OUTPUT_KEY]: reference, result: item.result },
-                    };
+                    },
+              );
               yield* emitProviderEvent({
                 type: "node.updated",
                 driver: CODEX_PROVIDER,
@@ -4546,11 +4769,25 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               payload.tokenUsage,
             );
             yield* updateSubagentUsage(payload.threadId, payload.tokenUsage);
-            const context = yield* awaitActiveTurn(payload.turnId);
+            const context =
+              (yield* awaitActiveTurn(payload.turnId)) ??
+              (yield* Ref.get(settledTurns)).get(payload.turnId);
             if (context === undefined) {
               return;
             }
             const now = yield* DateTime.now;
+            const modelCallCarrier = closeCodexModelCall(
+              context.modelCalls,
+              payload.tokenUsage.total,
+              codexModelCallUsage(payload.tokenUsage.last),
+            );
+            if (modelCallCarrier !== undefined) {
+              yield* emitProviderEvent({
+                type: "turn_item.updated",
+                driver: CODEX_PROVIDER,
+                turnItem: { ...modelCallCarrier, updatedAt: now },
+              });
+            }
             yield* emitProviderEvent({
               type: "provider_turn.updated",
               driver: CODEX_PROVIDER,
@@ -4887,6 +5124,14 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 context,
                 payload.item.id,
                 DateTime.makeUnsafe(payload.startedAtMs),
+              );
+            }
+            if (isCodexNativeToolItem(payload.item.type)) {
+              noteCodexModelCallTool(
+                context.modelCalls,
+                context.providerTurnId,
+                payload.item.id,
+                context.itemPositions.get(payload.item.id)?.ordinal ?? 0,
               );
             }
 
@@ -6337,6 +6582,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             itemPositions: new Map(),
             fileChangeKindsByItem: new Map(),
             runningCompactionItemIds: new Set(),
+            modelCalls: makeCodexModelCallState(),
           };
           const providerTurn = {
             id: context.providerTurnId,
