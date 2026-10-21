@@ -60,7 +60,7 @@ describe("openDetachedComposerFileChooser", () => {
 
   it("clicks the shared input when this is not the floating window", () => {
     detached.value = false;
-    const begin = vi.fn(async () => undefined);
+    const begin = vi.fn(() => true);
     installWindow({ nativeWindowInteraction: { begin, end: vi.fn() } });
     const input = fileInput();
     openDetachedComposerFileChooser(input as unknown as HTMLInputElement);
@@ -68,7 +68,7 @@ describe("openDetachedComposerFileChooser", () => {
     expect(begin).not.toHaveBeenCalled();
   });
 
-  it("clicks the shared input when the shell has no interaction counter", () => {
+  it("clicks the shared input when the shell has no interaction bridge", () => {
     installWindow({});
     const input = fileInput();
     openDetachedComposerFileChooser(input as unknown as HTMLInputElement);
@@ -76,19 +76,20 @@ describe("openDetachedComposerFileChooser", () => {
     openDetachedComposerFileChooser(null);
   });
 
-  it("holds the counter across change, cancel, and focus, including when the dialog returns first", async () => {
-    let resolveBegin: (() => void) | undefined;
-    const begin = vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          resolveBegin = resolve;
-        }),
-    );
-    const end = vi.fn(async () => undefined);
+  it("waits for a synchronous hold before clicking, and releases it on change or cancel", () => {
+    let acknowledged = false;
+    const begin = vi.fn(() => {
+      acknowledged = true;
+      return true;
+    });
+    const end = vi.fn();
     const windowEvents = installWindow({ nativeWindowInteraction: { begin, end } });
     const input = fileInput();
+    input.click.mockImplementation(() => {
+      expect(acknowledged).toBe(true);
+    });
 
-    openDetachedComposerFileChooser(input as unknown as HTMLInputElement);
+    const dispose = openDetachedComposerFileChooser(input as unknown as HTMLInputElement);
     expect(begin).toHaveBeenCalledOnce();
     expect(input.click).toHaveBeenCalledOnce();
     const beginOrder = begin.mock.invocationCallOrder[0];
@@ -99,45 +100,68 @@ describe("openDetachedComposerFileChooser", () => {
     expect(beginOrder).toBeLessThan(clickOrder);
     expect(end).not.toHaveBeenCalled();
 
-    input.emit("change");
+    windowEvents.emit("focus");
     expect(end).not.toHaveBeenCalled();
-    resolveBegin?.();
-    await Promise.resolve();
+    input.emit("change");
     expect(end).toHaveBeenCalledOnce();
     input.emit("change");
-    windowEvents.emit("focus");
+    dispose();
     expect(end).toHaveBeenCalledOnce();
 
     const cancelInput = fileInput();
     openDetachedComposerFileChooser(cancelInput as unknown as HTMLInputElement);
-    resolveBegin?.();
-    await Promise.resolve();
     cancelInput.emit("cancel");
     expect(end).toHaveBeenCalledTimes(2);
     windowEvents.emit("focus");
     expect(end).toHaveBeenCalledTimes(2);
-
-    const focusInput = fileInput();
-    openDetachedComposerFileChooser(focusInput as unknown as HTMLInputElement);
-    resolveBegin?.();
-    await Promise.resolve();
-    windowEvents.emit("focus");
-    expect(end).toHaveBeenCalledTimes(3);
-    focusInput.emit("cancel");
-    expect(end).toHaveBeenCalledTimes(3);
   });
 
-  it("still opens the chooser when begin fails, and does not end a counter that never started", async () => {
-    const begin = vi.fn(async () => Promise.reject(new Error("unavailable")));
-    const end = vi.fn(async () => undefined);
-    installWindow({ nativeWindowInteraction: { begin, end } });
-    const input = fileInput();
-    openDetachedComposerFileChooser(input as unknown as HTMLInputElement);
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(input.click).toHaveBeenCalledOnce();
-    input.emit("change");
-    input.emit("cancel");
+  it("does not claim a hold when begin returns false or throws, and still opens the chooser", () => {
+    const end = vi.fn();
+    const declined = vi.fn(() => false);
+    installWindow({ nativeWindowInteraction: { begin: declined, end } });
+    const declinedInput = fileInput();
+    openDetachedComposerFileChooser(declinedInput as unknown as HTMLInputElement);
+    expect(declinedInput.click).toHaveBeenCalledOnce();
+    declinedInput.emit("change");
+    declinedInput.emit("cancel");
     expect(end).not.toHaveBeenCalled();
+
+    const failing = vi.fn(() => {
+      throw new Error("unavailable");
+    });
+    installWindow({ nativeWindowInteraction: { begin: failing, end } });
+    const failingInput = fileInput();
+    expect(() =>
+      openDetachedComposerFileChooser(failingInput as unknown as HTMLInputElement),
+    ).not.toThrow();
+    expect(failingInput.click).toHaveBeenCalledOnce();
+    failingInput.emit("change");
+    expect(end).not.toHaveBeenCalled();
+  });
+
+  it("releases the hold when click throws, and dispose releases one that is still open", () => {
+    const end = vi.fn();
+    const begin = vi.fn(() => true);
+    installWindow({ nativeWindowInteraction: { begin, end } });
+    const throwing = fileInput();
+    throwing.click.mockImplementation(() => {
+      throw new Error("click failed");
+    });
+    expect(() => openDetachedComposerFileChooser(throwing as unknown as HTMLInputElement)).toThrow(
+      "click failed",
+    );
+    expect(end).toHaveBeenCalledOnce();
+    throwing.emit("cancel");
+    expect(end).toHaveBeenCalledOnce();
+
+    const open = fileInput();
+    const dispose = openDetachedComposerFileChooser(open as unknown as HTMLInputElement);
+    expect(end).toHaveBeenCalledOnce();
+    dispose();
+    expect(end).toHaveBeenCalledTimes(2);
+    open.emit("change");
+    dispose();
+    expect(end).toHaveBeenCalledTimes(2);
   });
 });

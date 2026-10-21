@@ -318,9 +318,17 @@ import { shortcutLabelForCommand } from "../keybindings";
 import { PersistentThreadTerminalDrawer } from "./PersistentThreadTerminals";
 import {
   applyDetachedPresentationMilestone,
+  applyDetachedSendMilestone,
   dismissDetachedChat,
+  openDetachedExistingThread,
   useDetachedChatPresentation,
+  type DetachedPresentationMilestone,
 } from "./quickMessage/detachedChatPresentation";
+import {
+  openTimelineFileAttachment,
+  openTimelineTurnDiff,
+  runTimelineShellCommand,
+} from "./quickMessage/detachedTimelineActions";
 import { isDetachedChatWindow } from "./quickMessage/quickMessageWindow";
 import {
   AlarmClockIcon,
@@ -1246,6 +1254,11 @@ export default function ChatView(props: ChatViewProps) {
       currentRouteThreadKeyRef.current = null;
     };
   }, [routeThreadKey]);
+  const applySendMilestone = (milestone: DetachedPresentationMilestone) =>
+    applyDetachedSendMilestone(milestone, {
+      routeThreadKey,
+      currentRouteThreadKey: currentRouteThreadKeyRef.current,
+    });
   const createThread = useOrchestrationCommand(threadEnvironment.create, { reportFailure: false });
   const deleteThread = useOrchestrationCommand(threadEnvironment.delete, { reportFailure: false });
   const updateThreadMetadata = useOrchestrationCommand(threadEnvironment.updateMetadata, {
@@ -2962,10 +2975,10 @@ export default function ChatView(props: ChatViewProps) {
   };
   const downloadFileAttachmentStable = useStableCallback(downloadFileAttachment);
   const openFileAttachment = (attachment: ChatFileAttachment) => {
-    if (activeThreadRef) {
+    openTimelineFileAttachment(() => {
+      if (!activeThreadRef) return;
       useRightPanelStore.getState().openAttachment(activeThreadRef, attachment);
-      return;
-    }
+    });
   };
   const openFileAttachmentStable = useStableCallback(openFileAttachment);
   const serverAttachmentResources = selectHandoffImageResources(
@@ -3785,7 +3798,14 @@ export default function ChatView(props: ChatViewProps) {
       shellHistory?: "preserve" | "suppress";
     },
   ) => {
-    if (!hasTerminalWriteAccess() || !activeThreadId || !activeProject || !activeThread) return;
+    if (
+      isDetachedChatWindow ||
+      !hasTerminalWriteAccess() ||
+      !activeThreadId ||
+      !activeProject ||
+      !activeThread
+    )
+      return;
     if (options?.rememberAsLastInvoked !== false) {
       setLastInvokedScriptByProjectId((current) => {
         if (current[activeProject.id] === script.id) return current;
@@ -3888,16 +3908,18 @@ export default function ChatView(props: ChatViewProps) {
     runProjectScriptRef.current = runProjectScriptStable;
   }, [runProjectScriptStable]);
   const runShellCommand = (command: string) => {
-    void runProjectScriptRef.current(
-      {
-        id: "chat-code-block",
-        name: "Chat code block",
-        command,
-        icon: "play",
-        runOnWorktreeCreate: false,
-      },
-      { rememberAsLastInvoked: false, shellHistory: "preserve" },
-    );
+    runTimelineShellCommand(command, (shellCommand) => {
+      void runProjectScriptRef.current(
+        {
+          id: "chat-code-block",
+          name: "Chat code block",
+          command: shellCommand,
+          icon: "play",
+          runOnWorktreeCreate: false,
+        },
+        { rememberAsLastInvoked: false, shellHistory: "preserve" },
+      );
+    });
   };
   const runShellCommandStable = useStableCallback(runShellCommand);
   // The repository's Conductor run scripts. Each runs in its own terminal so
@@ -7032,22 +7054,23 @@ export default function ChatView(props: ChatViewProps) {
         }
       }
       setThreadError(threadId, error instanceof Error ? error.message : "Failed to create thread.");
-      applyDetachedPresentationMilestone("draft-send-failed");
+      applySendMilestone("draft-send-failed");
       return;
     }
-    // The launch command returns once preparation is scheduled, before checkout
-    // and the setup script finish. Expand before the route hands off so the
-    // timeline's existing setup card covers that work.
-    applyDetachedPresentationMilestone("thread-created-without-message");
     // With no message or turn, the draft route has no reason to hand over by itself.
+    // Expand only after the wait, and only while this draft is still the route, so
+    // the setup card is visible before the handoff without resizing a newer one.
     const threadRef = scopeThreadRef(activeThread.environmentId, threadId);
     if (currentRouteThreadKeyRef.current === routeThreadKey) {
       await waitForThreadShell(threadRef);
-      await navigate({
-        to: "/$environmentId/$threadId",
-        params: buildThreadRouteParams(threadRef),
-        replace: true,
-      });
+      if (currentRouteThreadKeyRef.current === routeThreadKey) {
+        applySendMilestone("thread-created-without-message");
+        await navigate({
+          to: "/$environmentId/$threadId",
+          params: buildThreadRouteParams(threadRef),
+          replace: true,
+        });
+      }
     }
     finalizePromotedDraftThreadByRef(threadRef);
   };
@@ -7766,7 +7789,7 @@ export default function ChatView(props: ChatViewProps) {
       }),
     );
     if (multipleModelSelections !== null) {
-      applyDetachedPresentationMilestone("fanout");
+      applySendMilestone("fanout");
       const failedSelections: ModelSelection[] = [];
       let clearedDraft = false;
       let releasedComposer = false;
@@ -7863,10 +7886,15 @@ export default function ChatView(props: ChatViewProps) {
                 });
               },
               openThread: (threadId) => {
-                applyDetachedPresentationMilestone("existing-thread-opened");
-                void navigate({
-                  to: "/$environmentId/$threadId",
-                  params: buildThreadRouteParams(scopeThreadRef(environmentId, threadId)),
+                const threadRef = scopeThreadRef(environmentId, threadId);
+                void openDetachedExistingThread({
+                  navigate: () =>
+                    navigate({
+                      to: "/$environmentId/$threadId",
+                      params: buildThreadRouteParams(threadRef),
+                    }),
+                  routeStillSelected: () =>
+                    currentRouteThreadKeyRef.current === scopedThreadKey(threadRef),
                 });
               },
             });
@@ -8141,7 +8169,7 @@ export default function ChatView(props: ChatViewProps) {
           : null;
       if (backgroundThreadRef) {
         beginBackgroundDraftSubmissionByRef(backgroundThreadRef);
-        applyDetachedPresentationMilestone("background-draft");
+        applySendMilestone("background-draft");
       }
       const startPromise = startThreadTurn({
         environmentId,
@@ -8219,8 +8247,9 @@ export default function ChatView(props: ChatViewProps) {
         if (sentDraftThreadRef && !backgroundThreadRef) {
           // Same point as an empty create: the command has been accepted and
           // preparation is only scheduled, so the timeline can show setup
-          // before the draft route promotes.
-          applyDetachedPresentationMilestone("foreground-draft-turn-started");
+          // before the draft route promotes. A route chosen while this send
+          // was in flight keeps its own presentation.
+          applySendMilestone("foreground-draft-turn-started");
         }
         useThreadTabContextStore.getState().clear(threadIdForSend);
         useIssueContextStore.getState().clear(threadIdForSend);
@@ -8249,9 +8278,15 @@ export default function ChatView(props: ChatViewProps) {
                 actionProps: {
                   children: "Open",
                   onClick: () => {
-                    void navigate({
-                      to: "/$environmentId/$threadId",
-                      params: buildThreadRouteParams(backgroundThreadRef),
+                    const threadRef = backgroundThreadRef;
+                    void openDetachedExistingThread({
+                      navigate: () =>
+                        navigate({
+                          to: "/$environmentId/$threadId",
+                          params: buildThreadRouteParams(threadRef),
+                        }),
+                      routeStillSelected: () =>
+                        currentRouteThreadKeyRef.current === scopedThreadKey(threadRef),
                     });
                   },
                 },
@@ -8267,7 +8302,7 @@ export default function ChatView(props: ChatViewProps) {
       }
     }
     if (failure !== null) {
-      if (isLocalDraftThread) applyDetachedPresentationMilestone("draft-send-failed");
+      if (isLocalDraftThread) applySendMilestone("draft-send-failed");
       if (isLocalDraftThread && draftId && draftThread) {
         restoreFailedDraftThread(
           draftId,
@@ -8848,13 +8883,16 @@ export default function ChatView(props: ChatViewProps) {
   };
   const onExpandTimelineImageStable = useStableCallback(onExpandTimelineImage);
   const onOpenTurnDiff = (runId: RunId, filePath?: string) => {
-    if (!isServerThread || !activeThreadRef) return;
-    const diffOpen =
-      selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, activeThreadRef) === "diff";
-    explicitDiffOpenRef.current = diffOpen ? null : activeThreadRef;
-    useDiffPanelStore.getState().selectTurn(activeThreadRef, runId, filePath);
-    useRightPanelStore.getState().open(activeThreadRef, "diff");
-    onDiffPanelOpen?.();
+    openTimelineTurnDiff(() => {
+      if (!isServerThread || !activeThreadRef) return;
+      const diffOpen =
+        selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, activeThreadRef) ===
+        "diff";
+      explicitDiffOpenRef.current = diffOpen ? null : activeThreadRef;
+      useDiffPanelStore.getState().selectTurn(activeThreadRef, runId, filePath);
+      useRightPanelStore.getState().open(activeThreadRef, "diff");
+      onDiffPanelOpen?.();
+    });
   };
   const onOpenTurnDiffStable = useStableCallback(onOpenTurnDiff);
   const onTimelineRollbackCheckpoint = (input: {
@@ -8993,7 +9031,7 @@ export default function ChatView(props: ChatViewProps) {
     threadId: activeThread.id,
     ...(draftId ? { draftId } : {}),
     activeProjectName: activeProject?.title,
-    activeProjectScripts: activeProject ? activeProjectScripts : undefined,
+    activeProjectScripts: activeProject && !isDetachedChatWindow ? activeProjectScripts : undefined,
     preferredScriptId: activeProject
       ? (lastInvokedScriptByProjectId[activeProject.id] ?? null)
       : null,
@@ -9027,10 +9065,16 @@ export default function ChatView(props: ChatViewProps) {
       ? { onCheckoutPullRequestRequest: openPullRequestDialogStable }
       : {}),
     onComposerFocusRequest: scheduleComposerFocusStable,
-    ...(isServerThread && isGitRepo ? { onOpenChanges: openChangesFromThreadPanelStable } : {}),
+    ...(isServerThread && isGitRepo && !isDetachedChatWindow
+      ? { onOpenChanges: openChangesFromThreadPanelStable }
+      : {}),
     onRunProjectScript: runProjectScriptStable,
-    conductorScripts: conductorScriptItems,
-    onRunConductorScript: runConductorScript,
+    ...(isDetachedChatWindow
+      ? {}
+      : {
+          conductorScripts: conductorScriptItems,
+          onRunConductorScript: runConductorScript,
+        }),
     onStopConductorScript: stopConductorScript,
     onAddProjectScript: saveProjectScriptStable,
     onUpdateProjectScript: updateProjectScriptStable,
@@ -9260,7 +9304,9 @@ export default function ChatView(props: ChatViewProps) {
                 {...(!paintOnlyDisplayedTimeline
                   ? {
                       onCiteAssistantText: citeAssistantTextStable,
-                      ...(activeProject ? { onRunShellCommand: runShellCommandStable } : {}),
+                      ...(activeProject && !isDetachedChatWindow
+                        ? { onRunShellCommand: runShellCommandStable }
+                        : {}),
                     }
                   : {})}
                 isWorking={!paintOnlyDisplayedTimeline && isWorking}
@@ -9322,7 +9368,11 @@ export default function ChatView(props: ChatViewProps) {
                 displayThreadKey={displayedTimelineKey}
                 paintOnly={paintOnlyDisplayedTimeline}
                 onOpenTurnDiff={
-                  paintOnlyDisplayedTimeline ? noopHeldTurnDiff : onOpenTurnDiffStable
+                  isDetachedChatWindow
+                    ? undefined
+                    : paintOnlyDisplayedTimeline
+                      ? noopHeldTurnDiff
+                      : onOpenTurnDiffStable
                 }
                 onOpenThread={onOpenRelatedThreadStable}
                 parentThreadLink={paintOnlyDisplayedTimeline ? null : parentThreadLink}
@@ -9349,7 +9399,11 @@ export default function ChatView(props: ChatViewProps) {
                 isRevertingCheckpoint={isRevertingCheckpoint}
                 onImageExpand={onExpandTimelineImageStable}
                 onFileOpen={
-                  paintOnlyDisplayedTimeline ? noopHeldAttachment : openFileAttachmentStable
+                  isDetachedChatWindow
+                    ? undefined
+                    : paintOnlyDisplayedTimeline
+                      ? noopHeldAttachment
+                      : openFileAttachmentStable
                 }
                 onFileDownload={
                   paintOnlyDisplayedTimeline ? noopHeldAttachment : downloadFileAttachmentStable

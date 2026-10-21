@@ -16,6 +16,7 @@ import { vcsEnvironment } from "../../state/vcs";
 import { useTerminalUiStateStore } from "../../terminalUiStateStore";
 import type { Thread } from "../../types";
 import { resolveVisibleWorktreeSetup, resolveWorktreeSetupProgress } from "../ChatView.logic";
+import { timelineWorktreeTerminalOpener } from "../quickMessage/detachedTimelineActions";
 import { worktreeSetupAgentStarted } from "./MessagesTimeline.logic";
 
 /** Runs with a workspace preparation retry in flight, across ChatView instances. */
@@ -179,11 +180,10 @@ export function useWorktreeSetup(input: {
   // terminal while the setup thread is still the active one.
   const setupThreadRef =
     worktreeSetup && threadRef && worktreeSetup.threadId === threadRef.threadId ? threadRef : null;
-  const openSetupTerminal = setupThreadRef
-    ? (terminalId: string) => {
-        storeEnsureTerminal(setupThreadRef, terminalId, { open: true, active: true });
-      }
-    : null;
+  const openSetupTerminal = timelineWorktreeTerminalOpener({
+    threadRef: setupThreadRef,
+    ensureTerminal: storeEnsureTerminal,
+  });
 
   return {
     worktreeSetup,

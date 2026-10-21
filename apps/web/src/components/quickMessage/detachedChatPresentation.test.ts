@@ -22,8 +22,10 @@ import {
   focusDetachedComposerInput,
   handleDetachedChatShow,
   noteDetachedNewDraftOpened,
+  openDetachedExistingThread,
   presentationForDetachedMilestone,
   readDetachedChatPresentation,
+  settleDetachedSendPresentation,
   requestDetachedComposerCompact,
   requestDetachedComposerExpanded,
   resetDetachedChatPresentationForTests,
@@ -219,6 +221,99 @@ describe("detached chat presentation", () => {
     expect(compactBackdropShouldDismiss({ target: frame, currentTarget: frame })).toBe(true);
     expect(compactBackdropShouldDismiss({ target: {}, currentTarget: frame })).toBe(false);
     expect(compactBackdropShouldDismiss({ target: null, currentTarget: frame })).toBe(false);
+  });
+
+  it("applies a delayed send result only while that route is still current", async () => {
+    let current: string | null = "draft-a";
+    let release: (milestone: DetachedPresentationMilestone | null) => void = () => undefined;
+    const pending = new Promise<DetachedPresentationMilestone | null>((resolve) => {
+      release = resolve;
+    });
+    const finishing = settleDetachedSendPresentation({
+      routeThreadKey: "draft-a",
+      readCurrentRouteThreadKey: () => current,
+      result: pending,
+    });
+    current = "draft-b";
+    release("foreground-draft-turn-started");
+    await finishing;
+    expect(readDetachedChatPresentation()).toBe("compact");
+    expect(setPresentation).not.toHaveBeenCalled();
+
+    current = "draft-a";
+    await settleDetachedSendPresentation({
+      routeThreadKey: "draft-a",
+      readCurrentRouteThreadKey: () => current,
+      result: Promise.resolve("foreground-draft-turn-started"),
+    });
+    expect(readDetachedChatPresentation()).toBe("expanded");
+    expect(setPresentation).toHaveBeenCalledWith("expanded");
+
+    setPresentation.mockClear();
+    current = "draft-c";
+    for (const milestone of [
+      "draft-send-failed",
+      "background-draft",
+      "fanout",
+      "thread-created-without-message",
+    ] as const) {
+      await settleDetachedSendPresentation({
+        routeThreadKey: "draft-a",
+        readCurrentRouteThreadKey: () => current,
+        result: Promise.resolve(milestone),
+      });
+    }
+    expect(readDetachedChatPresentation()).toBe("expanded");
+    expect(setPresentation).not.toHaveBeenCalled();
+
+    current = "draft-a";
+    await settleDetachedSendPresentation({
+      routeThreadKey: "draft-a",
+      readCurrentRouteThreadKey: () => current,
+      result: Promise.resolve("draft-send-failed"),
+    });
+    expect(readDetachedChatPresentation()).toBe("compact");
+    expect(setPresentation).toHaveBeenCalledWith("compact");
+  });
+
+  it("expands after an explicit thread open lands, and not when it fails or loses the route", async () => {
+    let selected = false;
+    let resolveNavigation: (() => void) | undefined;
+    const opening = openDetachedExistingThread({
+      navigate: () =>
+        new Promise<void>((resolve) => {
+          resolveNavigation = () => {
+            selected = true;
+            resolve();
+          };
+        }),
+      routeStillSelected: () => selected,
+    });
+    expect(readDetachedChatPresentation()).toBe("compact");
+    expect(setPresentation).not.toHaveBeenCalled();
+    resolveNavigation?.();
+    await expect(opening).resolves.toBe(true);
+    expect(readDetachedChatPresentation()).toBe("expanded");
+
+    adoptDetachedChatPresentation("compact");
+    setPresentation.mockClear();
+    await expect(
+      openDetachedExistingThread({
+        navigate: () => Promise.reject(new Error("navigation blocked")),
+        routeStillSelected: () => true,
+      }),
+    ).resolves.toBe(false);
+    expect(readDetachedChatPresentation()).toBe("compact");
+    expect(setPresentation).not.toHaveBeenCalled();
+
+    await expect(
+      openDetachedExistingThread({
+        navigate: () => Promise.resolve(),
+        routeStillSelected: () => false,
+      }),
+    ).resolves.toBe(false);
+    expect(readDetachedChatPresentation()).toBe("compact");
+    expect(setPresentation).not.toHaveBeenCalled();
   });
 
   it("expands an existing thread open and leaves settings, projects, and drafts", () => {

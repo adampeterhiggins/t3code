@@ -48,7 +48,7 @@ interface V2ItemInspectorProps {
   /** Hover previews and expanded command rows opt in; other expanded rows stay plain. */
   readonly highlightSyntax?: boolean | undefined;
   readonly onOpenThread: (threadId: ThreadId) => void;
-  readonly onOpenTurnDiff: (runId: RunId, filePath?: string) => void;
+  readonly onOpenTurnDiff?: ((runId: RunId, filePath?: string) => void) | undefined;
   readonly onRollbackCheckpoint?: (input: {
     readonly checkpointId: string;
     readonly scopeId: string;
@@ -359,8 +359,10 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
                 </span>
               ) : null}
             </div>
-            {!props.hidePreviewActions && item.runId !== null ? (
-              <PreviewCornerAction onClick={() => props.onOpenTurnDiff(item.runId!, item.fileName)}>
+            {!props.hidePreviewActions && item.runId !== null && props.onOpenTurnDiff ? (
+              <PreviewCornerAction
+                onClick={() => props.onOpenTurnDiff?.(item.runId!, item.fileName)}
+              >
                 Open diff
               </PreviewCornerAction>
             ) : null}

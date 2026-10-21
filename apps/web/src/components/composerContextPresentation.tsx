@@ -37,6 +37,7 @@ import {
   type AttachmentUploadState,
 } from "~/lib/attachmentUploadState";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
+import { isDetachedChatWindow } from "./quickMessage/quickMessageWindow";
 import {
   fileContextReference,
   imageContextReference,
@@ -463,8 +464,27 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
       chip: (entry, { actions, resolvedTheme }) => {
         if (entry.kind !== "mention") return null;
         const { path } = entry.record;
+        const fileTag = (
+          <FileTagChipContent
+            path={path}
+            environmentId={actions.environmentId}
+            cwd={actions.cwd}
+            label={basenameOfPath(path)}
+            theme={resolvedTheme}
+          />
+        );
         return {
-          trigger: (
+          trigger: isDetachedChatWindow ? (
+            <ContextChip
+              kind="mention"
+              aria-label={path}
+              contentEditable={false}
+              spellCheck={false}
+              data-composer-mention-chip="true"
+            >
+              {fileTag}
+            </ContextChip>
+          ) : (
             <ContextChip
               kind="mention"
               render={<button type="button" />}
@@ -474,13 +494,7 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
               spellCheck={false}
               data-composer-mention-chip="true"
             >
-              <FileTagChipContent
-                path={path}
-                environmentId={actions.environmentId}
-                cwd={actions.cwd}
-                label={basenameOfPath(path)}
-                theme={resolvedTheme}
-              />
+              {fileTag}
             </ContextChip>
           ),
           accessibleLabel: path,
@@ -501,7 +515,9 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
             label,
             description,
             onOpenInstructions:
-              path && actions.environmentId ? () => actions.openMention(path) : undefined,
+              path && actions.environmentId && !isDetachedChatWindow
+                ? () => actions.openMention(path)
+                : undefined,
           },
         });
       },

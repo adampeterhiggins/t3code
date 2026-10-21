@@ -1,76 +1,84 @@
+import type { DesktopBridge } from "@t3tools/contracts";
+
 import { isDetachedChatWindow } from "./quickMessageWindow";
 
-interface NativeWindowInteraction {
-  readonly begin: () => Promise<void>;
-  readonly end: () => Promise<void>;
-}
+type NativeWindowInteractionBridge = NonNullable<DesktopBridge["nativeWindowInteraction"]>;
 
 /**
  * Electron's interaction counter wraps `dialog.showOpenDialog` only. The
  * composer's `<input type="file">` opens Chromium's chooser, which still
- * blurs the compact window. An optional `desktopBridge.nativeWindowInteraction`
- * `{ begin, end }` holds that counter from the click until change, cancel, or
- * focus return. Older shells omit it; the click still uses this input.
- *
- * `begin` is not awaited before `click`. Awaiting an IPC round-trip spends the
- * user activation Chromium requires to open the chooser. Blur can still win
- * that race until begin is synchronous in the main process.
+ * blurs the compact window. `desktopBridge.nativeWindowInteraction` is an
+ * optional synchronous hold: `begin` must return before `click` in this turn,
+ * and `false` means the click is not protected. Change and cancel release it.
+ * Focus does not: the chooser can move focus while it is still open.
+ * Older shells omit the bridge; the click still uses this input.
  */
-function isNativeWindowInteraction(value: unknown): value is NativeWindowInteraction {
-  if (typeof value !== "object" || value === null) return false;
-  if (!("begin" in value) || !("end" in value)) return false;
-  return typeof value.begin === "function" && typeof value.end === "function";
-}
-
-function readNativeWindowInteraction(): NativeWindowInteraction | null {
+function readNativeWindowInteraction(): NativeWindowInteractionBridge | null {
   if (!isDetachedChatWindow || typeof window === "undefined") return null;
-  const bridge: unknown = window.desktopBridge;
-  if (typeof bridge !== "object" || bridge === null || !("nativeWindowInteraction" in bridge)) {
+  const interaction = window.desktopBridge?.nativeWindowInteraction;
+  if (
+    interaction === undefined ||
+    typeof interaction.begin !== "function" ||
+    typeof interaction.end !== "function"
+  ) {
     return null;
   }
-  return isNativeWindowInteraction(bridge.nativeWindowInteraction)
-    ? bridge.nativeWindowInteraction
-    : null;
+  return interaction;
 }
 
-/** Opens the shared composer file input, bracketing a native interaction when the shell provides one. */
-export function openDetachedComposerFileChooser(input: HTMLInputElement | null): void {
-  if (input === null) return;
+/** Opens the shared composer file input. Returns a dispose that releases a hold still in progress. */
+export function openDetachedComposerFileChooser(input: HTMLInputElement | null): () => void {
+  if (input === null) return () => undefined;
   const interaction = readNativeWindowInteraction();
   if (interaction === null) {
     input.click();
-    return;
+    return () => undefined;
   }
-  let ended = false;
-  let begun = false;
+
+  let settled = false;
+  let held = false;
   const stopListening = () => {
-    input.removeEventListener("change", end);
-    input.removeEventListener("cancel", end);
-    window.removeEventListener("focus", end);
+    input.removeEventListener("change", finish);
+    input.removeEventListener("cancel", finish);
   };
-  const finish = () => {
-    if (!begun) return;
-    void interaction.end().catch(() => undefined);
+  const release = () => {
+    if (!held) return;
+    held = false;
+    try {
+      interaction.end();
+    } catch {
+      // Ending the hold must not escape the click or dispose path.
+    }
   };
-  function end() {
-    if (ended) return;
-    ended = true;
+  function finish() {
+    if (settled) return;
+    settled = true;
     stopListening();
-    finish();
+    release();
   }
-  input.addEventListener("change", end);
-  input.addEventListener("cancel", end);
-  window.addEventListener("focus", end);
-  const pendingBegin = interaction.begin();
-  input.click();
-  void pendingBegin.then(
-    () => {
-      begun = true;
-      if (ended) finish();
-    },
-    () => {
-      ended = true;
-      stopListening();
-    },
-  );
+
+  input.addEventListener("change", finish);
+  input.addEventListener("cancel", finish);
+  try {
+    held = interaction.begin() === true;
+  } catch {
+    settled = true;
+    stopListening();
+    held = false;
+    input.click();
+    return () => undefined;
+  }
+  if (!held) {
+    settled = true;
+    stopListening();
+    input.click();
+    return () => undefined;
+  }
+  try {
+    input.click();
+  } catch (error) {
+    finish();
+    throw error;
+  }
+  return finish;
 }

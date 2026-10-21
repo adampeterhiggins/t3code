@@ -200,6 +200,8 @@ import {
   useRemoteOpenResolution,
   type RemoteOpenMode,
 } from "../remoteOpen";
+import { openTimelineWorkspaceFile } from "./quickMessage/detachedTimelineActions";
+import { isDetachedChatWindow } from "./quickMessage/quickMessageWindow";
 import { useRightPanelStore } from "../rightPanelStore";
 import { readThreadShell, useProjects } from "../state/entities";
 import { serverEnvironment } from "../state/server";
@@ -1745,15 +1747,19 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
       ? { asset: { environmentId: props.environmentId, resource } }
       : {}),
     ...(reference ? { reference } : {}),
-    ...(relativePath && (resource._tag === "media-file" || resource._tag === "workspace-file")
+    ...(relativePath &&
+    !isDetachedChatWindow &&
+    (resource._tag === "media-file" || resource._tag === "workspace-file")
       ? {
           onOpenFile: () =>
-            useRightPanelStore
-              .getState()
-              .openFile(
-                { environmentId: props.environmentId, threadId: resource.threadId },
-                relativePath,
-              ),
+            openTimelineWorkspaceFile(() =>
+              useRightPanelStore
+                .getState()
+                .openFile(
+                  { environmentId: props.environmentId, threadId: resource.threadId },
+                  relativePath,
+                ),
+            ),
         }
       : {}),
   };
@@ -2689,9 +2695,13 @@ function useChatMarkdownState({
       httpBaseUrl:
         environmentId === null ? undefined : readPreparedConnection(environmentId)?.httpBaseUrl,
       createAssetUrl,
-      onOpenFile: threadRef
-        ? (path) => useRightPanelStore.getState().openFile(threadRef, path)
-        : undefined,
+      onOpenFile:
+        threadRef && !isDetachedChatWindow
+          ? (path) =>
+              openTimelineWorkspaceFile(() =>
+                useRightPanelStore.getState().openFile(threadRef, path),
+              )
+          : undefined,
     }).then(
       (preview) => {
         if (preview && mediaRequestId.current === requestId) {
@@ -2966,12 +2976,14 @@ function useChatMarkdownState({
     return metadata._tag === "Success" && metadata.value.entries[0] === null ? match : null;
   };
   const openFileInPanel = (fileLinkMeta: MarkdownFileLinkMeta, panelPath: string) => {
-    if (!threadRef) return;
+    if (isDetachedChatWindow || !threadRef) return;
     // Claimed on every open so a synchronous one supersedes a lookup already
     // in flight.
     const isLatestLookup = claimWorkspaceBasenameLookup();
     const openAt = (path: string) =>
-      useRightPanelStore.getState().openFile(threadRef, path, fileLinkMeta.line);
+      openTimelineWorkspaceFile(() =>
+        useRightPanelStore.getState().openFile(threadRef, path, fileLinkMeta.line),
+      );
     if (
       fileLinkMeta.workspaceLookupPath === null ||
       !cwd ||
@@ -3003,9 +3015,10 @@ function useChatMarkdownState({
       mediaMimeTypeFromExtension(
         fileLinkMeta.basename.slice(fileLinkMeta.basename.lastIndexOf(".")),
       ) !== null;
-    const panelPath =
-      fileLinkMeta.workspaceRelativePath ??
-      (!canPreviewMedia && isHostPath(fileLinkMeta.filePath) ? fileLinkMeta.filePath : null);
+    const panelPath = isDetachedChatWindow
+      ? null
+      : (fileLinkMeta.workspaceRelativePath ??
+        (!canPreviewMedia && isHostPath(fileLinkMeta.filePath) ? fileLinkMeta.filePath : null));
 
     const fileOpenTarget = resolveFileOpenTarget(fileLinkMeta.filePath, fileOpenSettings);
     return (
@@ -3065,6 +3078,7 @@ function useChatMarkdownState({
         }
         revealLabel={revealInFileManagerLabel}
         onOpenInBrowser={
+          !isDetachedChatWindow &&
           threadRef &&
           canOperatePreview &&
           isPreviewAvailableFor(threadRef.environmentId) &&

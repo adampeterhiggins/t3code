@@ -170,6 +170,55 @@ export function applyDetachedPresentationMilestone(milestone: DetachedPresentati
   else if (next === "compact") requestDetachedComposerCompact();
 }
 
+/**
+ * A send captured `routeThreadKey`. Chat can move to another draft while the
+ * command is still in flight; the result must not resize that newer route.
+ */
+export function applyDetachedSendMilestone(
+  milestone: DetachedPresentationMilestone,
+  route: {
+    readonly routeThreadKey: string;
+    readonly currentRouteThreadKey: string | null;
+  },
+): boolean {
+  if (route.currentRouteThreadKey !== route.routeThreadKey) return false;
+  applyDetachedPresentationMilestone(milestone);
+  return true;
+}
+
+/** Await the send, then apply its milestone only if that route is still current. */
+export async function settleDetachedSendPresentation(input: {
+  readonly routeThreadKey: string;
+  readonly readCurrentRouteThreadKey: () => string | null;
+  readonly result: Promise<DetachedPresentationMilestone | null>;
+}): Promise<boolean> {
+  const milestone = await input.result;
+  if (milestone === null) return false;
+  return applyDetachedSendMilestone(milestone, {
+    routeThreadKey: input.routeThreadKey,
+    currentRouteThreadKey: input.readCurrentRouteThreadKey(),
+  });
+}
+
+/**
+ * An explicit open of a server thread. Expand only after that navigation
+ * finishes and still owns the route, so a failed or superseded open leaves
+ * the window where the newer choice put it.
+ */
+export async function openDetachedExistingThread(input: {
+  readonly navigate: () => Promise<unknown>;
+  readonly routeStillSelected: () => boolean;
+}): Promise<boolean> {
+  try {
+    await input.navigate();
+  } catch {
+    return false;
+  }
+  if (!input.routeStillSelected()) return false;
+  applyDetachedPresentationMilestone("existing-thread-opened");
+  return true;
+}
+
 /** Compact after a new draft actually opened. A null result leaves the window alone. */
 export function noteDetachedNewDraftOpened(opened: unknown): void {
   if (opened === null || opened === undefined) return;
