@@ -77,7 +77,7 @@ export class ResourceTelemetry extends Context.Service<
   }
 >()("t3/resourceTelemetry/ResourceTelemetry") {}
 
-// Long enough to hold a sample at the background cadence, short enough to read as "now".
+// Long enough to reuse a recent sample, short enough to read as "now".
 const USAGE_WINDOW_MS = 15_000;
 
 interface TelemetryState {
@@ -451,15 +451,27 @@ export const make = Effect.fn("resourceTelemetry.resourceTelemetry.make")(functi
       }),
     });
   });
-  // Reads the sidecar's background history rather than holding the live
-  // stream, so an always-visible indicator never raises the sampling rate.
+  // Reads the sidecar's history rather than holding the live stream, so an
+  // always-visible indicator never turns on timed sampling. An idle sidecar
+  // samples only on request, so a read with no recent history takes one
+  // on-demand sample, which the sidecar records into that history.
+  const readUsageBucket = Effect.fn("ResourceTelemetry.readUsageBucket")(function* (
+    windowMs: number,
+  ) {
+    const history = yield* readHistory({ windowMs, bucketMs: windowMs });
+    const bucket = history.buckets.at(-1);
+    return bucket === undefined || bucket.maxProcessCount === 0 ? null : bucket;
+  });
   const readUsageUncached = Effect.gen(function* () {
     const nativeHealth = yield* nativeClient.health;
     if (nativeHealth.status !== "healthy" && nativeHealth.status !== "degraded") return null;
     const windowMs = Math.max(USAGE_WINDOW_MS, nativeHealth.sampleIntervalMs * 2);
-    const history = yield* readHistory({ windowMs, bucketMs: windowMs });
-    const bucket = history.buckets.at(-1);
-    if (bucket === undefined || bucket.maxProcessCount === 0) return null;
+    let bucket = yield* readUsageBucket(windowMs);
+    if (bucket === null) {
+      yield* nativeClient.sampleNow.pipe(Effect.flatMap(ingestNative), Effect.ignore);
+      bucket = yield* readUsageBucket(windowMs);
+    }
+    if (bucket === null) return null;
     return {
       sampledAt: bucket.endedAt,
       cpuPercent: bucket.avgCpuPercent,

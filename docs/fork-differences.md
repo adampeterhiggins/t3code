@@ -735,8 +735,9 @@ the pill opens a process tree with per-process CPU and memory, plus a link to Se
 Diagnostics. The pill is hidden when the resource monitor has no sample and when the sidebar is
 narrow. This is web and desktop.
 
-The pill polls `server.getResourceUsage`, which reads the monitor's background history, so an
-always-visible pill does not raise the sampling rate. The popover holds the live
+The pill polls `server.getResourceUsage`, which reads the monitor's history. An idle monitor samples
+only on request, so when that history has nothing recent the read takes one on-demand sample. An
+always-visible pill therefore never turns on timed sampling. The popover holds the live
 resource-telemetry stream only while it is open.
 
 Code: `apps/web/src/components/sidebar/SidebarResourcePill.tsx` and `readUsage` in
