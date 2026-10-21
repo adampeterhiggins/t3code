@@ -6679,6 +6679,107 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     ),
   );
 
+  // regression: a subagent's parallel tool calls lost all but one name (6–8 Oct 2026), so the
+  // other results projected as calls named `tool` with no input.
+  it.effect("keeps every parallel tool call in a subagent message", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeWakeHarness;
+      let sequence = 900;
+      const nextUuid = () => `00000000-0000-4000-8000-${String(++sequence).padStart(12, "0")}`;
+      yield* harness.runtime.startTurn(
+        makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now: yield* DateTime.now,
+          attemptId: RunAttemptId.make("attempt-claude-parallel-subagent-tools"),
+          text: "Research this.",
+          attachments: [],
+        }),
+      );
+      yield* harness.offerAndWait(
+        claudeSdkFrame({
+          type: "system",
+          subtype: "task_started",
+          task_id: "task-parallel-agent",
+          tool_use_id: "tool-parallel-agent",
+          description: "Research",
+          task_type: "local_agent",
+          uuid: nextUuid(),
+          session_id: WAKE_NATIVE_SESSION,
+        }),
+      );
+      const calls = [
+        { id: "tool-parallel-1", name: "mcp__notion__notion-fetch", input: { id: "page-1" } },
+        {
+          id: "tool-parallel-2",
+          name: "mcp__slack__slack_read_channel",
+          input: { channel_id: "C1" },
+        },
+        { id: "tool-parallel-3", name: "mcp__linear__get_issue", input: { id: "PSET-1" } },
+      ];
+      yield* harness.offerAndWait(
+        claudeSdkFrame({
+          type: "assistant",
+          message: {
+            id: "msg_parallel_subagent_tools",
+            model: "claude-sonnet-4-6",
+            type: "message",
+            role: "assistant",
+            content: calls.map((call) => ({ type: "tool_use", ...call })),
+            stop_reason: "tool_use",
+            stop_sequence: null,
+            usage: {
+              input_tokens: 1,
+              output_tokens: 1,
+              cache_creation_input_tokens: 0,
+              cache_read_input_tokens: 0,
+            },
+          },
+          parent_tool_use_id: "tool-parallel-agent",
+          uuid: nextUuid(),
+          session_id: WAKE_NATIVE_SESSION,
+        }),
+      );
+      yield* harness.offerAndWait(
+        claudeSdkFrame({
+          type: "user",
+          message: {
+            role: "user",
+            content: calls.map((call) => ({
+              type: "tool_result",
+              tool_use_id: call.id,
+              content: `${call.name} finished.`,
+            })),
+          },
+          parent_tool_use_id: "tool-parallel-agent",
+          uuid: nextUuid(),
+          session_id: WAKE_NATIVE_SESSION,
+        }),
+      );
+      yield* harness.offerAndWait(makeResultFrame({ uuid: nextUuid(), result: "Done." }));
+      yield* Queue.take(harness.terminalReceipts);
+
+      const toolItems = harness.events.flatMap((event) =>
+        event.type === "turn_item.updated" && event.turnItem.type === "dynamic_tool"
+          ? [event.turnItem]
+          : [],
+      );
+      const latest = new Map(toolItems.map((item) => [item.nativeItemRef?.nativeId, item]));
+      for (const call of calls) {
+        const item = latest.get(call.id);
+        assert.equal(item?.toolName, call.name);
+        assert.deepEqual(item?.input, call.input);
+        assert.equal(item?.status, "completed");
+      }
+      assert.isFalse(toolItems.some((item) => item.toolName === "tool"));
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+
   // regression: #14964 structured task output attaches to exactly one tool result
   it.effect("does not associate structured task output with multiple tool results", () =>
     Effect.gen(function* () {
