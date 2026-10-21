@@ -1,4 +1,10 @@
-import type { PreviewRecord, ThreadActionToolPreview, ToolPreview } from "./toolPreview.ts";
+import type {
+  PreviewRecord,
+  ProviderCapabilitiesToolPreview,
+  ProviderCapability,
+  ThreadActionToolPreview,
+  ToolPreview,
+} from "./toolPreview.ts";
 import {
   documentPreview,
   firstLine,
@@ -68,6 +74,51 @@ function projectCard(project: Record_): ToolPreview {
   );
 }
 
+// The card names a few models per provider; the count says how many there are.
+const MAX_CAPABILITY_MODELS = 4;
+
+function capabilitiesPreview(data: Record_): ProviderCapabilitiesToolPreview {
+  const inheritedId = str(data.inheritedProviderInstanceId);
+  const inheritedModel = str(data.inheritedModel);
+  const rawProviders = Array.isArray(data.providers) ? data.providers.filter(isRecord) : [];
+  const inheritedModelLabel = rawProviders
+    .filter((provider) => str(provider.providerInstanceId) === inheritedId)
+    .flatMap((provider) => (Array.isArray(provider.models) ? provider.models.filter(isRecord) : []))
+    .find((model) => str(model.id) === inheritedModel)?.label;
+  const providers = rawProviders.map((provider, index): ProviderCapability => {
+    const id = str(provider.providerInstanceId) ?? String(index);
+    const driver = str(provider.driverKind);
+    const models = (Array.isArray(provider.models) ? provider.models.filter(isRecord) : [])
+      .map((model) => str(model.label) ?? str(model.id))
+      .filter((label): label is string => label !== null);
+    const constraints = Array.isArray(provider.constraints)
+      ? provider.constraints.filter((constraint): constraint is string => Boolean(str(constraint)))
+      : [];
+    return {
+      key: id,
+      name: str(provider.displayName) ?? id,
+      // A default instance is keyed by its driver, so the driver only adds news for custom ones.
+      driver: driver && driver !== id ? driver : null,
+      models: models.slice(0, MAX_CAPABILITY_MODELS),
+      modelCount: models.length,
+      current: id === inheritedId,
+      unavailableReason:
+        provider.canRunChildTask === false
+          ? constraints.join(" ") || "Can't run child tasks."
+          : null,
+    };
+  });
+  return {
+    kind: "provider-capabilities",
+    inheritedModel: str(inheritedModelLabel) ?? inheritedModel,
+    inheritedProvider: providers.find((provider) => provider.current)?.name ?? null,
+    modes: present([str(data.runtimeMode), str(data.interactionMode)]).map((mode) =>
+      mode.replaceAll("-", " "),
+    ),
+    providers,
+  };
+}
+
 const QUEUE_ACTIONS: Readonly<Record<string, string>> = {
   t3_queue_edit: "Edited a queued message",
   t3_queue_cancel: "Cancelled a queued message",
@@ -83,38 +134,8 @@ export function t3UtilityToolPreview(
 ): ToolPreview | null {
   const data = isRecord(result) ? result : null;
   switch (tool) {
-    case "orchestrator_capabilities": {
-      const providers = Array.isArray(data?.providers) ? data.providers.filter(isRecord) : [];
-      if (!data) return null;
-      return records(
-        providers.map((provider, index) => {
-          const models = Array.isArray(provider.models) ? provider.models.filter(isRecord) : [];
-          return record({
-            key: str(provider.providerInstanceId) ?? String(index),
-            title: str(provider.displayName) ?? str(provider.providerInstanceId) ?? "Provider",
-            subtitle: provider.canRunChildTask === false ? "no child tasks" : null,
-            meta: present([
-              str(provider.driverKind),
-              `${models.length} model${models.length === 1 ? "" : "s"}`,
-            ]),
-            body:
-              models
-                .map((model) => str(model.label) ?? str(model.id))
-                .filter(Boolean)
-                .slice(0, 8)
-                .join(", ") || null,
-          });
-        }),
-        {
-          summary:
-            present([
-              str(data.inheritedModel),
-              str(data.runtimeMode),
-              str(data.interactionMode),
-            ]).join(" · ") || null,
-        },
-      );
-    }
+    case "orchestrator_capabilities":
+      return data ? capabilitiesPreview(data) : null;
     case "run_scheduled_task_now":
       return action("Ran a scheduled task now", {
         status: str(data?.lastRunStatus),

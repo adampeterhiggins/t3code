@@ -1,5 +1,8 @@
 import type { ScheduledTaskSchedule } from "@t3tools/contracts";
-import type { ToolPreview } from "@t3tools/client-runtime/work-log/tool-preview";
+import type {
+  ProviderCapabilitiesToolPreview,
+  ToolPreview,
+} from "@t3tools/client-runtime/work-log/tool-preview";
 import { useState, type ReactNode } from "react";
 import { Pressable, View } from "react-native";
 
@@ -228,6 +231,57 @@ function OpenThread(props: {
     >
       <Text className="text-2xs text-foreground">{props.label ?? "Open thread"}</Text>
     </Pressable>
+  );
+}
+
+function ProviderCapabilitiesView({
+  preview,
+}: {
+  readonly preview: ProviderCapabilitiesToolPreview;
+}) {
+  const available = preview.providers.filter((provider) => !provider.unavailableReason);
+  const unavailable = preview.providers.filter((provider) => provider.unavailableReason);
+  const inherits = [
+    preview.inheritedModel ? `Inherits ${preview.inheritedModel}` : null,
+    preview.inheritedProvider,
+    ...preview.modes,
+  ].filter(Boolean);
+  return (
+    <>
+      {inherits.length > 0 ? <Muted>{inherits.join(" · ")}</Muted> : null}
+      {available.length > 0 ? (
+        <Muted className="uppercase">{`Available · ${available.length}`}</Muted>
+      ) : null}
+      {available.map((provider) => (
+        <View key={provider.key} className="flex-row items-start gap-2">
+          <View className="mt-1.5 size-1.5 rounded-full bg-adaptive-emerald-500" />
+          <View className="flex-1">
+            <Title status={provider.current ? "current" : null}>
+              {provider.driver ? `${provider.name} · ${provider.driver}` : provider.name}
+            </Title>
+            {provider.models.length > 0 ? (
+              <Text numberOfLines={1} className="text-2xs text-foreground-muted">
+                {provider.models.join(", ")}
+                {provider.modelCount > provider.models.length ? "…" : ""}
+              </Text>
+            ) : null}
+          </View>
+          <Muted>{String(provider.modelCount)}</Muted>
+        </View>
+      ))}
+      {unavailable.length > 0 ? (
+        <Muted className="uppercase">{`Unavailable · ${unavailable.length}`}</Muted>
+      ) : null}
+      {unavailable.map((provider) => (
+        <View key={provider.key} className="flex-row items-center gap-2">
+          <View className="size-1.5 rounded-full border border-foreground-muted" />
+          <Muted>{provider.name}</Muted>
+          <Text numberOfLines={1} className="flex-1 text-right text-2xs text-foreground-muted">
+            {provider.unavailableReason}
+          </Text>
+        </View>
+      ))}
+    </>
   );
 }
 
@@ -500,6 +554,8 @@ function PreviewBody(props: {
           <GenericBody preview={preview} onOpenThread={props.onOpenThread} />
         </>
       );
+    case "provider-capabilities":
+      return <ProviderCapabilitiesView preview={preview} />;
     case "html-page":
       return (
         <>

@@ -41,6 +41,7 @@ export type ToolPreview =
   | MonitorToolPreview
   | WakeupToolPreview
   | HtmlPageToolPreview
+  | ProviderCapabilitiesToolPreview
   | RecordsToolPreview
   | TableToolPreview
   | DocumentToolPreview
@@ -277,6 +278,31 @@ export interface HtmlPageToolPreview {
   readonly title: string | null;
   /** Short facts about the page: its size and theme. */
   readonly details: ReadonlyArray<string>;
+}
+
+/** A provider a delegated task could run on. */
+export interface ProviderCapability {
+  readonly key: string;
+  readonly name: string;
+  /** The driver, only for a custom instance whose name does not already say it. */
+  readonly driver: string | null;
+  /** The first few model labels; `modelCount` holds the total. */
+  readonly models: ReadonlyArray<string>;
+  readonly modelCount: number;
+  /** The provider child tasks inherit. */
+  readonly current: boolean;
+  /** Why it cannot run child tasks, or null when it can. */
+  readonly unavailableReason: string | null;
+}
+
+/** Which providers and models delegated tasks can use, and what they inherit. */
+export interface ProviderCapabilitiesToolPreview {
+  readonly kind: "provider-capabilities";
+  readonly inheritedModel: string | null;
+  readonly inheritedProvider: string | null;
+  /** The access and interaction modes child tasks inherit. */
+  readonly modes: ReadonlyArray<string>;
+  readonly providers: ReadonlyArray<ProviderCapability>;
 }
 
 type DynamicToolItem = Extract<OrchestrationV2TurnItem, { readonly type: "dynamic_tool" }>;

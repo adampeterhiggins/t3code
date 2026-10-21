@@ -644,6 +644,7 @@ describe("other servers", () => {
           "t3-code.orchestrator_capabilities",
           {},
           {
+            inheritedProviderInstanceId: "codex",
             inheritedModel: "gpt-6.1-sol",
             runtimeMode: "full-access",
             interactionMode: "default",
@@ -652,16 +653,50 @@ describe("other servers", () => {
                 providerInstanceId: "codex",
                 displayName: "Codex",
                 driverKind: "codex",
-                models: [{ id: "a", label: "A" }],
+                models: [
+                  { id: "gpt-6.1-sol", label: "GPT-6.1-Sol" },
+                  { id: "b", label: null },
+                ],
+                canRunChildTask: true,
+                constraints: [],
+              },
+              {
+                providerInstanceId: "work",
+                displayName: "work",
+                driverKind: "cursor",
+                models: [],
+                canRunChildTask: false,
+                constraints: ["Provider instance is disabled."],
               },
             ],
           },
         ),
       ),
-    ).toMatchObject({
-      kind: "records",
-      summary: "gpt-6.1-sol · full-access · default",
-      items: [{ title: "Codex", meta: ["codex", "1 model"], body: "A" }],
+    ).toEqual({
+      kind: "provider-capabilities",
+      inheritedModel: "GPT-6.1-Sol",
+      inheritedProvider: "Codex",
+      modes: ["full access", "default"],
+      providers: [
+        {
+          key: "codex",
+          name: "Codex",
+          driver: null,
+          models: ["GPT-6.1-Sol", "b"],
+          modelCount: 2,
+          current: true,
+          unavailableReason: null,
+        },
+        {
+          key: "work",
+          name: "work",
+          driver: "cursor",
+          models: [],
+          modelCount: 0,
+          current: false,
+          unavailableReason: "Provider instance is disabled.",
+        },
+      ],
     });
     expect(
       resolveToolPreview(
