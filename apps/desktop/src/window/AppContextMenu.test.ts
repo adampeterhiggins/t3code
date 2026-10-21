@@ -50,6 +50,7 @@ describe("installAppContextMenu", () => {
         copyText: () => Effect.void,
         reportCopyImageFailure: Effect.void,
         runPromise: (effect: Effect.Effect<void>) => {
+          // oxlint-disable-next-line t3code/no-manual-effect-runtime-in-tests -- Context-menu clicks start through DesktopWindow's promise runtime. This stub is that boundary, so the test sees the popup begin and end instead of hiding a handler that never runs.
           pending = Effect.runPromise(effect);
           return pending;
         },
@@ -87,6 +88,7 @@ describe("installAppContextMenu", () => {
         copyText: () => Effect.void,
         reportCopyImageFailure: Effect.void,
         runPromise: (effect: Effect.Effect<void>) => {
+          // oxlint-disable-next-line t3code/no-manual-effect-runtime-in-tests -- Context-menu clicks start through DesktopWindow's promise runtime. This stub is that boundary, so the test sees the popup begin and end instead of hiding a handler that never runs.
           pending = Effect.runPromise(effect);
           return pending;
         },
