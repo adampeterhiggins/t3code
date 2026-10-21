@@ -1,4 +1,5 @@
-import type { AssistantCitation } from "@t3tools/contracts";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import type { AssistantCitation, ThreadId } from "@t3tools/contracts";
 import {
   assistantCitationLabel,
   serializeAssistantCitation,
@@ -21,13 +22,17 @@ import {
   assistantCitationNavigation,
 } from "../../lib/assistantCitationNavigation";
 import { cn } from "~/lib/utils";
+import { useThreadShell } from "~/state/entities";
 import ChatMarkdown from "../ChatMarkdown";
 import { ContextChip, ContextChipAction, ContextChipLabel } from "../ContextChip";
 import { ContextChipPopover } from "../contextChipParts";
 import { Popover, PopoverClose, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
 import { getVirtualizedScrollFadeClassName } from "../ui/scroll-area";
-import { AssistantCitationCommentEditor } from "./AssistantCitationCommentEditor";
+import {
+  AssistantCitationCommentEditor,
+  type AssistantCitationDestinations,
+} from "./AssistantCitationCommentEditor";
 import { resolveAssistantCitationCommentDismissal } from "./assistantCitationCommentDismissal";
 import { observeAssistantCitationCommentSource } from "./AssistantCitationSource";
 import { composerFloatingLayerProps } from "./composerEventScope";
@@ -36,10 +41,13 @@ import { observeResize } from "~/lib/observeResize";
 export function AssistantCitationChip({
   citation,
   composer = false,
+  currentThreadId,
   commentEditor,
 }: {
   citation: AssistantCitation;
   composer?: boolean;
+  /** The thread showing the chip; a quote from any other thread names where it came from. */
+  currentThreadId?: ThreadId | undefined;
   commentEditor?: {
     open: boolean;
     sourceAnchor?: AssistantCitationSourceAnchor | undefined;
@@ -51,6 +59,7 @@ export function AssistantCitationChip({
     saveAndSendQueues?: boolean;
     onDraftChange?: (comment: string) => void;
     onRestoreFocus?: () => void;
+    destinations?: AssistantCitationDestinations;
   };
 }) {
   const navigate = useNavigate();
@@ -103,6 +112,16 @@ export function AssistantCitationChip({
       }
     : undefined;
   const label = assistantCitationLabel(citation);
+  const quotedElsewhere = currentThreadId !== undefined && citation.threadId !== currentThreadId;
+  const sourceThread = useThreadShell(
+    quotedElsewhere ? scopeThreadRef(citation.environmentId, citation.threadId) : null,
+  );
+  const sourceTitle = quotedElsewhere ? sourceThread?.title || "another thread" : null;
+  const sourceLine = sourceTitle ? (
+    <span className="min-w-0 truncate">
+      From <span className="text-foreground">{sourceTitle}</span>
+    </span>
+  ) : null;
   const sourceLinkProps = {
     to: "/$environmentId/$threadId" as const,
     params: { environmentId: citation.environmentId, threadId: citation.threadId },
@@ -136,7 +155,10 @@ export function AssistantCitationChip({
         <ContextChipLabel className="max-w-[16em]">{label}</ContextChipLabel>
       </PreviewCardTrigger>
       <PreviewCardPopup {...composerFloatingLayerProps} className="w-96 max-w-[calc(100vw-2rem)]">
-        <div className="flex max-h-[calc(var(--available-height)_-_1rem_-_2px)] flex-col p-3 text-sm">
+        <div className="flex max-h-[calc(var(--available-height)_-_1rem_-_2px)] flex-col gap-2 p-3 text-sm">
+          {sourceLine ? (
+            <div className="flex text-xs text-muted-foreground">{sourceLine}</div>
+          ) : null}
           <AssistantCitationQuote citation={citation} />
         </div>
       </PreviewCardPopup>
@@ -152,7 +174,8 @@ export function AssistantCitationChip({
         copyMarkdown={serializeAssistantCitation(citation)}
       >
         <div className="flex max-h-[calc(var(--available-height)_-_1rem_-_2px)] flex-col gap-2 p-1 text-sm">
-          <div className="flex justify-end text-xs text-muted-foreground">
+          <div className="flex justify-end gap-3 text-xs text-muted-foreground">
+            {sourceLine ? <span className="me-auto flex min-w-0">{sourceLine}</span> : null}
             <PopoverClose
               render={
                 <Link
@@ -257,6 +280,20 @@ export function AssistantCitationChip({
                       },
                     }
                   : {})}
+                destinations={
+                  commentEditor.destinations
+                    ? {
+                        ...commentEditor.destinations,
+                        onSubmit: (destination, action, comment) => {
+                          if (!commentEditor.destinations?.onSubmit(destination, action, comment)) {
+                            return false;
+                          }
+                          commentEditor.onOpenChange(false);
+                          return true;
+                        },
+                      }
+                    : undefined
+                }
                 onCancel={() => {
                   if (commentEditor.onCancel) {
                     commentEditor.onCancel();

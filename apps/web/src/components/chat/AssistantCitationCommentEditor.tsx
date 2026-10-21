@@ -1,14 +1,28 @@
-import { ASSISTANT_CITATION_MAX_COMMENT_LENGTH, type AssistantCitation } from "@t3tools/contracts";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
+import {
+  ASSISTANT_CITATION_MAX_COMMENT_LENGTH,
+  type AssistantCitation,
+  type EnvironmentId,
+  type ThreadId,
+} from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { ChevronDownIcon } from "lucide-react";
 import { useState, type MouseEvent, type Ref } from "react";
 
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { readLocalApi } from "~/localApi";
+import { useThreadShell } from "~/state/entities";
 
 import { Button } from "../ui/button";
 import { Group, GroupSeparator } from "../ui/group";
 import { Menu, MenuItem, MenuItemLabel, MenuPopup, MenuTrigger } from "../ui/menu";
+import {
+  CITATION_DESTINATION_HERE,
+  type CitationDestination,
+  type CitationDestinationAction,
+} from "./citationDestination";
+import { CitationDestinationPicker } from "./CitationDestinationPicker";
 import { composerFloatingLayerProps } from "./composerEventScope";
 
 const SubmitChoiceSchema = Schema.Literals(["send", "save"]);
@@ -31,6 +45,57 @@ const QUEUE_SUBMIT_CHOICE = {
   description: "Queue this quote for after this turn, apart from the composer",
 } as const;
 
+type SubmitChoices = Record<
+  SubmitChoice,
+  { label: string; description: string; contextMenuLabel?: string }
+>;
+type DraftChoice = { label: string; description: string };
+
+/** Lets the panel send the citation to another thread instead of the composer it sits in. */
+export interface AssistantCitationDestinations {
+  environmentId: EnvironmentId;
+  threadId: ThreadId;
+  followUpBehavior: "queue" | "steer";
+  onSubmit: (
+    destination: Exclude<CitationDestination, { kind: "here" }>,
+    action: CitationDestinationAction,
+    comment: string,
+  ) => boolean;
+}
+
+function elsewhereChoices(
+  destination: Exclude<CitationDestination, { kind: "here" }>,
+  queues: boolean,
+): { choices: SubmitChoices; draft: DraftChoice | null } {
+  if (destination.kind === "new-thread") {
+    return {
+      choices: {
+        send: { label: "Start thread", description: "Start a new thread with this quote" },
+        save: {
+          label: "Save",
+          description: "Open a new thread with this quote in its composer",
+          contextMenuLabel: "Save to a new thread",
+        },
+      },
+      draft: null,
+    };
+  }
+  const title = destination.title || "that thread";
+  return {
+    choices: {
+      send: queues
+        ? { label: "Add to queue", description: `Send to ${title} after its current turn` }
+        : { label: "Send", description: `Send this quote to ${title} now` },
+      save: {
+        label: "Save",
+        description: `Add it to ${title}'s composer to keep writing there`,
+        contextMenuLabel: "Save to its composer",
+      },
+    },
+    draft: { label: "Save as draft", description: `Keep the message in ${title} to send later` },
+  };
+}
+
 export function AssistantCitationCommentEditor({
   citation,
   inputRef,
@@ -40,6 +105,7 @@ export function AssistantCitationCommentEditor({
   submitAndSendQueues = false,
   onCancel,
   onDraftChange,
+  destinations,
 }: {
   citation: AssistantCitation;
   inputRef?: Ref<HTMLTextAreaElement>;
@@ -50,6 +116,7 @@ export function AssistantCitationCommentEditor({
   submitAndSendQueues?: boolean;
   onCancel: () => void;
   onDraftChange?: (comment: string) => void;
+  destinations?: AssistantCitationDestinations | undefined;
 }) {
   const [comment, setComment] = useState(citation.comment ?? "");
   const [choice, setChoice] = useLocalStorage(
@@ -57,13 +124,29 @@ export function AssistantCitationCommentEditor({
     "send",
     SubmitChoiceSchema,
   );
+  // Always starts here, so a cite never lands in another thread without the reader choosing it.
+  const [destination, setDestination] = useState<CitationDestination>(CITATION_DESTINATION_HERE);
+  const elsewhere = destinations && destination.kind !== "here" ? destination : null;
+  const targetThread = useThreadShell(
+    destinations && elsewhere?.kind === "thread"
+      ? scopeThreadRef(destinations.environmentId, elsewhere.threadId)
+      : null,
+  );
+  const elsewhereQueues =
+    destinations?.followUpBehavior === "queue" && threadRuntimeIsActive(targetThread?.runtime);
+  const elsewhereMenu = elsewhere ? elsewhereChoices(elsewhere, elsewhereQueues) : null;
   // Without a send path the button only saves, so Enter must too.
-  const enterChoice: SubmitChoice = onSubmitAndSend ? choice : "save";
+  const enterChoice: SubmitChoice = onSubmitAndSend || elsewhere ? choice : "save";
   const commentTooLong = comment.length > ASSISTANT_CITATION_MAX_COMMENT_LENGTH;
+  const submitElsewhere = (action: CitationDestinationAction) => {
+    if (!commentTooLong && elsewhere) destinations?.onSubmit(elsewhere, action, comment);
+  };
   const submit = () => {
+    if (elsewhere) return submitElsewhere("save");
     if (!commentTooLong) onSubmit(comment);
   };
   const submitAndSend = () => {
+    if (elsewhere) return submitElsewhere("send");
     if (commentTooLong) return;
     if (onSubmitAndSend) {
       onSubmitAndSend(comment);
@@ -72,12 +155,27 @@ export function AssistantCitationCommentEditor({
     }
   };
   const runChoice = (next: SubmitChoice) => (next === "send" ? submitAndSend() : submit());
-  const sendVerb = submitAndSendQueues ? "queue" : "send";
+  const sendVerb = elsewhere
+    ? (elsewhereMenu?.choices.send.label.toLowerCase() ?? "send")
+    : submitAndSendQueues
+      ? "queue"
+      : "send";
+  const saveDraft = elsewhere
+    ? elsewhereMenu?.draft
+      ? () => submitElsewhere("draft")
+      : undefined
+    : onSubmitAndSaveDraft
+      ? () => {
+          if (!commentTooLong) onSubmitAndSaveDraft(comment);
+        }
+      : undefined;
 
   return (
     <div
       data-citation-comment-editor="true"
       onKeyDown={(event) => {
+        // The destination picker portals out of this panel; its keys, Escape included, are its own.
+        if (!(event.target instanceof Node && event.currentTarget.contains(event.target))) return;
         event.stopPropagation();
         if (event.nativeEvent.isComposing || event.keyCode === 229) return;
         if (event.key === "Escape") {
@@ -124,6 +222,16 @@ export function AssistantCitationCommentEditor({
         </p>
       ) : null}
       <div className="mt-2 flex items-center justify-end gap-2">
+        {destinations ? (
+          <div className="me-auto flex min-w-0">
+            <CitationDestinationPicker
+              environmentId={destinations.environmentId}
+              currentThreadId={destinations.threadId}
+              destination={destination}
+              onChange={setDestination}
+            />
+          </div>
+        ) : null}
         <Button
           variant="outline"
           size="xs"
@@ -132,22 +240,22 @@ export function AssistantCitationCommentEditor({
         >
           Cancel
         </Button>
-        {onSubmitAndSend ? (
+        {onSubmitAndSend || elsewhereMenu ? (
           <SubmitChoiceButton
             disabled={commentTooLong}
-            queues={submitAndSendQueues}
+            choices={
+              elsewhereMenu?.choices ??
+              (submitAndSendQueues
+                ? { ...SUBMIT_CHOICES, send: QUEUE_SUBMIT_CHOICE }
+                : SUBMIT_CHOICES)
+            }
+            draftChoice={elsewhereMenu ? elsewhereMenu.draft : SAVE_DRAFT_CHOICE}
             choice={choice}
             onRun={(next) => {
               setChoice(next);
               runChoice(next);
             }}
-            {...(onSubmitAndSaveDraft
-              ? {
-                  onSaveDraft: () => {
-                    if (!commentTooLong) onSubmitAndSaveDraft(comment);
-                  },
-                }
-              : {})}
+            {...(saveDraft ? { onSaveDraft: saveDraft } : {})}
           />
         ) : (
           <Button
@@ -170,24 +278,28 @@ export function AssistantCitationCommentEditor({
  */
 function SubmitChoiceButton(props: {
   disabled: boolean;
-  queues: boolean;
+  choices: SubmitChoices;
+  draftChoice: DraftChoice | null;
   choice: SubmitChoice;
   onRun: (choice: SubmitChoice) => void;
   /** A one-off: saving as a draft is never remembered as the button's default. */
   onSaveDraft?: () => void;
 }) {
-  const choices = props.queues ? { ...SUBMIT_CHOICES, send: QUEUE_SUBMIT_CHOICE } : SUBMIT_CHOICES;
+  const { choices } = props;
+  const draftChoice = props.onSaveDraft ? props.draftChoice : null;
   const openContextMenu = async (event: MouseEvent) => {
     event.preventDefault();
     const api = readLocalApi();
     if (!api || props.disabled) return;
     const selected = await api.contextMenu.show(
       [
-        { id: "send", label: choices.send.label, icon: props.queues ? "list-plus" : "arrow-up" },
-        { id: "save", label: "Save to composer", icon: "check" },
-        ...(props.onSaveDraft
-          ? [{ id: "draft", label: SAVE_DRAFT_CHOICE.label, icon: "file-text" }]
-          : []),
+        {
+          id: "send",
+          label: choices.send.label,
+          icon: choices.send.label === QUEUE_SUBMIT_CHOICE.label ? "list-plus" : "arrow-up",
+        },
+        { id: "save", label: choices.save.contextMenuLabel ?? "Save to composer", icon: "check" },
+        ...(draftChoice ? [{ id: "draft", label: draftChoice.label, icon: "file-text" }] : []),
       ],
       { x: event.clientX, y: event.clientY },
     );
@@ -223,12 +335,12 @@ function SubmitChoiceButton(props: {
               </span>
             </MenuItem>
           ))}
-          {props.onSaveDraft ? (
+          {draftChoice ? (
             <MenuItem onClick={props.onSaveDraft}>
               <span className="flex min-w-0 flex-col py-0.5">
-                <MenuItemLabel>{SAVE_DRAFT_CHOICE.label}</MenuItemLabel>
+                <MenuItemLabel>{draftChoice.label}</MenuItemLabel>
                 <span className="truncate text-xs text-muted-foreground">
-                  {SAVE_DRAFT_CHOICE.description}
+                  {draftChoice.description}
                 </span>
               </span>
             </MenuItem>

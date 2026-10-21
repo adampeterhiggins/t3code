@@ -3,6 +3,7 @@ import type { ComposerPromptEditorProps } from "./ComposerPromptEditorTiptap";
 
 export type {
   ComposerCitationCommentRequest,
+  ComposerCitationDestinations,
   ComposerPromptEditorHandle,
   ComposerPromptEditorProps,
 } from "./ComposerPromptEditorTiptap";

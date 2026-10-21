@@ -14,6 +14,11 @@ import { THREAD_FIND_BAR_RESERVED_HEIGHT } from "./chat/ThreadFindBar";
 import { usageLimitRecoveryBannerItem } from "./chat/UsageLimitRecoveryBanner";
 import { resolveModelForAccountSwitch } from "./chat/providerAccountSelection";
 import {
+  appendCitationToPrompt,
+  type CitationDestination,
+  type CitationDestinationAction,
+} from "./chat/citationDestination";
+import {
   isThreadWokeUnseen,
   mergeDirectPreviewAnnotation,
   resolveBackgroundDraftWorkspaceOptions,
@@ -559,7 +564,11 @@ import {
   MOBILE_DRAFT_HEADLINE_VIEW_TRANSITION_NAME,
   runMobileComposerTransition,
 } from "./chat/draftHeroTransition";
-import type { ComposerDispatchMode } from "@t3tools/client-runtime/state/composer-dispatch";
+import {
+  resolveComposerDispatchMode,
+  type ComposerDispatchMode,
+} from "@t3tools/client-runtime/state/composer-dispatch";
+import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
 import {
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
   branchMismatchKey,
@@ -5780,6 +5789,167 @@ export default function ChatView(props: ChatViewProps) {
   const sendCitationStable = useStableCallback((text: string, dispatchMode: ComposerDispatchMode) =>
     sendStandaloneCommand(text, "Failed to send the citation.", dispatchMode),
   );
+  const announceCitationDelivered = (title: string, threadRef: ScopedThreadRef) => {
+    toastManager.add(
+      stackedThreadToast({
+        type: "success",
+        title,
+        timeout: 5000,
+        actionProps: {
+          children: "Open",
+          onClick: () => {
+            void navigate({
+              to: "/$environmentId/$threadId",
+              params: buildThreadRouteParams(threadRef),
+            });
+          },
+        },
+      }),
+    );
+  };
+  // A citation the comment panel sends to a new thread starts it in this project and checkout,
+  // with this composer's model, and leaves the reader here.
+  const startCitationThread = async (text: string): Promise<boolean> => {
+    if (!activeThread || !activeProject || !isServerThread) return false;
+    const sendCtx = composerRef.current?.getSendContext();
+    if (!sendCtx?.providerAvailable) return false;
+    const createdAt = new Date().toISOString();
+    const nextThreadId = newThreadId();
+    const nextThreadRef = scopeThreadRef(activeThread.environmentId, nextThreadId);
+    const title = deriveThreadTitleSeed({ text, attachments: [] });
+    const createResult = await createThread({
+      environmentId,
+      input: {
+        threadId: nextThreadId,
+        projectId: activeProject.id,
+        title,
+        modelSelection: sendCtx.selectedModelSelection,
+        runtimeMode,
+        interactionMode: "default",
+        branch: activeThreadBranch,
+        worktreePath: activeThread.worktreePath,
+        createdAt,
+      },
+    });
+    const result =
+      createResult._tag === "Failure"
+        ? createResult
+        : await startThreadTurn({
+            environmentId,
+            input: {
+              threadId: nextThreadId,
+              message: { messageId: newMessageId(), role: "user", text, attachments: [] },
+              modelSelection: sendCtx.selectedModelSelection,
+              titleSeed: title,
+              runtimeMode,
+              interactionMode: "default",
+              createdAt,
+            },
+          });
+    if (result._tag === "Failure") {
+      if (createResult._tag === "Success") {
+        void deleteThread({ environmentId, input: { threadId: nextThreadId } });
+      }
+      if (!isAtomCommandInterrupted(result)) {
+        const error = squashAtomCommandFailure(result);
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Could not start the thread",
+            description: error instanceof Error ? error.message : undefined,
+          }),
+        );
+      }
+      return false;
+    }
+    announceCitationDelivered("Started a new thread", nextThreadRef);
+    return true;
+  };
+  // Saving to a new thread opens one with the quote in its composer, unsent.
+  const openCitationInNewThread = async (text: string): Promise<boolean> => {
+    if (!activeProjectRef) return false;
+    const opened = await handleNewThread(activeProjectRef);
+    if (!opened) return false;
+    const store = useComposerDraftStore.getState();
+    store.setPrompt(
+      opened.draftId,
+      appendCitationToPrompt(store.getComposerDraft(opened.draftId)?.prompt ?? "", text),
+    );
+    return true;
+  };
+  // The comment panel's other destinations. The quote travels as the same serialized link a
+  // composer citation sends, so the destination shows its chip and can open the source.
+  const sendCitationElsewhere = async (
+    destination: Exclude<CitationDestination, { kind: "here" }>,
+    action: CitationDestinationAction,
+    text: string,
+  ): Promise<boolean> => {
+    if (!activeThread || !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)) {
+      return false;
+    }
+    if (destination.kind === "new-thread") {
+      return action === "send" ? startCitationThread(text) : openCitationInNewThread(text);
+    }
+    const targetRef = scopeThreadRef(environmentId, destination.threadId);
+    const targetTitle = destination.title || "Untitled thread";
+    if (action === "save") {
+      const store = useComposerDraftStore.getState();
+      store.setPrompt(
+        targetRef,
+        appendCitationToPrompt(store.getComposerDraft(targetRef)?.prompt ?? "", text),
+      );
+      announceCitationDelivered(`Added to the composer in ${targetTitle}`, targetRef);
+      return true;
+    }
+    if (action === "draft") {
+      const saved = await messageDraftActions.save(environmentId, {
+        threadId: destination.threadId,
+        text,
+        attachments: [],
+      });
+      if (saved === null) return false;
+      announceCitationDelivered(`Saved as a draft in ${targetTitle}`, targetRef);
+      return true;
+    }
+    const target = readThreadShell(targetRef);
+    if (!target) return false;
+    const dispatchMode = resolveComposerDispatchMode({
+      running: threadRuntimeIsActive(target.runtime),
+      alternateModifier: false,
+      activeTurnDefault: settings.followUpBehavior,
+    });
+    const result = await startThreadTurn({
+      environmentId,
+      input: {
+        threadId: target.id,
+        message: { messageId: newMessageId(), role: "user", text, attachments: [] },
+        modelSelection: target.modelSelection,
+        runtimeMode: target.runtimeMode,
+        interactionMode: target.interactionMode,
+        dispatchMode,
+        createdAt: new Date().toISOString(),
+      },
+    });
+    if (result._tag === "Failure") {
+      if (!isAtomCommandInterrupted(result)) {
+        const error = squashAtomCommandFailure(result);
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: `Could not send to ${targetTitle}`,
+            description: error instanceof Error ? error.message : undefined,
+          }),
+        );
+      }
+      return false;
+    }
+    announceCitationDelivered(
+      dispatchMode === "queue" ? `Queued in ${targetTitle}` : `Sent to ${targetTitle}`,
+      targetRef,
+    );
+    return true;
+  };
+  const sendCitationElsewhereStable = useStableCallback(sendCitationElsewhere);
   const activeGoal = activeThreadShell?.goal ?? null;
   const goalBannerItem = (() => {
     if (!activeThread || activeGoal === null) return null;
@@ -9727,6 +9897,9 @@ export default function ChatView(props: ChatViewProps) {
                               onCompactContext={onComposerCompactContextStable}
                               onSend={onComposerSendStable}
                               onSendCitation={sendCitationStable}
+                              onSendCitationElsewhere={
+                                isServerThread ? sendCitationElsewhereStable : null
+                              }
                               onResume={onComposerResumeStable}
                               onInterrupt={onInterruptStable}
                               onImplementPlanInNewThread={onImplementPlanInNewThreadStable}

@@ -25,7 +25,9 @@ import type { NodeType, ResolvedPos } from "@tiptap/pm/model";
 import type {
   AssistantCitation,
   ComposerContextClipboardFragment,
+  EnvironmentId,
   ServerProviderSkill,
+  ThreadId,
 } from "@t3tools/contracts";
 import {
   serializeAssistantCitation,
@@ -102,6 +104,7 @@ import { collectInlineContextIds } from "~/lib/composerContextReferences";
 import { resolveDiffThemeName } from "~/lib/diffRendering";
 import { cn, isMacPlatform } from "~/lib/utils";
 import { AssistantCitationChip } from "./chat/AssistantCitationChip";
+import type { CitationDestination, CitationDestinationAction } from "./chat/citationDestination";
 import { getTimelinePageScrollKey } from "./chat/pageScrollController";
 import {
   ComposerContextRecordChip,
@@ -176,6 +179,7 @@ export interface ComposerPromptEditorProps {
   onCitationSubmitAndSaveDraft?: (() => void) | undefined;
   /** Sending from a citation comment adds the message to the queue instead of sending it now. */
   citationSendQueues?: boolean;
+  citationDestinations?: ComposerCitationDestinations | undefined;
   /**
    * Called when a new controlled value replaces the document while a citation
    * comment is unsaved. The comment is saved into `replacedValue`, giving
@@ -185,6 +189,18 @@ export interface ComposerPromptEditorProps {
   onPaste: React.ClipboardEventHandler<HTMLElement>;
   editorRef: React.RefObject<ComposerPromptEditorHandle | null>;
 }
+
+/** Lets a citation's comment panel send it to another thread; resolves true once it got there. */
+export type ComposerCitationDestinations = {
+  environmentId: EnvironmentId;
+  threadId: ThreadId;
+  followUpBehavior: "queue" | "steer";
+  onSubmit: (
+    destination: Exclude<CitationDestination, { kind: "here" }>,
+    action: CitationDestinationAction,
+    citationText: string,
+  ) => Promise<boolean>;
+};
 
 export type ComposerCitationCommentRequest = {
   previousValue: string;
@@ -209,6 +225,7 @@ const ComposerCitationCommentContext = createContext<{
   onSubmitAndSend: (citationText: string) => Promise<boolean>;
   onSubmitAndSaveDraft: (() => void) | null;
   sendQueues: boolean;
+  destinations: ComposerCitationDestinations | null;
 }>({
   openComment: null,
   onOpenChange: () => {},
@@ -216,6 +233,7 @@ const ComposerCitationCommentContext = createContext<{
   onSubmitAndSend: async () => false,
   onSubmitAndSaveDraft: null,
   sendQueues: false,
+  destinations: null,
 });
 
 const RichComposerSkillsContext = createContext<ReadonlyArray<ServerProviderSkill>>([]);
@@ -469,6 +487,7 @@ function ComposerCitationNodeView({ node, editor, getPos }: NodeViewProps) {
       <AssistantCitationChip
         citation={citation}
         composer
+        currentThreadId={commentContext.destinations?.threadId}
         commentEditor={{
           open: commentTarget !== null,
           sourceAnchor: commentTarget?.sourceAnchor,
@@ -501,6 +520,33 @@ function ComposerCitationNodeView({ node, editor, getPos }: NodeViewProps) {
               }
             : {}),
           onRestoreFocus,
+          ...(commentContext.destinations
+            ? {
+                destinations: {
+                  ...commentContext.destinations,
+                  onSubmit: (destination, action, comment) => {
+                    // Saved first, so a send that fails leaves the comment in this composer.
+                    if (!onSaveComment(comment)) return false;
+                    const text = serializeAssistantCitation(
+                      withAssistantCitationComment(citation, comment),
+                    );
+                    // Saving to a new thread navigates there, and this composer's document goes
+                    // with it, so the quote leaves this composer first.
+                    if (destination.kind === "new-thread" && action === "save") {
+                      onRemoveSent();
+                      void commentContext.destinations?.onSubmit(destination, action, text);
+                      return true;
+                    }
+                    void commentContext.destinations
+                      ?.onSubmit(destination, action, text)
+                      .then((ok) => {
+                        if (ok) onRemoveSent();
+                      });
+                    return true;
+                  },
+                },
+              }
+            : {}),
         }}
       />
     </NodeViewWrapper>
@@ -983,6 +1029,7 @@ function ComposerPromptEditorTiptapInner(
     onCitationSubmitAndSend,
     onCitationSubmitAndSaveDraft,
     citationSendQueues = false,
+    citationDestinations,
     onCitationDraftSave,
     onPaste,
     editorRef,
@@ -1067,6 +1114,7 @@ function ComposerPromptEditorTiptapInner(
     onSubmitAndSend: onCitationSubmitAndSend ?? (async () => false),
     onSubmitAndSaveDraft: onCitationSubmitAndSaveDraft ?? null,
     sendQueues: citationSendQueues,
+    destinations: citationDestinations ?? null,
   };
 
   const handleEditorChange = (updated: TiptapEditor) => {

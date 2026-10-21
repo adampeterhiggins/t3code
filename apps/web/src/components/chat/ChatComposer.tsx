@@ -219,6 +219,7 @@ import {
 import { measureRestingComposerControls } from "./restingComposerControlsMeasurement";
 import {
   type ComposerCitationCommentRequest,
+  type ComposerCitationDestinations,
   type ComposerPromptEditorHandle,
   ComposerPromptEditor,
 } from "../ComposerPromptEditor";
@@ -1374,6 +1375,8 @@ export interface ChatComposerProps {
     submissionIntent?: ComposerSubmissionIntent,
   ) => void;
   onSendCitation: (citationText: string, dispatchMode: ComposerDispatchMode) => Promise<boolean>;
+  /** Sends or saves a citation in another thread; absent where the composer has no thread yet. */
+  onSendCitationElsewhere: ComposerCitationDestinations["onSubmit"] | null;
   onResume: () => void;
   onInterrupt: () => void;
   onImplementPlanInNewThread: () => void;
@@ -1764,6 +1767,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onCompactContext,
     onSend,
     onSendCitation,
+    onSendCitationElsewhere,
     onResume,
     onInterrupt,
     onImplementPlanInNewThread,
@@ -7042,6 +7046,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     onPageScrollKeyUp={onPageScrollKeyUp}
                     onPageScrollRelease={onPageScrollRelease}
                     onCitationSubmitAndSend={submitCitationAndSendStable}
+                    citationDestinations={
+                      onSendCitationElsewhere && activeThreadId
+                        ? {
+                            environmentId,
+                            threadId: activeThreadId,
+                            followUpBehavior: settings.followUpBehavior,
+                            onSubmit: onSendCitationElsewhere,
+                          }
+                        : undefined
+                    }
                     onCitationDraftSave={saveCitationDraftToPromptStable}
                     onPaste={onComposerPasteStable}
                     placeholder={
