@@ -440,13 +440,15 @@ export function ComposerAttachmentFileList({
               {file.name}
             </button>
             <span className="shrink-0 text-xs text-secondary-label">
-              {needsReattach
-                ? canReattachFile
-                  ? "Attach again"
-                  : "Remove to send"
-                : upload?.status === "uploading"
-                  ? formatAttachmentUploadProgress(upload.progress)
-                  : formatAttachmentSize(file.sizeBytes)}
+              {file.restoringBytes
+                ? "Restoring…"
+                : needsReattach
+                  ? canReattachFile
+                    ? "Attach again"
+                    : "Remove to send"
+                  : upload?.status === "uploading"
+                    ? formatAttachmentUploadProgress(upload.progress)
+                    : formatAttachmentSize(file.sizeBytes)}
             </span>
             {!needsReattach && upload?.status === "failed" ? (
               <Tooltip>
