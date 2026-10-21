@@ -175,6 +175,59 @@ describe("orchestration V2 contracts", () => {
     }
   });
 
+  it("round-trips a model call id and the one item that carries its usage", () => {
+    const base = {
+      id: "command-item",
+      type: "command_execution" as const,
+      threadId: "thread-1",
+      runId: null,
+      nodeId: null,
+      providerThreadId: null,
+      providerTurnId: null,
+      nativeItemRef: null,
+      parentItemId: null,
+      ordinal: 1,
+      status: "completed" as const,
+      title: "Command",
+      input: "example",
+      startedAt: null,
+      completedAt: null,
+      updatedAt: now,
+    };
+    const usage = {
+      inputTokens: 100,
+      cachedInputTokens: 40,
+      outputTokens: 12,
+      reasoningOutputTokens: 3,
+    };
+    const item = decodeOrchestrationV2TurnItem({
+      ...base,
+      modelCallId: "call-1",
+      modelCallUsage: usage,
+    });
+    const wire = encodeOrchestrationV2TurnItemJson(item);
+    expect(wire).toMatchObject({ modelCallId: "call-1", modelCallUsage: usage });
+    expect(decodeOrchestrationV2TurnItemJson(wire)).toEqual(item);
+
+    const partial = decodeOrchestrationV2TurnItem({
+      ...base,
+      modelCallId: "call-2",
+      modelCallUsage: { inputTokens: 100 },
+    });
+    const partialWire = encodeOrchestrationV2TurnItemJson(partial);
+    expect(partialWire.modelCallUsage).toEqual({ inputTokens: 100 });
+    expect(partialWire.modelCallUsage).not.toHaveProperty("outputTokens");
+
+    const bare = decodeOrchestrationV2TurnItem(base);
+    expect(bare).not.toHaveProperty("modelCallId");
+    expect(bare).not.toHaveProperty("modelCallUsage");
+    expect(encodeOrchestrationV2TurnItemJson(bare)).not.toHaveProperty("modelCallId");
+    expect(() =>
+      decodeOrchestrationV2TurnItem({ ...base, modelCallUsage: { inputTokens: -1 } }),
+    ).toThrow();
+    expect(() => decodeOrchestrationV2TurnItem({ ...base, modelCallId: "  " })).toThrow();
+  });
+
   it("decodes thread event types from a newer server as skippable items", () => {
     const decodeWireItems = Schema.decodeUnknownSync(
       Schema.toCodecJson(Schema.Array(OrchestrationV2RpcSchemas.subscribeThread.output)),

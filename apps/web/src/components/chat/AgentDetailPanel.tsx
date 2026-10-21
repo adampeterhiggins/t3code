@@ -4,7 +4,8 @@
  * effort, runs, elapsed time), the prompt clamped to four lines, the result, artifacts, and the
  * agents this agent started. Below it, the agent's activity read from its child thread: a live
  * compact transcript (messages, reasoning, tool calls in order, each with its time) or its tool
- * calls alone, with search and filters. Paths read relative to the checkout the agent works in.
+ * calls alone, with search, filters, and model-call step dividers. Paths read relative to the
+ * checkout the agent works in.
  * Usage sits in a footer.
  *
  * The child thread is subscribed only while this view is mounted. A nested agent (spawned by
@@ -24,6 +25,7 @@ import {
   applySubagentToolCallView,
   DEFAULT_SUBAGENT_TOOL_CALL_VIEW,
   deriveSubagentToolCalls,
+  groupSubagentToolCallSteps,
   subagentEmptyToolCallsText,
   subagentToolCallFacets,
   subagentWorkspaceRoot,
@@ -56,7 +58,9 @@ import {
   ChevronRightIcon,
   CircleStopIcon,
   ListFilterIcon,
+  ListIcon,
   MessageSquarePlusIcon,
+  Rows3Icon,
   PanelRightOpenIcon,
   SquareArrowOutUpRightIcon,
   XIcon,
@@ -74,7 +78,7 @@ import {
 import { useAgentDrillStore } from "~/agentDrillStore";
 import { useAgentListViewStore } from "~/agentListViewStore";
 import { useDiffPanelStore } from "~/diffPanelStore";
-import { useClientSettings } from "~/hooks/useSettings";
+import { updateClientSettings, useClientSettings } from "~/hooks/useSettings";
 import { cn } from "~/lib/utils";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { useIncrementalTimelineEntries } from "~/hooks/useIncrementalTimelineEntries";
@@ -409,6 +413,7 @@ export function AgentDetailPanel(props: {
   const { parentRef } = props;
   const navigate = useNavigate();
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
+  const showToolCallSteps = useClientSettings((settings) => settings.showSubagentToolCallSteps);
   const mode = useAgentListViewStore((state) => state.activityMode);
   const setMode = useAgentListViewStore((state) => state.setActivityMode);
   const [toolView, setToolView] = useState<SubagentToolCallView>(DEFAULT_SUBAGENT_TOOL_CALL_VIEW);
@@ -471,6 +476,13 @@ export function AgentDetailPanel(props: {
   const agentRoot = subagentWorkspaceRoot(ownItems, props.workspaceRoot);
   const visibleCalls = applySubagentToolCallView(calls, toolView);
   const toolFacets = subagentToolCallFacets(calls, toolView);
+  // No model-call ids (Cursor, or a filter that hid every attributed call) means the toggle
+  // would change nothing on screen.
+  const toolCallStepsAvailable = visibleCalls.some((call) => call.modelCallId !== undefined);
+  const toolCallEntries =
+    showToolCallSteps && toolCallStepsAvailable
+      ? groupSubagentToolCallSteps(calls, visibleCalls)
+      : undefined;
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
 
   // A tool call this view was opened on (from an agent preview), expanded and scrolled to.
@@ -697,6 +709,7 @@ export function AgentDetailPanel(props: {
           {visibleCalls.length > 0 ? (
             <ToolCallList
               calls={visibleCalls}
+              entries={toolCallEntries}
               timestampFormat={timestampFormat}
               source={{
                 environmentId: parentRef.environmentId,
@@ -1010,6 +1023,33 @@ export function AgentDetailPanel(props: {
                   </MenuRadioGroup>
                 </MenuPopup>
               </Menu>
+            ) : null}
+            {tools && toolCallStepsAvailable ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      type="button"
+                      size="icon-micro"
+                      variant={showToolCallSteps ? "ghost" : "ghost-muted"}
+                      aria-label={
+                        showToolCallSteps ? "Hide model call steps" : "Show model call steps"
+                      }
+                      aria-pressed={showToolCallSteps}
+                      onClick={() =>
+                        void updateClientSettings({
+                          showSubagentToolCallSteps: !showToolCallSteps,
+                        })
+                      }
+                    />
+                  }
+                >
+                  {showToolCallSteps ? <Rows3Icon /> : <ListIcon />}
+                </TooltipTrigger>
+                <TooltipPopup>
+                  {showToolCallSteps ? "Hide model call steps" : "Show model call steps"}
+                </TooltipPopup>
+              </Tooltip>
             ) : null}
             {customised ? (
               <Button

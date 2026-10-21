@@ -11,9 +11,17 @@ import { useRightPanelStore } from "~/rightPanelStore";
 import { projectedWorkEntry } from "../../session-logic";
 import { workEntryDisplayLabel } from "./MessagesTimeline.logic";
 import { ToolCallDetails } from "./ToolCallDetail";
-import type { SubagentToolCall } from "@t3tools/client-runtime/state/agent-list-view";
+import type {
+  SubagentToolCall,
+  SubagentToolCallListEntry,
+} from "@t3tools/client-runtime/state/agent-list-view";
 import { formatSubagentTokenCount } from "@t3tools/client-runtime/state/subagentRuntime";
-import type { EnvironmentId, OrchestrationV2SubagentUsage, ThreadId } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  OrchestrationV2ModelCallUsage,
+  OrchestrationV2SubagentUsage,
+  ThreadId,
+} from "@t3tools/contracts";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import {
@@ -249,26 +257,107 @@ export interface ToolCallFocus {
   readonly token: number;
 }
 
+function stepTokenSummary(usage: OrchestrationV2ModelCallUsage | undefined): string | null {
+  if (usage === undefined) return null;
+  const parts: Array<string> = [];
+  if (usage.inputTokens !== undefined) {
+    parts.push(`↓ ${formatSubagentTokenCount(usage.inputTokens)}`);
+  }
+  if (usage.outputTokens !== undefined) {
+    parts.push(`↑ ${formatSubagentTokenCount(usage.outputTokens)}`);
+  }
+  return parts.length === 0 ? null : parts.join(" · ");
+}
+
+function StepUsageTooltip(props: { usage: OrchestrationV2ModelCallUsage; summary: string }) {
+  const { usage } = props;
+  const exact = (value: number) => value.toLocaleString();
+  const cachedShare =
+    usage.cachedInputTokens !== undefined && usage.inputTokens
+      ? Math.round((usage.cachedInputTokens / usage.inputTokens) * 100)
+      : null;
+  const rows: Array<readonly [string, string]> = [];
+  if (usage.inputTokens !== undefined) rows.push(["Input", exact(usage.inputTokens)]);
+  if (usage.cachedInputTokens !== undefined) {
+    rows.push([
+      "Cached",
+      cachedShare === null
+        ? exact(usage.cachedInputTokens)
+        : `${exact(usage.cachedInputTokens)} (${cachedShare}% of input)`,
+    ]);
+  }
+  if (usage.outputTokens !== undefined) rows.push(["Output", exact(usage.outputTokens)]);
+  if (usage.reasoningOutputTokens !== undefined) {
+    rows.push(["Reasoning", exact(usage.reasoningOutputTokens)]);
+  }
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<span tabIndex={0} className="shrink-0 outline-none" />}>
+        {props.summary}
+      </TooltipTrigger>
+      <TooltipPopup side="top" align="end">
+        <dl className="grid grid-cols-[auto_auto] gap-x-4 gap-y-0.5 font-mono text-2xs tabular-nums">
+          {rows.map(([label, value]) => (
+            <div key={label} className="contents">
+              <dt className="text-muted-foreground">{label}</dt>
+              <dd className="text-right">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </TooltipPopup>
+    </Tooltip>
+  );
+}
+
+/** A hairline above one model call's tool rows. No token text when that call reported none. */
+function ToolCallStepDivider(props: { step: number; usage?: OrchestrationV2ModelCallUsage }) {
+  const summary = stepTokenSummary(props.usage);
+  return (
+    <li className="flex items-center gap-2 py-1 font-mono text-2xs tabular-nums text-muted-foreground">
+      <span className="shrink-0">Step {props.step}</span>
+      <span aria-hidden className="h-px min-w-2 flex-1 bg-border/60" />
+      {summary !== null && props.usage !== undefined ? (
+        <StepUsageTooltip usage={props.usage} summary={summary} />
+      ) : null}
+    </li>
+  );
+}
+
 export function ToolCallList(props: {
   calls: ReadonlyArray<SubagentToolCall>;
+  /** Model-call dividers interleaved with `calls`. Omit to render the rows alone. */
+  entries?: ReadonlyArray<SubagentToolCallListEntry> | undefined;
   timestampFormat: TimestampFormat;
   source: ToolCallSource;
   focus?: ToolCallFocus | null | undefined;
   /** Clicking a call navigates instead of expanding it. */
   onActivate?: ((call: SubagentToolCall) => void) | undefined;
 }) {
+  const row = (call: SubagentToolCall) => (
+    <ToolCallRow
+      key={call.id}
+      call={call}
+      timestampFormat={props.timestampFormat}
+      source={props.source}
+      focusToken={props.focus?.id === call.id ? props.focus.token : null}
+      onActivate={props.onActivate}
+    />
+  );
   return (
     <ol className="flex flex-col gap-px">
-      {props.calls.map((call) => (
-        <ToolCallRow
-          key={call.id}
-          call={call}
-          timestampFormat={props.timestampFormat}
-          source={props.source}
-          focusToken={props.focus?.id === call.id ? props.focus.token : null}
-          onActivate={props.onActivate}
-        />
-      ))}
+      {props.entries === undefined
+        ? props.calls.map(row)
+        : props.entries.map((entry) =>
+            entry.kind === "step" ? (
+              <ToolCallStepDivider
+                key={`step:${entry.firstCallId}`}
+                step={entry.step}
+                {...(entry.usage === undefined ? {} : { usage: entry.usage })}
+              />
+            ) : (
+              row(entry.call)
+            ),
+          )}
     </ol>
   );
 }

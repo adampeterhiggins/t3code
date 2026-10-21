@@ -1403,6 +1403,18 @@ export const OrchestrationV2UserMessageInputIntent = Schema.Literals([
 export type OrchestrationV2UserMessageInputIntent =
   typeof OrchestrationV2UserMessageInputIntent.Type;
 
+/**
+ * Tokens one model call spent, as its provider reports it. A model call can
+ * emit several tool calls, so this lives on one item of the call, not each.
+ */
+export const OrchestrationV2ModelCallUsage = Schema.Struct({
+  inputTokens: Schema.optional(NonNegativeInt),
+  cachedInputTokens: Schema.optional(NonNegativeInt),
+  outputTokens: Schema.optional(NonNegativeInt),
+  reasoningOutputTokens: Schema.optional(NonNegativeInt),
+});
+export type OrchestrationV2ModelCallUsage = typeof OrchestrationV2ModelCallUsage.Type;
+
 const OrchestrationV2TurnItemBaseFields = {
   toolNonExecutionKind: Schema.optional(Schema.String),
   toolSurface: Schema.optional(ToolActivitySurface),
@@ -1422,6 +1434,8 @@ const OrchestrationV2TurnItemBaseFields = {
   startedAt: Schema.NullOr(Schema.DateTimeUtc),
   completedAt: Schema.NullOr(Schema.DateTimeUtc),
   updatedAt: Schema.DateTimeUtc,
+  modelCallId: Schema.optional(TrimmedNonEmptyString),
+  modelCallUsage: Schema.optional(OrchestrationV2ModelCallUsage),
 } as const;
 
 export const OrchestrationV2FileSearchResult = Schema.Struct({
