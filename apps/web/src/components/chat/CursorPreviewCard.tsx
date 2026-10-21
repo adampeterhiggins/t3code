@@ -67,10 +67,10 @@ export function useCursorAnchor() {
 
 /**
  * Hover card for a picker row. It opens where the cursor rested and stays put. It closes when the
- * pointer leaves the row and card, on any key, or when the list scrolls, but not while scrolling
- * the card itself. `children` mount only while the card is open, so a body that fetches its
- * detail does not fetch for every row a user scans past. `suppressed` keeps it shut, such as
- * while the trigger's own menu is open.
+ * pointer leaves the row and card, on any key or press outside the card, or when the list
+ * scrolls, but not while scrolling the card itself. `children` mount only while the card is
+ * open, so a body that fetches its detail does not fetch for every row a user scans past.
+ * `suppressed` keeps it shut, such as while the trigger's own menu is open.
  */
 export function CursorPreviewCard(props: {
   trigger: ReactElement;
@@ -93,10 +93,12 @@ export function CursorPreviewCard(props: {
     };
     const options = { capture: true, passive: true } as const;
     window.addEventListener("keydown", close, true);
+    window.addEventListener("pointerdown", close, true);
     window.addEventListener("wheel", close, options);
     window.addEventListener("scroll", close, options);
     return () => {
       window.removeEventListener("keydown", close, true);
+      window.removeEventListener("pointerdown", close, true);
       window.removeEventListener("wheel", close, options);
       window.removeEventListener("scroll", close, options);
     };

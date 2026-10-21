@@ -1438,7 +1438,9 @@ GitHub issues, GitHub releases, branches, tags and commits, repositories, Notion
 notes, Slack and Discord messages, and T3 Code prompt links. The link is read when it is hovered,
 through the same read and record a pasted copy of it would become, so an agent's link and your
 chip for the same thing look alike. A link whose integration is turned off, or that can't be read,
-shows its URL. Pull request and thread links keep their own previews. Mobile has no hover.
+shows its URL. Rows in the thread details panel's Links section preview the same way
+([`ThreadLinkRow.tsx`](../apps/web/src/components/chat/ThreadLinkRow.tsx)). Pull request and
+thread links keep their own previews. Mobile has no hover.
 
 The composer, sent-message chips, and these links take each kind's card from the context
 presentation registry ([`contextPresentationRegistry.tsx`](../apps/web/src/components/contextPresentationRegistry.tsx))
