@@ -325,6 +325,7 @@ function AgentFleetList(props: AgentsPanelProps) {
       </ScrollArea>
       <AgentUsageFooter
         usage={summary.usage}
+        active={summary.counts.working > 0}
         leading={
           <>
             {STATUS_COUNTS.map(({ filter, status, label }) => (

@@ -13,6 +13,7 @@ import {
   isWorkflowScriptMessage,
   projectedSubagentsToRuntime,
   resolveWorkflowOpening,
+  subagentUsageUnreportedLabel,
   workflowOpeningHeadline,
   workflowOpeningParentThreadId,
 } from "./subagentRuntime.ts";
@@ -49,6 +50,16 @@ const member = (
 
 const groupsOf = (subagents: ReadonlyArray<ProjectedSubagent>) =>
   deriveWorkflowGroups(projectedSubagentsToRuntime(subagents));
+
+describe("subagentUsageUnreportedLabel", () => {
+  it("says usage may still arrive while the agent is active", () => {
+    expect(subagentUsageUnreportedLabel(true)).toBe("Usage not reported yet");
+  });
+
+  it("keeps the settled copy once the agent is terminal", () => {
+    expect(subagentUsageUnreportedLabel(false)).toBe("Usage not reported");
+  });
+});
 
 describe("projectedSubagentsToRuntime workflow expansion", () => {
   it("leaves a plain subagent flat", () => {
