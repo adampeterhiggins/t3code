@@ -13,6 +13,7 @@ import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 import * as IpcChannels from "./ipc/channels.ts";
 import { mergeLegacyLocalStorage } from "./legacyLocalStorageMerge.ts";
 import { createPreloadSnapshot } from "./preloadSnapshot.ts";
+import { consumesLegacyLocalStorage, parseDesktopWindowRole } from "./windowRole.ts";
 
 const SNAP_SHOT_EVENT_TYPES = new Set([
   "requested",
@@ -33,15 +34,22 @@ function isSnapShotEvent(value: unknown): value is DesktopSnapShotEvent {
 
 exposeClerkBridge({ passkeys: true });
 
-// Runs before any app script reads localStorage. See DesktopLegacyLocalStorage.
-try {
-  const legacyItems: unknown = ipcRenderer.sendSync(IpcChannels.TAKE_LEGACY_LOCAL_STORAGE_CHANNEL);
-  if (typeof legacyItems === "object" && legacyItems !== null) {
-    if (mergeLegacyLocalStorage(window.localStorage, legacyItems as Record<string, string>)) {
-      void ipcRenderer.invoke(IpcChannels.COMPLETE_LEGACY_LOCAL_STORAGE_CHANNEL);
+// Known before any app script. Electron keeps additionalArguments on this renderer across reloads.
+const windowRole = parseDesktopWindowRole(process.argv);
+
+// The quick-message window shares this profile and must not take the one-time import.
+if (consumesLegacyLocalStorage(windowRole)) {
+  try {
+    const legacyItems: unknown = ipcRenderer.sendSync(
+      IpcChannels.TAKE_LEGACY_LOCAL_STORAGE_CHANNEL,
+    );
+    if (typeof legacyItems === "object" && legacyItems !== null) {
+      if (mergeLegacyLocalStorage(window.localStorage, legacyItems as Record<string, string>)) {
+        void ipcRenderer.invoke(IpcChannels.COMPLETE_LEGACY_LOCAL_STORAGE_CHANNEL);
+      }
     }
-  }
-} catch {}
+  } catch {}
+}
 
 // oxlint-disable-next-line t3code/no-global-process-runtime -- Electron exposes the client platform in its sandboxed preload process.
 const clientPlatform = process.platform;
@@ -99,6 +107,7 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     ipcRenderer.sendSync(IpcChannels.GET_RELAY_TELEMETRY_ENABLED_CHANNEL) === true,
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
   getClientPlatform: () => clientPlatform,
+  getWindowRole: () => windowRole,
   setNotificationBadge: (badge) =>
     ipcRenderer.invoke(IpcChannels.SET_NOTIFICATION_BADGE_CHANNEL, badge),
   onNotificationBadgeClear: (listener) => {

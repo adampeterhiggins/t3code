@@ -21,6 +21,7 @@ import {
 } from "../ipc/channels.ts";
 import * as DesktopClientSettings from "../settings/DesktopClientSettings.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
+import { QUICK_MESSAGE_WINDOW_ROLE_ARGUMENT } from "../windowRole.ts";
 import * as DesktopQuickMessage from "./DesktopQuickMessage.ts";
 
 interface FakeWebContents {
@@ -55,6 +56,7 @@ const electron = vi.hoisted(() => ({
     visible: boolean;
     destroyed: boolean;
     webContents: FakeWebContents;
+    additionalArguments: readonly string[];
   }>,
 }));
 
@@ -63,8 +65,10 @@ vi.mock("electron", () => {
     loadedUrl: string | null = null;
     visible = false;
     destroyed = false;
+    readonly additionalArguments: readonly string[];
     readonly webContents = fakeWebContents(100 + electron.panels.length);
-    constructor() {
+    constructor(options?: { webPreferences?: { additionalArguments?: readonly string[] } }) {
+      this.additionalArguments = options?.webPreferences?.additionalArguments ?? [];
       electron.panels.push(this);
     }
     setAlwaysOnTop() {}
@@ -201,6 +205,19 @@ it.effect("lets go of the shortcut while a new one is being recorded", () =>
       assert.equal(electron.shortcuts.size, 0);
       yield* service.setShortcutSuppressed(false);
       assert.isTrue(electron.shortcuts.has(ACCELERATOR));
+    }),
+  ).pipe(Effect.provide(layerTest(null, []))),
+);
+
+it.effect("marks the quick-message window with its role argument", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const service = yield* DesktopQuickMessage.make;
+      yield* service.initialize;
+      electron.shortcuts.get(ACCELERATOR)!();
+      assert.deepEqual(electron.panels[0]!.additionalArguments, [
+        QUICK_MESSAGE_WINDOW_ROLE_ARGUMENT,
+      ]);
     }),
   ).pipe(Effect.provide(layerTest(null, []))),
 );
