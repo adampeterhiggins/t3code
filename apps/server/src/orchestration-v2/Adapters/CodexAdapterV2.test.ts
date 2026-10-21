@@ -8601,6 +8601,475 @@ describe("CodexAdapterV2 post-settle continuation", () => {
     ),
   );
 
+  const codexTokenBreakdown = (input: {
+    readonly inputTokens: number;
+    readonly cachedInputTokens: number;
+    readonly outputTokens: number;
+    readonly reasoningOutputTokens: number;
+  }) => ({
+    ...input,
+    totalTokens: input.inputTokens + input.outputTokens,
+  });
+
+  const codexUsageEvent = (input: {
+    readonly threadId: string;
+    readonly turnId: string;
+    readonly total: ReturnType<typeof codexTokenBreakdown>;
+    readonly last: ReturnType<typeof codexTokenBreakdown>;
+  }): CodexReplay.CodexAppServerReplayEntry => ({
+    type: "emit_inbound",
+    label: `thread/tokenUsage/updated/${input.turnId}/${input.total.totalTokens}`,
+    frame: {
+      method: "thread/tokenUsage/updated",
+      params: {
+        threadId: input.threadId,
+        turnId: input.turnId,
+        tokenUsage: {
+          total: input.total,
+          last: input.last,
+          modelContextWindow: 200_000,
+        },
+      },
+    },
+  });
+
+  const codexCommandEvents = (input: {
+    readonly threadId: string;
+    readonly turnId: string;
+    readonly id: string;
+    readonly command: string;
+  }): Array<CodexReplay.CodexAppServerReplayEntry> => {
+    const item = (status: "inProgress" | "completed") => ({
+      type: "commandExecution" as const,
+      id: input.id,
+      pluginId: null,
+      scriptPath: null,
+      command: input.command,
+      cwd: "/workspace",
+      processId: "1",
+      source: "unifiedExecStartup" as const,
+      status,
+      commandActions: [{ type: "unknown" as const, command: input.command }],
+      aggregatedOutput: status === "completed" ? "ok\n" : null,
+      exitCode: status === "completed" ? 0 : null,
+      durationMs: status === "completed" ? 1 : null,
+    });
+    return (["inProgress", "completed"] as const).map((status) => ({
+      type: "emit_inbound" as const,
+      label: `item/${status === "inProgress" ? "started" : "completed"}/${input.id}`,
+      frame: {
+        method: status === "inProgress" ? "item/started" : "item/completed",
+        params: {
+          threadId: input.threadId,
+          turnId: input.turnId,
+          ...(status === "inProgress" ? { startedAtMs: 1 } : { completedAtMs: 2 }),
+          item: item(status),
+        },
+      },
+    }));
+  };
+
+  const commandTurnItems = (
+    events: ReadonlyArray<ProviderAdapter.ProviderAdapterV2Event>,
+    threadId: ThreadId,
+  ) => {
+    const updates = new Map<
+      string,
+      Array<Extract<OrchestrationV2TurnItem, { type: "command_execution" }>>
+    >();
+    for (const event of events) {
+      if (event.type !== "turn_item.updated" || event.turnItem.type !== "command_execution") {
+        continue;
+      }
+      if (event.turnItem.threadId !== threadId) continue;
+      const current = updates.get(event.turnItem.input) ?? [];
+      current.push(event.turnItem);
+      updates.set(event.turnItem.input, current);
+    }
+    return updates;
+  };
+
+  it.effect("attributes a thread's tool calls to each Codex model response", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const nativeThreadId = "codex-model-call-thread";
+        const nativeTurnId = "codex-model-call-turn";
+        const prompt = "Run the commands.";
+        const first = codexTokenBreakdown({
+          inputTokens: 800,
+          cachedInputTokens: 100,
+          outputTokens: 50,
+          reasoningOutputTokens: 10,
+        });
+        const secondLast = codexTokenBreakdown({
+          inputTokens: 400,
+          cachedInputTokens: 20,
+          outputTokens: 30,
+          reasoningOutputTokens: 0,
+        });
+        const secondTotal = codexTokenBreakdown({
+          inputTokens: 1_200,
+          cachedInputTokens: 120,
+          outputTokens: 80,
+          reasoningOutputTokens: 10,
+        });
+        const textOnly = codexTokenBreakdown({
+          inputTokens: 90,
+          cachedInputTokens: 0,
+          outputTokens: 10,
+          reasoningOutputTokens: 0,
+        });
+        const textOnlyTotal = codexTokenBreakdown({
+          inputTokens: 1_290,
+          cachedInputTokens: 120,
+          outputTokens: 90,
+          reasoningOutputTokens: 10,
+        });
+        const reset = codexTokenBreakdown({
+          inputTokens: 40,
+          cachedInputTokens: 8,
+          outputTokens: 12,
+          reasoningOutputTokens: 2,
+        });
+        const fileUsage = codexTokenBreakdown({
+          inputTokens: 15,
+          cachedInputTokens: 4,
+          outputTokens: 6,
+          reasoningOutputTokens: 1,
+        });
+        const usage = (
+          total: ReturnType<typeof codexTokenBreakdown>,
+          last: ReturnType<typeof codexTokenBreakdown>,
+        ) => codexUsageEvent({ threadId: nativeThreadId, turnId: nativeTurnId, total, last });
+        const command = (id: string, commandText: string) =>
+          codexCommandEvents({
+            threadId: nativeThreadId,
+            turnId: nativeTurnId,
+            id,
+            command: commandText,
+          });
+        const fileId = "file-after-usage";
+        const fileChange = (
+          status: "inProgress" | "completed",
+        ): CodexReplay.CodexAppServerReplayEntry => ({
+          type: "emit_inbound",
+          label: `file/${status}`,
+          frame: {
+            method: status === "inProgress" ? "item/started" : "item/completed",
+            params: {
+              threadId: nativeThreadId,
+              turnId: nativeTurnId,
+              ...(status === "inProgress" ? { startedAtMs: 3 } : { completedAtMs: 4 }),
+              item: {
+                type: "fileChange",
+                id: fileId,
+                status,
+                changes: [
+                  {
+                    path: "/workspace/note.txt",
+                    kind: { type: "add" },
+                    diff: "note\n",
+                  },
+                ],
+              },
+            },
+          },
+        });
+        const harness = yield* makeCodexReplayHarness(
+          makeCodexReplayTranscript({
+            scenario: "codex-model-call-usage",
+            entries: [
+              ...codexReplayPreamble({ nativeThreadId, nativeTurnId, prompt }),
+              ...command("exec-a", "echo a"),
+              ...command("exec-b", "echo b"),
+              usage(first, first),
+              usage(first, first),
+              ...command("exec-c", "echo c"),
+              usage(secondTotal, secondLast),
+              usage(textOnlyTotal, textOnly),
+              ...command("exec-d", "echo d"),
+              usage(reset, reset),
+              fileChange("inProgress"),
+              usage(fileUsage, fileUsage),
+              fileChange("completed"),
+              {
+                type: "emit_inbound",
+                label: "turn/completed",
+                frame: {
+                  method: "turn/completed",
+                  params: {
+                    threadId: nativeThreadId,
+                    turn: makeCodexReplayTurn({ id: nativeTurnId, status: "completed" }),
+                  },
+                },
+              },
+            ],
+          }),
+        );
+        yield* harness.runtime.startTurn(
+          makeCodexTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("attempt-codex-model-call"),
+            text: prompt,
+          }),
+        );
+        yield* harness.firstTerminal;
+
+        const commands = commandTurnItems(harness.events, harness.threadId);
+        const callId = (commandText: string, call: number) => {
+          const latest = commands.get(commandText)?.at(-1);
+          assert.isDefined(latest?.providerTurnId);
+          return `${latest.providerTurnId}:call:${call}`;
+        };
+        const latest = (commandText: string) => {
+          const item = commands.get(commandText)?.at(-1);
+          assert.isDefined(item);
+          return item;
+        };
+        const parallelId = callId("echo a", 1);
+        assert.equal(latest("echo a").modelCallId, parallelId);
+        assert.equal(latest("echo b").modelCallId, parallelId);
+        assert.deepEqual(latest("echo a").modelCallUsage, {
+          inputTokens: 800,
+          cachedInputTokens: 100,
+          outputTokens: 50,
+          reasoningOutputTokens: 10,
+        });
+        assert.isUndefined(latest("echo b").modelCallUsage);
+        assert.equal(commands.get("echo a")?.length, 3);
+        assert.equal(commands.get("echo b")?.length, 2);
+        assert.isUndefined(commands.get("echo a")?.[0]?.modelCallUsage);
+        assert.equal(commands.get("echo a")?.[0]?.modelCallId, parallelId);
+
+        assert.equal(latest("echo c").modelCallId, callId("echo c", 2));
+        assert.deepEqual(latest("echo c").modelCallUsage, {
+          inputTokens: 400,
+          cachedInputTokens: 20,
+          outputTokens: 30,
+          reasoningOutputTokens: 0,
+        });
+        assert.equal(latest("echo d").modelCallId, callId("echo d", 4));
+        assert.deepEqual(latest("echo d").modelCallUsage, {
+          inputTokens: 40,
+          cachedInputTokens: 8,
+          outputTokens: 12,
+          reasoningOutputTokens: 2,
+        });
+        assert.isFalse(
+          [...commands.values()].some((items) =>
+            items.some((item) => item.modelCallId?.endsWith(":call:3")),
+          ),
+        );
+
+        const fileItems = harness.events.flatMap((event) =>
+          event.type === "turn_item.updated" &&
+          event.turnItem.type === "file_change" &&
+          event.turnItem.threadId === harness.threadId
+            ? [event.turnItem]
+            : [],
+        );
+        assert.lengthOf(fileItems, 1);
+        assert.equal(fileItems[0]?.modelCallId, callId("echo d", 5));
+        assert.deepEqual(fileItems[0]?.modelCallUsage, {
+          inputTokens: 15,
+          cachedInputTokens: 4,
+          outputTokens: 6,
+          reasoningOutputTokens: 1,
+        });
+        assert.isTrue(
+          harness.events.every(
+            (event) =>
+              event.type !== "turn_item.updated" ||
+              event.turnItem.type === "command_execution" ||
+              event.turnItem.type === "file_change" ||
+              event.turnItem.modelCallId === undefined,
+          ),
+        );
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+    ),
+  );
+
+  it.effect("attributes a native Codex child thread's tool calls the same way", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const nativeThreadId = "codex-child-parent-thread";
+        const nativeTurnId = "codex-child-parent-turn";
+        const childThreadId = "codex-child-thread";
+        const childTurnId = "codex-child-turn";
+        const prompt = "Ask the child.";
+        const first = codexTokenBreakdown({
+          inputTokens: 500,
+          cachedInputTokens: 40,
+          outputTokens: 20,
+          reasoningOutputTokens: 4,
+        });
+        const secondLast = codexTokenBreakdown({
+          inputTokens: 80,
+          cachedInputTokens: 10,
+          outputTokens: 8,
+          reasoningOutputTokens: 1,
+        });
+        const secondTotal = codexTokenBreakdown({
+          inputTokens: 580,
+          cachedInputTokens: 50,
+          outputTokens: 28,
+          reasoningOutputTokens: 5,
+        });
+        const harness = yield* makeCodexReplayHarness(
+          makeCodexReplayTranscript({
+            scenario: "codex-child-model-call-usage",
+            entries: [
+              ...codexReplayPreamble({ nativeThreadId, nativeTurnId, prompt }),
+              {
+                type: "emit_inbound",
+                label: "subagent/started",
+                frame: {
+                  method: "item/started",
+                  params: {
+                    threadId: nativeThreadId,
+                    turnId: nativeTurnId,
+                    startedAtMs: 1,
+                    item: {
+                      type: "subAgentActivity",
+                      id: "child-activity",
+                      kind: "started",
+                      agentThreadId: childThreadId,
+                      agentPath: "/root/child",
+                    },
+                  },
+                },
+              },
+              {
+                type: "emit_inbound",
+                label: "child-turn-started",
+                frame: {
+                  method: "turn/started",
+                  params: {
+                    threadId: childThreadId,
+                    turn: makeCodexReplayTurn({ id: childTurnId, status: "inProgress" }),
+                  },
+                },
+              },
+              ...codexCommandEvents({
+                threadId: childThreadId,
+                turnId: childTurnId,
+                id: "child-a",
+                command: "echo a",
+              }),
+              ...codexCommandEvents({
+                threadId: childThreadId,
+                turnId: childTurnId,
+                id: "child-b",
+                command: "echo b",
+              }),
+              codexUsageEvent({
+                threadId: childThreadId,
+                turnId: childTurnId,
+                total: first,
+                last: first,
+              }),
+              ...codexCommandEvents({
+                threadId: childThreadId,
+                turnId: childTurnId,
+                id: "child-c",
+                command: "echo c",
+              }),
+              codexUsageEvent({
+                threadId: childThreadId,
+                turnId: childTurnId,
+                total: secondTotal,
+                last: secondLast,
+              }),
+              {
+                type: "emit_inbound",
+                label: "child-turn-completed",
+                frame: {
+                  method: "turn/completed",
+                  params: {
+                    threadId: childThreadId,
+                    turn: makeCodexReplayTurn({ id: childTurnId, status: "completed" }),
+                  },
+                },
+              },
+              {
+                type: "emit_inbound",
+                label: "turn/completed",
+                frame: {
+                  method: "turn/completed",
+                  params: {
+                    threadId: nativeThreadId,
+                    turn: makeCodexReplayTurn({ id: nativeTurnId, status: "completed" }),
+                  },
+                },
+              },
+            ],
+          }),
+        );
+        yield* harness.runtime.startTurn(
+          makeCodexTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("attempt-codex-child-model-call"),
+            text: prompt,
+          }),
+        );
+        yield* harness.firstTerminal;
+
+        const childCommands = harness.events.flatMap((event) =>
+          event.type === "turn_item.updated" &&
+          event.turnItem.type === "command_execution" &&
+          event.turnItem.threadId !== harness.threadId
+            ? [event.turnItem]
+            : [],
+        );
+        assert.isAbove(childCommands.length, 0);
+        const projectedChildThreadId = childCommands[0]!.threadId;
+        const commands = commandTurnItems(harness.events, projectedChildThreadId);
+        const firstCall = commands.get("echo a")?.at(-1);
+        const secondParallel = commands.get("echo b")?.at(-1);
+        const later = commands.get("echo c")?.at(-1);
+        assert.isDefined(firstCall?.providerTurnId);
+        assert.equal(firstCall.modelCallId, `${firstCall.providerTurnId}:call:1`);
+        assert.equal(secondParallel?.modelCallId, firstCall.modelCallId);
+        assert.deepEqual(firstCall.modelCallUsage, {
+          inputTokens: 500,
+          cachedInputTokens: 40,
+          outputTokens: 20,
+          reasoningOutputTokens: 4,
+        });
+        assert.isUndefined(secondParallel?.modelCallUsage);
+        assert.equal(commands.get("echo b")?.length, 2);
+        assert.equal(later?.modelCallId, `${firstCall.providerTurnId}:call:2`);
+        assert.deepEqual(later?.modelCallUsage, {
+          inputTokens: 80,
+          cachedInputTokens: 10,
+          outputTokens: 8,
+          reasoningOutputTokens: 1,
+        });
+        assert.equal(commandTurnItems(harness.events, harness.threadId).size, 0);
+        assert.isTrue(
+          harness.events.every(
+            (event) =>
+              event.type !== "turn_item.updated" ||
+              event.turnItem.type !== "subagent" ||
+              event.turnItem.modelCallId === undefined,
+          ),
+        );
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+    ),
+  );
+
   it.effect("rejects duplicate child starts across parent runs", () =>
     Effect.scoped(
       Effect.gen(function* () {
