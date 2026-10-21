@@ -62,7 +62,8 @@ export function LinearThreadLinkRow(props: { threadRef: ScopedThreadRef; link: L
       icon={<LinearIcon className="size-4 shrink-0" />}
       label={`${identifier} ${title}`}
       accessibleLabel={`Linked Linear issue ${identifier}: ${title}`}
-      title={title}
+      threadRef={threadRef}
+      url={url}
       trailing={
         summary ? (
           <span className="flex shrink-0 items-center gap-1 text-2xs text-muted-foreground">

@@ -31,7 +31,7 @@ import * as McpToolAccess from "../../McpToolAccess.ts";
 import * as ProjectHandlers from "./handlers.ts";
 import { ProjectToolkit } from "./tools.ts";
 
-const noContextLinks = Layer.succeed(McpContextLinks.McpContextLinks, {
+const noContextLinks = Layer.mock(McpContextLinks.McpContextLinks)({
   attach: ({ text }) => Effect.succeed({ text, context: undefined }),
 });
 
@@ -67,7 +67,7 @@ it.effect("attributes a launched thread's first message to the calling thread", 
     const layerDependencies = Layer.mergeAll(
       ServerSettings.layerTest(),
       NodeCrypto.layer,
-      Layer.succeed(McpContextLinks.McpContextLinks, {
+      Layer.mock(McpContextLinks.McpContextLinks)({
         attach: ({ text, links }) =>
           Effect.succeed({ text: `${text} ${links?.join(" ")}`, context }),
       }),

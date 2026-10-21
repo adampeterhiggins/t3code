@@ -942,8 +942,8 @@ Links section (`apps/web/src/components/chat/ThreadLinks.tsx`) reads its status 
 open, change, and unlink. The section's **+** menu links any kind the group does not have yet,
 with the same permission and integration checks as the command palette. Mobile shows a chip beside the tab
 switcher (`apps/mobile/src/features/threads/ThreadLinearLink.tsx`). Agents link and unlink it
-through the thread MCP's `link_linear_issue` / `unlink_linear_issue`, and read the thread's Linear
-and GitHub issue links with `list_thread_issues`
+through the thread MCP's `link_linear_issue` / `unlink_linear_issue`, and read every link the
+thread's group has (Linear, GitHub, Slack, Discord, Notion, Granola) with `list_thread_links`
 ([`toolkits/issueLinks/`](../apps/server/src/mcp/toolkits/issueLinks/)). Like the pull request
 tools, they default to the caller's thread, need the `pull-requests` MCP capability, and write
 through the same thread access checks. A link carries only the issue's identity, so agents read
@@ -1446,10 +1446,12 @@ GitHub issues, GitHub releases, branches, tags and commits, repositories, Notion
 notes, Slack and Discord messages, and T3 Code prompt links. The link is read when it is hovered,
 through the same read and record a pasted copy of it would become, so an agent's link and your
 chip for the same thing look alike. A link whose integration is turned off, or that can't be read,
-shows its URL. Pull request and thread links keep their own previews. Mobile has no hover.
+shows its URL. Rows in the thread details panel's Links section preview the same way
+([`ThreadLinkRow.tsx`](../apps/web/src/components/chat/ThreadLinkRow.tsx)). Pull request and
+thread links keep their own previews. Mobile has no hover.
 
 The composer, sent-message chips, and these links take each kind's card from the context
-presentation registry ([`contextPresentationRegistry.tsx`](../apps/web/src/components/contextPresentationRegistry.tsx))
+preview registry ([`contextPreviewRegistry.tsx`](../apps/web/src/components/contextPreviewRegistry.tsx))
 and its icon and label from
 [`linkedObjectPresentation.tsx`](../apps/web/src/components/linkedObjectPresentation.tsx). Links
 are read by
@@ -1515,7 +1517,7 @@ references have explicit fallback text. Clicking still opens the referenced thre
 hover.
 
 Code: [`ThreadPreviewHoverCard`](../apps/web/src/components/ThreadHoverCard.tsx), the `thread`
-preview in [`contextPresentationRegistry.tsx`](../apps/web/src/components/contextPresentationRegistry.tsx).
+preview in [`contextPreviewRegistry.tsx`](../apps/web/src/components/contextPreviewRegistry.tsx).
 
 On web and desktop, hovering an image attachment chip in the composer or a sent message shows the
 image above its name and size. Hovering a text file's chip in the composer previews its opening
@@ -1542,7 +1544,7 @@ them. A `$skill` typed into a message, such as a scheduled task's prompt, previe
 description and its instructions link exactly as the composer's skill chip does. Mobile has no
 hover.
 
-Code: [`contextPresentationRegistry.tsx`](../apps/web/src/components/contextPresentationRegistry.tsx)
+Code: [`contextPreviewRegistry.tsx`](../apps/web/src/components/contextPreviewRegistry.tsx)
 and the preview bodies in [`contextPreviews.tsx`](../apps/web/src/components/contextPreviews.tsx).
 
 ## Terminal excerpts keep their colors
@@ -1736,8 +1738,12 @@ if a user had pasted the links: a link already in the message text becomes its c
 are appended. Repositories are cloned before the message lands. An unrecognized link, a pull
 request link, a disconnected or turned-off integration, or an unreadable object fails the call with
 the reason; nothing is sent. Links are read only once the caller is allowed to send, and a
-`clientRequestId` retry of a message that already landed does not read them again. Agents cannot
-search Slack or Notion over MCP; they attach links they already have.
+`clientRequestId` retry of a message that already landed does not read them again.
+`read_context_link` reads one of those links (not repositories) through the same integrations and
+returns the text a chip would give the agent, without sending anything, so an agent can read a
+linked Slack thread or Notion page with no MCP server of its own. `search_slack_messages` (Slack's
+search syntax, newest 20) and `search_notion_pages` (pages shared with the connection) find links
+to read, and refuse while the integration is turned off.
 
 Code: [`McpContextLinks.ts`](../apps/server/src/mcp/McpContextLinks.ts), the link parser in
 [`composerObjectLinks.ts`](../packages/shared/src/composerObjectLinks.ts), and the chip records in

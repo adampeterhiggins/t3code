@@ -53,7 +53,8 @@ export function NotionThreadLinkRow(props: { threadRef: ScopedThreadRef; link: N
       icon={<NotionIcon className="size-4 shrink-0" />}
       label={link.title}
       accessibleLabel={`Linked Notion page: ${link.title}`}
-      title={link.title}
+      threadRef={threadRef}
+      url={link.url}
     >
       <MenuItem
         render={<a href={link.url} target="_blank" rel="noreferrer" />}

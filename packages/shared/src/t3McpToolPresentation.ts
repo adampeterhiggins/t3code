@@ -123,9 +123,12 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   unlink_linear_issue: tool(["Unlink", "Unlinking", "Unlinked", "a Linear issue"], "unlink-issue"),
   link_github_issue: tool(["Link", "Linking", "Linked", "a GitHub issue"], "link-issue"),
   unlink_github_issue: tool(["Unlink", "Unlinking", "Unlinked", "a GitHub issue"], "unlink-issue"),
-  list_thread_issues: tool(["Check", "Checking", "Checked", "linked issues"], "list-issues"),
+  list_thread_links: tool(["Check", "Checking", "Checked", "linked items"], "list-issues"),
+  read_context_link: tool(["Read", "Reading", "Read", "a linked item"], "list-issues"),
   read_linear_issue: tool(["Read", "Reading", "Read", "a Linear issue"], "list-issues"),
   search_linear_issues: tool(["Search", "Searching", "Searched", "Linear issues"], "list-issues"),
+  search_slack_messages: tool(["Search", "Searching", "Searched", "Slack"], "list-issues"),
+  search_notion_pages: tool(["Search", "Searching", "Searched", "Notion pages"], "list-issues"),
   list_linear_filter_options: tool(
     ["Check", "Checking", "Checked", "Linear filter options"],
     "list-issues",
