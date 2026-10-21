@@ -253,6 +253,32 @@ describe("MessagesTimeline work rows", () => {
     expect(screen.text().match(/Which repository\?/g)?.length).toBe(before + 1);
   });
 
+  it("shows an answered question with the answer on its own line", async () => {
+    await using screen = await renderTimeline([
+      work("question-work", {
+        label: "User input requested",
+        tone: "tool",
+        questionAnswer: {
+          requestId: ApprovalRequestId.make("question-request"),
+          answers: { scope: "Blue" },
+          questionTextById: { scope: "Which repository?" },
+          attachmentsByQuestionId: {},
+        },
+      }),
+    ]);
+    const toggle = screen.button("Which repository?: Blue");
+    const leaf = (text: string) =>
+      [...toggle.querySelectorAll("span")].find(
+        (element) => element.textContent === text && element.querySelector("span") === null,
+      );
+    const question = leaf("Which repository?");
+    const answer = leaf("Blue");
+    expect(question).toBeDefined();
+    expect(answer).toBeDefined();
+    expect(question?.parentElement).not.toBe(answer?.parentElement);
+    expect(answer?.parentElement?.querySelector("svg")).not.toBeNull();
+  });
+
   it("collapses settled tool runs behind a generated summary and names a failure", async () => {
     await using screen = await renderTimeline([
       work("work-1", {
