@@ -2464,6 +2464,41 @@ code {
   pointer-events: none;
 }
 
+/* A chip whose link is still loading sweeps twice, then rests dashed. A loader that ran until the
+   object arrived would repaint for as long as a slow host takes, up to the link timeout. */
+.context-chip-loading {
+  position: relative;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: no-preference) and (forced-colors: none) {
+  .context-chip-loading::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in oklab, var(--context-chip-accent, var(--foreground)) 24%, transparent),
+      transparent
+    );
+    transform: translateX(-100%);
+    animation: context-chip-loading-sweep 1.1s ease-out 2;
+  }
+}
+
+@keyframes context-chip-loading-sweep {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* The link text a loading chip stands in for; the prompt keeps it until the chip replaces it. */
+.composer-tiptap .composer-loading-link-text {
+  display: none;
+}
+
 /* Selected chips (node selection from arrowing into or clicking a chip). */
 .composer-tiptap .ProseMirror-selectednode {
   outline: 2px solid var(--ring);

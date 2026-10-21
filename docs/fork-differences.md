@@ -946,7 +946,10 @@ through the thread MCP's `link_linear_issue` / `unlink_linear_issue`, and read t
 and GitHub issue links with `list_thread_issues`
 ([`toolkits/issueLinks/`](../apps/server/src/mcp/toolkits/issueLinks/)). Like the pull request
 tools, they default to the caller's thread, need the `pull-requests` MCP capability, and write
-through the same thread access checks.
+through the same thread access checks. A link carries only the issue's identity, so agents read
+Linear through the environment's connection with `read_linear_issue` (the linked issue by default,
+rendered as the same markdown a composer chip sends), `search_linear_issues`, and
+`list_linear_filter_options`. These work when the agent has no Linear MCP server of its own.
 
 `linearAssignmentTriggers` in server settings (off when empty) holds rules that start a thread
 when an issue is newly assigned to the connected account. The server polls the read-only API
@@ -1405,8 +1408,11 @@ request it names. A github.com release (`/releases/tag/<tag>`), branch or tag (`
 commit (`/commit/<sha>`) link becomes a chip labelled `repo@<ref>` (`repo@<sha7>` for a commit),
 with an icon for its kind; hovering it shows, and the agent receives, the release notes or the
 commit message. A `/tree/` link to a folder is not a ref and stays a link. The text goes in as
-usual, then each link becomes a chip once its object loads; sending, saving a draft, stashing, and
-rewinding wait for it, and a link pasted before switching threads still converts in the draft it
+usual, but while its object loads the editor draws each link as a dashed chip labelled from the URL
+alone (`owner/repo#162`, `ENG-123`), which sweeps twice and then rests
+([`composerLoadingLinks.tsx`](../apps/web/src/components/composerLoadingLinks.tsx)); deleting into
+it removes the link. The real chip replaces it once the object loads; sending, saving a draft,
+stashing, and rewinding wait for it, and a link pasted before switching threads still converts in the draft it
 was pasted into. A link that was tried and could not be read (not connected, not found, a comment
 or lines the host did not return), or that took longer than 20 seconds
 ([`composerObjectLinkChip.ts`](../apps/web/src/components/chat/composerObjectLinkChip.ts)),

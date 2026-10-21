@@ -1,6 +1,8 @@
 import {
   EnvironmentId,
   type GitHubIssueThreadLink,
+  type LinearIssueContext,
+  type LinearListIssuesInput,
   type LinearThreadLink,
   ProviderInstanceId,
   ThreadId,
@@ -12,6 +14,7 @@ import * as Stream from "effect/Stream";
 import type { Tool } from "effect/ai";
 
 import * as GitHubIssueThreadLinks from "../../../githubIssues/GitHubIssueThreadLinks.ts";
+import * as LinearApi from "../../../linear/LinearApi.ts";
 import * as LinearThreadLinks from "../../../linear/LinearThreadLinks.ts";
 import * as ThreadManagement from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -50,7 +53,33 @@ const outsideClient: McpInvocationContext.McpInvocationScope = {
 const makeHarness = () => {
   const linear = new Map<ThreadId, LinearThreadLink>();
   const github = new Map<ThreadId, GitHubIssueThreadLink>();
+  const issueReads: Array<string> = [];
+  const searches: Array<LinearListIssuesInput> = [];
   const layerDependencies = Layer.mergeAll(
+    Layer.mock(LinearApi.LinearApi)({
+      getIssue: ({ id }) =>
+        Effect.sync((): LinearIssueContext => {
+          issueReads.push(id);
+          return {
+            id,
+            identifier: id,
+            title: `Issue ${id}`,
+            url: `https://linear.app/acme/issue/${id}`,
+            stateName: "In Progress",
+            stateType: "started",
+            stateColor: "#f2c94c",
+            priorityLabel: null,
+            assigneeName: null,
+            updatedAt: LINKED_AT,
+            markdown: `# ${id}`,
+          };
+        }),
+      listIssues: (input) =>
+        Effect.sync(() => {
+          searches.push(input);
+          return { issues: [] };
+        }),
+    }),
     Layer.mock(ThreadManagement.ThreadManagementService)({
       getThreadShell: (threadId) =>
         Effect.succeed(
@@ -132,7 +161,7 @@ const makeHarness = () => {
       Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
       Effect.provide(layerDependencies),
     );
-  return { linear, github, call };
+  return { linear, github, issueReads, searches, call };
 };
 
 describe("issue link toolkit handlers", () => {
@@ -225,6 +254,59 @@ describe("issue link toolkit handlers", () => {
         )
         .pipe(Effect.flip);
       expect(error).toMatchObject({ _tag: "OrchestratorMcpFailure", code: "capability_denied" });
+    }),
+  );
+
+  it.effect("reads the linked Linear issue, or a named one, through T3's connection", () =>
+    Effect.gen(function* () {
+      const harness = makeHarness();
+      const unlinked = yield* harness.call("read_linear_issue", {}).pipe(Effect.flip);
+      expect(unlinked).toMatchObject({ _tag: "NoLinkedLinearIssueError", threadId: THREAD_ID });
+
+      yield* harness.call("link_linear_issue", { issue: "ENG-1" });
+      expect(yield* harness.call("read_linear_issue", {})).toMatchObject({
+        markdown: "# uuid-ENG-1",
+      });
+      expect(yield* harness.call("read_linear_issue", { issue: "ENG-9" })).toMatchObject({
+        identifier: "ENG-9",
+      });
+      // A named issue needs no thread, so an outside client can read one.
+      yield* harness.call("read_linear_issue", { issue: "ENG-10" }, outsideClient);
+      expect(harness.issueReads).toEqual(["uuid-ENG-1", "ENG-9", "ENG-10"]);
+    }),
+  );
+
+  it.effect("searches with partial filters and refuses without the capability", () =>
+    Effect.gen(function* () {
+      const harness = makeHarness();
+      yield* harness.call("search_linear_issues", {});
+      yield* harness.call("search_linear_issues", {
+        query: "cache",
+        filters: { assigneeIds: ["me"] },
+      });
+      expect(harness.searches).toEqual([
+        { query: undefined, filters: undefined, sort: undefined },
+        {
+          query: "cache",
+          filters: {
+            assigneeIds: ["me"],
+            teamIds: [],
+            projectIds: [],
+            milestoneIds: [],
+            stateNames: [],
+            priorities: [],
+            labelNames: [],
+            includeClosed: false,
+          },
+          sort: undefined,
+        },
+      ]);
+
+      const error = yield* harness
+        .call("search_linear_issues", { query: "cache" }, threadCaller(["orchestration"]))
+        .pipe(Effect.flip);
+      expect(error).toMatchObject({ _tag: "McpCapabilityUnavailableError" });
+      expect(harness.searches).toHaveLength(2);
     }),
   );
 });

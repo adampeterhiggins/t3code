@@ -26,11 +26,7 @@ import {
   sanitizeComposerContextLabel,
   toKindScopedComposerContextId,
 } from "./composerContextReferences.ts";
-import {
-  type ComposerObjectLink,
-  composerObjectLinkNoun,
-  objectLinkLabel,
-} from "./composerObjectLinks.ts";
+import { type ComposerObjectLink, composerObjectLinkChipLabel } from "./composerObjectLinks.ts";
 
 /**
  * Chip records for integration objects, from the snapshot the server read. Shared so the
@@ -250,15 +246,11 @@ export function unreadLinkContextRecord(
   link: Pick<ComposerObjectLink, "kind" | "url">,
   reason: UnreadLinkContextRecord["reason"],
 ): UnreadLinkContextRecord {
-  const noun = composerObjectLinkNoun(link.kind);
   return {
     version: 1,
     kind: "unread-link",
     contextId: toKindScopedComposerContextId("unread-link", link.url),
-    label: sanitizeComposerContextLabel(
-      objectLinkLabel(link.url) ?? `${noun.charAt(0).toUpperCase()}${noun.slice(1)}`,
-      "unread-link",
-    ),
+    label: sanitizeComposerContextLabel(composerObjectLinkChipLabel(link), "unread-link"),
     url: link.url.slice(0, 2_048),
     linkKind: link.kind,
     reason,

@@ -284,6 +284,14 @@ export function composerObjectLinkNoun(kind: string): string {
     : "link";
 }
 
+/** What a chip for the link says without reading the object it names: `owner/repo#12`. */
+export function composerObjectLinkChipLabel(
+  link: Pick<ComposerObjectLink, "kind" | "url">,
+): string {
+  const noun = composerObjectLinkNoun(link.kind);
+  return objectLinkLabel(link.url) ?? `${noun.charAt(0).toUpperCase()}${noun.slice(1)}`;
+}
+
 /** Every attachable link in `text`, in order, with where it sits. */
 export function findComposerObjectLinks(
   text: string,
