@@ -160,12 +160,12 @@ export function MobileEnrichedMarkdownText(props: SelectableMarkdownTextProps) {
       markdownWithObjectLinkLabels(
         markdownWithTableBreaks(
           markdownWithInlineFileLinks(
-            markdownWithHtml(props.markdown),
+            markdownWithHtml(props.markdown, themeAppearance),
             ENRICHED_INLINE_FILE_LINK_REGEX,
           ),
         ),
       ),
-    [props.markdown],
+    [props.markdown, themeAppearance],
   );
   const [documentAssets, setDocumentAssets] = useState<DocumentAssetsEvent["assets"]>([]);
   const onDocumentAssets = useCallback(({ assets }: DocumentAssetsEvent) => {

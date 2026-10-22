@@ -13,6 +13,7 @@ import {
   CHAT_MARKDOWN_REMARK_PLUGINS,
   CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS,
   CHAT_MARKDOWN_REHYPE_PLUGINS,
+  rehypeResolvePictureSources,
 } from "@t3tools/shared/markdownPipeline";
 import { useAtomValue } from "@effect/atom-react";
 import {
@@ -1953,7 +1954,10 @@ function ChatMarkdown({
             remarkPlugins={remarkPlugins}
             rehypePlugins={
               parseRawHtml
-                ? CHAT_MARKDOWN_RENDER_REHYPE_PLUGINS
+                ? [
+                    ...CHAT_MARKDOWN_RENDER_REHYPE_PLUGINS,
+                    rehypeResolvePictureSources(componentState.resolvedTheme),
+                  ]
                 : CHAT_MARKDOWN_LITERAL_HTML_REHYPE_PLUGINS
             }
             skipHtml={false}

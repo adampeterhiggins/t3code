@@ -313,6 +313,33 @@ describe("ChatMarkdown headings", () => {
   });
 });
 
+describe("ChatMarkdown GitHub picture badges", () => {
+  it("hides bot comments and draws the badge for the current appearance", async () => {
+    setup();
+    const light = "https://static.example/badge-light.svg";
+    const dark = "https://static.example/badge-dark.svg";
+    await using screen = await renderText(
+      [
+        '<!-- devin-review-comment {"id":"analysis"} -->',
+        "",
+        "**Browser proof is missing for UI fix**",
+        "",
+        `<a href="https://app.devin.ai/review/acme/pull/1"><picture><source media="(prefers-color-scheme: dark)" srcset="${dark}"><img src="${light}" alt="Devin Review"></picture></a>`,
+      ].join("\n"),
+    );
+    await expect.element(page.getByText("Browser proof is missing for UI fix")).toBeVisible();
+    await expect
+      .element(page.getByRole("link"))
+      .toHaveAttribute("href", "https://app.devin.ai/review/acme/pull/1");
+    const copy = screen.container
+      .querySelector("[data-markdown-copy]")
+      ?.getAttribute("data-markdown-copy");
+    expect(copy === `![Devin Review](${dark})` || copy === `![Devin Review](${light})`).toBe(true);
+    expect(screen.container.textContent).not.toContain("devin-review-comment");
+    expect(screen.container.textContent).not.toContain("<picture");
+  });
+});
+
 describe("ChatMarkdown Windows file links", () => {
   const environmentId = EnvironmentId.make("env-windows");
   const renderWindows = (text: string, parseRawHtml: boolean) =>

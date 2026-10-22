@@ -15,6 +15,12 @@ import {
 import { isWindowsDrivePathHref } from "./markdownLinks.ts";
 import { THREAD_LINK_PROTOCOL } from "./threadLinks.ts";
 
+export {
+  pictureSourceUrl,
+  rehypeResolvePictureSources,
+  type PictureSource,
+} from "./markdownPicture.ts";
+
 type MarkdownImageHastNode = {
   type?: string;
   value?: string;

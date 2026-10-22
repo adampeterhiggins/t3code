@@ -41,6 +41,24 @@ describe("HTML in native Markdown", () => {
     expect(markdownWithHtml(markdown)).not.toContain("<img");
   });
 
+  it("renders a theme badge from picture sources and drops the bot comment", () => {
+    const markdown = [
+      '<!-- devin-review-comment {"id":"analysis"} -->',
+      "",
+      "**Browser proof is missing**",
+      "",
+      '<a href="https://app.devin.ai/review/acme/pull/1"><picture><source media="(prefers-color-scheme: dark)" srcset="https://static.example/badge-dark.svg"><img src="https://static.example/badge-light.svg" alt="Devin Review"></picture></a>',
+    ].join("\n");
+    expect(markdownWithHtml(markdown)).toBe(
+      "\n\n**Browser proof is missing**\n\n![Devin Review](<https://static.example/badge-light.svg>)",
+    );
+    expect(markdownWithHtml(markdown, "dark")).toContain(
+      "![Devin Review](<https://static.example/badge-dark.svg>)",
+    );
+    expect(markdownWithHtml(markdown, "dark")).not.toContain("devin-review-comment");
+    expect(markdownWithHtml(markdown, "dark")).not.toContain("<picture");
+  });
+
   it("removes bot metadata and details wrappers while keeping the content", () => {
     const markdown =
       "<!-- generated bot metadata -->\n<details>\n<summary>Walkthrough</summary>\n\n## Changes\n\nText\n\n</details>";

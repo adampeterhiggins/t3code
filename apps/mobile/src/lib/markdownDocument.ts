@@ -3,6 +3,7 @@ import { unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkGfm from "remark-gfm";
 import { objectLinkLabel } from "@t3tools/shared/composerObjectLinks";
+import { pictureSourceUrl, type PictureSource } from "@t3tools/shared/markdownPipeline";
 import {
   GITHUB_ISSUE_REFERENCE,
   githubIssueReferenceUrl,
@@ -65,8 +66,24 @@ function attribute(tag: string, name: string): string | null {
   return null;
 }
 
-/** Called only for parsed HTML nodes, so Markdown code examples keep their literal tags. */
-export function markdownHtmlContent(content: string): string {
+function imageMarkdown(alt: string, src: string): string {
+  const escapedAlt = alt.replace(/[\\[\]&]/g, "\\$&");
+  const href = src
+    .replace(/&/g, "\\&")
+    .replace(/</g, "%3C")
+    .replace(/>/g, "%3E")
+    .replace(/\n/g, "");
+  return `![${escapedAlt}](<${href}>)`;
+}
+
+/**
+ * Called only for parsed HTML nodes, so Markdown code examples keep their literal tags.
+ * `appearance` chooses a `<picture>` source; the `<img>` is the fallback.
+ */
+export function markdownHtmlContent(
+  content: string,
+  appearance: "light" | "dark" = "light",
+): string {
   // An HTML block such as <details> can also contain Markdown fences and code spans.
   const codeRanges: Array<{ start: number; end: number }> = [];
   const tags = [...content.matchAll(HTML_TAG)];
@@ -111,19 +128,41 @@ export function markdownHtmlContent(content: string): string {
     codeRanges.push({ start: opening.index, end: closing.index + closing[0].length });
     index = closingIndex;
   }
-  return content.replace(HTML_TAG, (tag, offset: number) => {
+  let inPicture = false;
+  const sources: PictureSource[] = [];
+  let pictureImage: { src: string; alt: string } | null = null;
+  const renderedPicture = () => {
+    const src = pictureSourceUrl(sources, pictureImage?.src || undefined, appearance);
+    return src ? imageMarkdown(pictureImage?.alt ?? "", src) : "";
+  };
+  const rendered = content.replace(HTML_TAG, (tag, offset: number) => {
     if (codeRanges.some((range) => offset >= range.start && offset < range.end)) return tag;
     if (tag.startsWith("<!--")) return "";
+    if (/^<picture\b/i.test(tag)) {
+      inPicture = true;
+      sources.length = 0;
+      pictureImage = null;
+      return "";
+    }
+    if (inPicture && /^<source\b/i.test(tag)) {
+      sources.push({
+        media: attribute(tag, "media") ?? undefined,
+        srcSet: attribute(tag, "srcset") ?? undefined,
+      });
+      return "";
+    }
+    if (inPicture && /^<img\b/i.test(tag)) {
+      pictureImage = { src: attribute(tag, "src") ?? "", alt: attribute(tag, "alt") ?? "" };
+      return "";
+    }
+    if (inPicture && /^<\/picture\s*>/i.test(tag)) {
+      inPicture = false;
+      return renderedPicture();
+    }
     if (/^<img\b/i.test(tag)) {
       const src = attribute(tag, "src");
       if (!src) return "";
-      const alt = (attribute(tag, "alt") ?? "").replace(/[\\[\]&]/g, "\\$&");
-      const href = src
-        .replace(/&/g, "\\&")
-        .replace(/</g, "%3C")
-        .replace(/>/g, "%3E")
-        .replace(/\n/g, "");
-      return `![${alt}](<${href}>)`;
+      return imageMarkdown(attribute(tag, "alt") ?? "", src);
     }
     if (/^<summary\b/i.test(tag)) return "\n\n**";
     if (/^<\/summary\s*>/i.test(tag)) return "**\n\n";
@@ -131,18 +170,61 @@ export function markdownHtmlContent(content: string): string {
     if (/^<\/?(?:p|div|details)\b/i.test(tag)) return "\n\n";
     return "";
   });
+  return inPicture ? rendered + renderedPicture() : rendered;
 }
 
-export function markdownWithHtml(markdown: string): string {
+export function markdownWithHtml(markdown: string, appearance: "light" | "dark" = "light"): string {
   if (!/<(?:!--|\/?[a-z])/i.test(markdown)) return markdown;
   const edits: Array<{ start: number; end: number; content: string }> = [];
   const visit = (node: MarkdownNode) => {
-    if (node.type === "html") {
-      const start = node.position?.start.offset;
-      const end = node.position?.end.offset;
-      if (start !== undefined && end !== undefined)
-        edits.push({ start, end, content: markdownHtmlContent(node.value) });
-    } else if ("children" in node) node.children.forEach(visit);
+    if (!("children" in node)) return;
+    const children = node.children;
+    let index = 0;
+    while (index < children.length) {
+      const child = children[index]!;
+      // A <picture> is several inline tags. Read them together so the scheme source wins
+      // over the fallback <img>, which is a later tag.
+      if (child.type !== "html") {
+        visit(child);
+        index += 1;
+        continue;
+      }
+      let end = index;
+      while (end + 1 < children.length) {
+        const next = children[end + 1]!;
+        if (next.type === "html") {
+          end += 1;
+          continue;
+        }
+        const after = children[end + 2];
+        if (next.type === "text" && /^\s*$/.test(next.value) && after?.type === "html") {
+          end += 1;
+          continue;
+        }
+        break;
+      }
+      while (end > index && children[end]?.type === "text") end -= 1;
+      const htmlNodes = children.slice(index, end + 1).filter((item) => item.type === "html");
+      const combined = htmlNodes.map((item) => item.value).join("");
+      const start = child.position?.start.offset;
+      const stop = children[end]?.position?.end.offset;
+      if (start !== undefined && stop !== undefined && /<picture\b/i.test(combined)) {
+        edits.push({ start, end: stop, content: markdownHtmlContent(combined, appearance) });
+      } else {
+        for (const html of htmlNodes) {
+          const htmlStart = html.position?.start.offset;
+          const htmlEnd = html.position?.end.offset;
+          if (htmlStart !== undefined && htmlEnd !== undefined) {
+            edits.push({
+              start: htmlStart,
+              end: htmlEnd,
+              content: markdownHtmlContent(html.value, appearance),
+            });
+          }
+        }
+      }
+      index = end + 1;
+    }
   };
   visit(parser.parse(markdown));
   for (const edit of edits.reverse())
