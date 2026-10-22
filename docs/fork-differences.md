@@ -1305,7 +1305,7 @@ Code: `bootstrap.deferTurn` in `packages/client-runtime/src/operations/commands.
 `prepareMessageWorkspace` and `nameTemporaryBranch` in
 `apps/server/src/orchestration-v2/ThreadLaunchService.ts`, called from `dispatchCommand` in
 `apps/server/src/orchestration-v2/ThreadMessageIntake.ts`; `createThreadWithoutMessage` in
-`apps/web/src/components/ChatView.tsx` and the pill in `ComposerPrimaryActions.tsx`. User guide:
+`apps/web/src/components/chat/useComposerSend.ts` and the pill in `ComposerPrimaryActions.tsx`. User guide:
 [thread-sidebar.md](./user/thread-sidebar.md#start-a-thread).
 
 ## Export a transcript
@@ -1651,7 +1651,8 @@ quote shown outside the thread it came from names its source thread in its previ
 Code: `SubmitChoiceButton` in
 [AssistantCitationCommentEditor.tsx](../apps/web/src/components/chat/AssistantCitationCommentEditor.tsx),
 [CitationDestinationPicker.tsx](../apps/web/src/components/chat/CitationDestinationPicker.tsx), and
-`sendCitationElsewhere` in [ChatView.tsx](../apps/web/src/components/ChatView.tsx).
+`sendCitationElsewhere` in
+[useThreadLifecycle.tsx](../apps/web/src/components/chat/useThreadLifecycle.tsx).
 
 ## Message drafts and send button menus
 

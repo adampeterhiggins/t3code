@@ -100,6 +100,14 @@ type TokenHttpEffect = Effect.Effect<
   McpInvocationContext.McpInvocationContext
 >;
 
+type TokenAuthMiddleware = (
+  effect: TokenHttpEffect,
+) => Effect.Effect<
+  HttpServerResponse.HttpServerResponse,
+  Types.unhandled,
+  HttpServerRequest.HttpServerRequest
+>;
+
 const tokenAuthMiddleware = (options: {
   readonly requiredScope: AuthEnvironmentScope;
   readonly cliFlag: string;
@@ -146,7 +154,7 @@ const tokenAuthMiddleware = (options: {
           Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
           Effect.map(normalizeMcpHttpResponse),
         );
-      });
+      }) satisfies TokenAuthMiddleware;
     }),
   ).layer;
 

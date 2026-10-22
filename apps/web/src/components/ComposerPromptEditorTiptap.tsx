@@ -8,9 +8,15 @@ import {
   wrappingInputRule,
   type JSONContent,
 } from "@tiptap/core";
-import { ReactNodeViewRenderer, NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
+import {
+  ReactNodeViewRenderer,
+  NodeViewWrapper,
+  type NodeViewProps,
+  EditorContent,
+  useEditor,
+} from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { type Node as ProseMirrorNode } from "@tiptap/pm/model";
+import { type Node as ProseMirrorNode, type NodeType, type ResolvedPos } from "@tiptap/pm/model";
 import { newlineInCode, splitBlockKeepMarks } from "@tiptap/pm/commands";
 import { isHistoryTransaction } from "@tiptap/pm/history";
 import {
@@ -21,7 +27,7 @@ import {
   TextSelection,
 } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
-import type { NodeType, ResolvedPos } from "@tiptap/pm/model";
+
 import type {
   AssistantCitation,
   ComposerContextClipboardFragment,
@@ -49,7 +55,6 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type RefObject,
 } from "react";
-import { EditorContent, useEditor } from "@tiptap/react";
 
 import {
   clampCollapsedComposerCursor,
@@ -58,6 +63,7 @@ import {
   pastedPathQueryLength,
 } from "~/composer-logic";
 import { useStableCallback } from "~/hooks/useStableCallback";
+import { caretLineDirection, ComposerTextDirectionExtension } from "~/composer-text-direction";
 import {
   collectComposerPromptInlineTokens,
   selectionTouchesMentionBoundary,
@@ -110,6 +116,7 @@ import {
   ComposerContextRecordChip,
   ComposerContextReferenceChip,
   ComposerContextRecordsContext,
+  type ComposerDraftContextRecords,
 } from "./composerContextPresentation";
 import { skillPreviewDescription } from "./contextPreviews";
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
@@ -119,7 +126,6 @@ import { composerCodeBlockHighlight } from "./composerCodeBlockHighlight";
 import { importPastedComposerText } from "./composerInlineTokenPaste";
 import { ComposerLoadingLinksExtension, setComposerLoadingLinks } from "./composerLoadingLinks";
 import { didComposerSelectionChangeVisibly } from "./composerSelection";
-import type { ComposerDraftContextRecords } from "./composerContextPresentation";
 
 export interface ComposerPromptEditorHandle {
   focus: () => void;
@@ -286,7 +292,7 @@ const ComposerMentionExtension = Node.create({
 function ComposerMentionNodeView({ node }: NodeViewProps) {
   const path = (node.attrs.path as string) ?? "";
   return (
-    <NodeViewWrapper as="span" className={CHIP_NODE_SELECTION_CLASS_NAME}>
+    <NodeViewWrapper as="span" dir="ltr" className={CHIP_NODE_SELECTION_CLASS_NAME}>
       <ComposerContextRecordChip entry={{ kind: "mention", record: { path } }} label={path} />
     </NodeViewWrapper>
   );
@@ -782,6 +788,7 @@ const ComposerMarkerPlugin = new Plugin({
 function decorationsForSelection(state: EditorState): DecorationSet {
   const { doc, selection } = state;
   const caretSide = caretTakesMarksBefore(state) ? 3 : 0;
+  const rtl = caretLineDirection(state) === "rtl";
   const decorations: Decoration[] = [];
   if (!selection.empty) {
     doc.nodesBetween(selection.from, selection.to, (node, pos) => {
@@ -805,8 +812,19 @@ function decorationsForSelection(state: EditorState): DecorationSet {
       marker.className = "composer-rich-marker";
       marker.textContent = text;
       marker.setAttribute("aria-hidden", "true");
+      // Inline code is isolated left to right. In a right-to-left line its
+      // opening backtick joins the closing one inside the isolate, or the line
+      // would put both on the same side of the code.
+      const codeMarks =
+        rtl && baseSide === -1 && /^`+$/.test(text)
+          ? doc.resolve(at).nodeAfter?.marks.filter((mark) => mark.type.spec.code)
+          : undefined;
       decorations.push(
-        Decoration.widget(at, marker, { side, key: `marker-${at}-${side}-${marker.textContent}` }),
+        Decoration.widget(at, marker, {
+          side,
+          key: `marker-${at}-${side}-${marker.textContent}`,
+          ...(codeMarks?.length ? { marks: codeMarks } : {}),
+        }),
       );
     }
   }
@@ -908,6 +926,7 @@ function createComposerExtensions(richText: boolean) {
       strike: false,
     }),
     ComposerUndoGroupingExtension,
+    ComposerTextDirectionExtension,
     ComposerMentionExtension,
     ComposerSkillExtension,
     ComposerCitationExtension,
@@ -1210,6 +1229,8 @@ function ComposerPromptEditorTiptapInner(
       editorProps: {
         attributes: editorAttributes,
         handleKeyDown: (view, event) => {
+          // In a right-to-left line the start is on the right.
+          const backArrow = caretLineDirection(view.state) === "rtl" ? "ArrowRight" : "ArrowLeft";
           const boundary = event.metaKey
             ? event.key === "ArrowLeft" || event.key === "ArrowRight"
               ? "lineboundary"
@@ -1235,7 +1256,7 @@ function ComposerPromptEditorTiptapInner(
               event.preventDefault();
               event.stopPropagation();
               const backward =
-                event.key === "Home" || event.key === "ArrowLeft" || event.key === "ArrowUp";
+                event.key === "Home" || event.key === "ArrowUp" || event.key === backArrow;
               selection.modify(
                 event.shiftKey ? "extend" : "move",
                 backward ? "backward" : "forward",
@@ -1270,7 +1291,7 @@ function ComposerPromptEditorTiptapInner(
             view.state.selection.empty
           ) {
             const { $from } = view.state.selection;
-            const direction = event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 1;
+            const direction = event.key === "ArrowUp" || event.key === backArrow ? -1 : 1;
             const horizontal = event.key === "ArrowLeft" || event.key === "ArrowRight";
             // At the document's ends, native Up/Down can cross a marker without
             // changing the document position. Record the stop so DOM selection
