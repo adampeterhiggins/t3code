@@ -28,7 +28,7 @@ import { ShellCommandBlock } from "./ShellCommandBlock";
 
 // A search can return dozens of messages; the card is a glance, the raw call has the rest.
 const MAX_SLACK_MESSAGES = 5;
-const MAX_RECORDS = 8;
+const MAX_RECORDS = 5;
 const MAX_TABLE_ROWS = 10;
 
 const monoClassName =
@@ -200,15 +200,17 @@ function RecordsView(props: {
   readonly onOpenThread: (threadId: ThreadId) => void;
 }) {
   const { preview } = props;
-  const hidden = Math.max(0, preview.items.length - MAX_RECORDS) + preview.more;
+  const [expanded, setExpanded] = useState(false);
+  const shown = expanded ? preview.items : preview.items.slice(0, MAX_RECORDS);
+  const collapsed = preview.items.length - shown.length;
   if (preview.items.length === 0)
     return <p className="text-muted-foreground italic">No results.</p>;
   return (
-    <ul className="space-y-1.5">
-      {preview.items.slice(0, MAX_RECORDS).map((item) => {
+    <ul className="divide-y divide-border/60">
+      {shown.map((item) => {
         const threadId = item.url ? null : item.threadId;
         return (
-          <li key={item.key} className="min-w-0">
+          <li key={item.key} className="min-w-0 py-1.5 first:pt-0">
             <div className="flex min-w-0 items-center gap-1.5 font-medium text-foreground">
               {threadId ? (
                 <button
@@ -238,7 +240,20 @@ function RecordsView(props: {
           </li>
         );
       })}
-      {hidden > 0 ? <li className="text-muted-foreground">+{hidden} more</li> : null}
+      {collapsed > 0 || expanded ? (
+        <li className="pt-1.5">
+          <button
+            type="button"
+            className="text-muted-foreground hover:text-foreground"
+            onClick={() => setExpanded((open) => !open)}
+          >
+            {expanded ? "Show fewer" : `Show ${collapsed} more`}
+          </button>
+        </li>
+      ) : null}
+      {preview.more > 0 ? (
+        <li className="pt-1.5 text-muted-foreground">+{preview.more} more in the raw call</li>
+      ) : null}
     </ul>
   );
 }
@@ -422,7 +437,7 @@ function GenericBody(props: {
               <TitleLink title={preview.title} url={preview.url} />
             </p>
           ) : null}
-          <dl className="grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-3 gap-y-0.5">
+          <dl className="grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-4 gap-y-1">
             {preview.rows.map(([key, value]) => (
               <div key={key} className="contents">
                 <dt className="truncate text-muted-foreground">{key}</dt>
@@ -774,22 +789,22 @@ function PreviewBody(props: {
       return preview.threads.length === 0 ? (
         <p className="text-muted-foreground italic">No threads.</p>
       ) : (
-        <ul className="space-y-1">
+        <ul className="divide-y divide-border/60">
           {preview.threads.map((thread) => (
-            <li key={thread.threadId} className="flex min-w-0 items-center gap-1.5">
-              <button
-                type="button"
-                className="min-w-0 truncate text-left text-foreground hover:underline"
-                onClick={() => props.onOpenThread(ThreadId.make(thread.threadId))}
-              >
-                {thread.title}
-              </button>
-              {thread.model ? (
-                <span className="shrink-0 text-muted-foreground">{thread.model}</span>
-              ) : null}
-              <span className="ml-auto">
+            <li key={thread.threadId} className="min-w-0 py-1.5 first:pt-0">
+              <div className="flex min-w-0 items-start gap-1.5">
+                <button
+                  type="button"
+                  className="min-w-0 flex-1 truncate text-left font-medium text-foreground hover:underline"
+                  onClick={() => props.onOpenThread(ThreadId.make(thread.threadId))}
+                >
+                  {thread.title}
+                </button>
                 <StatusBadge status={thread.status} />
-              </span>
+              </div>
+              {thread.model ? (
+                <p className="truncate text-muted-foreground">{thread.model}</p>
+              ) : null}
             </li>
           ))}
         </ul>
@@ -798,18 +813,20 @@ function PreviewBody(props: {
       return preview.tasks.length === 0 ? (
         <p className="text-muted-foreground italic">No scheduled tasks.</p>
       ) : (
-        <ul className="space-y-1">
+        <ul className="divide-y divide-border/60">
           {preview.tasks.map((task) => (
-            <li key={task.id} className="min-w-0">
-              <p className="truncate font-medium text-foreground">{task.title}</p>
-              <p className="truncate text-muted-foreground">
-                {[
-                  task.schedule ? scheduleLabel(task.schedule) : null,
-                  task.enabled ? null : "paused",
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </p>
+            <li key={task.id} className="min-w-0 py-1.5 first:pt-0">
+              <div className="flex min-w-0 items-start gap-1.5">
+                <p className="min-w-0 flex-1 truncate font-medium text-foreground">{task.title}</p>
+                {task.enabled ? null : (
+                  <Badge size="sm" variant="warning" className="shrink-0">
+                    paused
+                  </Badge>
+                )}
+              </div>
+              {task.schedule ? (
+                <p className="truncate text-muted-foreground">{scheduleLabel(task.schedule)}</p>
+              ) : null}
             </li>
           ))}
         </ul>
@@ -858,6 +875,8 @@ export function ToolPreviewCard(props: {
   readonly images: ReactNode;
   /** The generic body, mounted only once asked for. */
   readonly raw: ReactNode;
+  /** The call's time and state, beside Raw call; the hover card passes it. */
+  readonly footer?: ReactNode;
 }) {
   const [showRaw, setShowRaw] = useState(false);
   const [localImagePreview, setLocalImagePreview] = useState<ExpandedImagePreview | null>(null);
@@ -869,13 +888,16 @@ export function ToolPreviewCard(props: {
           ? null
           : props.images}
       </div>
-      <button
-        type="button"
-        className="text-2xs text-muted-foreground hover:text-foreground"
-        onClick={() => setShowRaw((shown) => !shown)}
-      >
-        {showRaw ? "Hide raw call" : "Show raw call"}
-      </button>
+      <div className="mt-1 flex items-center justify-between gap-3 border-t border-border/60 pt-2 text-2xs text-muted-foreground">
+        <span className="min-w-0 truncate font-mono text-3xs select-text">{props.footer}</span>
+        <button
+          type="button"
+          className="shrink-0 hover:text-foreground"
+          onClick={() => setShowRaw((shown) => !shown)}
+        >
+          {showRaw ? "Hide raw call" : "Raw call"}
+        </button>
+      </div>
       {showRaw ? props.raw : null}
       {localImagePreview ? (
         <ExpandedImageDialog

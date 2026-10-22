@@ -237,6 +237,9 @@ export function summarizeT3ToolCalls(
     case "thread-update":
       label = phrase("Updated", "update", quantity(countEntities(threadIds), "thread"));
       break;
+    case "thread-delete":
+      label = phrase("Deleted", "delete", quantity(countEntities(threadIds), "thread"));
+      break;
     case "draft-list":
       label = phrase("Listed", "list", `message drafts ${times}`);
       break;

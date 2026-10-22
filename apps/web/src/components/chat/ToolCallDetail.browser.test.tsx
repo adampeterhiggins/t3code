@@ -1,33 +1,24 @@
-// @vitest-environment jsdom
-import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { EnvironmentId, ThreadId, TurnItemId } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
-import { projectedWorkEntry } from "../../session-logic";
-import { ToolCallDetails } from "./ToolCallDetail";
+import { describe, expect, it, vi } from "vite-plus/test";
+import { userEvent } from "vite-plus/test/browser";
 
-vi.mock("../../state/queries", () => ({
-  useTurnItemDetail: () => ({ data: undefined, isPending: false, error: null }),
+import { projectedWorkEntry } from "../../session-logic";
+import { render } from "../../../test/render";
+
+vi.mock(import("../../state/queries"), async (importOriginal) => ({
+  ...(await importOriginal()),
+  useTurnItemDetail: () => ({ data: undefined, isPending: false, error: null }) as never,
 }));
-vi.mock("../../state/v2ItemSupport", () => ({ useV2ItemSupport: () => ({}) }));
+vi.mock(import("../../state/v2ItemSupport"), async (importOriginal) => ({
+  ...(await importOriginal()),
+  useV2ItemSupport: () => ({}) as never,
+}));
 vi.mock("./ShellCommandBlock", () => ({
   ShellCommandBlock: ({ command }: { command: string }) => <code>{command}</code>,
 }));
 
-let root: Root;
-let host: HTMLDivElement;
-beforeEach(() => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  host = document.createElement("div");
-  document.body.append(host);
-  root = createRoot(host);
-});
-afterEach(() => {
-  act(() => root.unmount());
-  host.remove();
-  vi.unstubAllGlobals();
-});
+import { ToolCallDetails } from "./ToolCallDetail";
 
 const threadId = ThreadId.make("child");
 const at = DateTime.makeUnsafe("2026-10-14T18:00:00Z");
@@ -67,40 +58,34 @@ const context = {
 };
 
 describe("shared tool details", () => {
-  it("shows command and failed exit immediately but mounts output only when requested", () => {
-    act(() =>
-      root.render(
-        <ToolCallDetails
-          {...context}
-          workEntry={entry}
-          previewText="git status"
-          icon={null}
-          preview
-        />,
-      ),
+  it("shows command and failed exit immediately but mounts output only when requested", async () => {
+    await using screen = await render(
+      <ToolCallDetails
+        {...context}
+        workEntry={entry}
+        previewText="git status"
+        icon={null}
+        preview
+      />,
     );
+    const host = screen.container;
     expect(host.textContent).toContain("git status");
     expect(host.textContent).toContain("failed");
     expect(host.textContent).toContain("exit 1");
     expect(host.textContent).not.toContain("Stored command output");
-    const details = host.querySelector("details")!;
-    act(() => {
-      details.open = true;
-      details.dispatchEvent(new Event("toggle"));
-    });
-    expect(host.textContent).toContain("Stored command output");
+    await userEvent.click(host.querySelector("summary")!);
+    await expect.element(screen.getByText("Stored command output")).toBeInTheDocument();
   });
 
-  it("opens the same stored output directly in an expanded call", () => {
-    act(() =>
-      root.render(
-        <ToolCallDetails {...context} workEntry={entry} previewText="git status" icon={null} />,
-      ),
+  it("opens the same stored output directly in an expanded call", async () => {
+    await using screen = await render(
+      <ToolCallDetails {...context} workEntry={entry} previewText="git status" icon={null} />,
     );
-    expect(host.textContent).toContain("Stored command output");
-    expect(host.querySelector("details")).toBeNull();
+    expect(screen.container.textContent).toContain("Stored command output");
+    expect(screen.container.querySelector("details")).toBeNull();
   });
-  it("renders rich tool results with a working raw-call disclosure", () => {
+
+  it("renders rich tool results with the call's time beside a working Raw call", async () => {
     const item = entry.projectedItem?.item;
     if (item?.type !== "command_execution") throw new Error("Expected command fixture");
     const toolEntry = projectedWorkEntry({
@@ -114,25 +99,25 @@ describe("shared tool details", () => {
         output: { matches: ["Monitor", "mcp__t3-code__preview_open"] },
       },
     });
-    act(() =>
-      root.render(
-        <ToolCallDetails
-          {...context}
-          workEntry={toolEntry}
-          previewText="ToolSearch"
-          icon={null}
-          preview
-        />,
-      ),
+    await using screen = await render(
+      <ToolCallDetails
+        {...context}
+        workEntry={toolEntry}
+        previewText="ToolSearch"
+        icon={null}
+        preview
+      />,
     );
+    const host = screen.container;
     expect(host.textContent).toContain("Monitor");
     expect(host.textContent).toContain("preview_open");
     expect(host.textContent).not.toContain("select:Monitor");
-    const raw = Array.from(host.querySelectorAll("button")).find(
-      (button) => button.textContent === "Show raw call",
-    )!;
-    act(() => raw.click());
+    // The time and state sit in the card's footer, once, beside Raw call.
+    const footer = screen.getByRole("button", { name: "Raw call" }).element().parentElement!;
+    expect(footer.textContent).toContain("completed");
+    expect(host.textContent!.split("completed")).toHaveLength(2);
+    await userEvent.click(screen.getByRole("button", { name: "Raw call" }));
+    await expect.element(screen.getByRole("button", { name: "Hide raw call" })).toBeInTheDocument();
     expect(host.textContent).toContain("select:Monitor");
-    expect(host.textContent).toContain("Hide raw call");
   });
 });

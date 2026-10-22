@@ -159,7 +159,8 @@ export function t3UtilityToolPreview(
     case "orchestrator_capabilities":
       return data ? capabilitiesPreview(data) : null;
     case "run_scheduled_task_now":
-      return action("Ran a scheduled task now", {
+      // The run starts after the call returns, so its outcome is not known yet.
+      return action("Scheduled run requested", {
         status: str(data?.lastRunStatus),
         details: [typeof data?.runCount === "number" ? `Run ${data.runCount}` : null],
         threadId: str(data?.threadId),
@@ -185,6 +186,36 @@ export function t3UtilityToolPreview(
           threadId: str(input.threadId),
         },
       );
+    case "t3_workflow_stop":
+      return action("Stop requested", { threadId: str(input.threadId) });
+    case "t3_thread_delete":
+      return action(
+        data && typeof data.sequence === "number"
+          ? "Deleted a thread"
+          : "Requested a thread deletion",
+      );
+    case "t3_draft_list": {
+      const drafts = Array.isArray(data?.drafts) ? data.drafts.filter(isRecord) : [];
+      return records(
+        drafts.map((draft, index) => {
+          const text = str(draft.text) ?? "Empty draft";
+          const title = firstLine(text);
+          return record({
+            key: str(draft.id) ?? String(index),
+            title,
+            body: text === title ? null : text,
+            threadId: str(draft.threadId),
+          });
+        }),
+        { summary: `${drafts.length} draft${drafts.length === 1 ? "" : "s"}` },
+      );
+    }
+    case "t3_draft_create":
+      return documentPreview(str(data?.text) ?? str(input.text) ?? "", { title: "Saved a draft" });
+    case "t3_draft_send":
+      return action("Sent a draft", { threadId: str(data?.threadId) ?? str(input.threadId) });
+    case "t3_draft_delete":
+      return action("Deleted a draft", { threadId: str(input.threadId) });
     case "t3_queue_list": {
       const items = Array.isArray(data?.items) ? data.items.filter(isRecord) : [];
       return records(

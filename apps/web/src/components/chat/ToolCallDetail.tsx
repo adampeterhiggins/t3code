@@ -128,6 +128,8 @@ type WorkEntryDetailProps = ToolCallContext & {
   hidePreviewActions?: boolean;
   /** The hover card header already shows Open thread. */
   hideOpenThread?: boolean | undefined;
+  /** The call's time and state, shown in a tool preview's footer instead of below it. */
+  previewFooter?: ReactNode;
 };
 
 /** An open tool row's details: the item inspector for projected items, otherwise plain text. */
@@ -157,6 +159,7 @@ function WorkEntryDetailBody(
         onImageExpand={ctx.onImageExpand}
         hidePreviewActions={ctx.hidePreviewActions}
         hideOpenThread={ctx.hideOpenThread}
+        previewFooter={ctx.previewFooter}
       />
     );
   }
@@ -240,6 +243,14 @@ function ToolCallPreviewContent(
       : null;
   const item = workEntry.projectedItem?.item;
   const toolPreview = item ? resolveToolPreview(item) : null;
+  // A tool preview ends in its own footer, which carries the time and state beside Raw call.
+  const showsToolPreview = toolPreview !== null && plainOutput === undefined;
+  const footer = [
+    formatSecondsTimestamp(workEntry.createdAt, timestampFormat),
+    toolCallPreviewStatus(workEntry),
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const openThreadId =
     toolPreview?.kind === "thread" ||
     toolPreview?.kind === "task" ||
@@ -340,15 +351,11 @@ function ToolCallPreviewContent(
         highlightSyntax
         hidePreviewActions={headerAction !== null}
         hideOpenThread={headerAction?.label === "Open thread"}
+        previewFooter={showsToolPreview ? footer : undefined}
       />
-      <p className="font-mono text-3xs text-muted-foreground select-text">
-        {[
-          formatSecondsTimestamp(workEntry.createdAt, timestampFormat),
-          toolCallPreviewStatus(workEntry),
-        ]
-          .filter(Boolean)
-          .join(" · ")}
-      </p>
+      {showsToolPreview ? null : (
+        <p className="font-mono text-3xs text-muted-foreground select-text">{footer}</p>
+      )}
     </div>
   );
 }

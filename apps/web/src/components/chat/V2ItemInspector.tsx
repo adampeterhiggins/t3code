@@ -62,6 +62,7 @@ interface V2ItemInspectorProps {
   readonly hidePreviewActions?: boolean | undefined;
   /** The hover card header already shows Open thread. */
   readonly hideOpenThread?: boolean | undefined;
+  readonly previewFooter?: ReactNode;
 }
 
 const monoClassName =
@@ -434,6 +435,7 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
             cwd={props.cwd}
             onOpenThread={props.onOpenThread}
             hideOpenThread={props.hideOpenThread}
+            footer={props.previewFooter}
             images={<ToolOutputImages {...outputState} onImageExpand={props.onImageExpand} />}
             raw={
               <ToolCallBody
