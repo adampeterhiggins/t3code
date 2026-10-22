@@ -202,6 +202,7 @@ Architecture and its constraints: `docs/internals/overview.md`. Glossary: `docs/
   options, and pass combinators as additional function-builder arguments.
 - Inferred types over annotations. `any` is the enemy.
 - Comments say why: a constraint, an external quirk, or an invariant the code can't show. Don't restate names or signatures, narrate steps, or record history. `t3code/no-low-value-comments` catches the mechanical cases.
+- Mock UI from the app itself. A requested HTML mock, mockup, or gallery of a T3 Code change is built from the web app's real components with `vp run render-mock`, never hand-written CSS that imitates them. See the `mock-t3-feature` skill.
 - Our users drive agents all day and notice a dropped frame, a lying spinner, and a stale label. No continuously repainting animations; they peg the GPU on high-refresh displays.
 - If a rule here fights the task in front of you, say so loudly and get a human sign-off before breaking it.
 

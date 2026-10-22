@@ -1,6 +1,8 @@
 import {
   T3_CODE_DARK_THEME_COLORS,
   T3_CODE_LIGHT_THEME_COLORS,
+  THEME_COLOR_ROLES,
+  THEME_COLOR_VARIABLES,
   type ThemeAppearance,
   type ThemeColors,
 } from "./themePalettes.ts";
@@ -24,6 +26,13 @@ export interface HtmlRenderReference {
 export const HTML_RENDER_MEASURE_WIDTHS = [320, 375, 430, 520, 640, 728, 860, 1000, 1144] as const;
 
 export const HTML_RENDER_COLUMN_WIDTH = 728;
+
+/**
+ * A local stylesheet or script is inlined into a page only when its text starts
+ * with this line. A page could otherwise pull any `.js` or `.css` file on the
+ * host, such as one holding secrets, into a page that can send it anywhere.
+ */
+export const HTML_RENDER_ASSET_MARKER = "/* t3:html-render-asset */";
 
 const MAX_MEASURED_HEIGHTS = 24;
 
@@ -177,7 +186,9 @@ const FIXED_COLORS = {
 
 /**
  * Names follow the app's own tokens, except `--accent`, which is the theme's
- * brand color here rather than the app's neutral hover surface.
+ * brand color here rather than the app's neutral hover surface. The whole
+ * palette also comes under the web app's `--app-theme-*` names, so a mock built
+ * from the app's stylesheet wears the reader's theme the way the app does.
  */
 export function htmlRenderTheme(
   colors: ThemeColors,
@@ -224,6 +235,9 @@ export function htmlRenderTheme(
       "--radius": "0.625rem",
       "--font-sans": fonts.sans,
       "--font-mono": fonts.mono,
+      ...Object.fromEntries(
+        THEME_COLOR_ROLES.map((role) => [THEME_COLOR_VARIABLES[role], colors[role]]),
+      ),
     },
   };
 }

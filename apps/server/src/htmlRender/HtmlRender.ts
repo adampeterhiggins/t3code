@@ -3,6 +3,7 @@ import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderS
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import {
   clampHtmlRenderHeight,
+  HTML_RENDER_ASSET_MARKER,
   HTML_RENDER_COLUMN_WIDTH,
   HTML_RENDER_MAX_TITLE_LENGTH,
   HTML_RENDER_MEASURE_FONTS,
@@ -37,25 +38,25 @@ import * as PreviewBrowser from "../preview/PreviewBrowser.ts";
 import * as PreviewBrowserHost from "../preview/PreviewBrowserHost.ts";
 
 const MIB = 1024 * 1024;
-const MAX_IMAGE_BYTES = 10 * MIB;
+const MAX_FILE_BYTES = 10 * MIB;
 const MAX_PAGE_BYTES = 25 * MIB;
 const formatMib = (bytes: number) => `${(bytes / MIB).toFixed(1)} MiB`;
 
-export class HtmlRenderImagesNotFoundError extends Schema.TaggedError<HtmlRenderImagesNotFoundError>()(
-  "HtmlRenderImagesNotFoundError",
+export class HtmlRenderFilesNotFoundError extends Schema.TaggedError<HtmlRenderFilesNotFoundError>()(
+  "HtmlRenderFilesNotFoundError",
   { paths: Schema.Array(Schema.String) },
 ) {
   override get message(): string {
-    return `These local images could not be read: ${this.paths.join(", ")}. Use absolute paths to existing image files, or remove them.`;
+    return `These local files could not be read: ${this.paths.join(", ")}. Use absolute paths to existing images, or to UTF-8 stylesheets and scripts whose first line is ${HTML_RENDER_ASSET_MARKER}, or remove them.`;
   }
 }
 
-export class HtmlRenderImageTooLargeError extends Schema.TaggedError<HtmlRenderImageTooLargeError>()(
-  "HtmlRenderImageTooLargeError",
+export class HtmlRenderFileTooLargeError extends Schema.TaggedError<HtmlRenderFileTooLargeError>()(
+  "HtmlRenderFileTooLargeError",
   { path: Schema.String, sizeBytes: Schema.Number },
 ) {
   override get message(): string {
-    return `${this.path} is ${formatMib(this.sizeBytes)}; each local image must be at most ${formatMib(MAX_IMAGE_BYTES)}.`;
+    return `${this.path} is ${formatMib(this.sizeBytes)}; each local file must be at most ${formatMib(MAX_FILE_BYTES)}.`;
   }
 }
 
@@ -64,7 +65,7 @@ export class HtmlRenderPageTooLargeError extends Schema.TaggedError<HtmlRenderPa
   { sizeBytes: Schema.Number },
 ) {
   override get message(): string {
-    return `With its images inlined the page is ${formatMib(this.sizeBytes)}; the limit is ${formatMib(MAX_PAGE_BYTES)}. Use smaller images.`;
+    return `With its local files inlined the page is ${formatMib(this.sizeBytes)}; the limit is ${formatMib(MAX_PAGE_BYTES)}. Use smaller files.`;
   }
 }
 
@@ -106,8 +107,8 @@ export class HtmlRenderStoreError extends Schema.TaggedError<HtmlRenderStoreErro
 }
 
 export type HtmlRenderPrepareError =
-  | HtmlRenderImagesNotFoundError
-  | HtmlRenderImageTooLargeError
+  | HtmlRenderFilesNotFoundError
+  | HtmlRenderFileTooLargeError
   | HtmlRenderPageTooLargeError
   | HtmlRenderViewportHeightError;
 
@@ -117,7 +118,7 @@ export interface HtmlPreview {
   readonly contentHeight: number;
   readonly capturedHeight: number;
   readonly consoleMessages: ReadonlyArray<HeadlessChrome.ConsoleMessage>;
-  readonly missingImages?: ReadonlyArray<string>;
+  readonly missingFiles?: ReadonlyArray<string>;
 }
 
 export class HtmlRender extends Context.Service<
@@ -136,7 +137,7 @@ export class HtmlRender extends Context.Service<
       readonly appearance?: ThemeAppearance | undefined;
     }) => Effect.Effect<
       HtmlPreview,
-      | Exclude<HtmlRenderPrepareError, HtmlRenderImagesNotFoundError>
+      | Exclude<HtmlRenderPrepareError, HtmlRenderFilesNotFoundError>
       | PreviewBrowser.PreviewBrowserInstallError
       | PreviewBrowser.PreviewBrowserInstallingError
       | PreviewBrowser.PreviewBrowserUnsupportedError
@@ -252,9 +253,9 @@ const inlineLocalImages = Effect.fn("HtmlRender.inlineLocalImages")(function* (h
       ),
     { concurrency: 8 },
   );
-  const oversized = files.find((file) => file.size !== undefined && file.size > MAX_IMAGE_BYTES);
+  const oversized = files.find((file) => file.size !== undefined && file.size > MAX_FILE_BYTES);
   if (oversized?.size !== undefined) {
-    return yield* new HtmlRenderImageTooLargeError({
+    return yield* new HtmlRenderFileTooLargeError({
       path: oversized.path,
       sizeBytes: oversized.size,
     });
@@ -280,12 +281,12 @@ const inlineLocalImages = Effect.fn("HtmlRender.inlineLocalImages")(function* (h
     (file) =>
       Effect.gen(function* () {
         const read = yield* fileSystem
-          .stream(filePathFor(file.path), { bytesToRead: MAX_IMAGE_BYTES + 1 })
+          .stream(filePathFor(file.path), { bytesToRead: MAX_FILE_BYTES + 1 })
           .pipe(Stream.mkUint8Array, Effect.option);
         if (Option.isNone(read) || !isImageBytes(read.value)) return [];
         const bytes = read.value;
-        if (bytes.byteLength > MAX_IMAGE_BYTES) {
-          return yield* new HtmlRenderImageTooLargeError({
+        if (bytes.byteLength > MAX_FILE_BYTES) {
+          return yield* new HtmlRenderFileTooLargeError({
             path: file.path,
             sizeBytes: bytes.byteLength,
           });
@@ -325,6 +326,83 @@ const inlineLocalImages = Effect.fn("HtmlRender.inlineLocalImages")(function* (h
     html: inlined,
     missing: files.filter((file) => !dataUris.has(file.path)).map((file) => file.path),
   };
+});
+
+// Only an explicit stylesheet link or script src is inlined, never a path that
+// merely appears in the page, and only a UTF-8 file that opts in with the asset
+// marker. A bundle such as a mock built from the web app's components is far
+// too large to pass as page text.
+const LOCAL_ASSET_TAG = new RegExp(
+  String.raw`<link\b[^>]*?\bhref\s*=\s*(["'])(${ABSOLUTE_PATH}[^"'\r\n]{0,2048}?\.css)\1[^>]*>` +
+    String.raw`|<script\b([^>]*?)\s+src\s*=\s*(["'])(${ABSOLUTE_PATH}[^"'\r\n]{0,2048}?\.m?js)\4([^>]*)>\s*</script\s*>`,
+  "gi",
+);
+const STYLESHEET_REL = /\brel\s*=\s*(["']?)stylesheet\1/i;
+
+interface LocalAsset {
+  readonly start: number;
+  readonly end: number;
+  readonly path: string;
+  readonly kind: "style" | "script";
+  readonly attributes: string;
+}
+
+const findLocalAssets = (html: string) =>
+  Array.from(html.matchAll(LOCAL_ASSET_TAG)).flatMap((match): Array<LocalAsset> => {
+    const [tag, , stylesheet, scriptBefore = "", , script, scriptAfter = ""] = match;
+    const start = match.index;
+    const end = start + tag.length;
+    if (stylesheet !== undefined) {
+      return STYLESHEET_REL.test(tag)
+        ? [{ start, end, path: stylesheet, kind: "style", attributes: "" }]
+        : [];
+    }
+    return script === undefined
+      ? []
+      : [{ start, end, path: script, kind: "script", attributes: scriptBefore + scriptAfter }];
+  });
+
+const inlineLocalAssets = Effect.fn("HtmlRender.inlineLocalAssets")(function* (html: string) {
+  const fileSystem = yield* FileSystem.FileSystem;
+  const references = findLocalAssets(html);
+  const contents = new Map<string, string>();
+  const missing: Array<string> = [];
+  for (const path of new Set(references.map((reference) => reference.path))) {
+    const info = yield* fileSystem.stat(filePathFor(path)).pipe(Effect.option);
+    if (Option.isNone(info) || info.value.type !== "File") {
+      missing.push(path);
+      continue;
+    }
+    if (Number(info.value.size) > MAX_FILE_BYTES) {
+      return yield* new HtmlRenderFileTooLargeError({ path, sizeBytes: Number(info.value.size) });
+    }
+    const text = yield* fileSystem.readFile(filePathFor(path)).pipe(
+      Effect.map((bytes) => new TextDecoder("utf-8", { fatal: true }).decode(bytes)),
+      Effect.option,
+    );
+    if (Option.isNone(text) || !text.value.startsWith(HTML_RENDER_ASSET_MARKER)) missing.push(path);
+    else contents.set(path, text.value);
+  }
+  const parts: Array<string> = [];
+  let cursor = 0;
+  for (const reference of references) {
+    const text = contents.get(reference.path);
+    if (text === undefined) continue;
+    parts.push(
+      html.slice(cursor, reference.start),
+      reference.kind === "style"
+        ? `<style>${text.replace(/<\/style/gi, "<\\/style")}</style>`
+        : `<script${reference.attributes}>${text.replace(/<\/script/gi, "<\\/script").replace(/<!--/g, "<\\!--")}</script>`,
+    );
+    cursor = reference.end;
+  }
+  parts.push(html.slice(cursor));
+  const inlined = parts.join("");
+  const inlinedBytes = Buffer.byteLength(inlined);
+  if (inlinedBytes > MAX_PAGE_BYTES) {
+    return yield* new HtmlRenderPageTooLargeError({ sizeBytes: inlinedBytes });
+  }
+  return { html: inlined, missing };
 });
 
 const MIN_PREVIEW_WIDTH = 240;
@@ -405,14 +483,25 @@ const make = Effect.gen(function* () {
   );
 
   // The bootstrap goes in first so its head scan never runs over inlined image data.
+  // Stylesheets and scripts go in last, so a bundle's own strings are never read as image paths.
   const inline = (html: string) =>
-    inlineLocalImages(injectHtmlRenderBootstrap(html)).pipe(Effect.provideContext(services));
+    inlineLocalImages(injectHtmlRenderBootstrap(html)).pipe(
+      Effect.flatMap((images) =>
+        inlineLocalAssets(images.html).pipe(
+          Effect.map((assets) => ({
+            html: assets.html,
+            missing: [...images.missing, ...assets.missing],
+          })),
+        ),
+      ),
+      Effect.provideContext(services),
+    );
 
   const prepare = Effect.fn("HtmlRender.prepare")(function* (html: string) {
     yield* rejectViewportHeight(html);
     const inlined = yield* inline(html);
     if (inlined.missing.length > 0) {
-      return yield* new HtmlRenderImagesNotFoundError({ paths: inlined.missing });
+      return yield* new HtmlRenderFilesNotFoundError({ paths: inlined.missing });
     }
     return inlined.html;
   });
@@ -497,7 +586,7 @@ const make = Effect.gen(function* () {
     return {
       ...screenshot,
       width,
-      ...(inlined.missing.length === 0 ? {} : { missingImages: inlined.missing }),
+      ...(inlined.missing.length === 0 ? {} : { missingFiles: inlined.missing }),
     } satisfies HtmlPreview;
   });
 

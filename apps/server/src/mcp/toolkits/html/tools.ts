@@ -1,5 +1,6 @@
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import {
+  HTML_RENDER_ASSET_MARKER,
   HTML_RENDER_COLUMN_WIDTH,
   HTML_RENDER_LAYOUT_GUIDE,
   HTML_RENDER_MAX_FIT_HEIGHT,
@@ -20,8 +21,7 @@ const Html = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512_0
   description: "A complete, self-contained HTML document.",
 });
 
-const PAGE_RULES =
-  'Write one self-contained document with inline <style> and <script>. Local images written as absolute file paths (src="/abs/shot.png", CSS url(/abs/bg.webp), or a JS string) are inlined automatically; remote http(s) URLs, such as a CDN chart library, load as-is.';
+const PAGE_RULES = `Write one self-contained document with inline <style> and <script>. Local images written as absolute file paths (src="/abs/shot.png", CSS url(/abs/bg.webp), or a JS string) are inlined automatically; remote http(s) URLs, such as a CDN chart library, load as-is. A <link rel="stylesheet"> or <script src> naming an absolute local .css or .js file is inlined too when the file's first line is ${HTML_RENDER_ASSET_MARKER}; that is how a large generated bundle reaches the page.`;
 
 export const HtmlPreviewTool = Tool.make("html_preview", {
   description: `Render an HTML page in T3's headless browser and get back a PNG screenshot, contentHeight (the height the page needs at this width), and its console output: log, info, warning, error, and uncaught exceptions, with stack traces pointing into page.html. console.log is a fine way to report your own checks. Use it to check and iterate on a page before html_render. The first preview on a machine can report that T3 is still installing its preview browser; call again a minute later. ${PAGE_RULES} The page gets the theme variables and layout described in html_render.`,
@@ -48,7 +48,7 @@ export const HtmlPreviewTool = Tool.make("html_preview", {
         text: Schema.String,
       }),
     ),
-    missingImages: Schema.optional(Schema.Array(Schema.String)),
+    missingFiles: Schema.optional(Schema.Array(Schema.String)),
     screenshot: Schema.Struct({
       mimeType: Schema.Literal("image/png"),
       data: Schema.String,

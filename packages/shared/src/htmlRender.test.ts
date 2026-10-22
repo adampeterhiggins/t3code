@@ -1,13 +1,27 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  htmlRenderTheme,
   injectHtmlRenderBootstrap,
   readHtmlRenderImageRequest,
   readHtmlRenderLinkRequest,
 } from "./htmlRender.ts";
+import { T3_CODE_DARK_THEME_COLORS } from "./themePalettes.ts";
 import { htmlRenderFromToolItem } from "./toolOutput.ts";
 
 const reference = { attachmentId: "thread-abc-123.html", title: "Chart", height: 420 };
+
+describe("htmlRenderTheme", () => {
+  it("carries the whole palette under the web app's theme variables", () => {
+    const colors = { ...T3_CODE_DARK_THEME_COLORS, canvas: "#282a36", accent: "#bd93f9" };
+    const { variables } = htmlRenderTheme(colors, "dark");
+
+    expect(variables["--app-theme-canvas"]).toBe("#282a36");
+    expect(variables["--app-theme-accent"]).toBe("#bd93f9");
+    expect(variables["--app-theme-terminal-ansi-15"]).toBe(colors.terminalAnsiBrightWhite);
+    expect(variables["--background"]).toBe("#282a36");
+  });
+});
 
 describe("injectHtmlRenderBootstrap", () => {
   it("puts the theme ahead of the page's own head content", () => {

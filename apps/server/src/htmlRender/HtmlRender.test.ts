@@ -4,6 +4,7 @@ import { assert, describe, expect, it } from "@effect/vitest";
 import { EnvironmentId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { HTML_RENDER_ASSET_MARKER } from "@t3tools/shared/htmlRender";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -92,6 +93,40 @@ describe("HtmlRender", () => {
     }).pipe(Effect.provide(layerTest)),
   );
 
+  it.effect("inlines marked local stylesheets and scripts, and nothing else", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const htmlRender = yield* HtmlRender.HtmlRender;
+      const directory = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-html-assets-" });
+      const css = path.join(directory, "mock.css");
+      const js = path.join(directory, "mock.js");
+      const secret = path.join(directory, "config.js");
+      yield* fileSystem.writeFileString(css, `${HTML_RENDER_ASSET_MARKER}\n.a{color:red}`);
+      yield* fileSystem.writeFileString(
+        js,
+        `${HTML_RENDER_ASSET_MARKER}\nconst s = "</script><!--"; const p = "/missing.png";`,
+      );
+      yield* fileSystem.writeFileString(secret, "export const API_KEY = 'abc123';");
+
+      const prepared = yield* htmlRender.prepare(
+        `<link rel="stylesheet" href="${css}"><div id="root"></div><script type="module" src="${js}"></script>`,
+      );
+
+      expect(prepared).toContain(`<style>${HTML_RENDER_ASSET_MARKER}\n.a{color:red}</style>`);
+      expect(prepared).toContain(
+        `const s = "<\\/script><\\!--"; const p = "/missing.png";</script>`,
+      );
+      expect(prepared).toContain('<script type="module">');
+      expect(prepared).not.toContain(directory);
+
+      const error = yield* htmlRender
+        .prepare(`<script src="${secret}"></script><link rel="icon" href="${css}">`)
+        .pipe(Effect.flip);
+      expect(error._tag === "HtmlRenderFilesNotFoundError" && error.paths).toEqual([secret]);
+    }).pipe(Effect.provide(layerTest)),
+  );
+
   it.effect("rejects viewport height units, which make the fitted frame grow without end", () =>
     Effect.gen(function* () {
       const htmlRender = yield* HtmlRender.HtmlRender;
@@ -168,8 +203,8 @@ describe("HtmlRender", () => {
         )
         .pipe(Effect.flip);
 
-      expect(error).toBeInstanceOf(HtmlRender.HtmlRenderImagesNotFoundError);
-      expect(error._tag === "HtmlRenderImagesNotFoundError" && error.paths).toEqual([
+      expect(error).toBeInstanceOf(HtmlRender.HtmlRenderFilesNotFoundError);
+      expect(error._tag === "HtmlRenderFilesNotFoundError" && error.paths).toEqual([
         missing,
         folder,
         "C:\\nope\\shot.webp",

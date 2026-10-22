@@ -7,8 +7,8 @@ import * as McpToolAccess from "../../McpToolAccess.ts";
 import { HtmlPreviewToolkit, HtmlRenderToolkit, type HtmlToolkit } from "./tools.ts";
 
 const INVALID_PAGE_ERRORS = new Set([
-  "HtmlRenderImagesNotFoundError",
-  "HtmlRenderImageTooLargeError",
+  "HtmlRenderFilesNotFoundError",
+  "HtmlRenderFileTooLargeError",
   "HtmlRenderPageTooLargeError",
   "HtmlRenderViewportHeightError",
 ]);

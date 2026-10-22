@@ -15,6 +15,7 @@ import {
   RESERVED_THEME_IDS,
   TERMINAL_ANSI_ROLES,
   THEME_COLOR_ROLES,
+  THEME_COLOR_VARIABLES,
   type ThemeAppearance,
   type ThemeColorRole,
   type ThemeColors,
@@ -1391,88 +1392,8 @@ export function serializeThemeFile(theme: ThemeDefinition): string {
   return `${JSON.stringify(file, null, 2)}\n`;
 }
 
-const APP_THEME_VARIABLES: Readonly<Record<ThemeColorRole, string>> = {
-  canvas: "--app-theme-canvas",
-  chrome: "--app-theme-chrome",
-  toolbar: "--app-theme-toolbar",
-  toolbarForeground: "--app-theme-toolbar-foreground",
-  toolbarBorder: "--app-theme-toolbar-border",
-  toolbarControl: "--app-theme-toolbar-control",
-  toolbarControlForeground: "--app-theme-toolbar-control-foreground",
-  toolbarControlHover: "--app-theme-toolbar-control-hover",
-  surface: "--app-theme-surface",
-  surfaceRaised: "--app-theme-surface-raised",
-  surfaceOverlay: "--app-theme-surface-overlay",
-  text: "--app-theme-text",
-  textMuted: "--app-theme-text-muted",
-  border: "--app-theme-border",
-  input: "--app-theme-input",
-  focus: "--app-theme-focus",
-  accent: "--app-theme-accent",
-  accentForeground: "--app-theme-accent-foreground",
-  secondary: "--app-theme-secondary",
-  secondaryForeground: "--app-theme-secondary-foreground",
-  muted: "--app-theme-muted",
-  mutedForeground: "--app-theme-muted-foreground",
-  placeholder: "--app-theme-placeholder",
-  secondaryLabel: "--app-theme-secondary-label",
-  iconMuted: "--app-theme-icon-muted",
-  error: "--app-theme-error",
-  errorForeground: "--app-theme-error-foreground",
-  errorSurface: "--app-theme-error-surface",
-  warning: "--app-theme-warning",
-  warningForeground: "--app-theme-warning-foreground",
-  warningSurface: "--app-theme-warning-surface",
-  update: "--app-theme-update",
-  updateForeground: "--app-theme-update-foreground",
-  updateSurface: "--app-theme-update-surface",
-  accentSurface: "--app-theme-accent-surface",
-  accentSurfaceForeground: "--app-theme-accent-surface-foreground",
-  messageSurface: "--app-theme-message-surface",
-  messageForeground: "--app-theme-message-foreground",
-  messageAction: "--app-theme-message-action",
-  messageActionForeground: "--app-theme-message-action-foreground",
-  messageActionHover: "--app-theme-message-action-hover",
-  codeBackground: "--app-theme-code-background",
-  codeForeground: "--app-theme-code-foreground",
-  searchMatchBackground: "--app-theme-search-match-background",
-  searchMatchForeground: "--app-theme-search-match-foreground",
-  searchMatchActiveBackground: "--app-theme-search-match-active-background",
-  searchMatchActiveForeground: "--app-theme-search-match-active-foreground",
-  sidebar: "--app-theme-sidebar",
-  sidebarForeground: "--app-theme-sidebar-foreground",
-  sidebarMutedForeground: "--app-theme-sidebar-muted-foreground",
-  sidebarControlSurface: "--app-theme-sidebar-control-surface",
-  sidebarRowHover: "--app-theme-sidebar-row-hover",
-  sidebarRowActive: "--app-theme-sidebar-row-active",
-  sidebarRowSelected: "--app-theme-sidebar-row-selected",
-  sidebarBorder: "--app-theme-sidebar-border",
-  terminalBackground: "--app-theme-terminal-background",
-  terminalForeground: "--app-theme-terminal-foreground",
-  terminalCursor: "--app-theme-terminal-cursor",
-  terminalSelection: "--app-theme-terminal-selection-background",
-  terminalScrollbar: "--app-theme-terminal-scrollbar",
-  terminalScrollbarHover: "--app-theme-terminal-scrollbar-hover",
-  terminalAnsiBlack: "--app-theme-terminal-ansi-0",
-  terminalAnsiRed: "--app-theme-terminal-ansi-1",
-  terminalAnsiGreen: "--app-theme-terminal-ansi-2",
-  terminalAnsiYellow: "--app-theme-terminal-ansi-3",
-  terminalAnsiBlue: "--app-theme-terminal-ansi-4",
-  terminalAnsiMagenta: "--app-theme-terminal-ansi-5",
-  terminalAnsiCyan: "--app-theme-terminal-ansi-6",
-  terminalAnsiWhite: "--app-theme-terminal-ansi-7",
-  terminalAnsiBrightBlack: "--app-theme-terminal-ansi-8",
-  terminalAnsiBrightRed: "--app-theme-terminal-ansi-9",
-  terminalAnsiBrightGreen: "--app-theme-terminal-ansi-10",
-  terminalAnsiBrightYellow: "--app-theme-terminal-ansi-11",
-  terminalAnsiBrightBlue: "--app-theme-terminal-ansi-12",
-  terminalAnsiBrightMagenta: "--app-theme-terminal-ansi-13",
-  terminalAnsiBrightCyan: "--app-theme-terminal-ansi-14",
-  terminalAnsiBrightWhite: "--app-theme-terminal-ansi-15",
-};
-
 export function getThemeColorVariable(role: ThemeColorRole): string {
-  return APP_THEME_VARIABLES[role];
+  return THEME_COLOR_VARIABLES[role];
 }
 
 export const THEME_PREVIEW_ID = "__preview";
@@ -1488,7 +1409,7 @@ export function applyThemeColorPreview(colors: ThemeColors, appearance: ThemeApp
   root.dataset.themeId = THEME_PREVIEW_ID;
   root.classList.toggle("dark", appearance === "dark");
   for (const [role, value] of Object.entries(colors) as Array<[ThemeColorRole, string]>) {
-    if (isThemeColor(value)) root.style.setProperty(APP_THEME_VARIABLES[role], value);
+    if (isThemeColor(value)) root.style.setProperty(THEME_COLOR_VARIABLES[role], value);
   }
   setThemePreviewAppearance(appearance);
 }
@@ -1507,13 +1428,13 @@ export function applyThemePalette(theme: ThemePreference, appearance?: ThemeAppe
     const mode = appearance ?? legacyThemeMode(theme) ?? palette.appearance;
     const colors = getThemeColorsForMode(palette, mode) ?? palette.colors;
     for (const [role, value] of Object.entries(colors) as Array<[ThemeColorRole, string]>) {
-      root.style.setProperty(APP_THEME_VARIABLES[role], value);
+      root.style.setProperty(THEME_COLOR_VARIABLES[role], value);
     }
     return;
   }
 
   delete root.dataset.themeId;
-  for (const variable of Object.values(APP_THEME_VARIABLES)) {
+  for (const variable of Object.values(THEME_COLOR_VARIABLES)) {
     root.style.removeProperty(variable);
   }
 }

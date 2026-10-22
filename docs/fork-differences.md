@@ -2307,3 +2307,18 @@ See [the user guide](user/keybindings.md#quick-message).
 Code: [DesktopQuickMessage.ts](../apps/desktop/src/quickMessage/DesktopQuickMessage.ts),
 [QuickMessagePanel.tsx](../apps/web/src/components/quickMessage/QuickMessagePanel.tsx), and
 [QuickMessageCoordinator.tsx](../apps/web/src/components/desktop/QuickMessageCoordinator.tsx).
+
+## HTML pages can link a generated bundle
+
+`html_preview` and `html_render` also inline a local stylesheet or script that a page links by
+absolute path (`<link rel="stylesheet" href="/abs/x.css">`, `<script src="/abs/x.js">`), when
+the file's first line is the asset marker. Upstream inlines only local images. This lets
+`vp run render-mock` build feature mocks from the web app's real components and stylesheet, a
+bundle too large to pass as page text. The page theme also carries the reader's whole palette
+under the web app's `--app-theme-*` names, so such a mock wears the reader's theme the way the app
+does. Files without the marker are refused, so a page cannot pull
+an arbitrary `.js` or `.css` file, such as one holding secrets, off the host.
+
+Code: [HtmlRender.ts](../apps/server/src/htmlRender/HtmlRender.ts) and
+[render-mock.ts](../apps/web/scripts/render-mock.ts). Agent guide:
+[mock-t3-feature](../.agents/skills/mock-t3-feature/SKILL.md).
