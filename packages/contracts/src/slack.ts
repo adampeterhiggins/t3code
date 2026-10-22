@@ -128,6 +128,30 @@ export const SlackSearchMessagesResult = Schema.Struct({
 export type SlackSearchMessagesResult = typeof SlackSearchMessagesResult.Type;
 
 /**
+ * A search narrowed to one channel or person. `query` is the modifier Slack accepts by id
+ * (`in:<#C123>`, `from:<@U123>`), since display names do not round-trip through search.
+ */
+export const SlackSearchScope = Schema.Struct({
+  kind: Schema.Literals(["channel", "person"]),
+  /** `#name` or `@Name`, as the user would recognise it. */
+  label: Schema.String,
+  query: Schema.String,
+});
+export type SlackSearchScope = typeof SlackSearchScope.Type;
+
+export const SlackSuggestionsInput = Schema.Struct({});
+export type SlackSuggestionsInput = typeof SlackSuggestionsInput.Type;
+
+/** `slack.suggestions`: what to offer before anything is typed, from the account's own posts. */
+export const SlackSuggestionsResult = Schema.Struct({
+  /** The account's latest message in each thread it recently posted in, newest first. */
+  threads: Schema.Array(SlackMessageSummary),
+  /** The channels and people it posts with most, to narrow a search to one. */
+  scopes: Schema.Array(SlackSearchScope),
+});
+export type SlackSuggestionsResult = typeof SlackSuggestionsResult.Type;
+
+/**
  * Which message to snapshot. `thread` takes the whole thread the message belongs to (or starts),
  * with this message marked; `message` takes the message alone.
  */

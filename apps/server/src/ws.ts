@@ -2784,6 +2784,7 @@ export const layerWsRpc = (
         [WS_METHODS.slackCancelLogin]: (input) => slackAuth.cancelLogin(input),
         [WS_METHODS.slackDisconnect]: (_input) => slackAuth.disconnect,
         [WS_METHODS.slackSearchMessages]: (input) => slackApi.searchMessages(input),
+        [WS_METHODS.slackSuggestions]: (_input) => slackApi.suggestions,
         [WS_METHODS.slackGetThread]: (input) => slackApi.getThread(input),
         [WS_METHODS.slackGetLinkPreview]: (input) => slackApi.getLinkPreview(input),
         [WS_METHODS.slackSubscribeThreadLinks]: (_input) => slackThreadLinks.links,

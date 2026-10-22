@@ -7,6 +7,8 @@ import {
   type SlackMessageSummary,
   type SlackSearchMessagesInput,
   type SlackSearchMessagesResult,
+  type SlackSearchScope,
+  type SlackSuggestionsResult,
   type SlackThreadContext,
 } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
@@ -34,6 +36,8 @@ import {
 import { slackApiRequest } from "./slackWebApi.ts";
 
 const PREVIEW_MAX_CHARS = 300;
+/** Slack's page maximum: enough of the account's posts to see past one busy conversation. */
+const SUGGESTION_SEARCH_COUNT = 100;
 const TITLE_MAX_CHARS = 200;
 const NAME_CACHE_MAX = 2_000;
 /** How long a user group list is trusted before an unknown group id reads it again. */
@@ -121,6 +125,81 @@ function threadTsFromPermalink(permalink: string, ts: string): string | null {
   }
 }
 
+/** True when the message starts or sits in a thread; Slack adds `thread_ts` only then. */
+function hasThread(permalink: string): boolean {
+  try {
+    return new URL(permalink).searchParams.has("thread_ts");
+  } catch {
+    return false;
+  }
+}
+
+/** One of the account's own recent posts, as suggestions read it. */
+interface OwnPost {
+  readonly summary: SlackMessageSummary;
+  readonly isDirect: boolean;
+  readonly isGroupDirect: boolean;
+  readonly inThread: boolean;
+  readonly authorId: string | null;
+  /** For a direct message, the other person. */
+  readonly directUserId: string | null;
+}
+
+const SUGGESTED_THREADS_MAX = 10;
+const SUGGESTED_SCOPES_PER_KIND = 4;
+
+/**
+ * Turns the account's newest posts into one row per thread and the channels and people it posts
+ * with most. Direct-message chatter outside a thread is left out of the rows, since linking one
+ * line of a DM is rarely what was meant; it still counts towards who the account talks to.
+ */
+function suggestionsFromOwnPosts(posts: ReadonlyArray<OwnPost>): SlackSuggestionsResult {
+  const threads = new Map<string, SlackMessageSummary>();
+  const channels = new Map<string, { scope: SlackSearchScope; count: number }>();
+  const people = new Map<string, { scope: SlackSearchScope; count: number }>();
+  const tally = (into: typeof channels, id: string, scope: () => SlackSearchScope) => {
+    const entry = into.get(id);
+    if (entry) entry.count += 1;
+    else into.set(id, { scope: scope(), count: 1 });
+  };
+  for (const post of posts) {
+    const { summary } = post;
+    const inConversation = post.isDirect || post.isGroupDirect;
+    const root = summary.threadTs ?? (post.inThread || !inConversation ? summary.ts : null);
+    const key = `${summary.channelId}:${root}`;
+    if (root !== null && !threads.has(key)) threads.set(key, summary);
+    if (!inConversation) {
+      tally(channels, summary.channelId, () => ({
+        kind: "channel",
+        label: summary.channelLabel,
+        query: `in:<#${summary.channelId}>`,
+      }));
+    } else if (
+      post.isDirect &&
+      post.directUserId !== null &&
+      post.directUserId !== post.authorId &&
+      summary.channelLabel.startsWith("@")
+    ) {
+      const userId = post.directUserId;
+      tally(people, userId, () => ({
+        kind: "person",
+        label: summary.channelLabel,
+        query: `from:<@${userId}>`,
+      }));
+    }
+  }
+  // Sorting is stable, so ties keep the order of the newest post.
+  const top = (tallied: typeof channels) =>
+    [...tallied.values()]
+      .sort((a, b) => b.count - a.count)
+      .slice(0, SUGGESTED_SCOPES_PER_KIND)
+      .map((entry) => entry.scope);
+  return {
+    threads: [...threads.values()].slice(0, SUGGESTED_THREADS_MAX),
+    scopes: [...top(channels), ...top(people)],
+  };
+}
+
 /** A message that @mentions a user, as the mention trigger reads it. */
 export interface SlackMention {
   readonly channelId: string;
@@ -141,6 +220,8 @@ export class SlackApi extends Context.Service<
     readonly searchMessages: (
       input: SlackSearchMessagesInput,
     ) => Effect.Effect<SlackSearchMessagesResult, SlackError>;
+    /** Threads, channels, and people from the account's own recent posts: one search. */
+    readonly suggestions: Effect.Effect<SlackSuggestionsResult, SlackError>;
     readonly getThread: (
       input: SlackGetThreadInput,
     ) => Effect.Effect<SlackThreadContext, SlackError>;
@@ -230,28 +311,26 @@ export const make = Effect.gen(function* () {
     return `#${channel.name ?? channel.id}`;
   };
 
-  const searchMessages = Effect.fn("slack.search_messages")(function* (
-    input: SlackSearchMessagesInput,
-  ) {
-    const query = input.query.trim();
-    if (query.length === 0) return { messages: [] };
+  // An IM's `name` in search results is the other person's user id.
+  const directUserId = (channel: ChannelRef) =>
+    channel.is_im || channel.id.startsWith("D") ? channel.name : undefined;
+
+  const search = Effect.fn("slack.search")(function* (query: string, count: number) {
     const data = yield* call(
       "search.messages",
-      { query, count: "20", sort: "timestamp", sort_dir: "desc", highlight: "false" },
+      { query, count: String(count), sort: "timestamp", sort_dir: "desc", highlight: "false" },
       SearchData,
     );
     const matches = data.messages.matches;
-    // An IM's `name` in search results is the other person's user id.
-    const directUserId = (channel: ChannelRef) =>
-      channel.is_im || channel.id.startsWith("D") ? channel.name : undefined;
     yield* resolveNames(
       matches.flatMap((match) =>
         [match.user ?? undefined, directUserId(match.channel)].filter((id) => id !== undefined),
       ),
     );
     yield* resolveGroups(matches.flatMap((match) => mentionedGroupIds(match.text ?? "")));
-    return {
-      messages: matches.map((match): SlackMessageSummary => ({
+    return matches.map((match) => ({
+      match,
+      summary: {
         channelId: match.channel.id,
         channelLabel: channelLabel(match.channel, directUserId(match.channel)),
         ts: match.ts,
@@ -267,9 +346,32 @@ export const make = Effect.gen(function* () {
         ),
         url: match.permalink,
         postedAt: slackTsToIso(match.ts),
-      })),
-    };
+      } satisfies SlackMessageSummary,
+    }));
   });
+
+  const searchMessages = Effect.fn("slack.search_messages")(function* (
+    input: SlackSearchMessagesInput,
+  ) {
+    const query = input.query.trim();
+    if (query.length === 0) return { messages: [] };
+    const results = yield* search(query, 20);
+    return { messages: results.map((result) => result.summary) };
+  });
+
+  const suggestions = Effect.gen(function* () {
+    const results = yield* search("from:me", SUGGESTION_SEARCH_COUNT);
+    return suggestionsFromOwnPosts(
+      results.map(({ match, summary }) => ({
+        summary,
+        isDirect: match.channel.is_im === true || match.channel.id.startsWith("D"),
+        isGroupDirect: match.channel.is_mpim === true,
+        inThread: hasThread(match.permalink),
+        authorId: match.user ?? null,
+        directUserId: directUserId(match.channel) ?? null,
+      })),
+    );
+  }).pipe(Effect.withSpan("slack.suggestions"));
 
   const searchMentions = Effect.fn("slack.search_mentions")(function* (input: {
     readonly userId: string;
@@ -414,7 +516,7 @@ export const make = Effect.gen(function* () {
     return preview;
   });
 
-  return SlackApi.of({ searchMessages, searchMentions, getThread, getLinkPreview });
+  return SlackApi.of({ searchMessages, suggestions, searchMentions, getThread, getLinkPreview });
 });
 
 /** Link previews persist under the caches directory, or in memory when it cannot be used. */

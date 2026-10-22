@@ -159,6 +159,83 @@ it.effect("labels channels and direct messages and reads the thread from the per
   }).pipe(Effect.provide(harness.layer));
 });
 
+it.effect("suggests one row per thread the account posted in and who it posts with", () => {
+  const post = (ts: string, channel: Record<string, unknown>, permalink: string) => ({
+    ts,
+    text: `post ${ts}`,
+    user: "U1",
+    permalink,
+    channel,
+  });
+  const eng = { id: "C1", name: "eng" };
+  const ops = { id: "C2", name: "ops" };
+  const harness = makeHarness({
+    "search.messages": {
+      ok: true,
+      messages: {
+        matches: [
+          // Two replies in one thread: only the newest becomes a row.
+          post(
+            "1727779900.000001",
+            eng,
+            `https://acme.slack.com/archives/C1/p1?thread_ts=${PARENT_TS}`,
+          ),
+          post(
+            "1727779890.000001",
+            eng,
+            `https://acme.slack.com/archives/C1/p2?thread_ts=${PARENT_TS}`,
+          ),
+          // A channel post nobody has replied to yet is still a thread to link.
+          post("1727779880.000001", ops, "https://acme.slack.com/archives/C2/p3"),
+          // Loose DM lines are not rows, but say who the account talks to.
+          post(
+            "1727779870.000001",
+            { id: "D2", name: "U2", is_im: true },
+            "https://acme.slack.com/archives/D2/p4",
+          ),
+          post(
+            "1727779860.000001",
+            { id: "D2", name: "U2", is_im: true },
+            "https://acme.slack.com/archives/D2/p5",
+          ),
+          // A DM thread is a row; a note to self is not a person.
+          post(
+            "1727779850.000001",
+            { id: "D1", name: "U1", is_im: true },
+            "https://acme.slack.com/archives/D1/p6?thread_ts=1727779850.000001",
+          ),
+          post(
+            "1727779840.000001",
+            { id: "G1", name: "mpdm-a", is_mpim: true },
+            "https://acme.slack.com/archives/G1/p7",
+          ),
+          post("1727779830.000001", eng, "https://acme.slack.com/archives/C1/p8"),
+        ],
+      },
+    },
+  });
+  return Effect.gen(function* () {
+    const api = yield* SlackApi.SlackApi;
+    const result = yield* api.suggestions;
+    const search = harness.calls.find((call) => call.method === "search.messages");
+    assert.strictEqual(search?.params.get("query"), "from:me");
+    assert.deepEqual(
+      result.threads.map((message) => [message.channelLabel, message.ts]),
+      [
+        ["#eng", "1727779900.000001"],
+        ["#ops", "1727779880.000001"],
+        ["@Ada", "1727779850.000001"],
+        ["#eng", "1727779830.000001"],
+      ],
+    );
+    assert.deepEqual(result.scopes, [
+      { kind: "channel", label: "#eng", query: "in:<#C1>" },
+      { kind: "channel", label: "#ops", query: "in:<#C2>" },
+      { kind: "person", label: "@Grace", query: "from:<@U2>" },
+    ]);
+  }).pipe(Effect.provide(harness.layer));
+});
+
 it.effect("snapshots a whole thread with the linked message marked and mentions resolved", () => {
   const harness = makeHarness();
   return Effect.gen(function* () {

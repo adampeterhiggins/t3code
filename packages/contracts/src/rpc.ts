@@ -141,6 +141,8 @@ import {
   SlackSearchMessagesInput,
   SlackSearchMessagesResult,
   SlackStartLoginInput,
+  SlackSuggestionsInput,
+  SlackSuggestionsResult,
   SlackThreadContext,
   SlackLinkThreadInput,
   SlackThreadLink,
@@ -758,6 +760,7 @@ export const WS_METHODS = {
   slackCancelLogin: "slack.cancelLogin",
   slackDisconnect: "slack.disconnect",
   slackSearchMessages: "slack.searchMessages",
+  slackSuggestions: "slack.suggestions",
   slackGetThread: "slack.getThread",
   slackGetLinkPreview: "slack.getLinkPreview",
   slackSubscribeThreadLinks: "slack.subscribeThreadLinks",
@@ -1245,6 +1248,12 @@ const WsSlackDisconnectRpc = Rpc.make(WS_METHODS.slackDisconnect, {
 const WsSlackSearchMessagesRpc = Rpc.make(WS_METHODS.slackSearchMessages, {
   payload: SlackSearchMessagesInput,
   success: SlackSearchMessagesResult,
+  error: SlackRpcError,
+});
+
+const WsSlackSuggestionsRpc = Rpc.make(WS_METHODS.slackSuggestions, {
+  payload: SlackSuggestionsInput,
+  success: SlackSuggestionsResult,
   error: SlackRpcError,
 });
 
@@ -2771,6 +2780,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsSlackCancelLoginRpc,
   WsSlackDisconnectRpc,
   WsSlackSearchMessagesRpc,
+  WsSlackSuggestionsRpc,
   WsSlackGetThreadRpc,
   WsSlackGetLinkPreviewRpc,
   WsSlackSubscribeThreadLinksRpc,

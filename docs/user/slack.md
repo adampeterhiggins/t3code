@@ -54,8 +54,9 @@ Without this setting, approval uses the existing local callback. If that page ca
 - Paste or type a Slack message link (**Copy link** on a message in Slack) into the composer on
   web or desktop. It turns into a chip once the thread loads. A link to a channel stays a link.
 - Click the paperclip and choose **Slack message**. Search with Slack's own syntax, like
-  `in:#eng from:@priya retry`. Right-click a result and choose **Attach only this message** to
-  leave out the rest of its thread.
+  `in:#eng from:@priya retry`. Before you type, it lists the threads you posted in most recently,
+  and buttons for the channels and people you talk to most narrow the search to one of them.
+  Right-click a result and choose **Attach only this message** to leave out the rest of its thread.
 - Type `#` and a word, then switch to the **Slack** tab. It appears once Slack is connected.
 - On web and desktop, run **Attach Slack message** from the command palette.
 - On mobile, tap **+** in the composer and choose **Slack message**.

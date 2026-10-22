@@ -188,6 +188,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.granolaUnlinkThread]: AuthOrchestrationOperateScope,
   [WS_METHODS.slackSubscribeState]: AuthOrchestrationReadScope,
   [WS_METHODS.slackSearchMessages]: AuthOrchestrationReadScope,
+  [WS_METHODS.slackSuggestions]: AuthOrchestrationReadScope,
   [WS_METHODS.slackGetThread]: AuthOrchestrationReadScope,
   [WS_METHODS.slackGetLinkPreview]: AuthOrchestrationReadScope,
   [WS_METHODS.slackSubscribeThreadLinks]: AuthOrchestrationReadScope,
