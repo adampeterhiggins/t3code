@@ -9,6 +9,14 @@ import {
 } from "@t3tools/contracts";
 import {
   ArchiveIcon,
+  ArrowDownUpIcon,
+  CalendarArrowDownIcon,
+  CalendarArrowUpIcon,
+  ClockIcon,
+  GitBranchIcon,
+  HistoryIcon,
+  Maximize2Icon,
+  Minimize2Icon,
   ArrowDownIcon,
   ArrowUpIcon,
   ChevronDownIcon,
@@ -31,6 +39,7 @@ import { connectionAtomRuntime } from "../../connection/runtime";
 import { requestConfirmDialog } from "../../confirmDialog";
 import { useClientSettings } from "../../hooks/useSettings";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
+import { useIsMobile } from "../../hooks/useMediaQuery";
 import { formatBytes } from "../../lib/formatBytes";
 import { cn } from "../../lib/utils";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -40,6 +49,7 @@ import {
   PullRequestFilterRadioSubmenu,
   type PullRequestFilterOption,
 } from "../pullRequest/PullRequestListFilters";
+import { PullRequestCompactFilterMenu } from "../pullRequest/PullRequestCompactFilterMenu";
 import { PULL_REQUEST_STATE_PRESENTATION, PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -367,6 +377,76 @@ function AppliedWorktreeFilters({
   return <div className="flex flex-wrap items-center gap-1">{pills}</div>;
 }
 
+const SORT_OPTIONS = [
+  { value: "updated:desc", label: "Recently updated", Icon: ClockIcon },
+  { value: "updated:asc", label: "Least recently updated", Icon: HistoryIcon },
+  { value: "created:desc", label: "Newest", Icon: CalendarArrowDownIcon },
+  { value: "created:asc", label: "Oldest", Icon: CalendarArrowUpIcon },
+  { value: "size:desc", label: "Largest", Icon: Maximize2Icon },
+  { value: "size:asc", label: "Smallest", Icon: Minimize2Icon },
+  { value: "project:asc", label: "Project", Icon: FolderIcon },
+  { value: "worktree:asc", label: "Branch", Icon: GitBranchIcon },
+  { value: "state:desc", label: "State", Icon: CircleDotIcon },
+  { value: "checkout:desc", label: "Checkout", Icon: CircleCheckIcon },
+] as const satisfies ReadonlyArray<
+  PullRequestFilterOption<`${WorktreeSortColumn}:${WorktreeSort["direction"]}`>
+>;
+
+function StateLabel({ state }: { state: ManagedWorktree["state"] }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", STATE_DOT[state])} />
+      {STATE_OPTIONS.find((option) => option.value === state)?.label}
+    </span>
+  );
+}
+
+function ThreadSummary({
+  environmentId,
+  threads,
+}: {
+  environmentId: EnvironmentId;
+  threads: ManagedWorktree["threads"];
+}) {
+  const [first, ...others] = threads;
+  if (!first) return <div className="truncate text-muted-foreground/70">No thread</div>;
+  return (
+    <Link
+      to="/$environmentId/$threadId"
+      params={{ environmentId, threadId: first.threadId }}
+      className="block truncate text-muted-foreground hover:text-foreground hover:underline"
+    >
+      {first.title}
+      {others.length > 0 ? (
+        <span className="text-muted-foreground/70"> +{others.length}</span>
+      ) : null}
+    </Link>
+  );
+}
+
+function SizeControl({
+  bytes,
+  measuring,
+  onMeasure,
+}: {
+  bytes: number | null | undefined;
+  measuring: boolean;
+  onMeasure: () => void;
+}) {
+  if (measuring) return <span className="text-muted-foreground">Measuring…</span>;
+  if (typeof bytes === "number") return <span className="tabular-nums">{formatBytes(bytes)}</span>;
+  return (
+    <Button
+      size="micro"
+      variant="ghost-muted"
+      aria-label={bytes === null ? "Size unavailable. Measure again" : undefined}
+      onClick={onMeasure}
+    >
+      {bytes === null ? "Retry" : "Measure"}
+    </Button>
+  );
+}
+
 function removalNotice(results: WorktreeInventoryRemoveResult["results"]): string {
   const removed = results.filter((entry) => entry.outcome === "removed").length;
   const refused = results.filter((entry) => entry.outcome !== "removed");
@@ -386,6 +466,8 @@ function WorktreesOnEnvironment({
   const remove = useAtomCommand(removeWorktrees);
   const canRemove = useAtomValue(removeWorktrees.permissionAtom(environmentId));
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
+  // Phones get cards: the table needs more width than they have.
+  const narrow = useIsMobile();
   const [dateFormats, setDateFormats] = useLocalStorage(
     DATE_FORMATS_STORAGE_KEY,
     DEFAULT_WORKTREE_DATE_FORMATS,
@@ -494,6 +576,15 @@ function WorktreesOnEnvironment({
         ? { column, direction: current.direction === "asc" ? "desc" : "asc" }
         : { column, direction: defaultSortDirection(column) },
     );
+  const toggleAll = () =>
+    setSelected(allSelected ? new Set() : new Set(removable.map((entry) => entry.path)));
+  const toggleOne = (path: string, checked: boolean) =>
+    setSelected((current) => {
+      const next = new Set(current);
+      if (checked) next.add(path);
+      else next.delete(path);
+      return next;
+    });
   const setDateFormat = (column: "created" | "updated") => (format: WorktreeDateFormat) =>
     setDateFormats((current) => ({ ...current, [column]: format }));
 
@@ -522,6 +613,23 @@ function WorktreesOnEnvironment({
               aria-label="Search worktrees"
             />
           </InputGroup>
+          {narrow ? (
+            <PullRequestCompactFilterMenu
+              label="Sort worktrees"
+              triggerIcon={<ArrowDownUpIcon aria-hidden className="size-4" />}
+              triggerLabel="Sort"
+              outlined
+              value={`${sort.column}:${sort.direction}`}
+              options={SORT_OPTIONS}
+              onChange={(next) => {
+                const [column, direction] = next.split(":") as [
+                  WorktreeSortColumn,
+                  WorktreeSort["direction"],
+                ];
+                setSort({ column, direction });
+              }}
+            />
+          ) : null}
           <WorktreeFiltersMenu worktrees={worktrees} filters={filters} onFilters={setFilters} />
           <Button
             variant="outline"
@@ -574,6 +682,80 @@ function WorktreesOnEnvironment({
         </p>
       ) : worktrees.length === 0 ? (
         <p className="px-3 text-sm text-muted-foreground sm:px-4">No managed worktrees.</p>
+      ) : narrow ? (
+        <div className="border-t border-border/50">
+          <label className="flex items-center gap-2.5 border-b border-border/50 px-3 py-2 text-xs text-muted-foreground">
+            <Checkbox
+              checked={allSelected}
+              indeterminate={selectedVisible.length > 0 && !allSelected}
+              disabled={busy || !canRemove || removable.length === 0}
+              onCheckedChange={toggleAll}
+            />
+            Select all removable
+          </label>
+          {visible.length === 0 ? (
+            <p className="px-3 py-4 text-center text-xs text-muted-foreground">
+              No worktrees match these filters.
+            </p>
+          ) : (
+            visible.map((entry) => {
+              const safe = worktreeRemovable(entry);
+              return (
+                <div
+                  key={entry.path}
+                  className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-2.5 gap-y-1 border-b border-border/50 px-3 py-2.5 text-xs last:border-0"
+                >
+                  <Checkbox
+                    className="mt-0.5"
+                    aria-label={`Select ${entry.branch ?? entry.path}`}
+                    checked={safe && selected.has(entry.path)}
+                    disabled={busy || !canRemove || !safe}
+                    onCheckedChange={(checked) => toggleOne(entry.path, checked)}
+                  />
+                  <div className="min-w-0">
+                    <div className="truncate font-medium">
+                      {entry.branch ?? <span className="text-muted-foreground">Detached HEAD</span>}
+                    </div>
+                    <div className="flex min-w-0 gap-1 text-muted-foreground">
+                      <span className="shrink-0">{entry.repositoryName} ·</span>
+                      <ThreadSummary environmentId={environmentId} threads={entry.threads} />
+                    </div>
+                  </div>
+                  <SizeControl
+                    bytes={sizes[entry.path]}
+                    measuring={measuring.has(entry.path)}
+                    onMeasure={() => void measure([entry.path])}
+                  />
+                  <div className="col-start-2 col-end-4 flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <StateLabel state={entry.state} />
+                    {safe ? null : <CheckoutCell checkout={worktreeCheckout(entry)} />}
+                    {entry.pullRequest ? <PullRequestCell pullRequest={entry.pullRequest} /> : null}
+                    <span className="ml-auto text-muted-foreground tabular-nums">
+                      updated{" "}
+                      {formatWorktreeDate(
+                        entry.updatedAt,
+                        dateFormats.updated,
+                        timestampFormat,
+                        loadedAtMs,
+                      )}
+                    </span>
+                    {safe && canRemove ? (
+                      <Button
+                        size="icon-xs"
+                        variant="ghost-destructive"
+                        aria-label={`Remove ${entry.branch ?? entry.path}`}
+                        disabled={busy}
+                        onClick={() => void prune([entry.path])}
+                      >
+                        <Trash2Icon />
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
       ) : (
         <Table className="min-w-[48rem] table-fixed">
           <colgroup>
@@ -597,11 +779,7 @@ function WorktreesOnEnvironment({
                   checked={allSelected}
                   indeterminate={selectedVisible.length > 0 && !allSelected}
                   disabled={busy || !canRemove || removable.length === 0}
-                  onCheckedChange={() =>
-                    setSelected(
-                      allSelected ? new Set() : new Set(removable.map((entry) => entry.path)),
-                    )
-                  }
+                  onCheckedChange={toggleAll}
                 />
               </TableHead>
               <SortableHead column="worktree" sort={sort} onSort={toggleSort}>
@@ -654,8 +832,6 @@ function WorktreesOnEnvironment({
               visible.map((entry) => {
                 const checkout = worktreeCheckout(entry);
                 const safe = checkout === "clean";
-                const bytes = sizes[entry.path];
-                const [firstThread, ...otherThreads] = entry.threads;
                 return (
                   <TableRow
                     key={entry.path}
@@ -668,14 +844,7 @@ function WorktreesOnEnvironment({
                         aria-label={`Select ${entry.branch ?? entry.path}`}
                         checked={safe && selected.has(entry.path)}
                         disabled={busy || !canRemove || !safe}
-                        onCheckedChange={(checked) =>
-                          setSelected((current) => {
-                            const next = new Set(current);
-                            if (checked) next.add(entry.path);
-                            else next.delete(entry.path);
-                            return next;
-                          })
-                        }
+                        onCheckedChange={(checked) => toggleOne(entry.path, checked)}
                       />
                     </TableCell>
                     <TableCell>
@@ -690,23 +859,7 @@ function WorktreesOnEnvironment({
                         </TooltipTrigger>
                         <TooltipPopup side="top">{entry.path}</TooltipPopup>
                       </Tooltip>
-                      {firstThread ? (
-                        <Link
-                          to="/$environmentId/$threadId"
-                          params={{ environmentId, threadId: firstThread.threadId }}
-                          className="block truncate text-muted-foreground hover:text-foreground hover:underline"
-                        >
-                          {firstThread.title}
-                          {otherThreads.length > 0 ? (
-                            <span className="text-muted-foreground/70">
-                              {" "}
-                              +{otherThreads.length}
-                            </span>
-                          ) : null}
-                        </Link>
-                      ) : (
-                        <div className="truncate text-muted-foreground/70">No thread</div>
-                      )}
+                      <ThreadSummary environmentId={environmentId} threads={entry.threads} />
                     </TableCell>
                     <TableCell>
                       <div className="truncate text-muted-foreground">{entry.repositoryName}</div>
@@ -715,13 +868,7 @@ function WorktreesOnEnvironment({
                       <PullRequestCell pullRequest={entry.pullRequest} />
                     </TableCell>
                     <TableCell>
-                      <span className="flex items-center gap-1.5">
-                        <span
-                          aria-hidden
-                          className={cn("size-1.5 shrink-0 rounded-full", STATE_DOT[entry.state])}
-                        />
-                        {STATE_OPTIONS.find((option) => option.value === entry.state)?.label}
-                      </span>
+                      <StateLabel state={entry.state} />
                     </TableCell>
                     <TableCell>
                       <CheckoutCell checkout={checkout} />
@@ -744,28 +891,11 @@ function WorktreesOnEnvironment({
                       </TableCell>
                     ))}
                     <TableCell className="text-right">
-                      {measuring.has(entry.path) ? (
-                        <span className="text-muted-foreground">Measuring…</span>
-                      ) : bytes === undefined ? (
-                        <Button
-                          size="micro"
-                          variant="ghost-muted"
-                          onClick={() => void measure([entry.path])}
-                        >
-                          Measure
-                        </Button>
-                      ) : bytes === null ? (
-                        <Button
-                          size="micro"
-                          variant="ghost-muted"
-                          aria-label="Size unavailable. Measure again"
-                          onClick={() => void measure([entry.path])}
-                        >
-                          Retry
-                        </Button>
-                      ) : (
-                        <span className="tabular-nums">{formatBytes(bytes)}</span>
-                      )}
+                      <SizeControl
+                        bytes={sizes[entry.path]}
+                        measuring={measuring.has(entry.path)}
+                        onMeasure={() => void measure([entry.path])}
+                      />
                     </TableCell>
                     <TableCell>
                       {safe && canRemove ? (
