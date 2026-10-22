@@ -4932,10 +4932,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     }
                     citationSendQueues={citationSendDispatchMode === "queue"}
                     citationDestinations={
-                      onSendCitationElsewhere && activeThreadId
+                      onSendCitationElsewhere && activeThreadId && activeProjectId
                         ? {
                             environmentId,
                             threadId: activeThreadId,
+                            projectId: activeProjectId,
+                            modelSelection: selectedModelSelection,
                             followUpBehavior: settings.followUpBehavior,
                             onSubmit: onSendCitationElsewhere,
                           }
