@@ -1050,6 +1050,8 @@ permalink, the attach menu's picker (Slack search syntax, right-click for the me
 server renders the thread to capped markdown when it is attached. That markdown always keeps the
 first message and the linked one, fills the rest newest first, and resolves user and user group
 mentions to names (groups through `usergroups.list`, which needs `usergroups:read`).
+Slack mrkdwn is translated first (`*bold*` to bold, `~strike~` to strikethrough), so the hover
+card and the prompt show the same emphasis Slack does.
 The snapshot is inlined into the prompt for every provider. The snapshot also carries the messages
 that markdown kept, with each author's avatar, so the web and desktop hover card
 ([`ChatThreadDetails`](../apps/web/src/components/ChatThreadDetails.tsx)) draws the thread the way

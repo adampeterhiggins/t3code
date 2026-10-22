@@ -47,18 +47,126 @@ function convertToken(
 }
 
 /**
- * Converts Slack mrkdwn's angle-bracket tokens (mentions, channel links,
- * broadcasts, links) to markdown and decodes Slack's three HTML entities.
- * `names` maps user ids to the names to show, and `groups` user group ids to their handles.
+ * Converts Slack mrkdwn to markdown. Angle-bracket tokens (mentions, channel
+ * links, broadcasts, links) become markdown, and Slack's three HTML entities
+ * are decoded. `names` maps user ids to the names to show, and `groups` user
+ * group ids to their handles.
+ *
+ * Slack writes bold as `*text*` and strike as `~text~`. CommonMark reads a
+ * single `*` as italic and does not strike `~text~`, so the hover card would
+ * show Slack's bold in italics. Italic underscores and inline code already
+ * agree with CommonMark, so they stay. Code and links are left untouched:
+ * Slack does not format inside them, and a `*` in a URL is not emphasis.
  */
 export function slackTextToMarkdown(
   text: string,
   names: ReadonlyMap<string, string>,
   groups: ReadonlyMap<string, string> = new Map(),
 ): string {
-  return decodeEntities(
-    text.replace(/<([^<>]+)>/g, (_, body: string) => convertToken(body, names, groups)),
+  return mapOutsideCode(
+    text,
+    (part) =>
+      translateMrkdwn(
+        decodeEntities(
+          part.replace(/<([^<>]+)>/g, (_, body: string) => convertToken(body, names, groups)),
+        ),
+      ),
+    decodeEntities,
   );
+}
+
+/** Drops the bold and strike markers added for markdown, for a plain label. */
+export function slackMarkdownToPlain(text: string): string {
+  return mapOutsideCode(text, (part) => part.replaceAll("**", "").replaceAll("~~", ""));
+}
+
+/** Copies fenced and inline code through unchanged. Slack does not format inside either. */
+function mapOutsideCode(
+  text: string,
+  plain: (part: string) => string,
+  code: (part: string) => string = (part) => part,
+): string {
+  const spans = /```[\s\S]*?```|`[^`\n]*`/g;
+  let out = "";
+  let last = 0;
+  for (const match of text.matchAll(spans)) {
+    const index = match.index ?? last;
+    out += plain(text.slice(last, index));
+    out += code(match[0]);
+    last = index + match[0].length;
+  }
+  return out + plain(text.slice(last));
+}
+
+function translateMrkdwn(text: string): string {
+  const stash: Array<string> = [];
+  const held = text.replace(/\[[^\]\n]*\]\([^)\n]*\)|https?:\/\/[^\s<>)\]]+/g, (link) => {
+    stash.push(link);
+    return `\uE000${stash.length - 1}\uE000`;
+  });
+  const formatted = replaceMarker(
+    replaceMarker(held, "~", (inner) => `~~${inner}~~`),
+    "*",
+    (inner) => `**${inner}**`,
+  );
+  return formatted.replace(/\uE000(\d+)\uE000/g, (_, index: string) => stash[Number(index)] ?? "");
+}
+
+function replaceMarker(text: string, marker: "*" | "~", wrap: (inner: string) => string): string {
+  return text
+    .split("\n")
+    .map((line) => replaceMarkerInLine(line, marker, wrap))
+    .join("\n");
+}
+
+/** Letters and digits bind a marker to a word. Punctuation, as in Slack, does not. */
+function isWordChar(char: string | undefined): boolean {
+  return char !== undefined && /[\p{L}\p{N}]/u.test(char);
+}
+
+function canOpen(line: string, index: number, marker: string): boolean {
+  const next = line[index + 1];
+  if (next === undefined || next === marker || /\s/.test(next)) return false;
+  if (index === 0) return true;
+  const prev = line[index - 1]!;
+  return prev !== marker && !isWordChar(prev);
+}
+
+function findClose(line: string, from: number, marker: string): number {
+  for (let index = from; index < line.length; index++) {
+    if (line[index] !== marker) continue;
+    const prev = line[index - 1];
+    if (prev === undefined || prev === marker || /\s/.test(prev)) continue;
+    const next = line[index + 1];
+    if (isWordChar(next)) continue;
+    return index;
+  }
+  return -1;
+}
+
+function replaceMarkerInLine(
+  line: string,
+  marker: "*" | "~",
+  wrap: (inner: string) => string,
+): string {
+  let result = "";
+  let index = 0;
+  while (index < line.length) {
+    if (line[index] !== marker || !canOpen(line, index, marker)) {
+      result += line[index];
+      index += 1;
+      continue;
+    }
+    const close = findClose(line, index + 1, marker);
+    if (close === -1) {
+      result += line[index];
+      index += 1;
+      continue;
+    }
+    result += wrap(line.slice(index + 1, close));
+    index = close + 1;
+  }
+  return result;
 }
 
 /** The user group ids `text` mentions without a label, for resolving their handles. */

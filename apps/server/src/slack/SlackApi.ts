@@ -27,6 +27,7 @@ import {
   mentionedGroupIds,
   mentionedUserIds,
   renderSlackThread,
+  slackMarkdownToPlain,
   slackTextToMarkdown,
   slackTsToIso,
 } from "./slackMarkdown.ts";
@@ -260,7 +261,10 @@ export const make = Effect.gen(function* () {
           match.username ??
           match.user ??
           "Slack",
-        text: collapse(slackTextToMarkdown(match.text ?? "", names, groups), PREVIEW_MAX_CHARS),
+        text: collapse(
+          slackMarkdownToPlain(slackTextToMarkdown(match.text ?? "", names, groups)),
+          PREVIEW_MAX_CHARS,
+        ),
         url: match.permalink,
         postedAt: slackTsToIso(match.ts),
       })),
@@ -358,7 +362,7 @@ export const make = Effect.gen(function* () {
     const linkedText = slackTextToMarkdown(linked.text ?? "", names, groups);
     const title = linkedText
       .split("\n")
-      .map((line) => line.trim())
+      .map((line) => slackMarkdownToPlain(line).trim())
       .find((line) => line.length > 0);
     const rendered = renderSlackThread(
       {

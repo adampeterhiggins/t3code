@@ -228,6 +228,46 @@ it.effect("names the user groups a message mentions, reading the group list once
   }).pipe(Effect.provide(harness.layer));
 });
 
+it.effect("keeps Slack bold in the snapshot and a plain title", () => {
+  const harness = makeHarness({
+    "conversations.replies": {
+      ok: true,
+      messages: [
+        {
+          ts: PARENT_TS,
+          user: "U1",
+          text: "*Draft PRs are open*\n• *Preview buttons stay hidden:* `get_artefact_content`",
+        },
+      ],
+    },
+    "search.messages": {
+      ok: true,
+      messages: {
+        matches: [
+          {
+            ts: PARENT_TS,
+            text: "*Draft PRs are open*",
+            user: "U1",
+            permalink: "https://acme.slack.com/archives/C1/p1727779620000100",
+            channel: { id: "C1", name: "eng" },
+          },
+        ],
+      },
+    },
+  });
+  return Effect.gen(function* () {
+    const api = yield* SlackApi.SlackApi;
+    const context = yield* api.getThread({ ...threadInput, ts: PARENT_TS, scope: "message" });
+    assert.strictEqual(context.title, "Draft PRs are open");
+    assert.strictEqual(
+      context.messages[0]!.text,
+      "**Draft PRs are open**\n• **Preview buttons stay hidden:** `get_artefact_content`",
+    );
+    const { messages } = yield* api.searchMessages({ query: "draft" });
+    assert.strictEqual(messages[0]?.text, "Draft PRs are open");
+  }).pipe(Effect.provide(harness.layer));
+});
+
 it.effect("leaves group ids when the connection lacks the user groups scope", () => {
   const harness = makeHarness({
     "conversations.replies": { ok: true, messages: GROUP_THREAD },
