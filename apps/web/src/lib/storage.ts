@@ -13,6 +13,20 @@ export interface DeferredStorage<TValue> {
   flush: () => void;
 }
 
+/**
+ * Reading the `localStorage` property itself throws `SecurityError` when storage
+ * is blocked, or when the page is a sandboxed iframe such as an HTML render.
+ * Guard the property access, not only the get and set calls on it.
+ */
+export function browserLocalStorage(): StateStorage | null {
+  try {
+    if (typeof localStorage !== "undefined") return localStorage;
+  } catch {
+    // SecurityError: sandboxed document or blocked storage.
+  }
+  return null;
+}
+
 export function createMemoryStorage(): StateStorage {
   const store = new Map<string, string>();
   return {
