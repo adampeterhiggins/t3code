@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { faviconUrlForOrigin, toolActivityBrandMark, toolActivityFaviconUrl } from "./favicon.ts";
+import { faviconUrlForOrigin } from "./favicon.ts";
 
 describe("faviconUrlForOrigin", () => {
   it("sends only the public hostname and requested size, never the port", () => {
@@ -16,66 +16,4 @@ describe("faviconUrlForOrigin", () => {
       expect(faviconUrlForOrigin(origin)).toBeNull();
     },
   );
-});
-
-describe("toolActivityFaviconUrl", () => {
-  it("uses the page origin instead of a third-party favicon service", () => {
-    expect(toolActivityFaviconUrl({ pageUrl: "https://example.com/docs/page?q=1" }, "light")).toBe(
-      "https://example.com/favicon.ico",
-    );
-    expect(toolActivityFaviconUrl({ pageUrl: "http://localhost:5173/app" }, "light")).toBe(
-      "http://localhost:5173/favicon.ico",
-    );
-  });
-
-  it("accepts provider-supplied image URLs but rejects extension URLs", () => {
-    expect(
-      toolActivityFaviconUrl(
-        { pageUrl: "https://example.com/docs", faviconUrl: "https://example.com/icon.png" },
-        "light",
-      ),
-    ).toBe("https://example.com/icon.png");
-    expect(
-      toolActivityFaviconUrl(
-        { pageUrl: "https://example.com/docs", faviconUrl: "chrome-extension://example/_favicon/" },
-        "light",
-      ),
-    ).toBe("https://example.com/favicon.ico");
-  });
-});
-
-describe("toolActivityBrandMark", () => {
-  it("recognizes brand logos and favicon-service URLs for their domains", () => {
-    expect(
-      toolActivityBrandMark({
-        _tag: "themed-logo",
-        logoUrl: "https://www.google.com/s2/favicons?domain=linear.app&sz=64",
-      }),
-    ).toBe("linear");
-    expect(
-      toolActivityBrandMark({ _tag: "website", pageUrl: "https://linear.app/acme/issue/ENG-1" }),
-    ).toBe("linear");
-    expect(
-      toolActivityBrandMark({
-        _tag: "themed-logo",
-        logoUrl: "https://www.google.com/s2/favicons?domain=granola.ai&sz=64",
-      }),
-    ).toBe("granola");
-    expect(
-      toolActivityBrandMark({ _tag: "website", pageUrl: "https://notes.granola.ai/d/abc" }),
-    ).toBe("granola");
-  });
-
-  it("leaves other icons alone", () => {
-    expect(
-      toolActivityBrandMark({
-        _tag: "themed-logo",
-        logoUrl: "https://www.google.com/s2/favicons?domain=firecrawl.dev&sz=64",
-      }),
-    ).toBeNull();
-    expect(
-      toolActivityBrandMark({ _tag: "website", pageUrl: "https://notlinear.app/" }),
-    ).toBeNull();
-    expect(toolActivityBrandMark({ _tag: "native-app" })).toBeNull();
-  });
 });

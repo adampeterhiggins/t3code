@@ -143,6 +143,10 @@
       "types": "./src/htmlRender.ts",
       "import": "./src/htmlRender.ts"
     },
+    "./brandMarks": {
+      "types": "./src/brandMarks.ts",
+      "import": "./src/brandMarks.ts"
+    },
     "./favicon": {
       "types": "./src/favicon.ts",
       "import": "./src/favicon.ts"

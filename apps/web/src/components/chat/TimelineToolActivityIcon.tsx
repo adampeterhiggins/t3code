@@ -1,9 +1,6 @@
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { type ToolActivityIcon } from "@t3tools/contracts";
-import { toolActivityBrandMark, toolActivityFaviconUrl } from "@t3tools/shared/favicon";
-import { GranolaIcon, LinearIcon } from "~/components/Icons";
-import { getProjectFaviconCacheKey } from "@t3tools/shared/projectFavicon";
-import { use, useState } from "react";
+import { INTEGRATION_ICONS, toolActivityBrandMark } from "@t3tools/shared/brandMarks";
 import { T3Wordmark } from "../T3Wordmark";
 import {
   BotIcon,
@@ -23,15 +20,9 @@ import {
   XIcon,
   ZapIcon,
 } from "lucide-react";
-import { useAssetUrlState } from "../../assets/assetUrls";
 import { cn } from "~/lib/utils";
-import { TimelineRowCtx } from "./timelineRowContext";
 
 export const failedToolIconClassName = "text-tool-error-icon/40";
-
-export function toolIconAcceptsTint(toolIcon: ToolActivityIcon | undefined): boolean {
-  return toolIcon === undefined;
-}
 
 export type WorkEntryIconName =
   | "bot"
@@ -81,156 +72,17 @@ export function ToolActivityIconView(props: {
   className: string;
   muted: boolean;
 }) {
-  const { resolvedTheme } = use(TimelineRowCtx);
-  const fallbackClassName = cn(props.className, props.muted && "opacity-70 light:brightness-60");
-  if (!props.icon) {
-    return <WorkEntryIcon name={props.fallbackName} className={fallbackClassName} />;
-  }
-  const brandMark = toolActivityBrandMark(props.icon);
+  const className = cn(props.className, props.muted && "opacity-70 light:brightness-60");
+  const brandMark = props.icon && toolActivityBrandMark(props.icon);
   if (brandMark) {
-    const BrandIcon = brandMark === "linear" ? LinearIcon : GranolaIcon;
-    return <BrandIcon className={fallbackClassName} aria-hidden />;
-  }
-  if (props.icon._tag === "website") {
-    const src = toolActivityFaviconUrl(props.icon, resolvedTheme, 32);
-    return src ? (
-      <ToolActivityImageIcon
-        key={src}
-        cacheKey={src}
-        src={src}
-        fallbackName={props.fallbackName}
-        className={props.className}
-        muted={props.muted}
-      />
-    ) : (
-      <WorkEntryIcon name={props.fallbackName} className={fallbackClassName} />
-    );
-  }
-  if (props.icon._tag === "themed-logo") {
-    const src =
-      resolvedTheme === "dark"
-        ? (props.icon.logoUrlDark ?? props.icon.logoUrl)
-        : props.icon.logoUrl;
+    const mark = INTEGRATION_ICONS[brandMark];
     return (
-      <ToolActivityImageIcon
-        key={src}
-        cacheKey={src}
-        src={src}
-        fallbackName={props.fallbackName}
-        className={props.className}
-        muted={props.muted}
-      />
+      <svg viewBox={mark.viewBox} fill="currentColor" className={className} aria-hidden>
+        <path d={mark.path} transform={"transform" in mark ? mark.transform : undefined} />
+      </svg>
     );
   }
-  return (
-    <NativeAppToolActivityIcon
-      app={props.icon.app}
-      fallbackName={props.fallbackName}
-      className={cn(props.className, "size-5")}
-      muted={props.muted}
-    />
-  );
-}
-
-function NativeAppToolActivityIcon(props: {
-  app: Extract<ToolActivityIcon, { readonly _tag: "native-app" }>["app"];
-  fallbackName: WorkEntryIconName;
-  className: string;
-  muted: boolean;
-}) {
-  const { activeThreadEnvironmentId } = use(TimelineRowCtx);
-  const asset = useAssetUrlState(activeThreadEnvironmentId, {
-    _tag: "native-app-icon",
-    app: props.app,
-  });
-  if (asset._tag !== "Success") {
-    return (
-      <WorkEntryIcon
-        name={props.fallbackName}
-        className={cn(props.className, props.muted && "opacity-70 light:brightness-60")}
-      />
-    );
-  }
-  const cacheKey = getProjectFaviconCacheKey(
-    activeThreadEnvironmentId,
-    JSON.stringify(props.app),
-    asset.url,
-  );
-  return (
-    <ToolActivityImageIcon
-      key={cacheKey}
-      cacheKey={cacheKey}
-      src={asset.url}
-      fallbackName={props.fallbackName}
-      className={props.className}
-      muted={props.muted}
-    />
-  );
-}
-
-const loadedToolActivityIconSrcs = new Map<string, string>();
-
-function ToolActivityImageIcon(props: {
-  cacheKey: string;
-  src: string;
-  fallbackName: WorkEntryIconName;
-  className: string;
-  muted: boolean;
-}) {
-  const [displayedSrc, setDisplayedSrc] = useState<string | null>(
-    () => loadedToolActivityIconSrcs.get(props.cacheKey) ?? null,
-  );
-  const isLoading = displayedSrc !== props.src;
-  const handleLoadError = (failedSrc: string) => {
-    if (loadedToolActivityIconSrcs.get(props.cacheKey) === failedSrc) {
-      loadedToolActivityIconSrcs.delete(props.cacheKey);
-    }
-    setDisplayedSrc((currentSrc) => (currentSrc === failedSrc ? null : currentSrc));
-  };
-  return (
-    <>
-      {displayedSrc === null ? (
-        <WorkEntryIcon
-          name={props.fallbackName}
-          className={cn(props.className, props.muted && "opacity-70 light:brightness-60")}
-        />
-      ) : null}
-      {displayedSrc ? (
-        <span
-          className={cn(
-            props.className,
-            "inline-block overflow-hidden rounded-xs bg-background",
-            props.muted && "opacity-70",
-          )}
-        >
-          <img
-            src={displayedSrc}
-            alt=""
-            aria-hidden
-            decoding="async"
-            referrerPolicy="no-referrer"
-            className={cn("block size-full object-contain", props.muted && "light:brightness-60")}
-            onError={() => handleLoadError(displayedSrc)}
-          />
-        </span>
-      ) : null}
-      {isLoading ? (
-        <img
-          src={props.src}
-          alt=""
-          aria-hidden
-          decoding="async"
-          referrerPolicy="no-referrer"
-          className="hidden"
-          onLoad={() => {
-            loadedToolActivityIconSrcs.set(props.cacheKey, props.src);
-            setDisplayedSrc(props.src);
-          }}
-          onError={() => handleLoadError(props.src)}
-        />
-      ) : null}
-    </>
-  );
+  return <WorkEntryIcon name={props.fallbackName} className={className} />;
 }
 
 function WorkEntryIcon({ name, className }: { name: WorkEntryIconName; className: string }) {

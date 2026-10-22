@@ -518,6 +518,19 @@ a record of what was asked: a sent chip is never updated. See the
   [`composerContextReferences.ts`](../packages/shared/src/composerContextReferences.ts)).
 - **Mobile.** Sent chips render with their details sheet; the mobile composer has no Models tab.
 
+## Monochrome activity icons
+
+Tool calls, grouped activity summaries, and inline message links draw the provider's own brand
+mark as a monochrome SVG in the text colour, instead of a website favicon, connector logo, or
+native application badge. The mark is chosen from the connector logo's or page's domain (Linear,
+GitHub, Slack, PostHog, Google Calendar, Figma, and so on) or the app Codex computer use drives
+(Chrome, Safari, Edge, Finder, VS Code, and so on). Local development pages get a monitor mark.
+Anything without a known mark shows the symbol for its action, or a globe for links. Screenshot setup uses matching monochrome permission symbols.
+
+See [shared brand marks](../packages/shared/src/brandMarks.ts),
+[web activity icons](../apps/web/src/components/chat/TimelineToolActivityIcon.tsx), and
+[mobile activity icons](../apps/mobile/src/features/threads/thread-work-log.tsx).
+
 ## Click inline code to copy it
 
 In chat Markdown (messages, plans, agent results), clicking an inline `` `code` `` span copies its

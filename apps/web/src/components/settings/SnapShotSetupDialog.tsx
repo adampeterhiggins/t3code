@@ -6,7 +6,7 @@ import {
   type DesktopSnapShotState,
 } from "@t3tools/contracts";
 import { useState, type ReactNode } from "react";
-import { MacAccessibilityIcon, MacScreenRecordingIcon } from "../Icons";
+import { AccessibilityIcon, ScreenShareIcon } from "lucide-react";
 import { CaptureShortcutConfig } from "./CaptureShortcutConfig";
 import { Button } from "../ui/button";
 import { Dialog, DialogDescription } from "../ui/dialog";
@@ -265,7 +265,7 @@ export function SnapShotSetupDialog({
                     permissions={[
                       {
                         id: "screenRecording",
-                        icon: <MacScreenRecordingIcon className="size-8 shrink-0 drop-shadow-sm" />,
+                        icon: <ScreenShareIcon className="size-8 shrink-0" />,
                         title: "Screen Recording",
                         description: "Capture the window you're using.",
                         granted: macPermissions.screenRecording,
@@ -273,7 +273,7 @@ export function SnapShotSetupDialog({
                       },
                       {
                         id: "accessibility",
-                        icon: <MacAccessibilityIcon className="size-8 shrink-0 drop-shadow-sm" />,
+                        icon: <AccessibilityIcon className="size-8 shrink-0" />,
                         title: "Accessibility",
                         description: includeAccessibility
                           ? "Include text and controls from the captured app."
