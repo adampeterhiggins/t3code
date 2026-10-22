@@ -6,7 +6,7 @@ import {
   PersistedComposerFileAttachment,
   PersistedComposerImageAttachment,
 } from "./composerDraftStore";
-import { createMemoryStorage, type StateStorage } from "./lib/storage";
+import { browserLocalStorage, createMemoryStorage, type StateStorage } from "./lib/storage";
 
 export const PROMPT_STASH_STORAGE_KEY = "t3code:prompt-stash:v2";
 const LEGACY_PROMPT_STASH_STORAGE_KEY = "t3code:prompt-stash:v1";
@@ -87,18 +87,11 @@ export function partitionStashAttachments(
   return { kept, droppedNames };
 }
 
-/**
- * Reading the `localStorage` property itself can throw `SecurityError` when
- * storage is blocked by policy or the page is a sandboxed iframe — so the
- * access has to be guarded, not just the get/set calls on it.
- */
 function resolveBaseStorage(): { storage: StateStorage; durable: boolean } {
-  try {
-    if (typeof localStorage !== "undefined") {
-      return { storage: localStorage, durable: true };
-    }
-  } catch {}
-  return { storage: createMemoryStorage(), durable: false };
+  const storage = browserLocalStorage();
+  return storage === null
+    ? { storage: createMemoryStorage(), durable: false }
+    : { storage, durable: true };
 }
 
 const { storage: baseStashStorage, durable: storageIsDurable } = resolveBaseStorage();
