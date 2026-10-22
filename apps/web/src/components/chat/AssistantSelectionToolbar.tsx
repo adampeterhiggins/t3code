@@ -104,12 +104,15 @@ export function AssistantSelectionToolbar({
   threadRef,
   entries,
   workspaceRoot,
+  actionBottom,
   onCite,
 }: {
   viewport: HTMLElement | null;
   threadRef: ScopedThreadRef;
   entries: ReadonlyArray<TimelineEntry>;
   workspaceRoot: string | undefined;
+  /** How far up the viewport's foot the picking action sits, clear of the composer. */
+  actionBottom: number;
   onCite: (citation: AssistantCitation, sourceAnchor?: AssistantCitationSourceAnchor) => boolean;
 }) {
   const [selection, setSelection] = useState<{
@@ -351,6 +354,7 @@ export function AssistantSelectionToolbar({
     rowSelection && rowCitation ? (
       <RowSelectionPill
         pillRef={pillRef}
+        bottom={actionBottom}
         citation={rowCitation}
         onCite={() => {
           if (onCite(rowCitation)) setRowSelection(null);
@@ -424,11 +428,13 @@ export function AssistantSelectionToolbar({
 /** Row selection outlives scrolling, so its action stays put at the foot of the timeline. */
 function RowSelectionPill({
   pillRef,
+  bottom,
   citation,
   onCite,
   onDismiss,
 }: {
   pillRef: React.RefObject<HTMLDivElement | null>;
+  bottom: number;
   citation: AssistantCitation;
   onCite: () => void;
   onDismiss: () => void;
@@ -436,7 +442,10 @@ function RowSelectionPill({
   const tooLong = citation.text.length > ASSISTANT_CITATION_MAX_TEXT_LENGTH;
   const label = assistantCitationLabel(citation);
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-3 z-20 flex justify-center px-4">
+    <div
+      className="chat-selection-action pointer-events-none absolute z-30 flex justify-center px-4"
+      style={{ bottom }}
+    >
       <div ref={pillRef} className="pointer-events-auto flex min-w-0 items-center gap-1">
         <Button
           type="button"

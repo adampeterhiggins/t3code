@@ -77,6 +77,7 @@ function Timeline({
         threadRef={threadRef}
         entries={entries}
         workspaceRoot={undefined}
+        actionBottom={12}
         onCite={onCite}
       />
       {message("first", "First answer here.")}

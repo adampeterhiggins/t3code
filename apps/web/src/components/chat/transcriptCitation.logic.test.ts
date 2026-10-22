@@ -93,7 +93,7 @@ describe("buildTranscriptCitation", () => {
       ].join("\n\n"),
     );
     expect(citation?.markdown).toContain(
-      "**Tool call · Command · failed**\n\n```text\nvp test run foo.test.ts\n```\n\n```text\n1 failed\n```",
+      "**Tool call · Command · failed:** `vp test run foo.test.ts`\n\n```text\n1 failed\n```",
     );
     expect(citation?.markdown).toContain("> Assistant quote:\n> earlier answer");
     expect(citation?.end).toBe(citation?.text.length);

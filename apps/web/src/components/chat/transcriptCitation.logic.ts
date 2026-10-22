@@ -38,6 +38,15 @@ function fence(text: string): string {
   return `${marker}text\n${text}\n${marker}`;
 }
 
+/** One-line labels read inline, as the tool row shows them; anything longer gets a block. */
+function codeSpan(text: string): string {
+  if (text.includes("\n")) return fence(text);
+  const longestRun = Math.max(0, ...Array.from(text.matchAll(/`+/g), (match) => match[0].length));
+  const marker = "`".repeat(longestRun + 1);
+  const pad = text.startsWith("`") || text.endsWith("`") ? " " : "";
+  return `${marker}${pad}${text}${pad}${marker}`;
+}
+
 function truncate(text: string, length: number): string {
   return text.length > length ? `${text.slice(0, length)}…` : text;
 }
@@ -65,7 +74,7 @@ function renderTool(entry: WorkLogEntry, workspaceRoot: string | undefined) {
   const heading = ["Tool call", name, status].filter(Boolean).join(" · ");
   return {
     text: [`${heading}: ${label}`, detail].filter(Boolean).join("\n"),
-    markdown: [`**${heading}**`, fence(label), detail ? fence(detail) : null]
+    markdown: [`**${heading}:** ${codeSpan(label)}`, detail ? fence(detail) : null]
       .filter(Boolean)
       .join("\n\n"),
   };

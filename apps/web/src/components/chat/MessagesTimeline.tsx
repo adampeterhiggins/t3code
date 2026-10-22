@@ -191,6 +191,8 @@ interface MessagesTimelineProps {
     citation: AssistantCitation,
     sourceAnchor?: AssistantCitationSourceAnchor,
   ) => boolean;
+  /** Bottom offset for timeline actions that must clear the composer overlay. */
+  selectionActionBottom?: number;
   isWorking: boolean;
   runlessWorkActive?: boolean;
   activeTurnInProgress: boolean;
@@ -303,6 +305,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   citationRequest = null,
   citationHistoryLoading = false,
   onCiteAssistantText,
+  selectionActionBottom = 12,
   isWorking,
   runlessWorkActive = false,
   activeTurnInProgress,
@@ -1124,6 +1127,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
               threadRef={citationThreadRef}
               entries={timelineEntries}
               workspaceRoot={workspaceRoot}
+              actionBottom={selectionActionBottom}
               onCite={onCiteAssistantText}
             />
           ) : null}
