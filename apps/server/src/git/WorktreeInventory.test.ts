@@ -5,6 +5,7 @@ import {
   type OrchestrationV2ThreadShellSnapshot,
   DEFAULT_SERVER_SETTINGS,
 } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -19,9 +20,18 @@ import * as Workflow from "./GitWorkflowService.ts";
 import * as Inventory from "./WorktreeInventory.ts";
 
 // Only shell fields the inventory reads are needed at this service boundary.
-const thread = (worktreePath: string, running = false) =>
+const thread = (
+  worktreePath: string,
+  running = false,
+  times: { createdAt: string; updatedAt: string } = {
+    createdAt: "2026-10-01T00:00:00Z",
+    updatedAt: "2026-10-02T00:00:00Z",
+  },
+) =>
   ({
-    id: "thread",
+    id: `thread-${times.updatedAt}`,
+    createdAt: DateTime.makeUnsafe(times.createdAt),
+    updatedAt: DateTime.makeUnsafe(times.updatedAt),
     title: "Linked thread",
     projectId: "project",
     worktreePath,
@@ -131,6 +141,36 @@ describe("WorktreeInventory", () => {
         state: "active",
         threads: [{ title: "Linked thread", running: false }],
       });
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("dates a worktree by its checkout and its latest thread activity", () =>
+    Effect.gen(function* () {
+      const h = yield* harness;
+      h.setThreads([
+        thread(h.checkout, false, {
+          createdAt: "2026-10-01T00:00:00Z",
+          updatedAt: "2026-10-03T00:00:00Z",
+        }),
+        thread(h.checkout, false, {
+          createdAt: "2026-09-01T00:00:00Z",
+          updatedAt: "2026-10-09T00:00:00Z",
+        }),
+      ]);
+      const [worktree] = (yield* Inventory.WorktreeInventory.use(
+        (inventory) => inventory.list,
+      ).pipe(Effect.provide(h.layer))).worktrees;
+      expect(worktree?.updatedAt && DateTime.formatIso(worktree.updatedAt)).toBe(
+        "2026-10-09T00:00:00.000Z",
+      );
+      // The checkout's birth time where the filesystem records one, else the earliest thread.
+      expect(worktree?.createdAt).not.toBeNull();
+
+      h.setThreads([]);
+      const [unused] = (yield* Inventory.WorktreeInventory.use((inventory) => inventory.list).pipe(
+        Effect.provide(h.layer),
+      )).worktrees;
+      expect(unused?.updatedAt).toBeNull();
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 

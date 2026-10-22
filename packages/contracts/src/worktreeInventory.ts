@@ -48,6 +48,10 @@ export const ManagedWorktree = Schema.Struct({
   state: ManagedWorktreeState,
   threads: Schema.Array(ManagedWorktreeThread),
   pullRequest: Schema.NullOr(ManagedWorktreePullRequest),
+  /** When the checkout was made, else its earliest thread's start; null when neither is known. */
+  createdAt: Schema.optionalKey(Schema.NullOr(Schema.DateTimeUtc)),
+  /** Its latest thread activity; null with no thread. Optional for servers that predate it. */
+  updatedAt: Schema.optionalKey(Schema.NullOr(Schema.DateTimeUtc)),
 });
 export type ManagedWorktree = typeof ManagedWorktree.Type;
 

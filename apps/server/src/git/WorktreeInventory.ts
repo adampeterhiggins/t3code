@@ -14,9 +14,11 @@ import {
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Semaphore from "effect/Semaphore";
 
@@ -110,6 +112,32 @@ function worktreePullRequest(
     if (named !== null) return { number: named.number, url: named.url, state: null };
   }
   return null;
+}
+
+/**
+ * `git worktree add` writes the checkout's `.git` file, so its birth time is when the worktree
+ * was made. Filesystems without birth times fall back to the first thread that used it.
+ */
+function worktreeCreatedAt(
+  gitFileBirthtime: Option.Option<Date>,
+  threads: ReadonlyArray<OrchestrationV2ThreadShell>,
+): DateTime.Utc | null {
+  if (Option.isSome(gitFileBirthtime)) return DateTime.fromDateUnsafe(gitFileBirthtime.value);
+  return threads.reduce<DateTime.Utc | null>(
+    (earliest, thread) =>
+      earliest === null ? thread.createdAt : DateTime.min(earliest, thread.createdAt),
+    null,
+  );
+}
+
+function worktreeUpdatedAt(
+  threads: ReadonlyArray<OrchestrationV2ThreadShell>,
+): DateTime.Utc | null {
+  return threads.reduce<DateTime.Utc | null>(
+    (latest, thread) =>
+      latest === null ? thread.updatedAt : DateTime.max(latest, thread.updatedAt),
+    null,
+  );
 }
 
 const SIZE_TIMEOUT = "5 minutes";
@@ -228,6 +256,10 @@ const make = Effect.gen(function* () {
             .statusDetailsLocal(candidate.path, { includeDivergence: false })
             .pipe(Effect.orElseSucceed(() => null));
           const threads = threadsByPath.get(candidate.path) ?? [];
+          const gitFileBirthtime = yield* fs.stat(path.join(candidate.path, ".git")).pipe(
+            Effect.map((info) => info.birthtime),
+            Effect.orElseSucceed(() => Option.none<Date>()),
+          );
           const summaries = threads.map((thread): ManagedWorktreeThread => ({
             threadId: thread.id,
             title: thread.title,
@@ -244,6 +276,8 @@ const make = Effect.gen(function* () {
             state: worktreeState(summaries),
             threads: summaries,
             pullRequest: worktreePullRequest(threads, branch),
+            createdAt: worktreeCreatedAt(gitFileBirthtime, threads),
+            updatedAt: worktreeUpdatedAt(threads),
           } satisfies ManagedWorktree;
         }),
       { concurrency: 6 },

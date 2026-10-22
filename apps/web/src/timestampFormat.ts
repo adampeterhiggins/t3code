@@ -156,6 +156,20 @@ const numericDateWithYearFormatter = new Intl.DateTimeFormat(timestampLocale, {
   year: "numeric",
 });
 
+const mediumDateFormatter = new Intl.DateTimeFormat(timestampLocale, { dateStyle: "medium" });
+
+/** The calendar date alone, in the host's locale. */
+export function formatDateLabel(isoDate: string): string {
+  const date = parseTimestampDate(isoDate);
+  return date ? mediumDateFormatter.format(date) : "";
+}
+
+export function formatDateTimeLabel(isoDate: string, timestampFormat: TimestampFormat): string {
+  const date = parseTimestampDate(isoDate);
+  if (!date) return "";
+  return `${mediumDateFormatter.format(date)}, ${getTimestampFormatter(timestampFormat, false).format(date)}`;
+}
+
 export function formatDayAwareTimestamp(
   isoDate: string,
   timestampFormat: TimestampFormat,
