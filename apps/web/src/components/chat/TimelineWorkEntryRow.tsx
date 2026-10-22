@@ -57,10 +57,19 @@ import { SubagentNotificationLink } from "./V2LifecycleRow";
 import {
   TimelineRowCtx,
   TimelineRowActivityCtx,
+  WorkGroupPreviewCtx,
   WorkGroupViewCtx,
   type TimelineWorkEntry,
 } from "./timelineRowContext";
-import { MESSAGE_HEADING_LEVEL, TimelineRowTimestamp } from "./TimelineRowParts";
+import { ElapsedTimer, MESSAGE_HEADING_LEVEL, TimelineRowTimestamp } from "./TimelineRowParts";
+import {
+  SLOW_TOOL_CALL_MS,
+  workEntryDurationMs,
+  workEntryTiming,
+} from "./TimelineWorkGroupRows.logic";
+import { formatDuration } from "@t3tools/shared/orchestrationTiming";
+import { type TimestampFormat } from "@t3tools/contracts/settings";
+import { observeVisibleAnimation } from "../../lib/visibleAnimation";
 import {
   failedToolIconClassName,
   toolIconAcceptsTint,
@@ -194,7 +203,8 @@ function LinkWatchNotificationLabel({
   );
 }
 
-function useReasoningIsStreaming() {
+/** Whether a call is still running: an in-progress status alone can outlive an interrupted run. */
+export function useWorkEntryIsRunning() {
   const { isWorking, latestRunId } = use(TimelineRowActivityCtx);
   return (entry: TimelineWorkEntry) =>
     isWorking && entry.runId === latestRunId && entry.toolLifecycleStatus === "inProgress";
@@ -227,7 +237,7 @@ function ThoughtMarkdown({
 }
 
 export function ReasoningTraceContent({ entries }: { entries: ReadonlyArray<TimelineWorkEntry> }) {
-  const isStreaming = useReasoningIsStreaming();
+  const isStreaming = useWorkEntryIsRunning();
   return (
     <WorkLogDetails followLive={entries.some(isStreaming)}>
       {entries.map((entry) => (
@@ -245,7 +255,7 @@ export function ReasoningTraceContent({ entries }: { entries: ReadonlyArray<Time
 /** Mounted only while the row's hover card is open. */
 function ThoughtPreview({ entry }: { entry: TimelineWorkEntry }) {
   const { timestampFormat } = use(TimelineRowCtx);
-  const streaming = useReasoningIsStreaming()(entry);
+  const streaming = useWorkEntryIsRunning()(entry);
   return (
     <ThoughtPreviewContent
       streaming={streaming}
@@ -310,6 +320,8 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
       : null,
   );
   const groupView = use(WorkGroupViewCtx);
+  const inPreviewCard = use(WorkGroupPreviewCtx);
+  const running = useWorkEntryIsRunning()(workEntry);
   const [expanded, setExpanded] = useState(
     () => groupView?.state.expandedEntries.has(workEntry.id) ?? false,
   );
@@ -544,10 +556,12 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
           <div className="min-w-0 flex-1 overflow-hidden">
             <p className="flex min-w-0 w-full items-baseline gap-1.5 text-sm leading-relaxed">
               <span
+                ref={inPreviewCard && running ? observeVisibleAnimation : undefined}
                 className={cn(
                   "min-w-0 flex-1",
                   showsPaths ? "overflow-hidden" : "truncate",
                   headingClass,
+                  inPreviewCard && running && "live-tool-shine",
                 )}
               >
                 {isReasoning && !expanded ? (
@@ -626,7 +640,18 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
           !toolIconAcceptsTint(entryToolIcon) ? (
             <XIcon aria-hidden className={cn("size-3 shrink-0", failedToolIconClassName)} />
           ) : null}
-          <TimelineRowTimestamp createdAt={workEntry.createdAt} timestampFormat={timestampFormat} />
+          {inPreviewCard ? (
+            <WorkEntryDuration
+              workEntry={workEntry}
+              running={running}
+              timestampFormat={timestampFormat}
+            />
+          ) : (
+            <TimelineRowTimestamp
+              createdAt={workEntry.createdAt}
+              timestampFormat={timestampFormat}
+            />
+          )}
           <span
             className={cn(
               "flex size-4 shrink-0 items-center justify-center",
@@ -724,6 +749,46 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
         )}
       </PreviewCardPopup>
     </PreviewCard>
+  );
+}
+
+/** A call the provider never timed keeps its timestamp. */
+function WorkEntryDuration({
+  workEntry,
+  running,
+  timestampFormat,
+}: {
+  workEntry: TimelineWorkEntry;
+  running: boolean;
+  timestampFormat: TimestampFormat;
+}) {
+  const durationMs = workEntryDurationMs(workEntry);
+  if (!running && durationMs === null) {
+    return (
+      <TimelineRowTimestamp
+        createdAt={workEntry.createdAt}
+        timestampFormat={timestampFormat}
+        alwaysVisible
+      />
+    );
+  }
+  return (
+    <span
+      className={cn(
+        "me-1 shrink-0 whitespace-nowrap text-xs tabular-nums",
+        running || (durationMs ?? 0) >= SLOW_TOOL_CALL_MS
+          ? "text-foreground"
+          : "text-muted-foreground",
+      )}
+    >
+      {running ? (
+        <>
+          <ElapsedTimer since={workEntryTiming(workEntry).startedAt} />…
+        </>
+      ) : (
+        formatDuration(durationMs ?? 0)
+      )}
+    </span>
   );
 }
 

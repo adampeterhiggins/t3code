@@ -87,6 +87,9 @@ export interface WorkGroupViewState {
   expandedEntries: Set<string>;
 }
 
+/** Rows inside a collapsed group's hover card show how long each call took. */
+export const WorkGroupPreviewCtx = createContext(false);
+
 export const WorkGroupViewCtx = createContext<{
   state: WorkGroupViewState;
   onToggleEntry: (collapsed: boolean) => void;

@@ -398,7 +398,11 @@ carries what it reported back, such as an `Error:` line, when its output came wi
 v2 command items record no working directory, so none is shown. On web and desktop, collapsed tool calls in
 the main chat, agent transcript, Tools tab, and fleet previews share the same tool detail renderer
 ([`ToolCallDetail.tsx`](../apps/web/src/components/chat/ToolCallDetail.tsx)); hovering previews a call
-and clicking its row expands it or opens the agent. The card shows the tool
+and clicking its row expands it or opens the agent. In the main chat, hovering a collapsed run of
+tool calls previews the list it expands to, headed by its elapsed time and time range, counts by
+kind, failures, and edit line totals when the provider reported them. Rows in that card show how
+long each call took, and a running call shines with a live timer. Each call opens its own hover
+card on top ([`TimelineWorkGroupRows.tsx`](../apps/web/src/components/chat/TimelineWorkGroupRows.tsx)). The card shows the tool
 heading and the workspace-relative command or full label. Command hover cards show syntax-highlighted command
 text and status, with output behind **View output**; opening that disclosure loads the output.
 The exit code and time stay visible beside the disclosure, including failed exits. Other tool
