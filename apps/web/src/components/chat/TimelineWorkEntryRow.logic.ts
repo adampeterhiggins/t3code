@@ -255,3 +255,21 @@ export function pullRequestNotificationLabel(
     ? null
     : { url, reference: reference[0], rest: label.slice(reference[0].length) };
 }
+
+/**
+ * Splits a link watch notification (`Slack thread Plan: 1 new message`) so the part naming the
+ * watched item can preview it. Clipping can drop the `: <changes>` tail, leaving only the name.
+ */
+export function linkWatchNotificationLabel(
+  workEntry: TimelineWorkEntry,
+  label: string,
+): { readonly url: string; readonly subject: string; readonly rest: string } | null {
+  const item = workEntry.projectedItem?.item;
+  if (item?.type !== "notification" || item.source.kind !== "monitor") return null;
+  const url = item.source.linkUrl;
+  if (url === undefined) return null;
+  const split = label.lastIndexOf(": ");
+  return split <= 0
+    ? { url, subject: label, rest: "" }
+    : { url, subject: label.slice(0, split), rest: label.slice(split) };
+}

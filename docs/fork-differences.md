@@ -1314,7 +1314,9 @@ every two, Notion and Granola every five) through the integration's own connecti
 thread only when something changed. Changes are held while the thread is running and arrive as
 one wake when it finishes. A watch ends when its link is unlinked or replaced, the thread archives,
 an issue closes, after 20 wakes, or after 8 failed reads in a row; the last three tell the agent.
-A turned-off integration is not read and keeps its watches.
+A turned-off integration is not read and keeps its watches. On web, the item's name in a wake's
+timeline notification ("Slack thread Plan: 1 new message") opens it and previews it on hover, like
+its chip. The notification carries the URL (`linkUrl` on its `monitor` source).
 
 Watches live in the fork's `fork_thread_link_watches` table rather than the projection, keyed by
 thread and kind with the baseline the thread was last told, and stream to clients over

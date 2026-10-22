@@ -1195,6 +1195,8 @@ export const OrchestrationV2NotificationSource = kindUnionWithFallback(
       kind: Schema.Literal("monitor"),
       /** Set when T3 Code's pull request watch sent it, so clients can link and preview it. */
       pullRequestUrl: Schema.optional(TrimmedNonEmptyString),
+      /** Fork: set when a thread link watch sent it, so clients can preview the linked item. */
+      linkUrl: Schema.optional(TrimmedNonEmptyString),
     }),
     Schema.Struct({ kind: Schema.Literal("background_task") }),
     Schema.Struct({ kind: Schema.Literal("system") }),

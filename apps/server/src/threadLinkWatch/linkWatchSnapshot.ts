@@ -255,7 +255,7 @@ export function linkWatchMessage(input: {
   return {
     text: lines.join("\n"),
     notification: {
-      source: { kind: "monitor" },
+      source: { kind: "monitor", linkUrl: input.url },
       outcome: "updated",
       summary: clip(`${label} ${snapshot.title}: ${summary}`, SUMMARY_MAX_CHARS),
     },
@@ -273,7 +273,7 @@ export function linkWatchUnreadableMessage(input: {
   return {
     text: `T3 Code stopped watching the ${label} ${input.url} because it failed to read it ${input.failures} times in a row (${clip(input.detail, 300)}). Check it yourself, and call watch_thread_link to watch it again.`,
     notification: {
-      source: { kind: "monitor" },
+      source: { kind: "monitor", linkUrl: input.url },
       outcome: "failed",
       summary: clip(`${label}: stopped watching, could not read it`, SUMMARY_MAX_CHARS),
     },
