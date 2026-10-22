@@ -10,14 +10,16 @@ import {
 } from "../Sidebar.logic";
 import { SIDEBAR_SORTABLE_DRAG_DISABLED } from "./SidebarThreadRow";
 
-function SortableSidebarMarker(props: {
+export function SortableSidebarMarker(props: {
   marker: SidebarListMarker;
+  /** Overrides the marker's id when several items share one marker kind. */
+  id?: string;
   className?: string;
   children?: ReactNode;
   "data-testid"?: string;
 }) {
   const { setNodeRef, transform, transition } = useSortable({
-    id: sidebarMarkerId(props.marker),
+    id: props.id ?? sidebarMarkerId(props.marker),
     disabled: SIDEBAR_SORTABLE_DRAG_DISABLED,
     animateLayoutChanges: animateSidebarLayoutChanges,
   });
@@ -37,7 +39,6 @@ function SortableSidebarMarker(props: {
     </li>
   );
 }
-
 export function SidebarSectionPlaceholder(props: {
   marker: "active-placeholder" | "settled-placeholder";
   label: string;
@@ -63,7 +64,6 @@ export function SidebarSectionPlaceholder(props: {
     </SortableSidebarMarker>
   );
 }
-
 export function SidebarDragBoundary(props: {
   marker: "pinned-header" | "pinned-divider";
   label: string;
@@ -98,22 +98,16 @@ export function SidebarDragBoundary(props: {
     </SortableSidebarMarker>
   );
 }
-
+// The Working shelf header stays visible and keeps its measured height while dragging.
 export function SidebarSectionHeader(props: {
-  marker: "working-header" | "snoozed-header" | "settled-header";
+  marker: "working-header";
   label: string;
   className?: string;
-  dragging?: boolean;
-  isDropTarget?: boolean;
-  toggle: { expanded: boolean; onToggle: () => void };
+  toggle: {
+    expanded: boolean;
+    onToggle: () => void;
+  };
 }) {
-  const shelf =
-    props.marker === "working-header"
-      ? "working"
-      : props.marker === "snoozed-header"
-        ? "snoozed"
-        : "settled";
-  const snoozed = shelf === "snoozed";
   return (
     <SortableSidebarMarker
       marker={props.marker}
@@ -123,10 +117,8 @@ export function SidebarSectionHeader(props: {
       <CollapsibleSectionHeader
         onClick={props.toggle.onToggle}
         expanded={props.toggle.expanded}
-        tone={
-          props.isDropTarget ? "accent" : props.dragging ? "emphasized" : snoozed ? "info" : "muted"
-        }
-        data-testid={`sidebar-${shelf}-shelf-toggle`}
+        tone="muted"
+        data-testid="sidebar-working-shelf-toggle"
       >
         {props.label}
       </CollapsibleSectionHeader>
