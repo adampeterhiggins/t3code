@@ -573,6 +573,7 @@ type MessagesTimelineRowContent =
       createdAt: string;
       runId?: RunId | null;
       groupId: string;
+      groupedEntries: WorkLogEntry[];
       hiddenCount: number;
       expanded: boolean;
       summary: string;
@@ -1816,6 +1817,7 @@ export function deriveMessagesTimelineRows(input: {
             createdAt: timelineEntry.createdAt,
             runId: timelineEntry.entry.runId ?? null,
             groupId,
+            groupedEntries: visibleGroupedEntries,
             hiddenCount: visibleGroupedEntries.length,
             expanded,
             summary: usesSingleToolCallLabel
@@ -2346,6 +2348,7 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.groupId === bw.groupId &&
         a.hiddenCount === bw.hiddenCount &&
         a.expanded === bw.expanded &&
+        Equal.equals(a.groupedEntries, bw.groupedEntries) &&
         a.summary === bw.summary &&
         a.summaryKind === bw.summaryKind &&
         a.toolSurface === bw.toolSurface &&

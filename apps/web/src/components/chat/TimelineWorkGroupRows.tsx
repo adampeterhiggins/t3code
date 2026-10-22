@@ -15,7 +15,16 @@ import { ToolPathText } from "./ToolPathText";
 import { resolveWorkGroupScrollAnchor } from "@t3tools/client-runtime/work-log/scroll-anchor";
 import { observeResize } from "~/lib/observeResize";
 import { observeVisibleAnimation } from "../../lib/visibleAnimation";
-import { memo, use, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import {
+  memo,
+  use,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { workEntryDisplayIndicatesToolFailure } from "../../session-logic";
 import ChatMarkdown from "../ChatMarkdown";
@@ -30,16 +39,18 @@ import {
   type MessagesTimelineRow,
 } from "./MessagesTimeline.logic";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
+import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
+import { useCursorAnchor } from "./CursorPreviewCard";
 import { Spinner } from "../ui/spinner";
 import { WorktreeSetupCard } from "./WorktreeSetupCard";
 import { cn } from "~/lib/utils";
-import { type TimestampFormat } from "@t3tools/contracts/settings";
 import {
   TimelineRowCtx,
   TimelineRowActivityCtx,
   WorkGroupViewCtx,
   type TimelineWorkEntry,
   type TimelineRow,
+  type WorkGroupViewState,
 } from "./timelineRowContext";
 import { TimelineRowTimestamp, ActivityShimmerOverlay } from "./TimelineRowParts";
 import {
@@ -519,7 +530,7 @@ export function LiveWorkEntryTimelineRow({
   const thoughtIsStatus = thoughtLine !== "" && row.entry === row.thought;
 
   // Not a <button>: path breadcrumbs in the label are buttons themselves.
-  return (
+  const trigger = (
     <div
       role="button"
       tabIndex={0}
@@ -614,6 +625,11 @@ export function LiveWorkEntryTimelineRow({
       />
     </div>
   );
+  return (
+    <WorkGroupHoverPreview groupedEntries={row.groupedEntries} expanded={row.expanded}>
+      {trigger}
+    </WorkGroupHoverPreview>
+  );
 }
 
 export function WorkGroupToggleTimelineRow({
@@ -622,53 +638,91 @@ export function WorkGroupToggleTimelineRow({
   row: Extract<TimelineRow, { kind: "work-toggle" }>;
 }) {
   const ctx = use(TimelineRowCtx);
-  return (
-    <WorkGroupHeader
-      label={row.summary}
-      iconName={row.summaryToolIcon ?? row.toolSurface ?? toolGroupSummaryIconName(row.summaryKind)}
-      toolIcon={row.toolIcon}
-      failed={row.hasFailure}
-      expanded={row.expanded}
-      createdAt={row.createdAt}
-      timestampFormat={ctx.timestampFormat}
-      onToggle={() => ctx.onToggleWorkGroup(row.groupId, row.id)}
-    />
-  );
-}
-
-function WorkGroupHeader(props: {
-  label: string;
-  iconName: WorkEntryIconName;
-  toolIcon?: ToolActivityIcon | undefined;
-  failed?: boolean | undefined;
-  active?: boolean | undefined;
-  expanded: boolean;
-  createdAt: string;
-  timestampFormat: TimestampFormat;
-  onToggle: () => void;
-}) {
-  return (
+  const trigger = (
     <WorkLogButton
-      ref={props.active && !props.failed ? observeVisibleAnimation : undefined}
-      aria-label={props.failed ? `${props.label}, tool call failed` : props.label}
-      aria-expanded={props.expanded}
-      onClick={props.onToggle}
+      aria-label={row.hasFailure ? `${row.summary}, tool call failed` : row.summary}
+      aria-expanded={row.expanded}
+      onClick={() => ctx.onToggleWorkGroup(row.groupId, row.id)}
       icon={
         <ToolActivityIconView
-          icon={props.toolIcon}
-          fallbackName={props.iconName}
+          icon={row.toolIcon}
+          fallbackName={
+            row.summaryToolIcon ?? row.toolSurface ?? toolGroupSummaryIconName(row.summaryKind)
+          }
           className="size-4 shrink-0 stroke-2 text-icon-muted"
           muted
         />
       }
-      label={
-        <span className={cn("block truncate", props.active && !props.failed && "live-tool-shine")}>
-          {props.label}
-        </span>
-      }
+      label={<span className="block truncate">{row.summary}</span>}
       trailing={
-        <TimelineRowTimestamp createdAt={props.createdAt} timestampFormat={props.timestampFormat} />
+        <TimelineRowTimestamp createdAt={row.createdAt} timestampFormat={ctx.timestampFormat} />
       }
     />
+  );
+  return (
+    <WorkGroupHoverPreview groupedEntries={row.groupedEntries} expanded={row.expanded}>
+      {trigger}
+    </WorkGroupHoverPreview>
+  );
+}
+
+/**
+ * Hovering a collapsed group shows the list its disclosure expands to. Each entry keeps its own
+ * hover card, which nests in this card's floating tree so hovering it keeps this one open.
+ */
+function WorkGroupHoverPreview({
+  groupedEntries,
+  expanded,
+  children,
+}: {
+  groupedEntries: TimelineWorkEntry[];
+  expanded: boolean;
+  children: ReactElement;
+}) {
+  const [open, setOpen] = useState(false);
+  const cursorAnchor = useCursorAnchor();
+  return (
+    <PreviewCard
+      open={!expanded && open}
+      onOpenChange={(next) => {
+        if (next) cursorAnchor.pin();
+        setOpen(!expanded && next);
+      }}
+    >
+      <PreviewCardTrigger
+        render={children}
+        delay={300}
+        closeDelay={150}
+        {...cursorAnchor.triggerProps}
+        // Otherwise collapsing the group again would reopen the card under the cursor.
+        onClick={() => setOpen(false)}
+      />
+      <PreviewCardPopup {...cursorAnchor.popupProps} className="w-lg max-w-[calc(100vw-2rem)]">
+        <div className="p-1">
+          <WorkGroupPreviewEntries groupedEntries={groupedEntries} />
+        </div>
+      </PreviewCardPopup>
+    </PreviewCard>
+  );
+}
+
+/**
+ * Mounted only while the card is open. Its own disclosure and scroll state keep a row expanded in
+ * the card out of the timeline's group, and away from the timeline's scroll anchoring.
+ */
+function WorkGroupPreviewEntries({ groupedEntries }: { groupedEntries: TimelineWorkEntry[] }) {
+  const ctx = use(TimelineRowCtx);
+  const [workGroupViewState] = useState<WorkGroupViewState>(() => ({
+    scrollPositions: new Map(),
+    expandedEntries: new Set(),
+  }));
+  return (
+    <TimelineRowCtx value={{ ...ctx, workGroupViewState, onToggleWorkEntry: () => {} }}>
+      <WorkGroupSection
+        anchorKey="hover-preview"
+        groupedEntries={groupedEntries}
+        isExpandedToolGroup
+      />
+    </TimelineRowCtx>
   );
 }

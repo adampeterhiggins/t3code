@@ -313,6 +313,34 @@ describe("MessagesTimeline work rows", () => {
     await vi.waitFor(() => expect(screen.text()).toContain("vp lint"));
   });
 
+  it("previews a collapsed group's tool calls on hover, each with its own nested preview", async () => {
+    await using screen = await renderTimeline([
+      work("work-1", {
+        label: "Ran command",
+        command: "vp lint",
+        tone: "tool",
+        itemType: "command_execution",
+        toolLifecycleStatus: "completed",
+      }),
+      work("work-2", {
+        label: "Ran command",
+        command: "vp test run",
+        tone: "tool",
+        itemType: "command_execution",
+        toolLifecycleStatus: "completed",
+      }),
+    ]);
+    const summary = screen.button(/^Ran 2 commands/);
+    await userEvent.hover(summary);
+    const groupCard = page.getByRole("region", { name: "Tool calls" });
+    await expect.element(groupCard.getByText("vp lint")).toBeVisible();
+    expect(summary.getAttribute("aria-expanded")).toBe("false");
+
+    await userEvent.hover(groupCard.getByRole("button", { name: /vp test run/ }));
+    await expect.element(page.getByText(/View output/)).toBeVisible();
+    await expect.element(groupCard).toBeVisible();
+  });
+
   it("keeps mixed work logs neutral after a later tool call succeeds", async () => {
     await using screen = await renderTimeline([
       work("work-failed", {
