@@ -137,7 +137,9 @@ and `CustomAcpSettings` in `packages/contracts/src/settings.ts`. User guide:
 
 Each provider's **Settings > Providers** card gets a sign-in section with a method picker: the
 provider's CLI login flow, saved credentials, or a pasted key. The chosen method is persisted.
-Codex defaults to the browser flow.
+Codex defaults to the browser flow. Cursor's picker offers the SDK browser sign-in (the login that
+runs agents), `cursor-agent login` into that instance's home, a saved login, and a pasted
+`CURSOR_API_KEY`.
 
 An added instance with a blank home gets a private directory under T3's data (`provider-homes`),
 so a second login does not replace the default. The default instance keeps the CLI's normal home.

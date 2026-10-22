@@ -17,8 +17,17 @@ not expose yet.
 
 ## Sign in
 
-Choose **Sign in**, then open the sign-in page and complete it in your browser. T3 Code
-updates automatically when sign-in finishes. This works when connected to a remote environment too.
+The Cursor card has a sign-in method picker.
+
+- **Sign in with browser** opens Cursor's sign-in page and stores this instance's login for running
+  agents. T3 Code updates automatically when sign-in finishes. This works when connected to a remote
+  environment too.
+- **Sign in with cursor-agent** runs `cursor-agent login` in this instance's home, so that CLI login
+  stays separate from the default account.
+- **Use saved Cursor login** reuses a sign-in or `cursor-agent login` already stored for this
+  instance.
+- **Paste an API key** stores a `CURSOR_API_KEY` on this instance.
+
 On mobile, use **Settings > Provider accounts** for an already configured Cursor instance.
 
 Each provider instance keeps its own login on the environment that runs it. Your Cursor editor and

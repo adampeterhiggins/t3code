@@ -37,6 +37,13 @@ export interface CursorAuth {
   readonly readApiKey: Effect.Effect<string | undefined, ProviderSetupError>;
   readonly requireApiKey: Effect.Effect<string, ProviderSetupError>;
   readonly usesApiKey: boolean;
+  /**
+   * Browser sign-in that waits until the SDK login finishes. The settings
+   * method picker runs this inside its own flow and publishes the URL.
+   */
+  readonly browserSignIn: (
+    publishAuthorizationUrl: (url: string) => Effect.Effect<void>,
+  ) => Effect.Effect<void, ProviderSetupError, Scope.Scope>;
   readonly withAccess: <A, E, R>(
     task: Effect.Effect<A, E, R>,
   ) => Effect.Effect<A, E | ProviderSetupError, R | Scope.Scope>;
@@ -99,6 +106,80 @@ export const makeCursorAuth = Effect.fn("makeCursorAuth")(function* (options: Cu
       : undefined;
   });
   const readApiKey = readCredential.pipe(Effect.map((credential) => credential?.apiKey));
+
+  const browserSignIn = Effect.fn("CursorAuth.browserSignIn")(function* (
+    publishAuthorizationUrl: (url: string) => Effect.Effect<void>,
+  ) {
+    if (!options.enabled) {
+      return yield* new ProviderSetupError({
+        instanceId: options.instanceId,
+        operation: "start",
+        detail: "Enable Cursor before signing in.",
+      });
+    }
+    if (configuredKey) {
+      return yield* new ProviderSetupError({
+        instanceId: options.instanceId,
+        operation: "start",
+        detail:
+          "Remove CURSOR_API_KEY from this provider's environment before using browser sign-in.",
+      });
+    }
+    const pendingStore = new InMemoryCredentialStore();
+    const urls = yield* Queue.unbounded<string>();
+    yield* Queue.take(urls).pipe(
+      Effect.flatMap((authorizationUrl) => publishAuthorizationUrl(authorizationUrl)),
+      Effect.forever,
+      Effect.forkScoped,
+    );
+    yield* Effect.tryPromise({
+      try: (signal) =>
+        (options.login ?? Cursor.auth.login)({
+          openBrowser: false,
+          store: pendingStore,
+          signal,
+          apiKeyName: `T3 Code - ${options.displayName}`,
+          onLoginUrl: (authorizationUrl) => {
+            Queue.offerUnsafe(urls, authorizationUrl);
+          },
+        }),
+      catch: (cause) =>
+        new ProviderSetupError({
+          instanceId: options.instanceId,
+          operation: "start",
+          detail: "Cursor sign-in failed. Start sign-in again.",
+          cause,
+        }),
+    });
+    yield* Effect.tryPromise({
+      try: async () => {
+        const credentials = await pendingStore.load();
+        if (!credentials) throw new Error("Cursor login did not return credentials");
+        await options.store.save(credentials);
+      },
+      catch: (cause) =>
+        new ProviderSetupError({
+          instanceId: options.instanceId,
+          operation: "start",
+          detail: "Could not save the Cursor sign-in. Try again.",
+          cause,
+        }),
+    });
+    const verified = yield* options.onChanged(true).pipe(Effect.exit);
+    if (Exit.isFailure(verified)) {
+      yield* Effect.tryPromise({
+        try: () => options.store.clear(),
+        catch: (cause) =>
+          new ProviderSetupError({
+            instanceId: options.instanceId,
+            operation: "start",
+            detail: "Could not clear the rejected Cursor sign-in. Try signing out.",
+            cause,
+          }),
+      });
+      return yield* Effect.failCause(verified.cause);
+    }
+  });
 
   const requireApiKey = Effect.gen(function* () {
     if (operation !== "idle") {
@@ -506,6 +587,7 @@ export const makeCursorAuth = Effect.fn("makeCursorAuth")(function* (options: Cu
     readCredential,
     readApiKey,
     requireApiKey,
+    browserSignIn,
     withAccess,
     usesApiKey: configuredKey !== undefined,
   } satisfies CursorAuth;

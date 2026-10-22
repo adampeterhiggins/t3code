@@ -162,7 +162,16 @@ it.layer(layerTest)("CursorDriver", (it) => {
             canLogout: true,
             email: "cursor@example.com",
           },
-          setup: { canAuthenticate: true, canInstall: false },
+          setup: {
+            canAuthenticate: true,
+            canInstall: false,
+            authMethods: [
+              expect.objectContaining({ id: "browser", kind: "sign-in-flow" }),
+              expect.objectContaining({ id: "agent", kind: "sign-in-flow" }),
+              expect.objectContaining({ id: "saved", kind: "saved-credentials" }),
+              expect.objectContaining({ id: "api-key", kind: "paste-credential" }),
+            ],
+          },
         });
         expect((yield* instance.snapshot.getSnapshot).usageLimits?.windows[0]?.usedPercent).toBe(
           25,
