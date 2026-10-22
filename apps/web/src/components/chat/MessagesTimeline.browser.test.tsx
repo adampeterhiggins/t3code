@@ -1,5 +1,6 @@
 import {
   ApprovalRequestId,
+  ComposerContextId,
   EnvironmentId,
   MessageId,
   RunId,
@@ -8,7 +9,7 @@ import {
 import type { LegendListRef } from "@legendapp/list/react";
 import { createRef, Profiler, type ComponentProps, type ReactElement } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { userEvent } from "vite-plus/test/browser";
+import { page, userEvent } from "vite-plus/test/browser";
 
 import "~/index.css";
 
@@ -16,6 +17,7 @@ import { act, render } from "../../../test/render";
 import { MessagesTimeline } from "./MessagesTimeline";
 import { remarkThoughtPreview } from "./TimelineWorkEntryRow.logic";
 import { parseMarkdownWithMath } from "@t3tools/shared/markdownMath";
+import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
 import { collectThreadFindRanges } from "./threadFindHighlights";
 
 const environmentQuery = vi.hoisted(() => ({
@@ -555,6 +557,24 @@ describe("MessagesTimeline messages", () => {
     expect(screen.text()).toContain(source);
     expect(screen.container.querySelector("script, img")).toBeNull();
     expect((globalThis as { __t3Xss?: number }).__t3Xss).toBeUndefined();
+  });
+
+  it("previews a sent skill chip on hover", async () => {
+    const record = {
+      version: 1,
+      kind: "skill",
+      contextId: ComposerContextId.make("skill-eod"),
+      label: "EOD brief",
+      name: "eod-brief",
+    } as const;
+    const reference = formatComposerContextReference(record);
+    await using screen = await renderTimeline([
+      message(`Run ${reference}`, { context: { version: 1, records: [record] } }),
+    ]);
+    await userEvent.hover(screen.button(/EOD brief/));
+    await expect
+      .element(page.getByText("No description is available for this skill."))
+      .toBeVisible();
   });
 
   it("forks a user message into a new tab only where tabs exist", async () => {

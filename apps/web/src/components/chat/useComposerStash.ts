@@ -29,7 +29,10 @@ import { type PendingUserInput } from "../../session-logic";
 import { type ReviewCommentContext } from "../../reviewCommentContext";
 import { collapseExpandedComposerCursor } from "../../composer-logic";
 import { compressImageForStash } from "../../lib/imageCompression";
-import { formatInlineContextReference } from "~/lib/composerContextReferences";
+import {
+  collectInlineContextIds,
+  formatInlineContextReference,
+} from "~/lib/composerContextReferences";
 import { getTerminalFocusOwner } from "../../lib/terminalFocus";
 import { isCommandPaletteOpen } from "../../commandPaletteBus";
 import { pendingDraftWork } from "./pendingDraftWork";
@@ -90,6 +93,8 @@ export function useComposerStash(input: {
   readonly composerPreviewAnnotations: ReadonlyArray<PreviewAnnotationPayload>;
   readonly composerReviewComments: ReadonlyArray<ReviewCommentContext>;
   readonly composerThreadContexts: ReadonlyArray<ThreadContextRecord>;
+  /** Chip records that live in per-thread stores, which stashing clears. */
+  readonly composerSnapshotRecords: ReadonlyArray<ComposerContextRecord>;
   readonly attachmentTargetKeyRef: RefObject<string>;
   readonly composerDraftTargetKeyRef: RefObject<string>;
   readonly composerEditorRef: RefObject<ComposerPromptEditorHandle | null>;
@@ -128,6 +133,7 @@ export function useComposerStash(input: {
     composerPreviewAnnotations,
     composerReviewComments,
     composerThreadContexts,
+    composerSnapshotRecords,
     attachmentTargetKeyRef,
     composerDraftTargetKeyRef,
     composerEditorRef,
@@ -491,8 +497,10 @@ export function useComposerStash(input: {
     const prompt = promptRef.current.trim();
     const images = [...composerImagesRef.current];
     const files = [...composerFilesRef.current];
+    const referencedIds = new Set(collectInlineContextIds(prompt));
     const stashedRecords: ComposerContextRecord[] = [
       ...composerThreadContexts,
+      ...composerSnapshotRecords.filter((record) => referencedIds.has(record.contextId)),
       ...composerTerminalContextsRef.current.map(terminalContextRecord),
       ...composerReviewComments.map(reviewCommentContextRecord),
       ...composerPreviewAnnotations.map((annotation) =>

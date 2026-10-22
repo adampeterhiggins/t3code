@@ -99,7 +99,7 @@ function AssistantForkButton({
         render={
           <Button
             type="button"
-            size="xs"
+            size="icon-xs"
             variant="ghost"
             disabled={busy}
             onClick={() => {

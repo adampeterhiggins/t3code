@@ -30,14 +30,8 @@ import {
 } from "../../session-logic";
 import ChatMarkdown from "../ChatMarkdown";
 import { ChatMarkdownAssetImage } from "./ChatMarkdownMedia";
-import {
-  ChevronRightIcon,
-  CircleAlertIcon,
-  CornerDownRightIcon,
-  RotateCcwIcon,
-  XIcon,
-} from "lucide-react";
-import { Button, InlineButton } from "../ui/button";
+import { ChevronRightIcon, CircleAlertIcon, CornerDownRightIcon, XIcon } from "lucide-react";
+import { InlineButton } from "../ui/button";
 import { useAssetUrls } from "../../assets/assetUrls";
 import { useQuietThreadShell, useThreadShell } from "../../state/entities";
 import { usePreferredOpenPrLink, usePullRequestPreviewTarget } from "~/lib/openPullRequestLink";
@@ -320,6 +314,11 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
         trailing={
           // Matches the timestamp's size and centres on the first label line, since wrapLabel top-aligns the row.
           <span className="flex min-h-6 shrink-0 items-center gap-2 text-xs">
+            {retryRunId !== null && onRetryWorkspacePreparation ? (
+              <InlineButton onClick={() => onRetryWorkspacePreparation(retryRunId)}>
+                Retry
+              </InlineButton>
+            ) : null}
             <InlineButton
               tone="muted"
               render={
@@ -340,22 +339,9 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
         }
       >
         {!warning ? (
-          <p className="ms-7 whitespace-pre-wrap break-words py-1 text-sm leading-relaxed text-foreground/80">
+          <p className="ms-7 whitespace-pre-wrap break-words px-0.5 py-1 text-sm leading-relaxed text-foreground/80">
             {failureItem.failure.message}
           </p>
-        ) : null}
-        {retryRunId !== null && onRetryWorkspacePreparation ? (
-          <div className="ms-7 pb-1">
-            <Button
-              type="button"
-              size="xs"
-              variant="outline"
-              onClick={() => onRetryWorkspacePreparation(retryRunId)}
-            >
-              <RotateCcwIcon aria-hidden />
-              Retry
-            </Button>
-          </div>
         ) : null}
       </WorkLogRow>
     );
@@ -559,9 +545,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
       trailing={
         <>
           {createdThread ? (
-            <button
-              type="button"
-              className="shrink-0 rounded-sm text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            <InlineButton
               aria-label={`Open ${createdThread.title ?? "created thread"}`}
               onClick={(event) => {
                 event.stopPropagation();
@@ -570,7 +554,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
               onKeyDown={stopRowToggle}
             >
               Open chat
-            </button>
+            </InlineButton>
           ) : null}
           {notifiedSubagentThreadId ? (
             <InlineButton

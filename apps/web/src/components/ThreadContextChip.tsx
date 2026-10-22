@@ -42,5 +42,3 @@ export function ThreadChipTrigger({
     </ContextChip>
   );
 }
-
-export const ThreadContextChip = ThreadChipTrigger;

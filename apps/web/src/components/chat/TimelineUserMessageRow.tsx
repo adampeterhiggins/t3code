@@ -615,7 +615,7 @@ function RevertUserMessageButton({
         render={
           <Button
             type="button"
-            size="xs"
+            size="icon-xs"
             variant="ghost"
             disabled={activity.isRevertingCheckpoint || activity.isWorking}
             onClick={() => ctx.onRevertToTurnCount(turnCount, messageId)}
@@ -643,7 +643,7 @@ function ForkMessageButton({
         render={
           <Button
             type="button"
-            size="xs"
+            size="icon-xs"
             variant="ghost"
             onClick={() => onFork(messageId)}
             aria-label="Fork into new tab"
