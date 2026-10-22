@@ -37,6 +37,10 @@ A linked page stays with the thread and all of its chat tabs, so you can see whi
 
 On web and desktop, the thread details panel's **Links** section shows the page's title; on mobile a chip sits beside the tab switcher. Tap or click it to open the page in Notion, change it, or unlink it. The title is copied when you link and doesn't follow later renames. Connections without permission to change threads see the link but can only open it.
 
+### Wake the agent when it changes
+
+Choose **Watch for changes** from the linked page's menu, or ask the agent to watch it. T3 Code reads it every five minutes and sends the agent a message saying what changed: that the page was edited. Changes that land while the agent is working arrive together when it finishes. An eye marks a watched link. The server does the watching, so it continues with every client closed. Watching stops when you choose **Stop watching**, unlink or change the link, or archive the thread, and after 20 updates.
+
 ## Turn off or disconnect
 
 To stop Notion setup prompts and automatic link attachments, turn off **Enable Notion integration** under **Settings > Integrations > Notion**. Notion links stay as links, and Notion attachment actions are hidden on web, desktop, and mobile for that environment. Your connected account and pages already attached are kept. Turn the setting back on to use Notion again without reconnecting.

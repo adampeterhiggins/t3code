@@ -68,6 +68,7 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.notionUnlinkThread]: AuthOrchestrationOperateScope,
   [WS_METHODS.granolaLinkThread]: AuthOrchestrationOperateScope,
   [WS_METHODS.granolaUnlinkThread]: AuthOrchestrationOperateScope,
+  [WS_METHODS.threadLinkWatchSet]: AuthOrchestrationOperateScope,
   [ORCHESTRATION_V2_WS_METHODS.stopWorkflow]: AuthOrchestrationOperateScope,
 } as const;
 export type ClientGuardedRpcTag = keyof typeof CLIENT_GUARDED_RPC_SCOPES;

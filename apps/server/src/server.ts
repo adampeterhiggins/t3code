@@ -7,6 +7,8 @@ import * as DatabaseStorage from "./persistence/DatabaseStorage.ts";
 import * as StorageCleanup from "./storageCleanup.ts";
 import * as PullRequestSyncReactor from "./orchestration-v2/PullRequestSyncReactor.ts";
 import * as PullRequestWatchReactor from "./orchestration-v2/PullRequestWatchReactor.ts";
+import * as ThreadLinkWatchReactor from "./threadLinkWatch/ThreadLinkWatchReactor.ts";
+import * as ThreadLinkWatches from "./threadLinkWatch/ThreadLinkWatches.ts";
 import { importForkPullRequestWatches } from "./orchestration-v2/forkPullRequestWatchImport.ts";
 import * as DelegatedTaskQuestionReactor from "./orchestration-v2/DelegatedTaskQuestionReactor.ts";
 import * as SubscriptionLimitGuardSync from "./orchestration-v2/SubscriptionLimitGuardSync.ts";
@@ -680,6 +682,8 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   // Fork: starts a thread when the user is @mentioned in Slack, or the bot (or a chosen user)
   // in Discord (opt-in).
   Layer.mergeAll(SlackMentionTrigger.layerStarted, DiscordMentionTrigger.layerStarted),
+  // Fork: wakes a thread when a link it watches changes.
+  ThreadLinkWatchReactor.layerStarted,
   Layer.effectDiscard(
     Effect.gen(function* () {
       const service = yield* DelegatedTaskQuestionReactor.DelegatedTaskQuestionReactor;
@@ -703,10 +707,15 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
     ),
   ),
   // Fork integrations: issue trackers and chat links surfaced in the composer.
+  // Link watches read every kind of link, so the remaining kinds reach them from below.
   Layer.provideMerge(
-    LinearThreadLinks.layer.pipe(
-      Layer.provideMerge(LinearApi.layer),
-      Layer.provideMerge(LinearAuth.layer),
+    ThreadLinkWatches.layer.pipe(
+      Layer.provideMerge(
+        LinearThreadLinks.layer.pipe(
+          Layer.provideMerge(LinearApi.layer),
+          Layer.provideMerge(LinearAuth.layer),
+        ),
+      ),
     ),
   ),
   Layer.provideMerge(

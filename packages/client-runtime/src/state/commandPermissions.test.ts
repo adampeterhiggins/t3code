@@ -365,6 +365,7 @@ it.effect("guards integration thread links with the orchestration grant", () =>
         WS_METHODS.notionUnlinkThread,
         WS_METHODS.granolaLinkThread,
         WS_METHODS.granolaUnlinkThread,
+        WS_METHODS.threadLinkWatchSet,
       ];
       registry.set(sessions(env), AsyncResult.success(grant(false)));
       for (const method of methods) {

@@ -67,6 +67,10 @@ export type T3McpToolSummaryAction =
   | "unwatch-pr"
   | "link-issue"
   | "unlink-issue"
+  | "link-item"
+  | "unlink-item"
+  | "watch-link"
+  | "unwatch-link"
   | "list-issues"
   | "read-issue"
   | "read-link"
@@ -129,6 +133,13 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   link_github_issue: tool(["Link", "Linking", "Linked", "a GitHub issue"], "link-issue"),
   unlink_github_issue: tool(["Unlink", "Unlinking", "Unlinked", "a GitHub issue"], "unlink-issue"),
   list_thread_links: tool(["Check", "Checking", "Checked", "linked items"], "list-issues"),
+  link_thread_link: tool(["Link", "Linking", "Linked", "an item"], "link-item"),
+  unlink_thread_link: tool(["Unlink", "Unlinking", "Unlinked", "an item"], "unlink-item"),
+  watch_thread_link: tool(["Watch", "Watching", "Watching", "a linked item"], "watch-link"),
+  unwatch_thread_link: tool(
+    ["Stop watching", "Unwatching", "Stopped watching", "a linked item"],
+    "unwatch-link",
+  ),
   read_context_link: tool(["Read", "Reading", "Read", "a linked item"], "read-link"),
   read_linear_issue: tool(["Read", "Reading", "Read", "a Linear issue"], "read-issue"),
   search_linear_issues: tool(["Search", "Searching", "Searched", "Linear issues"], "search-issues"),

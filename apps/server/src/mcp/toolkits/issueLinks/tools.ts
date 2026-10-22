@@ -1,5 +1,6 @@
 import {
   ComposerContextKind,
+  DiscordError,
   DiscordThreadLink,
   GitHubIssueError,
   GitHubIssueThreadLink,
@@ -11,6 +12,7 @@ import {
   LinearIssueSort,
   LinearListIssuesResult,
   LinearThreadLink,
+  GranolaError,
   GranolaThreadLink,
   McpCapabilityUnavailableError,
   NotionError,
@@ -21,6 +23,9 @@ import {
   SlackSearchMessagesResult,
   SlackThreadLink,
   ThreadId,
+  ThreadLinkKind,
+  ThreadLinkWatch,
+  ThreadLinkWatchError,
   TrimmedNonEmptyString,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
@@ -41,6 +46,8 @@ import * as NotionApi from "../../../notion/NotionApi.ts";
 import * as ServerSettings from "../../../serverSettings.ts";
 import * as SlackApi from "../../../slack/SlackApi.ts";
 import * as SlackThreadLinks from "../../../slack/SlackThreadLinks.ts";
+import { THREAD_LINK_WATCH_WAKE_LIMIT } from "../../../threadLinkWatch/linkWatchSnapshot.ts";
+import * as ThreadLinkWatches from "../../../threadLinkWatch/ThreadLinkWatches.ts";
 
 const dependencies = [
   McpInvocationContext.McpInvocationContext,
@@ -56,6 +63,7 @@ const dependencies = [
   NotionApi.NotionApi,
   ServerSettings.ServerSettingsService,
   McpContextLinks.McpContextLinks,
+  ThreadLinkWatches.ThreadLinkWatches,
 ];
 
 // Agents often have no Linear MCP server of their own, or one that is not authorised.
@@ -108,6 +116,9 @@ export const IssueLinkToolError = Schema.Union([
   GitHubIssueError,
   SlackError,
   NotionError,
+  DiscordError,
+  GranolaError,
+  ThreadLinkWatchError,
 ]);
 export type IssueLinkToolError = typeof IssueLinkToolError.Type;
 
@@ -141,8 +152,30 @@ export const ListThreadLinksResult = Schema.Struct({
   discord: Schema.NullOr(DiscordThreadLink),
   notion: Schema.NullOr(NotionThreadLink),
   granola: Schema.NullOr(GranolaThreadLink),
+  watches: Schema.Array(ThreadLinkWatch).annotate({
+    description: "The links this thread watches with watch_thread_link.",
+  }),
 });
 export type ListThreadLinksResult = typeof ListThreadLinksResult.Type;
+
+export const LinkThreadLinkResult = Schema.Struct({
+  kind: ThreadLinkKind,
+  url: Schema.String,
+  title: Schema.String,
+  replacedUrl,
+});
+export type LinkThreadLinkResult = typeof LinkThreadLinkResult.Type;
+
+export const UnwatchThreadLinkResult = Schema.Struct({
+  wasWatching: Schema.Boolean.annotate({
+    description: "False when the thread was not watching that link to begin with.",
+  }),
+});
+export type UnwatchThreadLinkResult = typeof UnwatchThreadLinkResult.Type;
+
+const linkKindParameter = ThreadLinkKind.annotate({
+  description: "Which of the thread's links: linear, github, slack, discord, notion, or granola.",
+});
 
 export const ReadContextLinkResult = Schema.Struct({
   kind: ComposerContextKind,
@@ -230,6 +263,65 @@ const ListThreadLinksTool = Tool.make("list_thread_links", {
 })
   .annotate(Tool.Title, "List thread links")
   .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
+const LinkThreadLinkTool = Tool.make("link_thread_link", {
+  description: `Link a Slack or Discord message's thread, Notion page, Granola note, Linear issue, or GitHub issue to a thread by its web link, so T3 Code shows it beside the thread and watch_thread_link can watch it. A thread (with its chat tabs) holds at most one link of each kind; linking another replaces it. Uses T3 Code's own connections, so the integration must be connected and turned on. For pull requests use link_pull_request.`,
+  parameters: Schema.Struct({
+    threadId: threadIdParameter,
+    url: TrimmedNonEmptyString.check(Schema.isMaxLength(4_096)).annotate({
+      description: "The object's web link, as a user would paste it.",
+    }),
+  }),
+  success: LinkThreadLinkResult,
+  failure: IssueLinkToolError,
+  dependencies,
+})
+  .annotate(Tool.Title, "Link to thread")
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, true);
+
+const UnlinkThreadLinkTool = Tool.make("unlink_thread_link", {
+  description:
+    "Remove a thread's link of one kind, which also stops watching it. Unlinking when none is linked succeeds with wasLinked=false.",
+  parameters: Schema.Struct({ threadId: threadIdParameter, kind: linkKindParameter }),
+  success: UnlinkIssueResult,
+  failure: IssueLinkToolError,
+  dependencies,
+})
+  .annotate(Tool.Title, "Unlink from thread")
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, true)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
+const WatchThreadLinkTool = Tool.make("watch_thread_link", {
+  description: `Wait on one of the thread's links without polling: T3 Code reads it on a schedule (Slack and Discord every minute, Linear and GitHub every two, Notion and Granola every five) and wakes this thread with what changed: new or edited messages, an issue's status, assignee, or content, or an edited page or note. Changes that land while the thread is running arrive as one wake after it finishes. Watching starts from what the link shows now. It ends when the link is unlinked or replaced, the thread is archived, an issue closes, or after ${THREAD_LINK_WATCH_WAKE_LIMIT} wakes. Link the object first (link_thread_link). Watching the same link again keeps the current watch.`,
+  parameters: Schema.Struct({ threadId: threadIdParameter, kind: linkKindParameter }),
+  success: ThreadLinkWatch,
+  failure: IssueLinkToolError,
+  dependencies,
+})
+  .annotate(Tool.Title, "Watch thread link")
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, true);
+
+const UnwatchThreadLinkTool = Tool.make("unwatch_thread_link", {
+  description:
+    "Stop watching one of the thread's links. Call it when the work no longer needs the link watched. Unwatching when not watching succeeds with wasWatching=false.",
+  parameters: Schema.Struct({ threadId: threadIdParameter, kind: linkKindParameter }),
+  success: UnwatchThreadLinkResult,
+  failure: IssueLinkToolError,
+  dependencies,
+})
+  .annotate(Tool.Title, "Unwatch thread link")
+  .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
@@ -360,6 +452,10 @@ export const IssueLinksToolkit = Toolkit.make(
   LinkGitHubIssueTool,
   UnlinkGitHubIssueTool,
   ListThreadLinksTool,
+  LinkThreadLinkTool,
+  UnlinkThreadLinkTool,
+  WatchThreadLinkTool,
+  UnwatchThreadLinkTool,
   ReadContextLinkTool,
   ReadLinearIssueTool,
   SearchLinearIssuesTool,

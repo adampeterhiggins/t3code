@@ -4,7 +4,7 @@ import { granolaLinkForThread } from "@t3tools/client-runtime/state/granola";
 import { notionLinkForThread } from "@t3tools/client-runtime/state/notion";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { slackLinkForThread } from "@t3tools/client-runtime/state/slack";
-import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import type { EnvironmentId, ThreadId, ThreadLinkKind } from "@t3tools/contracts";
 import { Alert, Pressable, Text } from "react-native";
 
 import { Menu } from "../../components/ui/Menu";
@@ -19,6 +19,7 @@ import { notionEnvironment } from "../../state/notion";
 import { useEnvironmentQuery } from "../../state/query";
 import { slackEnvironment } from "../../state/slack";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { ThreadLinkWatchingMark, useThreadLinkWatch } from "./useThreadLinkWatch";
 
 const OPEN_ACTION = "link:open";
 const CHANGE_ACTION = "link:change";
@@ -152,6 +153,9 @@ export function ThreadSlackNotionLinkChips(props: { readonly links: ThreadSlackN
     <>
       {slackLink ? (
         <LinkChip
+          environmentId={environmentId}
+          threadId={threadId}
+          kind="slack"
           label={slackLink.channelLabel}
           description={`Linked Slack thread in ${slackLink.channelLabel}: ${slackLink.title}`}
           url={slackLink.url}
@@ -169,6 +173,9 @@ export function ThreadSlackNotionLinkChips(props: { readonly links: ThreadSlackN
       ) : null}
       {discordLink ? (
         <LinkChip
+          environmentId={environmentId}
+          threadId={threadId}
+          kind="discord"
           label={discordLink.channelLabel}
           description={`Linked Discord thread in ${discordLink.channelLabel}: ${discordLink.title}`}
           url={discordLink.url}
@@ -186,6 +193,9 @@ export function ThreadSlackNotionLinkChips(props: { readonly links: ThreadSlackN
       ) : null}
       {notionLink ? (
         <LinkChip
+          environmentId={environmentId}
+          threadId={threadId}
+          kind="notion"
           label={notionLink.title}
           description={`Linked Notion page: ${notionLink.title}`}
           url={notionLink.url}
@@ -203,6 +213,9 @@ export function ThreadSlackNotionLinkChips(props: { readonly links: ThreadSlackN
       ) : null}
       {granolaLink ? (
         <LinkChip
+          environmentId={environmentId}
+          threadId={threadId}
+          kind="granola"
           label={granolaLink.title}
           description={`Linked Granola note: ${granolaLink.title}`}
           url={granolaLink.url}
@@ -223,6 +236,9 @@ export function ThreadSlackNotionLinkChips(props: { readonly links: ThreadSlackN
 }
 
 function LinkChip(props: {
+  readonly environmentId: EnvironmentId;
+  readonly threadId: ThreadId;
+  readonly kind: ThreadLinkKind;
   readonly label: string;
   readonly description: string;
   readonly url: string;
@@ -235,7 +251,14 @@ function LinkChip(props: {
   /** Omitted when the connection cannot link; unlinking otherwise stays available as the way out. */
   readonly onUnlink: (() => void) | undefined;
 }) {
+  const watch = useThreadLinkWatch({
+    environmentId: props.environmentId,
+    threadId: props.threadId,
+    kind: props.kind,
+    url: props.url,
+  });
   const onMenuAction = (id: string) => {
+    if (watch.handleMenuAction(id)) return;
     if (id === OPEN_ACTION) {
       void tryOpenExternalUrl(props.url, props.target).then((opened) => {
         if (!opened) Alert.alert("Could not open the link", "Try again later.");
@@ -252,6 +275,7 @@ function LinkChip(props: {
       title={props.description}
       actions={[
         { id: OPEN_ACTION, title: props.openTitle, image: "arrow.up.right.square" },
+        ...watch.menuActions,
         ...(props.onChange
           ? [{ id: CHANGE_ACTION, title: props.changeTitle, image: "pencil" }]
           : []),
@@ -276,6 +300,7 @@ function LinkChip(props: {
         <Text numberOfLines={1} className="max-w-32 text-sm font-medium text-foreground">
           {props.label}
         </Text>
+        {watch.watching ? <ThreadLinkWatchingMark /> : null}
       </Pressable>
     </Menu>
   );

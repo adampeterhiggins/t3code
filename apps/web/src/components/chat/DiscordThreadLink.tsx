@@ -57,6 +57,8 @@ export function DiscordThreadLinkRow(props: {
 
   return (
     <ThreadLinkRow
+      watchKind="discord"
+      linkUrl={link.url}
       icon={<DiscordIcon className="size-4 shrink-0" />}
       label={link.title}
       accessibleLabel={`Linked Discord thread in ${link.channelLabel}: ${description}`}

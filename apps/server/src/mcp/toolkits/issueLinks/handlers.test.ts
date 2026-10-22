@@ -7,6 +7,8 @@ import {
   type NotionThreadLink,
   ProviderInstanceId,
   ThreadId,
+  type ThreadLinkKind,
+  type ThreadLinkWatch,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -24,6 +26,7 @@ import * as NotionThreadLinks from "../../../notion/NotionThreadLinks.ts";
 import * as ServerSettings from "../../../serverSettings.ts";
 import * as SlackApi from "../../../slack/SlackApi.ts";
 import * as SlackThreadLinks from "../../../slack/SlackThreadLinks.ts";
+import * as ThreadLinkWatches from "../../../threadLinkWatch/ThreadLinkWatches.ts";
 import * as McpContextLinks from "../../McpContextLinks.ts";
 import * as ThreadManagement from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -66,7 +69,26 @@ const makeHarness = (settings: Parameters<typeof ServerSettings.layerTest>[0] = 
   const searches: Array<LinearListIssuesInput> = [];
   const notion = new Map<ThreadId, NotionThreadLink>();
   const integrationSearches: Array<string> = [];
+  const watches = new Map<string, ThreadLinkWatch>();
+  const watchKey = (threadId: ThreadId, kind: ThreadLinkKind) => `${threadId} ${kind}`;
   const layerDependencies = Layer.mergeAll(
+    Layer.mock(ThreadLinkWatches.ThreadLinkWatches)({
+      watch: (threadId, kind) =>
+        Effect.sync(() => {
+          const watch: ThreadLinkWatch = {
+            threadId,
+            kind,
+            url: notion.get(threadId)?.url ?? "https://example.com",
+            startedAt: LINKED_AT,
+            wakes: 0,
+          };
+          watches.set(watchKey(threadId, kind), watch);
+          return watch;
+        }),
+      unwatch: (threadId, kind) => Effect.sync(() => watches.delete(watchKey(threadId, kind))),
+      forThread: (threadId) =>
+        Effect.sync(() => [...watches.values()].filter((watch) => watch.threadId === threadId)),
+    }),
     ServerSettings.layerTest(settings),
     Layer.mock(SlackApi.SlackApi)({
       searchMessages: ({ query }) =>
@@ -88,6 +110,20 @@ const makeHarness = (settings: Parameters<typeof ServerSettings.layerTest>[0] = 
     }),
     Layer.mock(NotionThreadLinks.NotionThreadLinks)({
       forThread: (threadId) => Effect.sync(() => notion.get(threadId)),
+      link: ({ threadId, pageId }) =>
+        Effect.sync(() => {
+          const link: NotionThreadLink = {
+            groupId: threadId,
+            threadIds: [threadId],
+            pageId,
+            title: `Page ${pageId}`,
+            url: `https://www.notion.so/${pageId}`,
+            linkedAt: LINKED_AT,
+          };
+          notion.set(threadId, link);
+          return link;
+        }),
+      unlink: ({ threadId }) => Effect.sync(() => void notion.delete(threadId)),
     }),
     Layer.mock(GranolaThreadLinks.GranolaThreadLinks)({
       forThread: () => Effect.succeed(undefined),
@@ -210,7 +246,7 @@ const makeHarness = (settings: Parameters<typeof ServerSettings.layerTest>[0] = 
       Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
       Effect.provide(layerDependencies),
     );
-  return { linear, github, notion, issueReads, searches, integrationSearches, call };
+  return { linear, github, notion, watches, issueReads, searches, integrationSearches, call };
 };
 
 describe("issue link toolkit handlers", () => {
@@ -295,6 +331,7 @@ describe("issue link toolkit handlers", () => {
         discord: null,
         notion: null,
         granola: null,
+        watches: [],
       });
     }),
   );
@@ -411,6 +448,69 @@ describe("issue link toolkit handlers", () => {
         message: expect.stringContaining("Slack integration is turned off"),
       });
       expect(harness.integrationSearches).toEqual([]);
+    }),
+  );
+
+  it.effect("links a Notion page by url, replacing the one before, and watches it", () =>
+    Effect.gen(function* () {
+      const harness = makeHarness();
+      const first = "https://www.notion.so/acme/Plan-0123456789abcdef0123456789abcdef";
+      const second = "https://www.notion.so/acme/Spec-fedcba9876543210fedcba9876543210";
+      const linked = yield* harness.call("link_thread_link", { url: first });
+      expect(linked).toMatchObject({ kind: "notion", replacedUrl: null });
+      const replaced = yield* harness.call("link_thread_link", { url: second });
+      expect(replaced).toMatchObject({ kind: "notion", replacedUrl: linked.url });
+
+      const watch = yield* harness.call("watch_thread_link", { kind: "notion" });
+      expect(watch).toMatchObject({ threadId: THREAD_ID, kind: "notion", url: replaced.url });
+      expect((yield* harness.call("list_thread_links", {})).watches).toEqual([watch]);
+
+      expect(yield* harness.call("unwatch_thread_link", { kind: "notion" })).toEqual({
+        wasWatching: true,
+      });
+      expect(yield* harness.call("unwatch_thread_link", { kind: "notion" })).toEqual({
+        wasWatching: false,
+      });
+    }),
+  );
+
+  it.effect("unlinking a link also stops watching it", () =>
+    Effect.gen(function* () {
+      const harness = makeHarness();
+      yield* harness.call("link_thread_link", {
+        url: "https://www.notion.so/acme/Plan-0123456789abcdef0123456789abcdef",
+      });
+      yield* harness.call("watch_thread_link", { kind: "notion" });
+      expect(yield* harness.call("unlink_thread_link", { kind: "notion" })).toEqual({
+        wasLinked: true,
+      });
+      expect(harness.notion.size).toBe(0);
+      expect(harness.watches.size).toBe(0);
+      expect(yield* harness.call("unlink_thread_link", { kind: "notion" })).toEqual({
+        wasLinked: false,
+      });
+    }),
+  );
+
+  it.effect("refuses to link a pull request or a link of a turned-off integration", () =>
+    Effect.gen(function* () {
+      const harness = makeHarness({ enableNotionIntegration: false });
+      const pullRequest = yield* harness
+        .call("link_thread_link", { url: "https://github.com/acme/app/pull/3" })
+        .pipe(Effect.flip);
+      expect(pullRequest).toMatchObject({
+        _tag: "OrchestratorMcpFailure",
+        message: expect.stringContaining("link_pull_request"),
+      });
+      const off = yield* harness
+        .call("link_thread_link", {
+          url: "https://www.notion.so/acme/Plan-0123456789abcdef0123456789abcdef",
+        })
+        .pipe(Effect.flip);
+      expect(off).toMatchObject({
+        message: expect.stringContaining("Notion integration is turned off"),
+      });
+      expect(harness.notion.size).toBe(0);
     }),
   );
 });

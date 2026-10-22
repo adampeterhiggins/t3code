@@ -59,6 +59,8 @@ export function LinearThreadLinkRow(props: { threadRef: ScopedThreadRef; link: L
 
   return (
     <ThreadLinkRow
+      watchKind="linear"
+      linkUrl={link.url}
       icon={<LinearIcon className="size-4 shrink-0" />}
       label={`${identifier} ${title}`}
       accessibleLabel={`Linked Linear issue ${identifier}: ${title}`}

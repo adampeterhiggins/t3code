@@ -9,6 +9,7 @@ import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { gitHubIssueEnvironment } from "../../state/githubIssues";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { ThreadLinkWatchingMark, useThreadLinkWatch } from "./useThreadLinkWatch";
 
 const OPEN_ACTION = "github-issue:open";
 const CHANGE_ACTION = "github-issue:change";
@@ -60,7 +61,9 @@ export function ThreadGitHubIssueLinkChip(props: {
       );
     }
   };
+  const watch = useThreadLinkWatch({ environmentId, threadId, kind: "github", url: link.url });
   const onMenuAction = (id: string) => {
+    if (watch.handleMenuAction(id)) return;
     if (id === OPEN_ACTION) {
       void tryOpenExternalUrl(link.url, "github-issue").then((opened) => {
         if (!opened) Alert.alert("Could not open GitHub", "Try again later.");
@@ -77,6 +80,7 @@ export function ThreadGitHubIssueLinkChip(props: {
       title={`${label} ${title}`}
       actions={[
         { id: OPEN_ACTION, title: "Open on GitHub", image: "arrow.up.right.square" },
+        ...watch.menuActions,
         ...(canEdit && onChange
           ? [{ id: CHANGE_ACTION, title: "Change issue…", image: "pencil" }]
           : []),
@@ -110,6 +114,7 @@ export function ThreadGitHubIssueLinkChip(props: {
             </Text>
           </>
         ) : null}
+        {watch.watching ? <ThreadLinkWatchingMark /> : null}
       </Pressable>
     </Menu>
   );

@@ -9,6 +9,7 @@ import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { linearEnvironment } from "../../state/linear";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { ThreadLinkWatchingMark, useThreadLinkWatch } from "./useThreadLinkWatch";
 
 const OPEN_ACTION = "linear:open";
 const CHANGE_ACTION = "linear:change";
@@ -68,7 +69,9 @@ export function ThreadLinearLinkChip(props: {
       );
     }
   };
+  const watch = useThreadLinkWatch({ environmentId, threadId, kind: "linear", url: link.url });
   const onMenuAction = (id: string) => {
+    if (watch.handleMenuAction(id)) return;
     if (id === OPEN_ACTION) {
       void tryOpenExternalUrl(url, "linear").then((opened) => {
         if (!opened) Alert.alert("Could not open Linear", "Try again later.");
@@ -85,6 +88,7 @@ export function ThreadLinearLinkChip(props: {
       title={`${identifier} ${title}`}
       actions={[
         { id: OPEN_ACTION, title: "Open in Linear", image: "arrow.up.right.square" },
+        ...watch.menuActions,
         ...(canEdit && props.onChange
           ? [{ id: CHANGE_ACTION, title: "Change issue…", image: "pencil" }]
           : []),
@@ -115,6 +119,7 @@ export function ThreadLinearLinkChip(props: {
             </Text>
           </>
         ) : null}
+        {watch.watching ? <ThreadLinkWatchingMark /> : null}
       </Pressable>
     </Menu>
   );

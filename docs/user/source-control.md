@@ -211,6 +211,13 @@ another live thread is linked to as **In use**, and starting from it asks whethe
 desktop, hovering an issue in the attach picker lists those threads; click one to open it.
 Agents can also link or unlink an issue on their thread.
 
+Choose **Watch for changes** from the linked issue's menu, or ask the agent to watch it, to have
+the agent woken when the issue changes. T3 Code reads it every two minutes and tells the agent
+about a new state, assignees, labels, or title, or that its description or comments changed.
+Changes that land while the agent is working arrive together when it finishes, and an eye marks a
+watched issue. Watching stops when you choose **Stop watching**, unlink or change the issue, archive
+the thread, the issue closes, or after 20 updates.
+
 ## Review and merge
 
 Open **Pull requests** to review changes and comments, request reviewers, check out a branch,
