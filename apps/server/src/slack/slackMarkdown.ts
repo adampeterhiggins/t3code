@@ -56,46 +56,104 @@ function convertToken(
  * single `*` as italic and does not strike `~text~`, so the hover card would
  * show Slack's bold in italics. Italic underscores and inline code already
  * agree with CommonMark, so they stay. Code and links are left untouched:
- * Slack does not format inside them, and a `*` in a URL is not emphasis.
+ * Slack does not format inside them, and a `*` in a URL is not emphasis. Code
+ * is held out as a placeholder rather than split around, so bold that spans
+ * inline code still pairs up.
+ *
+ * Slack opens a code block at any three backticks, mid-line or not, and the
+ * `•` list markers its composer writes are plain text; both are rewritten to
+ * the CommonMark shapes that render the same way.
  */
 export function slackTextToMarkdown(
   text: string,
   names: ReadonlyMap<string, string>,
   groups: ReadonlyMap<string, string> = new Map(),
 ): string {
-  return mapOutsideCode(
-    text,
-    (part) =>
-      translateMrkdwn(
-        decodeEntities(
-          part.replace(/<([^<>]+)>/g, (_, body: string) => convertToken(body, names, groups)),
-        ),
+  const code: Array<string> = [];
+  const held = text.replace(CODE_SPANS, (span) => {
+    code.push(decodeEntities(span));
+    return `\uE001${code.length - 1}\uE001`;
+  });
+  const converted = translateMrkdwn(
+    bulletsToMarkdown(
+      decodeEntities(
+        held.replace(/<([^<>]+)>/g, (_, body: string) => convertToken(body, names, groups)),
       ),
-    decodeEntities,
+    ),
   );
+  return converted
+    .replace(/\uE001(\d+)\uE001/g, (_, index: string) => {
+      const span = code[Number(index)] ?? "";
+      if (!span.startsWith("```")) return span;
+      const body = span.slice(3, -3).replace(/^\n/, "").replace(/\n$/, "");
+      // A fence must sit on its own lines; \uE002 marks where a line break may be needed.
+      return `\uE002\`\`\`\n${body}\n\`\`\`\uE002`;
+    })
+    .replace(/[ \t]*\uE002[ \t]*/g, (marker, offset: number, whole: string) => {
+      const next = whole[offset + marker.length];
+      return offset === 0 || whole[offset - 1] === "\n" || next === undefined || next === "\n"
+        ? ""
+        : "\n";
+    });
+}
+
+const CODE_SPANS = /```[\s\S]*?```|`[^`\n]*`/g;
+
+/**
+ * The mentions `text` shows once converted, as `slackTextToMarkdown` writes them, so a client
+ * can highlight them the way Slack does.
+ */
+export function slackMentionLabels(
+  text: string,
+  names: ReadonlyMap<string, string>,
+  groups: ReadonlyMap<string, string> = new Map(),
+): ReadonlyArray<string> {
+  const labels = new Set<string>();
+  for (const match of text.replace(CODE_SPANS, "").matchAll(/<([@#!][^<>]*)>/g)) {
+    const label = decodeEntities(convertToken(match[1]!, names, groups));
+    if (/^[@#]/.test(label)) labels.add(label);
+  }
+  return [...labels];
 }
 
 /** Drops the bold and strike markers added for markdown, for a plain label. */
 export function slackMarkdownToPlain(text: string): string {
-  return mapOutsideCode(text, (part) => part.replaceAll("**", "").replaceAll("~~", ""));
-}
-
-/** Copies fenced and inline code through unchanged. Slack does not format inside either. */
-function mapOutsideCode(
-  text: string,
-  plain: (part: string) => string,
-  code: (part: string) => string = (part) => part,
-): string {
-  const spans = /```[\s\S]*?```|`[^`\n]*`/g;
   let out = "";
   let last = 0;
-  for (const match of text.matchAll(spans)) {
+  for (const match of text.matchAll(CODE_SPANS)) {
     const index = match.index ?? last;
-    out += plain(text.slice(last, index));
-    out += code(match[0]);
+    out += text.slice(last, index).replaceAll("**", "").replaceAll("~~", "");
+    out += match[0];
     last = index + match[0].length;
   }
-  return out + plain(text.slice(last));
+  return out + text.slice(last).replaceAll("**", "").replaceAll("~~", "");
+}
+
+const BULLET_LINE = /^( *)[•◦▪▫]\uFE0E?[ \t]+/;
+const LIST_LINE = /^ *(?:-|\d+[.)])[ \t]/;
+
+/**
+ * Slack's composer writes list items as `• item`, nested ones four spaces per level with `◦` or
+ * `▪︎`. Markdown lists keep the hanging indent Slack draws. A line after a list gets a blank line
+ * first, or markdown would fold it into the last item.
+ */
+function bulletsToMarkdown(text: string): string {
+  const out: Array<string> = [];
+  let inList = false;
+  for (const line of text.split("\n")) {
+    const bullet = BULLET_LINE.exec(line);
+    if (bullet) {
+      const depth = Math.ceil(bullet[1]!.length / 4);
+      out.push(`${"  ".repeat(depth)}- ${line.slice(bullet[0].length)}`);
+      inList = true;
+      continue;
+    }
+    const listLine = LIST_LINE.test(line);
+    if (inList && !listLine && line.trim() !== "") out.push("");
+    inList = listLine;
+    out.push(line);
+  }
+  return out.join("\n");
 }
 
 function translateMrkdwn(text: string): string {
@@ -186,6 +244,8 @@ export interface SlackRenderedMessage {
   /** Already converted with `slackTextToMarkdown`. */
   readonly text: string;
   readonly files: ReadonlyArray<string>;
+  /** From `slackMentionLabels`. */
+  readonly mentions?: ReadonlyArray<string> | undefined;
 }
 
 export interface SlackThreadSnapshot {
@@ -217,6 +277,7 @@ export function renderSlackThread(
         postedAtIso: slackTsToIso(message.ts),
         text: message.text,
         files: message.files,
+        mentions: message.mentions,
       })),
     },
     maxChars,

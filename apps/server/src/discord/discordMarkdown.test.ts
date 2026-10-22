@@ -3,6 +3,7 @@ import * as DateTime from "effect/DateTime";
 
 import {
   discordContentToMarkdown,
+  discordMentionLabels,
   millisToSnowflake,
   snowflakeToMillis,
 } from "./discordMarkdown.ts";
@@ -29,4 +30,13 @@ it("turns mentions, emoji, and timestamps into what a reader sees", () => {
     ),
     "@Ada and @Ada in #eng, @role :shipit: :party: at 2024-10-01 10:47 UTC @6",
   );
+});
+
+it("lists the mentions the converted text shows", () => {
+  const names = { users: new Map([["1", "Ada"]]), channels: new Map([["2", "eng"]]) };
+  assert.deepEqual(discordMentionLabels("<@1> <@!1> <#2> <@&3> <:shipit:4>", names), [
+    "@Ada",
+    "#eng",
+    "@role",
+  ]);
 });

@@ -1520,6 +1520,63 @@ html[data-theme-id="t3-chat"] {
   }
 }
 
+/* Slack and Discord thread previews draw messages the way Slack does: a blank line between
+   paragraphs, lists tight against their text with a hanging indent, red inline code that wraps
+   with the line, and tinted mentions. */
+/* `html:root` ties with the theme overrides above (`@variant light` included), and this follows
+   them. */
+html:root .chat-markdown.chat-thread-markdown {
+  & :is(p, ul, ol, blockquote) {
+    margin: 0;
+  }
+
+  & p + p {
+    margin-top: 1lh;
+  }
+
+  & pre {
+    margin: 0.25rem 0;
+  }
+
+  & :is(ul, ol) {
+    --list-gutter: 1.75em;
+    padding-inline-start: 1.75em;
+  }
+
+  & li + li {
+    margin-top: 0;
+  }
+
+  & :not(pre) > code {
+    display: inline;
+    border-color: rgb(29 28 29 / 0.13);
+    border-radius: 3px;
+    background: rgb(29 28 29 / 0.04);
+    padding: 0.125em 0.2em 0.0625em;
+    color: #e01e5a;
+    font-size: 0.85em;
+  }
+
+  & span[data-chat-mention] {
+    border-radius: 3px;
+    background: rgb(29 155 209 / 0.1);
+    padding: 0 0.15em;
+    color: #1264a3;
+  }
+
+  @variant dark {
+    & :not(pre) > code {
+      border-color: rgb(232 232 232 / 0.13);
+      background: rgb(232 232 232 / 0.04);
+      color: #e8912d;
+    }
+
+    & span[data-chat-mention] {
+      color: #1d9bd1;
+    }
+  }
+}
+
 html[data-theme-id] [data-app-sidebar] {
   --background: var(--app-theme-canvas);
   --foreground: var(--app-theme-text);

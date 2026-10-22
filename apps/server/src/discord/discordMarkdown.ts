@@ -48,6 +48,12 @@ export function discordContentToMarkdown(content: string, names: DiscordNames): 
   );
 }
 
+/** The user, role and channel mentions `content` shows once converted, for highlighting. */
+export function discordMentionLabels(content: string, names: DiscordNames): ReadonlyArray<string> {
+  const tokens = content.matchAll(/<(?:@!?|#|@&)\d+>/g);
+  return [...new Set([...tokens].map((match) => discordContentToMarkdown(match[0], names)))];
+}
+
 /** The channel ids `content` mentions, for resolving their names. */
 export function mentionedChannelIds(content: string): ReadonlyArray<string> {
   return [...content.matchAll(/<#(\d+)>/g)].map((match) => match[1]!);

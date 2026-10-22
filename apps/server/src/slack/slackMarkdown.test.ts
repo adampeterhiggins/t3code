@@ -5,6 +5,7 @@ import {
   mentionedUserIds,
   renderSlackThread,
   slackMarkdownToPlain,
+  slackMentionLabels,
   slackTextToMarkdown,
   slackTsToDisplay,
   slackTsToIso,
@@ -56,7 +57,7 @@ describe("slackTextToMarkdown", () => {
         "*Draft PRs are open*\n• *Preview buttons stay hidden (PSET-1268):* <https://github.com/org/repo/pull/6263|#6263>\n_note_ ~gone~ `*not bold*`",
         names,
       ),
-      "**Draft PRs are open**\n• **Preview buttons stay hidden (PSET-1268):** [#6263](https://github.com/org/repo/pull/6263)\n_note_ ~~gone~~ `*not bold*`",
+      "**Draft PRs are open**\n- **Preview buttons stay hidden (PSET-1268):** [#6263](https://github.com/org/repo/pull/6263)\n\n_note_ ~~gone~~ `*not bold*`",
     );
     assert.strictEqual(
       slackMarkdownToPlain("**Draft PRs are open** and ~~gone~~ `**keep**`"),
@@ -73,6 +74,45 @@ describe("slackTextToMarkdown", () => {
     assert.strictEqual(slackTextToMarkdown("*one\ntwo*", names), "*one\ntwo*");
     assert.strictEqual(slackTextToMarkdown("```\n*not bold*\n```", names), "```\n*not bold*\n```");
     assert.strictEqual(slackTextToMarkdown("`*<@U1>*`", names), "`*<@U1>*`");
+  });
+  it("pairs bold that spans inline code", () => {
+    assert.strictEqual(
+      slackTextToMarkdown("*Fix `monitor-gcp-status` filter* and `a` *b*", names),
+      "**Fix `monitor-gcp-status` filter** and `a` **b**",
+    );
+    assert.strictEqual(slackTextToMarkdown("*`code` first*", names), "**`code` first**");
+  });
+
+  it("opens a code block at any three backticks, as Slack does", () => {
+    assert.strictEqual(
+      slackTextToMarkdown("Run ```npm i\nnpm test``` then *ship*", names),
+      "Run\n```\nnpm i\nnpm test\n```\nthen **ship**",
+    );
+    assert.strictEqual(slackTextToMarkdown("```\n*x* &lt;y&gt;\n```", names), "```\n*x* <y>\n```");
+  });
+
+  it("turns Slack's bullets into markdown lists", () => {
+    assert.strictEqual(
+      slackTextToMarkdown(
+        "Plan:\n• one\n    ◦ nested\n        ▪\uFE0E deeper\n• two\nThanks",
+        names,
+      ),
+      "Plan:\n- one\n  - nested\n    - deeper\n- two\n\nThanks",
+    );
+    assert.strictEqual(slackTextToMarkdown("1. a\n2. b\nafter", names), "1. a\n2. b\n\nafter");
+  });
+});
+
+describe("slackMentionLabels", () => {
+  it("lists the mentions the converted text shows, outside code", () => {
+    assert.deepEqual(
+      slackMentionLabels(
+        "<@U1> <@U1> <!subteam^S1> <#C1|eng> <!here> <https://x.test|x> `<@U2>`",
+        new Map([["U1", "Ben Lobo"]]),
+        new Map([["S1", "fdai-eng"]]),
+      ),
+      ["@Ben Lobo", "@fdai-eng", "#eng", "@here"],
+    );
   });
 });
 

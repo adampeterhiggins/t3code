@@ -30,6 +30,7 @@ import {
   mentionedUserIds,
   renderSlackThread,
   slackMarkdownToPlain,
+  slackMentionLabels,
   slackTextToMarkdown,
   slackTsToIso,
 } from "./slackMarkdown.ts";
@@ -477,6 +478,7 @@ export const make = Effect.gen(function* () {
           authorName: authorName(message),
           avatarUrl: avatarUrl(message),
           text: slackTextToMarkdown(message.text ?? "", names, groups),
+          mentions: slackMentionLabels(message.text ?? "", names, groups),
           files: (message.files ?? []).map((file) => file.name ?? file.title ?? "file"),
         })),
       },
