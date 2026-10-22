@@ -92,6 +92,10 @@ thread in Slack, change it, or unlink it. The channel, author, and first line ar
 link and don't update. Connections without permission to change threads see the link but can only
 open it.
 
+### Wake the agent when it changes
+
+Choose **Watch for changes** from the linked Slack thread's menu, or ask the agent to watch it. T3 Code reads it about once a minute and sends the agent a message saying what changed: who replied and what they wrote, and which messages were edited. Changes that land while the agent is working arrive together when it finishes. An eye marks a watched link. The server does the watching, so it continues with every client closed. Watching stops when you choose **Stop watching**, unlink or change the link, or archive the thread, and after 20 updates.
+
 ## Turn off or disconnect
 
 To stop Slack setup prompts and automatic link attachments, turn off **Enable Slack integration**

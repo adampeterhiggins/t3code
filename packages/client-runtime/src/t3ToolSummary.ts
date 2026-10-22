@@ -431,6 +431,18 @@ export function summarizeT3ToolCalls(
     case "unlink-issue":
       label = phrase("Unlinked", "unlink", quantity(selected.length, "issue"));
       break;
+    case "link-item":
+      label = phrase("Linked", "link", quantity(selected.length, "item"));
+      break;
+    case "unlink-item":
+      label = phrase("Unlinked", "unlink", quantity(selected.length, "item"));
+      break;
+    case "watch-link":
+      label = phrase("Watching", "watch", quantity(selected.length, "linked item"));
+      break;
+    case "unwatch-link":
+      label = phrase("Stopped watching", "stop watching", quantity(selected.length, "linked item"));
+      break;
     case "list-issues":
       label = phrase("Checked", "check", `linked items${selected.length === 1 ? "" : ` ${times}`}`);
       break;

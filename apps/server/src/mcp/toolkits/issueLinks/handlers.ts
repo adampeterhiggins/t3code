@@ -1,7 +1,8 @@
-import { OrchestratorMcpFailure, type ThreadId } from "@t3tools/contracts";
+import { OrchestratorMcpFailure, type ThreadId, type ThreadLinkKind } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
 import { formatComposerContextProviderPayload } from "@t3tools/shared/composerContextReferences";
+import { parseComposerObjectLink } from "@t3tools/shared/composerObjectLinks";
 
 import * as DiscordThreadLinks from "../../../discord/DiscordThreadLinks.ts";
 import * as GitHubIssueThreadLinks from "../../../githubIssues/GitHubIssueThreadLinks.ts";
@@ -13,6 +14,7 @@ import * as NotionApi from "../../../notion/NotionApi.ts";
 import * as ServerSettings from "../../../serverSettings.ts";
 import * as SlackApi from "../../../slack/SlackApi.ts";
 import * as SlackThreadLinks from "../../../slack/SlackThreadLinks.ts";
+import * as ThreadLinkWatches from "../../../threadLinkWatch/ThreadLinkWatches.ts";
 import * as McpContextLinks from "../../McpContextLinks.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -49,10 +51,15 @@ const make = Effect.gen(function* () {
   const slackApi = yield* SlackApi.SlackApi;
   const notionApi = yield* NotionApi.NotionApi;
   const settings = yield* ServerSettings.ServerSettingsService;
+  const watches = yield* ThreadLinkWatches.ThreadLinkWatches;
 
   /** The search tools honour the same off switch as the composer and contextLinks. */
   const requireIntegrationOn = (
-    key: "enableSlackIntegration" | "enableNotionIntegration",
+    key:
+      | "enableSlackIntegration"
+      | "enableDiscordIntegration"
+      | "enableNotionIntegration"
+      | "enableGranolaIntegration",
     name: string,
   ) =>
     settings.getSettings.pipe(
@@ -89,6 +96,132 @@ const make = Effect.gen(function* () {
 
   /** Reads that reach an integration through the environment's connection rather than a thread. */
   const requireIntegrationRead = McpInvocationContext.requireMcpCapability("pull-requests");
+
+  const linkedUrl = (threadId: ThreadId, kind: ThreadLinkKind) => {
+    const links: Record<
+      ThreadLinkKind,
+      { readonly forThread: (id: ThreadId) => Effect.Effect<{ readonly url: string } | undefined> }
+    > = { linear, github, slack, discord, notion, granola };
+    return links[kind]
+      .forThread(threadId)
+      .pipe(Effect.map((link): string | null => link?.url ?? null));
+  };
+
+  const linkByUrl = Effect.fn("IssueLinks.linkByUrl")(function* (threadId: ThreadId, url: string) {
+    const link = parseComposerObjectLink(url);
+    const replaced = (before: string | null, linked: { readonly url: string }) =>
+      before === linked.url ? null : before;
+    switch (link?.kind) {
+      case "linear-issue": {
+        const result = yield* linear.linkWithReplacement({ threadId, issueId: link.identifier });
+        return {
+          kind: "linear" as const,
+          url: result.link.url,
+          title: `${result.link.identifier} ${result.link.title}`,
+          replacedUrl: result.replacedUrl,
+        };
+      }
+      case "github-issue": {
+        const result = yield* github.linkWithReplacement({ threadId, url: link.url });
+        return {
+          kind: "github" as const,
+          url: result.link.url,
+          title: `${result.link.repository}#${result.link.number} ${result.link.title}`,
+          replacedUrl: result.replacedUrl,
+        };
+      }
+      case "slack-message": {
+        yield* requireIntegrationOn("enableSlackIntegration", "Slack");
+        const before = yield* linkedUrl(threadId, "slack");
+        const linked = yield* slack.link({
+          threadId,
+          channelId: link.channelId,
+          ts: link.ts,
+          ...(link.threadTs === null ? {} : { threadTs: link.threadTs }),
+          url: link.url,
+        });
+        return {
+          kind: "slack" as const,
+          url: linked.url,
+          title: linked.title,
+          replacedUrl: replaced(before, linked),
+        };
+      }
+      case "discord-message": {
+        yield* requireIntegrationOn("enableDiscordIntegration", "Discord");
+        const before = yield* linkedUrl(threadId, "discord");
+        const linked = yield* discord.link({
+          threadId,
+          guildId: link.guildId,
+          channelId: link.channelId,
+          messageId: link.messageId,
+          url: link.url,
+        });
+        return {
+          kind: "discord" as const,
+          url: linked.url,
+          title: linked.title,
+          replacedUrl: replaced(before, linked),
+        };
+      }
+      case "notion-page": {
+        yield* requireIntegrationOn("enableNotionIntegration", "Notion");
+        const before = yield* linkedUrl(threadId, "notion");
+        const linked = yield* notion.link({ threadId, pageId: link.pageId });
+        return {
+          kind: "notion" as const,
+          url: linked.url,
+          title: linked.title,
+          replacedUrl: replaced(before, linked),
+        };
+      }
+      case "granola-note": {
+        yield* requireIntegrationOn("enableGranolaIntegration", "Granola");
+        const before = yield* linkedUrl(threadId, "granola");
+        const linked = yield* granola.link({ threadId, noteId: link.noteId });
+        return {
+          kind: "granola" as const,
+          url: linked.url,
+          title: linked.title,
+          replacedUrl: replaced(before, linked),
+        };
+      }
+      default:
+        return yield* new OrchestratorMcpFailure({
+          code: "invalid_request",
+          message: `Cannot link ${url}. Use a Slack or Discord message, Notion page, Granola note, Linear issue, or GitHub issue link; for pull requests use link_pull_request.`,
+        });
+    }
+  });
+
+  const unlinkKind = Effect.fn("IssueLinks.unlinkKind")(function* (
+    threadId: ThreadId,
+    kind: ThreadLinkKind,
+  ) {
+    const wasLinked = (yield* linkedUrl(threadId, kind)) !== null;
+    switch (kind) {
+      case "linear":
+        yield* linear.unlink({ threadId });
+        break;
+      case "github":
+        yield* github.unlink({ threadId });
+        break;
+      case "slack":
+        yield* slack.unlink({ threadId });
+        break;
+      case "discord":
+        yield* discord.unlink({ threadId });
+        break;
+      case "notion":
+        yield* notion.unlink({ threadId });
+        break;
+      case "granola":
+        yield* granola.unlink({ threadId });
+        break;
+    }
+    yield* watches.unwatch(threadId, kind);
+    return { wasLinked };
+  });
 
   /** A tool that changes `threadId`, or the caller's own thread when it is omitted. */
   const writesThread = <P extends { readonly threadId?: ThreadId | undefined }, A, E, R>(
@@ -130,8 +263,30 @@ const make = Effect.gen(function* () {
           discord: (yield* discord.forThread(threadId)) ?? null,
           notion: (yield* notion.forThread(threadId)) ?? null,
           granola: (yield* granola.forThread(threadId)) ?? null,
+          watches: yield* watches.forThread(threadId),
         };
       }),
+    ),
+    link_thread_link: writesThread((input) =>
+      requireThread(input.threadId).pipe(
+        Effect.flatMap((threadId) => linkByUrl(threadId, input.url)),
+      ),
+    ),
+    unlink_thread_link: writesThread((input) =>
+      requireThread(input.threadId).pipe(
+        Effect.flatMap((threadId) => unlinkKind(threadId, input.kind)),
+      ),
+    ),
+    watch_thread_link: writesThread((input) =>
+      requireThread(input.threadId).pipe(
+        Effect.flatMap((threadId) => watches.watch(threadId, input.kind)),
+      ),
+    ),
+    unwatch_thread_link: writesThread((input) =>
+      requireThread(input.threadId).pipe(
+        Effect.flatMap((threadId) => watches.unwatch(threadId, input.kind)),
+        Effect.map((wasWatching) => ({ wasWatching })),
+      ),
     ),
     read_context_link: McpToolAccess.reads((input) =>
       requireIntegrationRead.pipe(

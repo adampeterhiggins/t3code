@@ -66,6 +66,10 @@ On web and desktop, the thread details panel's **Links** section shows the linke
 mobile a chip sits beside the tab switcher. Tap or click it to open the message in Discord, change it, or unlink it. The channel,
 author, and first line are copied when you link and don't update.
 
+### Wake the agent when it changes
+
+Choose **Watch for changes** from the linked Discord thread's menu, or ask the agent to watch it. T3 Code reads it about once a minute and sends the agent a message saying what changed: who replied and what they wrote, and which messages were edited. Changes that land while the agent is working arrive together when it finishes. An eye marks a watched link. The server does the watching, so it continues with every client closed. Watching stops when you choose **Stop watching**, unlink or change the link, or archive the thread, and after 20 updates.
+
 ## Turn off or disconnect
 
 To hide Discord attachment actions and stop resolving pasted links, turn off **Enable Discord

@@ -29,6 +29,10 @@ A linked note stays with the thread and all of its chat tabs, so you can see whi
 
 On web and desktop, the thread details panel's **Links** section shows the meeting's title; on mobile a chip sits beside the tab switcher. Tap or click it to open the note in Granola, change it, or unlink it.
 
+### Wake the agent when it changes
+
+Choose **Watch for changes** from the linked note's menu, or ask the agent to watch it. T3 Code reads it every five minutes and sends the agent a message saying what changed: that the note changed, for example when its summary is ready. Changes that land while the agent is working arrive together when it finishes. An eye marks a watched link. The server does the watching, so it continues with every client closed. Watching stops when you choose **Stop watching**, unlink or change the link, or archive the thread, and after 20 updates.
+
 ## Links in messages
 
 A Granola note link left as a link in a message, such as one an agent writes in its reply, shows the meeting's title on web and desktop. Hover it to see the note, as you would on its chip.

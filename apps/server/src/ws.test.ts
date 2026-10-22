@@ -17,6 +17,7 @@ import * as SlackThreadLinks from "./slack/SlackThreadLinks.ts";
 import * as DiscordApi from "./discord/DiscordApi.ts";
 import * as DiscordAuth from "./discord/DiscordAuth.ts";
 import * as DiscordThreadLinks from "./discord/DiscordThreadLinks.ts";
+import * as ThreadLinkWatches from "./threadLinkWatch/ThreadLinkWatches.ts";
 import * as WorktreeInventory from "./git/WorktreeInventory.ts";
 import * as TextGeneration from "./textGeneration/TextGeneration.ts";
 import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
@@ -321,6 +322,7 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(SlackAuth.SlackAuth)({}),
   Layer.mock(SlackApi.SlackApi)({}),
   Layer.mock(DiscordThreadLinks.DiscordThreadLinks)({}),
+  Layer.mock(ThreadLinkWatches.ThreadLinkWatches)({}),
   Layer.mock(DiscordAuth.DiscordAuth)({}),
   Layer.mock(DiscordApi.DiscordApi)({}),
   Layer.mock(ProviderServiceStatus.ProviderServiceStatus)({

@@ -75,6 +75,8 @@ const RPC_AGGREGATES = {
   [WS_METHODS.discordSubscribeThreadLinks]: "discord",
   [WS_METHODS.discordLinkThread]: "discord",
   [WS_METHODS.discordUnlinkThread]: "discord",
+  [WS_METHODS.threadLinkWatchesSubscribe]: "thread-link-watches",
+  [WS_METHODS.threadLinkWatchSet]: "thread-link-watches",
   [WS_METHODS.githubIssuesList]: "github-issues",
   [WS_METHODS.githubIssuesGet]: "github-issues",
   [WS_METHODS.githubIssuesGetSummary]: "github-issues",

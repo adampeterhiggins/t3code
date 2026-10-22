@@ -83,6 +83,7 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof WS_METHODS.discordSubscribeState
   | typeof WS_METHODS.discordSubscribeThreadLinks
   | typeof WS_METHODS.githubIssuesSubscribeThreadLinks
+  | typeof WS_METHODS.threadLinkWatchesSubscribe
   | typeof WS_METHODS.messageDraftsSubscribe
   | typeof WS_METHODS.terminalAttach
   | typeof WS_METHODS.terminalObserve;

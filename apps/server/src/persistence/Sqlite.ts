@@ -14,6 +14,7 @@ import { ensureGitHubIssueThreadLinksSchema } from "../githubIssues/threadLinksS
 import { ensureNotionThreadLinksSchema } from "../notion/threadLinksSchema.ts";
 import { ensureGranolaThreadLinksSchema } from "../granola/threadLinksSchema.ts";
 import { ensureSlackThreadLinksSchema } from "../slack/threadLinksSchema.ts";
+import { ensureThreadLinkWatchesSchema } from "../threadLinkWatch/threadLinkWatchSchema.ts";
 import { ensureDiscordThreadLinksSchema } from "../discord/threadLinksSchema.ts";
 import { ensureMessageDraftsSchema } from "../messageDrafts/schema.ts";
 import * as ServerConfig from "../config.ts";
@@ -55,6 +56,7 @@ const layerSetup = Layer.effectDiscard(
     yield* ensureDiscordThreadLinksSchema();
     yield* ensureNotionThreadLinksSchema();
     yield* ensureGranolaThreadLinksSchema();
+    yield* ensureThreadLinkWatchesSchema();
     yield* ensureMessageDraftsSchema();
     // No planner statistics. Collecting them reads every page of the large
     // tables, and stats taken while a table was small make the planner scan it

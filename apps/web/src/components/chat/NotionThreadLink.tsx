@@ -50,6 +50,8 @@ export function NotionThreadLinkRow(props: { threadRef: ScopedThreadRef; link: N
 
   return (
     <ThreadLinkRow
+      watchKind="notion"
+      linkUrl={link.url}
       icon={<NotionIcon className="size-4 shrink-0" />}
       label={link.title}
       accessibleLabel={`Linked Notion page: ${link.title}`}

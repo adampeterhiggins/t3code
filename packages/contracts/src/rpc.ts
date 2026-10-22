@@ -148,6 +148,12 @@ import {
   SlackUnlinkThreadInput,
 } from "./slack.ts";
 import {
+  ThreadLinkWatch,
+  ThreadLinkWatchError,
+  ThreadLinkWatches,
+  ThreadLinkWatchSetInput,
+} from "./threadLinkWatch.ts";
+import {
   DiscordConnectInput,
   DiscordConnectionState,
   DiscordError,
@@ -768,6 +774,8 @@ export const WS_METHODS = {
   discordSubscribeThreadLinks: "discord.subscribeThreadLinks",
   discordLinkThread: "discord.linkThread",
   discordUnlinkThread: "discord.unlinkThread",
+  threadLinkWatchesSubscribe: "threadLinkWatches.subscribe",
+  threadLinkWatchSet: "threadLinkWatches.set",
 
   // GitHub issue methods
   githubIssuesList: "githubIssues.list",
@@ -1339,6 +1347,20 @@ const WsDiscordUnlinkThreadRpc = Rpc.make(WS_METHODS.discordUnlinkThread, {
   payload: DiscordUnlinkThreadInput,
   success: Schema.Struct({}),
   error: DiscordRpcError,
+});
+
+const WsThreadLinkWatchesSubscribeRpc = Rpc.make(WS_METHODS.threadLinkWatchesSubscribe, {
+  payload: Schema.Struct({}),
+  success: ThreadLinkWatches,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
+/** Starts or stops watching a thread's link; returns the watch, or null once stopped. */
+const WsThreadLinkWatchSetRpc = Rpc.make(WS_METHODS.threadLinkWatchSet, {
+  payload: ThreadLinkWatchSetInput,
+  success: Schema.NullOr(ThreadLinkWatch),
+  error: Schema.Union([ThreadLinkWatchError, EnvironmentAuthorizationError]),
 });
 
 const GitHubIssueRpcError = Schema.Union([GitHubIssueError, EnvironmentAuthorizationError]);
@@ -2765,6 +2787,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsDiscordSubscribeThreadLinksRpc,
   WsDiscordLinkThreadRpc,
   WsDiscordUnlinkThreadRpc,
+  WsThreadLinkWatchesSubscribeRpc,
+  WsThreadLinkWatchSetRpc,
   WsGitHubIssuesListRpc,
   WsGitHubIssuesGetRpc,
   WsGitHubIssuesGetSummaryRpc,

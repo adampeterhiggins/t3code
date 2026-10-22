@@ -204,6 +204,8 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.discordSubscribeThreadLinks]: AuthOrchestrationReadScope,
   [WS_METHODS.discordLinkThread]: AuthOrchestrationOperateScope,
   [WS_METHODS.discordUnlinkThread]: AuthOrchestrationOperateScope,
+  [WS_METHODS.threadLinkWatchesSubscribe]: AuthOrchestrationReadScope,
+  [WS_METHODS.threadLinkWatchSet]: AuthOrchestrationOperateScope,
   [WS_METHODS.discordConnect]: AuthOrchestrationOperateScope,
   [WS_METHODS.discordDisconnect]: AuthOrchestrationOperateScope,
   [WS_METHODS.discordListServers]: AuthOrchestrationReadScope,

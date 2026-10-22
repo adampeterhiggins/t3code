@@ -3324,6 +3324,19 @@ const OrchestrationV2InternalCommand = Schema.Union([
       }),
     ),
   }),
+  /**
+   * Fork: wakes the agent because a link it watches changed. Link watches live outside the
+   * projection, so this only checks the thread: rejected once it is archived or deleted, or
+   * when it is a subagent. A wake on a settled thread brings it back.
+   */
+  Schema.Struct({
+    type: Schema.Literal("thread.link-watch.wake"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    messageId: MessageId,
+    text: Schema.String,
+    notification: OrchestrationV2Notification,
+  }),
   Schema.Struct({
     type: Schema.Literal("checkpoint.rollback.fail"),
     commandId: CommandId,

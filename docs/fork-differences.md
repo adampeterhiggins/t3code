@@ -989,8 +989,9 @@ Links section (`apps/web/src/components/chat/ThreadLinks.tsx`) reads its status 
 open, change, and unlink. The section's **+** menu links any kind the group does not have yet,
 with the same permission and integration checks as the command palette. Mobile shows a chip beside the tab
 switcher (`apps/mobile/src/features/threads/ThreadLinearLink.tsx`). Agents link and unlink it
-through the thread MCP's `link_linear_issue` / `unlink_linear_issue`, and read every link the
-thread's group has (Linear, GitHub, Slack, Discord, Notion, Granola) with `list_thread_links`
+through the thread MCP's `link_linear_issue` / `unlink_linear_issue` (or `link_thread_link` /
+`unlink_thread_link`, which take any linkable kind), and read every link the thread's group has
+(Linear, GitHub, Slack, Discord, Notion, Granola) with `list_thread_links`
 ([`toolkits/issueLinks/`](../apps/server/src/mcp/toolkits/issueLinks/)). Like the pull request
 tools, they default to the caller's thread, need the `pull-requests` MCP capability, and write
 through the same thread access checks. A link carries only the issue's identity, so agents read
@@ -1295,6 +1296,41 @@ without their follow-up counts. Code:
 [`pullRequestWatch.ts`](../packages/shared/src/pullRequestWatch.ts) (status line), and
 [`ThreadPullRequestsPanel.tsx`](../apps/web/src/components/pullRequest/ThreadPullRequestsPanel.tsx).
 See [the user guide](user/source-control.md#watch-a-pull-request).
+
+## Watch a linked item
+
+Upstream only watches pull requests. The fork also wakes a thread's agent when one of its tab
+group's links changes: a Slack or Discord thread (new or edited messages, by author and text), a
+Linear issue (status, assignee, priority, title, or content) or GitHub issue (state, assignees,
+labels, title, or content), or a Notion page or Granola note (its content). Agents call
+`watch_thread_link` / `unwatch_thread_link`; users choose **Watch for changes** or **Stop
+watching** from the link's menu on web and mobile, where an eye marks a watched link.
+`list_thread_links` returns the thread's watches. Agents can also link and unlink any of these
+kinds by URL with `link_thread_link` / `unlink_thread_link`; before, only Linear and GitHub issues
+had MCP link tools.
+
+The server reads each watched link on a schedule (Slack and Discord every minute, Linear and GitHub
+every two, Notion and Granola every five) through the integration's own connection, and wakes the
+thread only when something changed. Changes are held while the thread is running and arrive as
+one wake when it finishes. A watch ends when its link is unlinked or replaced, the thread archives,
+an issue closes, after 20 wakes, or after 8 failed reads in a row; the last three tell the agent.
+A turned-off integration is not read and keeps its watches.
+
+Watches live in the fork's `fork_thread_link_watches` table rather than the projection, keyed by
+thread and kind with the baseline the thread was last told, and stream to clients over
+`threadLinkWatches.subscribe`. Unlike a pull request watch, a link watch does not show the thread as
+waiting in the sidebar. The wake is the internal `thread.link-watch.wake` command, which refuses
+archived and subagent threads. Code:
+[`ThreadLinkWatches.ts`](../apps/server/src/threadLinkWatch/ThreadLinkWatches.ts),
+[`ThreadLinkWatchReactor.ts`](../apps/server/src/threadLinkWatch/ThreadLinkWatchReactor.ts),
+[`linkWatchSnapshot.ts`](../apps/server/src/threadLinkWatch/linkWatchSnapshot.ts), and
+[`ThreadLinkRow.tsx`](../apps/web/src/components/chat/ThreadLinkRow.tsx). See the user guides for
+[Slack](user/slack.md#wake-the-agent-when-it-changes),
+[Discord](user/discord.md#wake-the-agent-when-it-changes),
+[Linear](user/linear.md#wake-the-agent-when-it-changes),
+[GitHub issues](user/source-control.md#attach-a-github-issue),
+[Notion](user/notion.md#wake-the-agent-when-it-changes), and
+[Granola](user/granola.md#wake-the-agent-when-it-changes).
 
 ## Create a thread before writing its first message
 

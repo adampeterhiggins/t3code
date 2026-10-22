@@ -65,6 +65,8 @@ export function GitHubIssueThreadLinkRow(props: {
 
   return (
     <ThreadLinkRow
+      watchKind="github"
+      linkUrl={link.url}
       icon={<GitHubIcon className="size-4 shrink-0" />}
       label={`#${link.number} ${title}`}
       accessibleLabel={`Linked GitHub issue ${link.repository}#${link.number}: ${title}`}

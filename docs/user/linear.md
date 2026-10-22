@@ -89,6 +89,10 @@ from Linear, so it can lag for up to a minute after a change there.
 When you start a thread from an issue that another thread is already linked to, the picker marks
 it **In use** and asks whether to open that thread or start a new one.
 
+### Wake the agent when it changes
+
+Choose **Watch for changes** from the linked issue's menu, or ask the agent to watch it. T3 Code reads it every two minutes and sends the agent a message saying what changed: its status, assignee, priority, or title, or that its description or comments changed. Changes that land while the agent is working arrive together when it finishes. An eye marks a watched link. The server does the watching, so it continues with every client closed. Watching stops when you choose **Stop watching**, unlink or change the link, or archive the thread, and after 20 updates. It also stops once the issue is completed or canceled.
+
 ## Start threads when issues are assigned to you
 
 T3 Code can start a thread on its own when a Linear issue is newly assigned to you. It's off until

@@ -181,6 +181,7 @@ import { SlackThreadLinks } from "./slack/SlackThreadLinks.ts";
 import { DiscordApi } from "./discord/DiscordApi.ts";
 import { DiscordAuth } from "./discord/DiscordAuth.ts";
 import { DiscordThreadLinks } from "./discord/DiscordThreadLinks.ts";
+import { ThreadLinkWatches } from "./threadLinkWatch/ThreadLinkWatches.ts";
 import { NotionThreadLinks } from "./notion/NotionThreadLinks.ts";
 import { GitHubIssues } from "./githubIssues/GitHubIssues.ts";
 import { GitHubIssueThreadLinks } from "./githubIssues/GitHubIssueThreadLinks.ts";
@@ -1359,6 +1360,7 @@ export const layerWsRpc = (
       const discordAuth = yield* DiscordAuth;
       const discordApi = yield* DiscordApi;
       const discordThreadLinks = yield* DiscordThreadLinks;
+      const threadLinkWatches = yield* ThreadLinkWatches;
       const githubIssues = yield* GitHubIssues;
       const githubIssueThreadLinks = yield* GitHubIssueThreadLinks;
       const messageDrafts = yield* MessageDrafts.MessageDrafts;
@@ -2801,6 +2803,8 @@ export const layerWsRpc = (
         [WS_METHODS.discordLinkThread]: (input) => discordThreadLinks.link(input),
         [WS_METHODS.discordUnlinkThread]: (input) =>
           discordThreadLinks.unlink(input).pipe(Effect.as({})),
+        [WS_METHODS.threadLinkWatchesSubscribe]: (_input) => threadLinkWatches.watches,
+        [WS_METHODS.threadLinkWatchSet]: (input) => threadLinkWatches.set(input),
         [WS_METHODS.githubIssuesList]: (input) => githubIssues.listIssues(input),
         [WS_METHODS.githubIssuesGet]: (input) => githubIssues.getIssue(input),
         [WS_METHODS.githubIssuesGetSummary]: (input) => githubIssues.getIssueSummary(input),

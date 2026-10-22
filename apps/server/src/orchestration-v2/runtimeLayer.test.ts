@@ -2484,6 +2484,64 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
     }),
   );
 
+  // Fork: a link watch wakes the thread with a message; an archived thread turns the wake away.
+  it.effect("a link watch wake lands as a message, and not on an archived thread", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const threadId = ThreadId.make("runtime-link-watch-wake");
+      const projectId = ProjectId.make("link-watch-wake-project");
+      yield* seedProject({
+        projectId,
+        title: "Link watch",
+        workspaceRoot: "/workspace/link-watch",
+        defaultModelSelection: null,
+        createdAt: "2026-10-01T00:00:00.000Z",
+      });
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        createdBy: "user",
+        creationSource: "web",
+        commandId: CommandId.make("link-watch-wake-create"),
+        threadId,
+        projectId,
+        title: "Link watch",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+      });
+      const wake = (id: string) => ({
+        type: "thread.link-watch.wake" as const,
+        commandId: CommandId.make(`server:link-watch:${id}`),
+        threadId,
+        messageId: MessageId.make(`message:link-watch:${id}`),
+        text: "Update on the Slack thread",
+        notification: {
+          source: { kind: "monitor" as const },
+          outcome: "updated" as const,
+          summary: "Slack thread Plan: 1 new message",
+        },
+      });
+      yield* orchestrator.dispatch(wake("1"));
+      // The same wake dispatched again, as after a failed save, lands once.
+      yield* orchestrator.dispatch(wake("1"));
+      const { messages } = yield* orchestrator.getThreadRecords(threadId, ["messages"]);
+      assert.deepEqual(
+        messages.map((message) => [message.createdBy, message.notification?.summary]),
+        [["agent", "Slack thread Plan: 1 new message"]],
+      );
+
+      yield* orchestrator.dispatch({
+        type: "thread.archive",
+        commandId: CommandId.make("link-watch-wake-archive"),
+        threadId,
+      });
+      const refused = yield* orchestrator.dispatch(wake("2")).pipe(Effect.flip);
+      assert.equal(refused._tag, "OrchestratorDispatchError");
+    }),
+  );
+
   it.effect("ends a watch it cannot read, and tells the agent", () =>
     Effect.gen(function* () {
       const orchestrator = yield* Orchestrator.OrchestratorV2;

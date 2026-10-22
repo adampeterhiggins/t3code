@@ -53,6 +53,8 @@ export function GranolaThreadLinkRow(props: {
 
   return (
     <ThreadLinkRow
+      watchKind="granola"
+      linkUrl={link.url}
       icon={<GranolaIcon className="size-4 shrink-0" />}
       label={link.title}
       accessibleLabel={`Linked Granola note: ${link.title}`}
