@@ -117,7 +117,7 @@ describe("linkWatchMessage", () => {
     expect(text).toContain("- 1 new message:\n  - Ben at 2026-10-22T10:01:00.000Z: Ship it");
     expect(text).toContain("unwatch_thread_link");
     expect(notification).toEqual({
-      source: { kind: "monitor" },
+      source: { kind: "monitor", linkUrl: thread.url },
       outcome: "updated",
       summary: "Slack thread Review the plan: 1 new message",
     });

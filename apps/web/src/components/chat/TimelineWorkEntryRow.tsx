@@ -36,6 +36,9 @@ import { useAssetUrls } from "../../assets/assetUrls";
 import { useQuietThreadShell, useThreadShell } from "../../state/entities";
 import { usePreferredOpenPrLink, usePullRequestPreviewTarget } from "~/lib/openPullRequestLink";
 import { PullRequestLinkPreview } from "../pullRequest/PullRequestLinkPreview";
+import { parseComposerObjectLink } from "@t3tools/shared/composerObjectLinks";
+import { useLinkClickHandler } from "~/browser/useOpenLink";
+import { isPreviewableObjectLink, LinkedObjectLinkPreview } from "./LinkedObjectLinkPreview";
 import {
   threadReadLabelPrefix,
   threadReadTargetId,
@@ -70,6 +73,7 @@ import {
   workEntryIconName,
   remarkThoughtPreview,
   pullRequestNotificationLabel,
+  linkWatchNotificationLabel,
 } from "./TimelineWorkEntryRow.logic";
 
 export function useThreadReadTarget(entry: TimelineWorkEntry, environmentId: EnvironmentId) {
@@ -146,6 +150,45 @@ function PullRequestNotificationLabel({
       ) : (
         <PullRequestLinkPreview link={link} originalUrl={label.url} target={previewTarget} />
       )}
+      {label.rest}
+    </>
+  );
+}
+
+function LinkWatchNotificationLabel({
+  label,
+  environmentId,
+}: {
+  label: NonNullable<ReturnType<typeof linkWatchNotificationLabel>>;
+  environmentId: EnvironmentId;
+}) {
+  const { threadRef } = use(TimelineRowCtx);
+  const openLink = useLinkClickHandler(threadRef);
+  const objectLink = parseComposerObjectLink(label.url);
+  if (!isPreviewableObjectLink(objectLink)) return `${label.subject}${label.rest}`;
+  const link = (
+    <a
+      href={label.url}
+      target="_blank"
+      rel="noreferrer"
+      className="rounded-sm text-foreground underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-ring"
+      onClick={(event) => {
+        event.stopPropagation();
+        openLink(event, label.url);
+      }}
+      onKeyDown={stopRowToggle}
+    >
+      {label.subject}
+    </a>
+  );
+  return (
+    <>
+      <LinkedObjectLinkPreview
+        link={link}
+        objectLink={objectLink}
+        environmentId={environmentId}
+        threadRef={threadRef ?? null}
+      />
       {label.rest}
     </>
   );
@@ -442,6 +485,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
     previewText,
     watchedThread?.pullRequests ?? [],
   );
+  const linkWatchLabel = linkWatchNotificationLabel(workEntry, previewText);
   const accessiblePreview = [threadLabel?.text ?? previewText, answerPreview]
     .filter(Boolean)
     .join(": ");
@@ -518,6 +562,11 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
                 ) : pullRequestLabel ? (
                   <PullRequestNotificationLabel
                     label={pullRequestLabel}
+                    environmentId={ctx.activeThreadEnvironmentId}
+                  />
+                ) : linkWatchLabel ? (
+                  <LinkWatchNotificationLabel
+                    label={linkWatchLabel}
                     environmentId={ctx.activeThreadEnvironmentId}
                   />
                 ) : threadLabel ? (
