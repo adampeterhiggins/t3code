@@ -687,7 +687,7 @@ describe("resolveToolPreview", () => {
         },
       ),
     ).toMatchObject({
-      headline: "Interrupted the run",
+      headline: "Interrupt requested",
       status: "interrupt_requested",
       details: ["Wrong branch"],
     });
@@ -860,6 +860,109 @@ describe("resolveToolPreview", () => {
       threadId: "a",
       summary: "Sent 2 attachments",
       message: "",
+    });
+  });
+
+  it("says a stop or scheduled run was requested, not that it finished", () => {
+    expect(
+      resolveToolPreview(tool("t3-code.t3_workflow_stop", { threadId: "a", subagentId: "wf" }, {})),
+    ).toMatchObject({ kind: "thread-action", headline: "Stop requested", threadId: "a" });
+    expect(
+      resolveToolPreview(
+        tool(
+          "t3-code.run_scheduled_task_now",
+          { scheduledTaskId: "s" },
+          { lastRunStatus: "running", runCount: 3 },
+        ),
+      ),
+    ).toMatchObject({ headline: "Scheduled run requested", status: "running", details: ["Run 3"] });
+  });
+
+  it("shows a deleted thread and message drafts", () => {
+    expect(
+      resolveToolPreview(tool("t3-code.t3_thread_delete", { threadId: "a" }, { sequence: 9 })),
+    ).toMatchObject({ kind: "thread-action", headline: "Deleted a thread" });
+    expect(
+      resolveToolPreview(
+        tool(
+          "t3-code.t3_draft_list",
+          {},
+          {
+            drafts: [
+              { id: "d1", threadId: "a", text: "Ship it\nAfter the checks pass" },
+              { id: "d2", threadId: "b", text: "Rebase" },
+            ],
+          },
+        ),
+      ),
+    ).toMatchObject({
+      kind: "records",
+      summary: "2 drafts",
+      items: [
+        { key: "d1", title: "Ship it", body: "Ship it\nAfter the checks pass", threadId: "a" },
+        { key: "d2", title: "Rebase", body: null, threadId: "b" },
+      ],
+    });
+    expect(
+      resolveToolPreview(
+        tool("t3-code.t3_draft_create", { text: "Rebase" }, { id: "d", text: "Rebase" }),
+      ),
+    ).toMatchObject({ kind: "document", title: "Saved a draft", markdown: "Rebase" });
+    expect(
+      resolveToolPreview(
+        tool("t3-code.t3_draft_send", { draftId: "d" }, { threadId: "b", messageId: "m" }),
+      ),
+    ).toMatchObject({ headline: "Sent a draft", threadId: "b" });
+  });
+
+  it("lists every browser tab a server host reports, with the saved profiles", () => {
+    expect(
+      resolveToolPreview(
+        tool(
+          "t3-code.preview_status",
+          {},
+          {
+            available: true,
+            url: null,
+            title: null,
+            tabs: [
+              { tabId: "t1", url: "http://localhost:5173/", owner: "agent", ownedByCaller: true },
+              { tabId: "t2", url: null, owner: "human", visible: true },
+            ],
+            profiles: [{ id: "p", name: "Work" }],
+          },
+        ),
+      ),
+    ).toMatchObject({
+      kind: "records",
+      notes: ["Profiles: Work"],
+      items: [
+        { key: "t1", title: "http://localhost:5173/", subtitle: "agent", meta: ["yours"] },
+        { key: "t2", title: "Blank tab", subtitle: "human", meta: ["visible"] },
+      ],
+    });
+    expect(
+      resolveToolPreview(
+        tool("t3-code.preview_status", {}, { available: true, url: "https://a.test", title: "A" }),
+      ),
+    ).toMatchObject({ kind: "browser", page: { url: "https://a.test", title: "A" } });
+  });
+
+  it("leaves a T3 result's ids to the raw call", () => {
+    expect(
+      resolveToolPreview(
+        tool(
+          "t3-code.t3_thread_move",
+          { threadId: "a", projectId: "p" },
+          { threadId: "a", projectId: "p", projectTitle: "Web", workspaceRoot: "/code/web" },
+        ),
+      ),
+    ).toMatchObject({
+      kind: "properties",
+      rows: [
+        ["Project Title", "Web"],
+        ["Workspace Root", "/code/web"],
+      ],
     });
   });
 

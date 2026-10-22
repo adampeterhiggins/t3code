@@ -14,6 +14,7 @@ import {
   integrationToolPreview,
   oversizedResultPreview,
 } from "./integrationToolPreview.ts";
+import { records } from "./previewBuilders.ts";
 import { t3UtilityToolPreview } from "./t3UtilityToolPreview.ts";
 import { toolCallArgs, toolResultData, toolResultText } from "./itemDetail.ts";
 import { commandDisplayText } from "./commandLabel.ts";
@@ -545,6 +546,34 @@ function browserPreview(tool: string, input: Record_, result: Record_ | null): B
   };
 }
 
+/** Server hosts list every tab in the thread, which says more than the one current page. */
+function previewTabsPreview(result: Record_ | null): RecordsToolPreview | null {
+  const tabs = Array.isArray(result?.tabs) ? result.tabs.filter(isRecord) : [];
+  if (tabs.length === 0) return null;
+  const profiles = Array.isArray(result?.profiles) ? result.profiles.filter(isRecord) : [];
+  return records(
+    tabs.map((tab, index) => ({
+      key: str(tab.tabId) ?? String(index),
+      title: str(tab.url) ?? "Blank tab",
+      subtitle: str(tab.owner),
+      meta: [
+        tab.ownedByCaller === true ? "yours" : null,
+        tab.visible === true ? "visible" : null,
+      ].filter((fact) => fact !== null),
+      url: null,
+      body: null,
+      threadId: null,
+    })),
+    {
+      notes: [
+        profiles.length > 0
+          ? `Profiles: ${profiles.map((profile) => str(profile.name) ?? "Profile").join(", ")}`
+          : null,
+      ],
+    },
+  );
+}
+
 /** Strips the `mcp__server__` prefix Claude gives deferred tools, so chips read as names. */
 function shortToolName(name: string): string {
   return /^mcp__.+?__(.+)$/.exec(name)?.[1] ?? name;
@@ -952,7 +981,8 @@ function t3ToolPreview(tool: string, input: Record_, result: Record_ | null): To
           })
         : null;
     case "t3_thread_interrupt":
-      return threadAction("Interrupted the run", {
+      // The result acknowledges the request; the run stops on its own time.
+      return threadAction("Interrupt requested", {
         threadId: str(result?.threadId) ?? str(input.threadId),
         status: str(result?.status),
         details: [str(input.reason)].filter((detail) => detail !== null),
@@ -1075,6 +1105,8 @@ function t3ToolPreview(tool: string, input: Record_, result: Record_ | null): To
     case "html_preview":
     case "html_render":
       return htmlPagePreview(input, result);
+    case "preview_status":
+      return previewTabsPreview(result) ?? browserPreview(tool, input, result);
     default:
       return tool.startsWith("preview_") ? browserPreview(tool, input, result) : null;
   }
@@ -1104,6 +1136,13 @@ function snapshotResult(result: Record_ | null, text: string | null): Record_ | 
   return result;
 }
 
+/** Ids only matter to the agent; the raw call keeps them. */
+function withoutIdRows(preview: ToolPreview | null): ToolPreview | null {
+  if (preview?.kind !== "properties") return preview;
+  const rows = preview.rows.filter(([key]) => !/(?:^| )id$/i.test(key));
+  return rows.length > 0 || preview.title ? { ...preview, rows } : preview;
+}
+
 /** A dynamic tool call's preview, or null when the generic body says it best. */
 export function resolveToolPreview(item: OrchestrationV2TurnItem): ToolPreview | null {
   if (item.type !== "dynamic_tool" || item.status === "failed") return null;
@@ -1124,7 +1163,7 @@ export function resolveToolPreview(item: OrchestrationV2TurnItem): ToolPreview |
         t3Tool === "preview_snapshot" ? snapshotResult(resultRecord, text) : resultRecord,
       ) ??
       t3UtilityToolPreview(t3Tool, input, result) ??
-      genericToolPreview(result, text)
+      withoutIdRows(genericToolPreview(result, text))
     );
   }
   const toolName = item.toolName ?? "";
