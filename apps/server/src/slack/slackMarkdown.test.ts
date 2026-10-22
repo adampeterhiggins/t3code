@@ -4,6 +4,7 @@ import {
   mentionedGroupIds,
   mentionedUserIds,
   renderSlackThread,
+  slackMarkdownToPlain,
   slackTextToMarkdown,
   slackTsToDisplay,
   slackTsToIso,
@@ -47,6 +48,31 @@ describe("slackTextToMarkdown", () => {
 
   it("collects mentioned user ids", () => {
     assert.deepEqual(mentionedUserIds("<@U1> and <@W2|bob>, not <#C1>"), ["U1", "W2"]);
+  });
+
+  it("renders Slack bold and strike as markdown, and leaves italic and code", () => {
+    assert.strictEqual(
+      slackTextToMarkdown(
+        "*Draft PRs are open*\n• *Preview buttons stay hidden (PSET-1268):* <https://github.com/org/repo/pull/6263|#6263>\n_note_ ~gone~ `*not bold*`",
+        names,
+      ),
+      "**Draft PRs are open**\n• **Preview buttons stay hidden (PSET-1268):** [#6263](https://github.com/org/repo/pull/6263)\n_note_ ~~gone~~ `*not bold*`",
+    );
+    assert.strictEqual(
+      slackMarkdownToPlain("**Draft PRs are open** and ~~gone~~ `**keep**`"),
+      "Draft PRs are open and gone `**keep**`",
+    );
+  });
+
+  it("does not treat list markers, maths, mid-word stars, or a star in a URL as bold", () => {
+    assert.strictEqual(
+      slackTextToMarkdown("* item\n2 * 3\npre*bold*\n*bold*word\nhttps://example.com/a*b*c", names),
+      "* item\n2 * 3\npre*bold*\n*bold*word\nhttps://example.com/a*b*c",
+    );
+    assert.strictEqual(slackTextToMarkdown("(*hello*).", names), "(**hello**).");
+    assert.strictEqual(slackTextToMarkdown("*one\ntwo*", names), "*one\ntwo*");
+    assert.strictEqual(slackTextToMarkdown("```\n*not bold*\n```", names), "```\n*not bold*\n```");
+    assert.strictEqual(slackTextToMarkdown("`*<@U1>*`", names), "`*<@U1>*`");
   });
 });
 
