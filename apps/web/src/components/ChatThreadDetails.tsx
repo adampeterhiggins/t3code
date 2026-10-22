@@ -6,6 +6,7 @@ import { useClientSettings } from "~/hooks/useSettings";
 import { cn } from "~/lib/utils";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "~/timestampFormat";
 import ChatMarkdown from "./ChatMarkdown";
+import { remarkChatMentions } from "./chatThreadMentions";
 import { chatThreadRows } from "./chatThreadRows";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
@@ -120,7 +121,8 @@ function ChatThreadMessages(props: {
                       text={message.text}
                       cwd={undefined}
                       lineBreaks
-                      className="text-xs"
+                      className="chat-thread-markdown text-xs"
+                      extraRemarkPlugins={[[remarkChatMentions, message.mentions ?? []]]}
                     />
                   ) : null}
                   {message.files.length > 0 ? (

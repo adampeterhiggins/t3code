@@ -29,6 +29,7 @@ import * as ServerConfig from "../config.ts";
 import { DiscordAuth } from "./DiscordAuth.ts";
 import {
   discordContentToMarkdown,
+  discordMentionLabels,
   discordTimeToDisplay,
   mentionedChannelIds,
   millisToSnowflake,
@@ -437,6 +438,7 @@ export const make = Effect.gen(function* () {
           postedAt: discordTimeToDisplay(message.timestamp),
           postedAtIso: DateTime.formatIso(DateTime.makeUnsafe(message.timestamp)),
           text: discordContentToMarkdown(message.content, names),
+          mentions: discordMentionLabels(message.content, names),
           files: (message.attachments ?? []).map((file) => file.filename),
         })),
       },

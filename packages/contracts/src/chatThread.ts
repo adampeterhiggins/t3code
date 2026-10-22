@@ -20,6 +20,10 @@ export const ChatThreadMessage = Schema.Struct({
   files: Schema.Array(Schema.String.check(Schema.isMaxLength(2_048))).check(
     Schema.isMaxLength(100),
   ),
+  /** The mentions `text` shows (`@Ada`, `#eng`), for clients to highlight as the service does. */
+  mentions: Schema.optional(
+    Schema.Array(Schema.String.check(Schema.isMaxLength(2_048))).check(Schema.isMaxLength(100)),
+  ),
   /** The message the link pointed at. */
   linked: Schema.Boolean,
 });

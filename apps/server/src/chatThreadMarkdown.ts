@@ -14,6 +14,8 @@ export interface ChatRenderedMessage {
   /** Already markdown. */
   readonly text: string;
   readonly files: ReadonlyArray<string>;
+  /** The mentions `text` shows. */
+  readonly mentions?: ReadonlyArray<string> | undefined;
 }
 
 export interface ChatThreadSnapshot {
@@ -123,6 +125,9 @@ function structured(
         postedAt: message.postedAtIso,
         text: truncate(message.text.trim(), maxTextChars),
         files: message.files,
+        ...(message.mentions !== undefined && message.mentions.length > 0
+          ? { mentions: message.mentions.slice(0, 100) }
+          : {}),
         linked: message.id === linkedId,
       };
     });

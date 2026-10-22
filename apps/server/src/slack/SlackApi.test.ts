@@ -338,7 +338,7 @@ it.effect("keeps Slack bold in the snapshot and a plain title", () => {
     assert.strictEqual(context.title, "Draft PRs are open");
     assert.strictEqual(
       context.messages[0]!.text,
-      "**Draft PRs are open**\n• **Preview buttons stay hidden:** `get_artefact_content`",
+      "**Draft PRs are open**\n- **Preview buttons stay hidden:** `get_artefact_content`",
     );
     const { messages } = yield* api.searchMessages({ query: "draft" });
     assert.strictEqual(messages[0]?.text, "Draft PRs are open");
