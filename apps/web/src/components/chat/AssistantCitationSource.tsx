@@ -351,7 +351,9 @@ export function AssistantCitationSource({
   useEffect(() => {
     const root = rootRef.current;
     const list = listRef.current;
-    if (!root || !list || !request || request.citation.messageId !== messageId) return;
+    // Transcript excerpts are revealed by the timeline, a row at a time.
+    if (!root || !list || !request || request.citation.segments) return;
+    if (request.citation.messageId !== messageId) return;
     return observeAssistantCitationSource({ root, itemKey, request, list });
   }, [itemKey, listRef, messageId, request]);
 

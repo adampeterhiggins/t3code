@@ -5,6 +5,11 @@ import type { TimelineEntry } from "../../session-logic";
 import type { MessagesTimelineRow } from "./MessagesTimeline.logic";
 import type { AssistantCitationRequest, AssistantCitationTarget } from "./AssistantCitationSource";
 import { toastManager } from "../ui/toast";
+import {
+  citationRowIndex,
+  transcriptItemId,
+  transcriptItemRowIndex,
+} from "./transcriptCitation.logic";
 
 export interface CitationHistoryPage {
   readonly loading: boolean;
@@ -89,9 +94,11 @@ export function useAssistantCitationTarget({
       setFinishedKey(navigation.target.key);
       toastManager.add({ type: "warning", title, description });
     };
+    const { citation } = navigation.target;
+    const sourceId = citation.segments?.[0]?.id ?? citation.messageId;
     const source = entries.find(
       (entry) =>
-        entry.kind === "message" && entry.message.id === navigation.target.citation.messageId,
+        (entry.kind === "message" || entry.kind === "work") && transcriptItemId(entry) === sourceId,
     );
     if (!source) {
       if (loadEarlier) {
@@ -114,20 +121,28 @@ export function useAssistantCitationTarget({
       );
       return;
     }
-    if (source.kind !== "message" || source.message.role !== "assistant") {
+    if (!citation.segments && (source.kind !== "message" || source.message.role !== "assistant")) {
       fail(
         "The citation does not refer to an assistant response",
         "The selected text is still saved in your citation.",
       );
       return;
     }
-    const index = rows.findIndex(
-      (row) => row.kind === "message" && row.message.id === navigation.target.citation.messageId,
-    );
-    if (index < 0) {
+    if (transcriptItemRowIndex(rows, sourceId) < 0) {
       const foldRunId = getTurnFoldRunId(source.id);
-      if (foldRunId) onExpandTurn(foldRunId);
-      return;
+      if (foldRunId) {
+        onExpandTurn(foldRunId);
+        return;
+      }
+      // An excerpt can start inside a collapsed tool group and still land on a later item.
+      if (!citation.segments) return;
+      if (citationRowIndex(rows, citation) < 0) {
+        fail(
+          "The cited items are hidden",
+          "Expand the collapsed tool calls to see them. Your saved excerpt is unchanged.",
+        );
+        return;
+      }
     }
     if (listLoaded && listRef.current) setReady(navigation.target);
   }, [
@@ -187,9 +202,7 @@ export function useAssistantCitationTarget({
   const target = ready?.key === request?.key ? ready : null;
   const positioning = request !== null && finishedKey !== request.key;
   const sourceRow =
-    target && positioning
-      ? rows.find((row) => row.kind === "message" && row.message.id === target.citation.messageId)
-      : undefined;
+    target && positioning ? rows[citationRowIndex(rows, target.citation)] : undefined;
   return {
     target,
     positioning,

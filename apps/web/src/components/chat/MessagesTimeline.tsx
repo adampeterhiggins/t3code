@@ -65,6 +65,8 @@ import { AssistantSelectionToolbar } from "./AssistantSelectionToolbar";
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
 import { type AssistantCitationRequest } from "./AssistantCitationSource";
 import { useAssistantCitationTarget, type CitationHistoryPage } from "./useAssistantCitationTarget";
+import { useTranscriptCitationReveal } from "./useTranscriptCitationReveal";
+import { TranscriptSelectionStyle } from "./TranscriptSelectionStyle";
 import {
   resolveTimelineIsAtEnd,
   resolveTimelineMinimapHasPersistentGutter,
@@ -187,7 +189,7 @@ interface MessagesTimelineProps {
   citationHistoryLoading?: boolean;
   onCiteAssistantText?: (
     citation: AssistantCitation,
-    sourceAnchor: AssistantCitationSourceAnchor,
+    sourceAnchor?: AssistantCitationSourceAnchor,
   ) => boolean;
   isWorking: boolean;
   runlessWorkActive?: boolean;
@@ -670,6 +672,11 @@ const ConversationTimeline = memo(function ConversationTimeline({
     onExpandTurn: expandCitedRun,
     onManualNavigation,
   });
+  const revealedTranscriptItemIds = useTranscriptCitationReveal({
+    target: readyCitationRequest,
+    rows,
+    listRef,
+  });
   const [findListReady, setFindListReady] = useState(false);
   const handleListLoad = () => {
     onCitationListLoad();
@@ -1110,10 +1117,13 @@ const ConversationTimeline = memo(function ConversationTimeline({
           className="relative h-full min-h-0"
           data-assistant-citation-viewport="true"
         >
+          <TranscriptSelectionStyle itemIds={revealedTranscriptItemIds} />
           {onCiteAssistantText && citationThreadRef ? (
             <AssistantSelectionToolbar
               viewport={timelineViewportElement}
               threadRef={citationThreadRef}
+              entries={timelineEntries}
+              workspaceRoot={workspaceRoot}
               onCite={onCiteAssistantText}
             />
           ) : null}
@@ -1289,6 +1299,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
         row.kind === "message" || row.kind === "assistant-meta" ? row.message.id : undefined
       }
       data-message-role={row.kind === "message" ? row.message.role : undefined}
+      data-work-entry-id={row.kind === "work-live" ? row.entry.id : undefined}
     >
       {isWorkLogRow ? (
         <WorkLogBlock
