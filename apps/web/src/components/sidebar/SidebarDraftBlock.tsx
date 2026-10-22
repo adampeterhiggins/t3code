@@ -1,4 +1,6 @@
 import { discardComposerDraft } from "../../lib/discardComposerDraft";
+import { assistantCitationsToLabels } from "@t3tools/shared/assistantCitations";
+import { composerFileMentionsToLabels } from "@t3tools/shared/composerInlineTokens";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import { SquarePenIcon, XIcon } from "lucide-react";
 import {
@@ -7,8 +9,8 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { cn } from "~/lib/utils";
+import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { resolveSidebarRowAccessibility } from "../Sidebar.logic";
 import { ProjectFavicon, type ProjectFaviconProject } from "../ProjectFavicon";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -19,7 +21,7 @@ import {
   type ComposerThreadDraftState,
   type DraftSessionState,
 } from "../../composerDraftStore";
-import { draftPenClassName, draftSurfaceClassName } from "./SidebarThreadRow";
+import { draftSurfaceClassName, draftPenClassName } from "./SidebarThreadRow";
 
 const SidebarDraftRow = memo(function SidebarDraftRow(props: {
   draftId: DraftId;
@@ -29,11 +31,21 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
   isActive: boolean;
   onNavigate: (draftId: DraftId) => void;
   onDiscard: (draftId: DraftId) => void;
-  onContextMenu: (draftId: DraftId, position: { x: number; y: number }) => void;
+  onContextMenu: (
+    draftId: DraftId,
+    position: {
+      x: number;
+      y: number;
+    },
+  ) => void;
 }) {
   const { composer, draftId, onContextMenu, onDiscard, onNavigate } = props;
   const promptPreview =
-    replaceComposerContextReferences(composer.prompt, (occurrence) => occurrence.label)
+    composerFileMentionsToLabels(
+      assistantCitationsToLabels(
+        replaceComposerContextReferences(composer.prompt, (occurrence) => occurrence.label),
+      ),
+    )
       .trim()
       .split("\n", 1)[0] ?? "";
   // images mirrors persistedAttachments once rehydration finishes; before
@@ -130,20 +142,24 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
     </li>
   );
 });
-
 interface SidebarDraftRowData {
   draftId: DraftId;
   session: DraftSessionState;
   composer: ComposerThreadDraftState;
 }
-
 export const SidebarDraftBlock = memo(function SidebarDraftBlock(props: {
   projectByKey: ReadonlyMap<string, EnvironmentProject>;
   projectDisplayNameByKey: ReadonlyMap<string, string>;
   scopedProjectKeys: ReadonlySet<string> | null;
   routeDraftId: string | null;
   onNavigateToDraft: (draftId: DraftId) => void;
-  onDraftContextMenu: (draftId: DraftId, position: { x: number; y: number }) => void;
+  onDraftContextMenu: (
+    draftId: DraftId,
+    position: {
+      x: number;
+      y: number;
+    },
+  ) => void;
 }) {
   const draftThreadsByThreadKey = useComposerDraftStore((store) => store.draftThreadsByThreadKey);
   const draftsByThreadKey = useComposerDraftStore((store) => store.draftsByThreadKey);

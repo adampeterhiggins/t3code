@@ -552,7 +552,7 @@ editable. Names are stored by the [ThreadTabs service](../apps/server/src/thread
   it while one of its tabs is already open leaves that tab selected
   (`threadTabGroupHeaderTarget` in `packages/client-runtime/src/threadTabs.ts`,
   `apps/web/src/threadTabRecencyStore.ts`). With tabs hidden on web and desktop, the row shows
-  that tab’s title, model, and details (`apps/web/src/components/Sidebar.tsx`). On web and desktop, **Settings → General → Tabs in
+  that tab’s title, model, and details (`apps/web/src/components/sidebar/SidebarThreadRow.tsx`). On web and desktop, **Settings → General → Tabs in
   sidebar**, the sidebar header's tabs button (click to toggle, right-click for a menu;
   `sidebar/SidebarTabsMenu.tsx`), the command palette,
   and `Cmd+Option+T` on macOS or `Ctrl+Alt+T` on Windows and Linux list each tab under that row:
