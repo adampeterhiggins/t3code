@@ -2612,3 +2612,44 @@ code {
     }
   }
 }
+
+.quick-message-theme-preview {
+  --quick-preview-foreground: color-mix(
+    in oklab,
+    color-mix(
+      in oklab,
+      var(--quick-preview-text) var(--appearance-contrast-base),
+      var(--quick-preview-canvas)
+    ),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --quick-preview-secondary: color-mix(
+    in oklab,
+    color-mix(
+      in oklab,
+      var(--quick-preview-muted) var(--appearance-contrast-base),
+      var(--quick-preview-canvas)
+    ),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+}
+.quick-message-theme-preview-composer {
+  background: var(--quick-preview-surface);
+  color: var(--quick-preview-secondary);
+  border-color: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--quick-preview-border) var(--appearance-contrast-base), transparent),
+    var(--quick-preview-text) var(--appearance-contrast-border-boost)
+  );
+}
+.quick-message-theme-preview-prompt {
+  color: var(--quick-preview-foreground);
+}
+.quick-message-theme-preview-action {
+  background: var(--quick-preview-action);
+  color: var(--quick-preview-action-text);
+}
+
+html[data-quick-message-theme-source="adapt"] [data-slot="composer-shell"] {
+  --chat-composer-outline: var(--contrast-border);
+}

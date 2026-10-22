@@ -76,7 +76,7 @@ import {
   selectProjectGroupingSettings,
 } from "../logicalProject";
 import { useUiStateStore } from "../uiStateStore";
-import { syncBrowserChromeTheme } from "../hooks/useTheme";
+import { configureQuickMessageAppearance, syncBrowserChromeTheme } from "../hooks/useTheme";
 import { configureClientTracing } from "../observability/clientTracing";
 import { resolveInitialServerAuthGateState } from "../environments/primary";
 import { hasHostedPairingRequest, isHostedStaticApp } from "../hostedPairing";
@@ -179,7 +179,7 @@ function RootRouteView() {
   if (pathname === "/quick-message") {
     return (
       <>
-        <ContrastAppearanceSync />
+        <QuickMessageAppearanceSync />
         <FontAppearanceSync />
         {primaryEnvironmentAuthenticated ? <Outlet /> : <QuickMessageSignInNotice />}
       </>
@@ -306,6 +306,28 @@ function EnvironmentThemeSync() {
   // Ordered after the palette sync so a first-run client adopting the
   // environment's own theme finds it already in the library.
   useDefaultThemeAdoption();
+  return null;
+}
+
+function QuickMessageAppearanceSync() {
+  useEnvironmentThemeSync();
+  const settings = useClientSettings();
+  useEffect(() => {
+    configureQuickMessageAppearance({
+      quickMessageThemeSource: settings.quickMessageThemeSource,
+      quickMessageTheme: settings.quickMessageTheme,
+      quickMessageAppearance: settings.quickMessageAppearance,
+      quickMessageExtraContrast: settings.quickMessageExtraContrast,
+      appearanceContrast: settings.appearanceContrast,
+    });
+    return () => configureQuickMessageAppearance(null);
+  }, [
+    settings.quickMessageThemeSource,
+    settings.quickMessageTheme,
+    settings.quickMessageAppearance,
+    settings.quickMessageExtraContrast,
+    settings.appearanceContrast,
+  ]);
   return null;
 }
 

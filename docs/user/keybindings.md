@@ -211,6 +211,11 @@ request, a model, and the rest of the attach menu. Use **⋯** to start from a P
 Picks show above your message and are applied to the new thread when you send. On Linux the
 shortcut does not work in a Wayland session.
 
+Use **Settings → Appearance → Quick message** to give the floating composer its own appearance.
+Choose **Follow app**, **Adapt app theme** with extra contrast, or **Choose theme** from your theme
+library. Adapted and independent themes can use light, dark, or system appearance where the theme
+supports it. The preview lets you compare the composer over light and dark backgrounds.
+
 ## Desktop quit shortcut
 
 Use `Cmd+Q` on macOS or `Ctrl+Q` on Windows and Linux. In the default **Hold** mode,

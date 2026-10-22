@@ -628,3 +628,26 @@ describe("server model preferences", () => {
     expect(decodeServerSettingsPatch(input)).toEqual(input);
   });
 });
+
+describe("quick message appearance settings", () => {
+  it("preserves app appearance for existing installs and round-trips independent preferences", () => {
+    expect(decodeClientSettings({})).toMatchObject({
+      quickMessageThemeSource: "app",
+      quickMessageAppearance: "app",
+      quickMessageExtraContrast: 40,
+    });
+    const patch = {
+      quickMessageThemeSource: "theme",
+      quickMessageTheme: "grove",
+      quickMessageAppearance: "dark",
+      quickMessageExtraContrast: 65,
+    };
+    expect(decodeClientSettingsPatch(patch)).toEqual(patch);
+    expect(decodeClientSettings(encodeClientSettings(decodeClientSettings(patch)))).toMatchObject(
+      patch,
+    );
+  });
+  it.each([-1, 101, 2.5])("rejects invalid extra contrast %s", (quickMessageExtraContrast) => {
+    expect(() => decodeClientSettingsPatch({ quickMessageExtraContrast })).toThrow();
+  });
+});

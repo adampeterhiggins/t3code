@@ -420,6 +420,10 @@ export type ModelPreferences = {
   readonly providerModelPreferences: typeof ProviderModelPreferences.Type;
 };
 
+const QuickMessageThemeSource = Schema.Literals(["app", "adapt", "theme"]);
+const QuickMessageAppearance = Schema.Literals(["app", "system", "light", "dark"]);
+const QuickMessageExtraContrast = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 100 }));
+
 export const ClientSettingsSchema = Schema.Struct({
   notificationMode: NotificationMode.pipe(
     Schema.withDecodingDefault(Effect.succeed("off" as const)),
@@ -629,6 +633,16 @@ export const ClientSettingsSchema = Schema.Struct({
   ),
   snapShotFlash: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   snapShotAnimations: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  quickMessageThemeSource: QuickMessageThemeSource.pipe(
+    Schema.withDecodingDefault(Effect.succeed("app" as const)),
+  ),
+  quickMessageTheme: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed("light"))),
+  quickMessageAppearance: QuickMessageAppearance.pipe(
+    Schema.withDecodingDefault(Effect.succeed("app" as const)),
+  ),
+  quickMessageExtraContrast: QuickMessageExtraContrast.pipe(
+    Schema.withDecodingDefault(Effect.succeed(40)),
+  ),
   quickMessageEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   quickMessageShortcut: GlobalShortcutChord.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_QUICK_MESSAGE_SHORTCUT)),
@@ -2274,6 +2288,10 @@ export const ClientSettingsPatch = Schema.Struct({
   snapShotSound: Schema.optionalKey(SnapShotSound),
   snapShotFlash: Schema.optionalKey(Schema.Boolean),
   snapShotAnimations: Schema.optionalKey(Schema.Boolean),
+  quickMessageThemeSource: Schema.optionalKey(QuickMessageThemeSource),
+  quickMessageTheme: Schema.optionalKey(Schema.String),
+  quickMessageAppearance: Schema.optionalKey(QuickMessageAppearance),
+  quickMessageExtraContrast: Schema.optionalKey(QuickMessageExtraContrast),
   quickMessageEnabled: Schema.optionalKey(Schema.Boolean),
   quickMessageShortcut: Schema.optionalKey(GlobalShortcutChord),
   wordWrap: Schema.optionalKey(Schema.Boolean),

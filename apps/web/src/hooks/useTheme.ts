@@ -25,6 +25,25 @@ import {
   type ThemePreferenceMode,
 } from "../themePalette";
 
+import { isQuickMessageWindow } from "../components/quickMessage/quickMessageWindow";
+import {
+  resolveQuickMessageAppearance,
+  type QuickMessageThemeSettings,
+} from "../quickMessageAppearance";
+import { applyAppearanceContrast } from "../appearanceContrast";
+
+let quickMessageThemeSettings: QuickMessageThemeSettings | null = null;
+
+export function configureQuickMessageAppearance(settings: QuickMessageThemeSettings | null) {
+  const previous = quickMessageThemeSettings;
+  quickMessageThemeSettings = settings;
+  lastAppliedTheme = null;
+  applyTheme(getStored(), { suppressTransitions: true });
+  if (!settings && previous)
+    applyAppearanceContrast(document.documentElement, previous.appearanceContrast);
+  emitChange();
+}
+
 type Theme = ThemePreference;
 type ThemeSnapshot = {
   theme: Theme;
@@ -340,8 +359,23 @@ function applyTheme(theme: Theme, { suppressTransitions = false, preservePreview
     appearanceMode,
     themeHalves,
   );
-  applyThemePalette(resolveThemeHalf(theme, themeHalves, resolvedAppearance), resolvedAppearance);
-  document.documentElement.classList.toggle("dark", resolvedAppearance === "dark");
+  const quick = quickMessageThemeSettings
+    ? resolveQuickMessageAppearance(
+        quickMessageThemeSettings,
+        { theme, appearance: resolvedAppearance, halves: themeHalves },
+        getSystemDark(),
+      )
+    : null;
+  const appearance = quick?.appearance ?? resolvedAppearance;
+  applyThemePalette(quick?.theme ?? resolveThemeHalf(theme, themeHalves, appearance), appearance);
+  document.documentElement.classList.toggle("dark", appearance === "dark");
+  if (quick) {
+    document.documentElement.dataset.quickMessageThemeSource =
+      quickMessageThemeSettings?.quickMessageThemeSource;
+    applyAppearanceContrast(document.documentElement, quick.contrast);
+  } else {
+    delete document.documentElement.dataset.quickMessageThemeSource;
+  }
   lastAppliedTheme = { theme, systemDark, followSystem, appearanceMode, themeHalves };
   syncBrowserChromeTheme();
   syncDesktopTheme(theme, followSystem, appearanceMode);
@@ -373,7 +407,7 @@ function syncDesktopTheme(
   followSystem?: boolean,
   appearanceMode?: ThemePreferenceMode,
 ) {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined" || isQuickMessageWindow) return;
   const bridge = window.desktopBridge;
   const halves = readStoredThemeHalves();
   const desktopTheme = resolveDesktopTheme(theme, followSystem, appearanceMode, halves);
@@ -411,16 +445,23 @@ function getSnapshot(): ThemeSnapshot {
   const theme = getStored();
   const appearanceMode = readAppearanceModePreference(theme);
   const followSystem = appearanceMode === "system";
-  const systemDark = followSystem ? getSystemDark() : false;
+  const systemDark = getSystemDark();
   const themeHalves = readStoredThemeHalves();
 
-  const resolvedTheme = resolveThemeAppearance(
+  const appAppearance = resolveThemeAppearance(
     theme,
     systemDark,
     followSystem,
     appearanceMode,
     themeHalves,
   );
+  const resolvedTheme = quickMessageThemeSettings
+    ? resolveQuickMessageAppearance(
+        quickMessageThemeSettings,
+        { theme, appearance: appAppearance, halves: themeHalves },
+        getSystemDark(),
+      ).appearance
+    : appAppearance;
   if (
     lastSnapshot &&
     lastSnapshot.theme === theme &&
@@ -443,7 +484,11 @@ function getServerSnapshot() {
 
 function handleSystemAppearanceChange() {
   const storedTheme = getStored();
-  if (readAppearanceModePreference(storedTheme) === "system") {
+  if (
+    readAppearanceModePreference(storedTheme) === "system" ||
+    quickMessageThemeSettings?.quickMessageAppearance === "system"
+  ) {
+    lastAppliedTheme = null;
     applyTheme(storedTheme, { suppressTransitions: true });
   }
   emitChange();

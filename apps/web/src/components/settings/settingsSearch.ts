@@ -217,6 +217,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     targetId: "appearance",
   },
   {
+    id: "quick-message-appearance",
+    title: "Quick message appearance",
+    to: "/settings/appearance",
+    searchTerms: ["floating composer theme contrast independent light dark"],
+  },
+  {
     // Prefixed because the slider control already owns the `appearance-contrast` id.
     id: "setting-appearance-contrast",
     title: "Contrast",
