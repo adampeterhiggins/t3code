@@ -19,6 +19,7 @@ import * as Crypto from "effect/Crypto";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as HttpClient from "effect/http/HttpClient";
 import { readCursorUsageLimits, type CursorSdkCredential } from "./usageLimits.ts";
 
@@ -30,6 +31,13 @@ import {
 } from "@t3tools/provider-core/server/SubscriptionLimitPolicy";
 import { makeCursorTextGeneration } from "./textGeneration.ts";
 import { makeCursorAdapterV2, type CursorAdapterV2DriverEnv } from "./adapter.ts";
+import {
+  authMethodDescriptors,
+  makeCliProviderAuth,
+  providerAuthMethodPersistence,
+  providerEnvVarCredential,
+  type CliAuthMethodSpec,
+} from "@t3tools/provider-core/server/cliAuth";
 import { ProviderDriverError } from "@t3tools/provider-core/server/errors";
 import { buildInitialCursorProviderSnapshot, checkCursorProviderStatus } from "./status.ts";
 import * as CursorSdkCatalog from "./CursorSdkCatalog.ts";
@@ -41,7 +49,11 @@ import {
   type ProviderInstance,
 } from "@t3tools/provider-core/server/driver";
 import { withInstanceIdentity } from "@t3tools/provider-core/server/instanceIdentity";
-import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
+import {
+  mergeProviderInstanceEnvironment,
+  resolveInstanceHomePath,
+} from "@t3tools/provider-core/server/instanceEnvironment";
+import { makeCursorEnvironment, materializeCursorShadowHome } from "./CursorHome.ts";
 import { makeManualOnlyProviderMaintenanceCapabilities } from "@t3tools/provider-core/server/maintenanceResolver";
 import {
   haveProviderSnapshotSettingsChanged,
@@ -71,6 +83,7 @@ export type CursorDriverEnv =
   | FileSystem.FileSystem
   | Path.Path
   | HttpClient.HttpClient
+  | ChildProcessSpawner.ChildProcessSpawner
   | CursorSdk.CursorSdk
   | ProviderHost.ProviderHost
   | CursorKeychain.CursorKeychain;
@@ -95,7 +108,12 @@ export const CursorDriver: ProviderDriver<
       CursorUsageAccounts.CursorUsageAccounts.pipe(
         Effect.flatMap((accounts) =>
           accounts.scan({
-            instances,
+            instances: instances.map((instance) => ({
+              instanceId: instance.instanceId,
+              environment: instance.environment,
+              homePath: instance.config?.homePath ?? "",
+              configuredEnvironment: settings.providerInstances[instance.instanceId]?.environment,
+            })),
             keychainUsageEnabled: settings.cursorKeychainUsageEnabled,
             windowStartMs,
             retentionCutoffMs,
@@ -118,7 +136,30 @@ export const CursorDriver: ProviderDriver<
     const httpClient = yield* HttpClient.HttpClient;
     const keychain = yield* CursorKeychain.CursorKeychain;
     const sdkRunner = yield* CursorAgentSdk.CursorAgentSdkRunner;
-    const processEnv = yield* mergeProviderInstanceEnvironment(environment);
+    const homePath = yield* resolveInstanceHomePath({
+      homePath: config.homePath,
+      stateDir: host.paths.stateDir,
+      driver: DRIVER_KIND,
+      instanceId,
+      environment,
+      homeVariables: ["HOME"],
+    });
+    const configWithHome = { ...config, homePath };
+    yield* materializeCursorShadowHome(configWithHome).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ProviderDriverError({
+            driver: DRIVER_KIND,
+            instanceId,
+            detail: cause.message,
+            cause,
+          }),
+      ),
+    );
+    const processEnv = yield* makeCursorEnvironment(
+      configWithHome,
+      yield* mergeProviderInstanceEnvironment(environment),
+    );
     const continuationIdentity = defaultProviderContinuationIdentity({
       driverKind: DRIVER_KIND,
       instanceId,
@@ -130,7 +171,7 @@ export const CursorDriver: ProviderDriver<
       accentColor,
       continuationGroupKey: continuationIdentity.continuationKey,
     });
-    const effectiveConfig = { ...config, enabled } satisfies CursorSettings;
+    const effectiveConfig = { ...configWithHome, enabled } satisfies CursorSettings;
     const credentials = yield* CursorCredentialStore.makeCursorCredentialStore(
       instanceId,
       path.join(
@@ -150,6 +191,27 @@ export const CursorDriver: ProviderDriver<
           }),
       ),
     );
+    const apiKeyCredential = providerEnvVarCredential({
+      serverSettings: host.settings,
+      instanceId,
+      driverKind: DRIVER_KIND,
+      envName: "CURSOR_API_KEY",
+    });
+    const hasCliLogin = Effect.gen(function* () {
+      const homeDir = processEnv.HOME?.trim();
+      if (!homeDir) return false;
+      const configHome = processEnv.XDG_CONFIG_HOME?.trim() || path.join(homeDir, ".config");
+      const candidates = [
+        path.join(homeDir, ".cursor", "auth.json"),
+        path.join(configHome, "cursor", "auth.json"),
+      ];
+      for (const candidate of candidates) {
+        if (yield* fileSystem.exists(candidate).pipe(Effect.orElseSucceed(() => false))) {
+          return true;
+        }
+      }
+      return false;
+    });
     const auth = yield* makeCursorAuth({
       instanceId,
       displayName: displayName ?? "Cursor",
@@ -172,6 +234,76 @@ export const CursorDriver: ProviderDriver<
           ),
         ),
     });
+    const authMethods: ReadonlyArray<CliAuthMethodSpec> = [
+      {
+        kind: "effect",
+        id: "browser",
+        label: "Sign in with browser",
+        description:
+          "Opens Cursor's sign-in page and stores this instance's login for running agents.",
+        waitingMessage:
+          "Open the Cursor sign-in page and finish signing in. This page updates automatically.",
+        run: ({ publishAuthorizationUrl }) => auth.browserSignIn(publishAuthorizationUrl),
+      },
+      {
+        kind: "cli",
+        id: "agent",
+        label: "Sign in with cursor-agent",
+        description:
+          "Runs `cursor-agent login` in this instance's home, so this CLI login stays separate from the default account.",
+        args: ["login"],
+        env: { NO_OPEN_BROWSER: "1" },
+        urlPattern: /https:\/\/cursor\.com\/\S+/,
+        waitingMessage: "Open the Cursor sign-in URL in your browser to finish signing in.",
+      },
+      {
+        kind: "saved-credentials",
+        id: "saved",
+        label: "Use saved Cursor login",
+        description:
+          "Reuses a Cursor sign-in or `cursor-agent login` already stored for this instance.",
+        missingMessage:
+          "No Cursor login found for this instance. Sign in with a browser or paste an API key.",
+        probe: auth.readCredential.pipe(
+          Effect.map((credential) => credential !== undefined),
+          Effect.orElseSucceed(() => false),
+          Effect.flatMap((signedIn) => (signedIn ? Effect.succeed(true) : hasCliLogin)),
+        ),
+      },
+      {
+        kind: "paste-credential",
+        id: "api-key",
+        label: "Paste an API key",
+        description: "Stored as a sensitive CURSOR_API_KEY variable on this instance.",
+        credentialLabel: "Cursor API key",
+        credentialPlaceholder: "key_…",
+        probeAfterApply: false,
+        appliedMessage: "Cursor API key saved.",
+        apply: apiKeyCredential.apply,
+      },
+    ];
+    const authMethodPersistence = providerAuthMethodPersistence({
+      serverSettings: host.settings,
+      instanceId,
+      methods: authMethods,
+    });
+    // Filled in once the snapshot exists. Sign-in verification runs after that.
+    let providerIsAuthenticated: () => Effect.Effect<boolean> = () => Effect.succeed(false);
+    const settingsAuth = yield* makeCliProviderAuth({
+      instanceId,
+      providerLabel: displayName ?? "Cursor",
+      command: effectiveConfig.binaryPath?.trim() || "cursor-agent",
+      processEnv,
+      methods: authMethods,
+      probeAuth: Effect.gen(function* () {
+        const signedIn = (yield* providerIsAuthenticated()) || (yield* hasCliLogin);
+        return { status: signedIn ? "authenticated" : "unauthenticated" };
+      }),
+      recordAuthMethod: authMethodPersistence.record,
+      onLogout: auth.usesApiKey
+        ? apiKeyCredential.remove
+        : auth.controller.logout(Effect.void).pipe(Effect.andThen(apiKeyCredential.remove)),
+    });
     const stampSnapshot: typeof stampIdentity = (draft) =>
       stampIdentity({
         ...draft,
@@ -181,10 +313,14 @@ export const CursorDriver: ProviderDriver<
             "Stop when Cursor reports the included usage this model draws from used up, even if on-demand usage is enabled. Usage is checked about once a minute; this is not a billing cap.",
           ),
         ),
-        setup: { canAuthenticate: !auth.usesApiKey, canInstall: false },
+        setup: {
+          canAuthenticate: true,
+          canInstall: false,
+          authMethods: authMethodDescriptors(authMethods),
+        },
         auth: {
           ...draft.auth,
-          canLogout: !auth.usesApiKey,
+          canLogout: true,
         },
       });
 
@@ -330,6 +466,7 @@ export const CursorDriver: ProviderDriver<
       Effect.provideService(Path.Path, path),
       Effect.provideService(CursorKeychain.CursorKeychain, keychain),
       Effect.map(stampSnapshot),
+      Effect.flatMap(authMethodPersistence.stamp),
       Effect.tap((provider) =>
         Effect.sync(() => {
           // A failed check lists only custom models, so keep the last loaded catalog.
@@ -351,6 +488,14 @@ export const CursorDriver: ProviderDriver<
         buildInitialCursorProviderSnapshot(settings.provider).pipe(Effect.map(stampSnapshot)),
       checkProvider,
     }).pipe(
+      Effect.tap((created) =>
+        Effect.sync(() => {
+          providerIsAuthenticated = () =>
+            created.getSnapshot.pipe(
+              Effect.map((provider) => provider.auth.status === "authenticated"),
+            );
+        }),
+      ),
       Effect.mapError(
         (cause) =>
           new ProviderDriverError({
@@ -369,7 +514,7 @@ export const CursorDriver: ProviderDriver<
       displayName,
       accentColor,
       enabled,
-      auth: auth.controller,
+      auth: settingsAuth,
       snapshot,
       snapshotForCwd: (cwd) =>
         !effectiveConfig.enabled

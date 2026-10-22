@@ -17,8 +17,17 @@ not expose yet.
 
 ## Sign in
 
-Choose **Sign in**, then open the sign-in page and complete it in your browser. T3 Code
-updates automatically when sign-in finishes. This works when connected to a remote environment too.
+The Cursor card has a sign-in method picker.
+
+- **Sign in with browser** opens Cursor's sign-in page and stores this instance's login for running
+  agents. T3 Code updates automatically when sign-in finishes. This works when connected to a remote
+  environment too.
+- **Sign in with cursor-agent** runs `cursor-agent login` in this instance's home, so that CLI login
+  stays separate from the default account.
+- **Use saved Cursor login** reuses a sign-in or `cursor-agent login` already stored for this
+  instance.
+- **Paste an API key** stores a `CURSOR_API_KEY` on this instance.
+
 On mobile, use **Settings > Provider accounts** for an already configured Cursor instance.
 
 Each provider instance keeps its own login on the environment that runs it. Your Cursor editor and
@@ -28,6 +37,17 @@ to use the browser flow.
 Use **Change account** or **Sign out** in the same settings section. Both stop that
 instance's running threads and keep their history. Sign-out forgets the saved credential; to revoke
 the generated key before it expires, remove it from your Cursor dashboard's API keys.
+
+## Separate CLI logins
+
+Add another Cursor instance in **Settings → Providers**. Leave **Home directory** blank and the
+added account gets a private directory, so its CLI login, CLI settings, and session history do not
+replace the default account. The default instance keeps the normal Cursor home. Set **Home
+directory** when the login should live in a directory you choose. The SDK sign-in for each instance
+stays separate either way.
+
+**API endpoint** overrides where that instance's usage is read. Runs go through the Cursor SDK, which
+does not launch a Cursor binary.
 
 ## V2 Capability Mapping
 
@@ -66,9 +86,6 @@ there. Restricted modes without Auto-review, including the default Auto-accept e
 request the sandbox and cannot start on Windows. Explicit sandbox policies remain authoritative,
 including restrictive policies that the Windows SDK rejects. Explicit approval policy overrides
 control Auto-review, which is not represented as an interactive T3 Code approval flow.
-
-The existing Cursor binary path and API endpoint settings belong to the CLI/ACP integration. Cursor
-V2 execution does not launch that binary, and the SDK does not expose an API endpoint override.
 
 ## Replay And Live Testing
 

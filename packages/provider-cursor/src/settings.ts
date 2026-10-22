@@ -8,13 +8,29 @@ export const CursorSettings = makeProviderSettingsSchema(
       Schema.withDecodingDefault(Effect.succeed(false)),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
-    // Keep V1's CLI configuration when V2 rewrites the shared settings file.
-    // V2's Cursor SDK does not use these fields.
+    // The SDK runs the agent. This stays so a saved CLI path is not dropped on rewrite.
     binaryPath: Schema.optionalKey(TrimmedString).pipe(
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
-    apiEndpoint: Schema.optionalKey(TrimmedString).pipe(
-      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    homePath: TrimmedString.pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "Home directory",
+        description:
+          "Instance home directory for this account. Keeps the sign-in, CLI settings, and session history separate per instance. When blank, added accounts get their own private directory.",
+        providerSettingsForm: { placeholder: "~/.cursor", clearWhenEmpty: "omit" },
+      }),
+    ),
+    apiEndpoint: TrimmedString.pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "API endpoint",
+        description: "Override the Cursor API endpoint for this instance's usage reads.",
+        providerSettingsForm: {
+          placeholder: "https://...",
+          clearWhenEmpty: "omit",
+        },
+      }),
     ),
     customModels: Schema.Array(CustomModelSetting).pipe(
       Schema.withDecodingDefault(Effect.succeed([])),
@@ -22,7 +38,7 @@ export const CursorSettings = makeProviderSettingsSchema(
     ),
   },
   {
-    order: [],
+    order: ["homePath", "apiEndpoint"],
   },
 );
 export type CursorSettings = typeof CursorSettings.Type;

@@ -137,12 +137,17 @@ and `CustomAcpSettings` in `packages/contracts/src/settings.ts`. User guide:
 
 Each provider's **Settings > Providers** card gets a sign-in section with a method picker: the
 provider's CLI login flow, saved credentials, or a pasted key. The chosen method is persisted.
-Codex defaults to the browser flow.
+Codex defaults to the browser flow. Cursor's picker offers the SDK browser sign-in (the login that
+runs agents), `cursor-agent login` into that instance's home, a saved login, and a pasted
+`CURSOR_API_KEY`.
 
 An added instance with a blank home gets a private directory under T3's data (`provider-homes`),
 so a second login does not replace the default. The default instance keeps the CLI's normal home.
-Grok uses `GROK_HOME`; Devin and OpenCode use `XDG_DATA_HOME`. Cursor is not covered: upstream signs each
-Cursor instance in through the Cursor SDK and keeps every instance's sign-in separately.
+Grok uses `GROK_HOME`; Devin and OpenCode use `XDG_DATA_HOME`. Cursor's CLI login ignores
+`CURSOR_CONFIG_DIR` and reads `auth.json` from the home directory, so an added instance gets a
+shadow home: `.cursor` and `.config/cursor` stay private, and every other home entry is linked
+back to the real one. The Cursor SDK still stores its own sign-in per instance. Code:
+[`CursorHome.ts`](../packages/provider-cursor/src/server/CursorHome.ts).
 
 Cursor usage follows each instance's own sign-in. Upstream reads limits only from the host's shared
 CLI login and shows none for an SDK sign-in. In the fork, each instance trades its SDK key (or
