@@ -1,8 +1,25 @@
 import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
-import { type EnvironmentId, type ScopedProjectRef } from "@t3tools/contracts";
+import {
+  type EnvironmentId,
+  type ScopedProjectRef,
+  AuthOrchestrationOperateScope,
+  type EnvironmentMachineKind,
+  ProjectId,
+  type ScopedThreadRef,
+  type ThreadId,
+} from "@t3tools/contracts";
 import { ContextPreviewHover, type ContextPreviewPlacement } from "./contextPreviewRegistry";
 import { CollapsibleSectionHeader } from "./ui/collapsible-section-header";
-import { ThreadTerminalStatusButton } from "./ThreadStatusIndicators";
+import {
+  ThreadTerminalStatusButton,
+  ThreadPullRequestBadgeControl,
+  ThreadWorktreeIndicator,
+  prStatusIndicator,
+  resolveThreadPullRequestBadge,
+  terminalStatusFromRunningIds,
+  useLinkedThreadPullRequest,
+  ThreadSearchPullRequestNumber,
+} from "./ThreadStatusIndicators";
 import { ThreadContextDragGhost } from "./chat/ThreadContextDragGhost";
 import {
   dropThreadContext,
@@ -60,31 +77,27 @@ import {
   type EnvironmentThreadShell,
 } from "@t3tools/client-runtime/state/models";
 import { requestThreadTabGroupName } from "./ThreadTabGroupNameDialog";
-import { setThreadTabGroupName } from "@t3tools/client-runtime/thread-tabs";
-import { useHiddenTabThreads } from "./sidebar/useHiddenTabThreads";
-import { resolveThreadTabTarget, useThreadTabRecencyStore } from "../threadTabRecencyStore";
 import {
+  setThreadTabGroupName,
   threadTabGroupHeaderTarget,
   threadTabGroupTarget,
 } from "@t3tools/client-runtime/thread-tabs";
+import { useHiddenTabThreads } from "./sidebar/useHiddenTabThreads";
+import { resolveThreadTabTarget, useThreadTabRecencyStore } from "../threadTabRecencyStore";
+
 import {
   parseScopedThreadKey,
   scopeProjectRef,
   scopeThreadRef,
   scopedThreadKey,
 } from "@t3tools/client-runtime/environment";
-import {
-  AuthOrchestrationOperateScope,
-  type EnvironmentMachineKind,
-  ProjectId,
-  type ScopedThreadRef,
-  type ThreadId,
-} from "@t3tools/contracts";
+
 import {
   threadGroupsShownInThreads,
   type SidebarTabSortDirection,
   type SidebarTabSortOrder,
   type TimestampFormat,
+  type ThreadGroup,
 } from "@t3tools/contracts/settings";
 import {
   AlarmClockIcon,
@@ -143,7 +156,7 @@ import { useShortcutModifierState } from "../shortcutModifierState";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { isModelPickerOpen } from "../modelPickerVisibility";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
-import { isMacPlatform } from "~/lib/utils";
+import { isMacPlatform, cn } from "~/lib/utils";
 import { useOpenPrLink } from "../lib/openPullRequestLink";
 import { readLocalApi } from "../localApi";
 import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
@@ -193,7 +206,7 @@ import {
   useAllEnvironmentProjectSnapshotsReady,
   useProjects,
   useServerConfigs,
-  useThreadShells,
+  useQuietThreadShells,
 } from "../state/entities";
 import {
   providerEntriesByEnvironmentAtom,
@@ -222,7 +235,7 @@ import {
 import type { SidebarThreadSummary } from "../types";
 import { isScratchProject, threadMoveTargets } from "@t3tools/client-runtime/state/projects";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
-import { cn } from "~/lib/utils";
+
 import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
 import { ProjectEnvironmentBadge } from "./ProjectEnvironmentBadge";
 import {
@@ -322,15 +335,7 @@ import {
 } from "./Sidebar.drag";
 import { SidebarDragLifecycle, SidebarPointerSensor } from "./Sidebar.pointer";
 import { animateSidebarDisclosure, createSidebarListMotion } from "./Sidebar.motion";
-import {
-  ThreadPullRequestBadgeControl,
-  ThreadWorktreeIndicator,
-  prStatusIndicator,
-  resolveThreadPullRequestBadge,
-  terminalStatusFromRunningIds,
-  useLinkedThreadPullRequest,
-  ThreadSearchPullRequestNumber,
-} from "./ThreadStatusIndicators";
+
 import { resolveSnoozePresets, snoozeWakeLabel, type SnoozePreset } from "./Sidebar.snooze";
 import { ProjectFavicon, type ProjectFaviconProject } from "./ProjectFavicon";
 import { ThreadSearchMatchExcerpt } from "./ThreadSearchMatch";
@@ -363,7 +368,7 @@ import {
 import { requestThreadGroup } from "./ThreadGroupDialog";
 import { ThreadGroupIcon } from "./sidebar/ThreadGroupIcon";
 import { projectIconColorClassName } from "../projectIconColors";
-import type { ThreadGroup } from "@t3tools/contracts/settings";
+
 import { useThreadGroups } from "../hooks/useThreadGroups";
 import { useOrganisations } from "../hooks/useOrganisations";
 import {
@@ -3250,7 +3255,7 @@ const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props: {
 });
 export default function Sidebar() {
   const projects = useProjects();
-  const threads = useThreadShells();
+  const threads = useQuietThreadShells();
   const {
     hiddenTabThreads: tabThreadGroups,
     tabEnvironmentIds,

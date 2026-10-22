@@ -90,7 +90,10 @@ export interface ThreadForkPoint {
  * inherited ones, count as finished. Null when no response has finished yet.
  */
 export function latestThreadForkPoint(
-  items: ReadonlyArray<OrchestrationV2ProjectedTurnItem>,
+  items: ReadonlyArray<{
+    readonly sourceThreadId: ThreadId;
+    readonly item: Pick<OrchestrationV2ProjectedTurnItem["item"], "type" | "status" | "runId">;
+  }>,
   runs: ReadonlyArray<Pick<OrchestrationV2Run, "id" | "status">>,
 ): ThreadForkPoint | null {
   const unfinished = new Set(

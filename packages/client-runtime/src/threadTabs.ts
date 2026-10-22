@@ -4,7 +4,6 @@ import {
   type EnvironmentId,
   type ForkThreadTabInput,
   type MessageId,
-  type OrchestrationV2ProjectedTurnItem,
   type ThreadForkPoint,
   type ThreadId,
   type ThreadTabHandoffInput,
@@ -14,6 +13,7 @@ import * as Effect from "effect/Effect";
 
 import { RemoteEnvironmentAuthorization } from "./authorization/service.ts";
 import type { PreparedConnection } from "./connection/model.ts";
+import type { ThreadStructureVisibleTurnItem } from "./state/models.ts";
 import { ManagedRelayDpopSigner } from "./relay/managedRelay.ts";
 import { executeAuthenticatedEnvironmentHttpRequest } from "./state/environmentHttpAuth.ts";
 
@@ -247,7 +247,7 @@ export { latestThreadForkPoint, type ThreadForkPoint };
  * it. Null when the message is not loaded or nothing finished before it.
  */
 export function threadForkPointBeforeMessage(
-  items: ReadonlyArray<OrchestrationV2ProjectedTurnItem>,
+  items: ReadonlyArray<ThreadStructureVisibleTurnItem>,
   runs: Parameters<typeof latestThreadForkPoint>[1],
   messageId: MessageId,
 ): ThreadForkPoint | null {

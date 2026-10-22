@@ -120,8 +120,7 @@ export function ComposerModelChip({
           instanceId={entry.instanceId}
           models={entry.models}
           model={record.model}
-          prompt=""
-          onPromptChange={() => {}}
+          promptUltrathink="none"
           modelOptions={record.options.map((option) => ({ id: option.id, value: option.value }))}
           allowPromptInjectedEffort={false}
           planModeEnabled={false}

@@ -55,9 +55,11 @@ import { isFilesystemRoot, managedWorktreesDirectories } from "./worktreesDirect
 import * as ProviderRegistry from "./provider/ProviderRegistry.ts";
 import * as TextGeneration from "./textGeneration/TextGeneration.ts";
 import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
+import { removeLinkedWorktree } from "./vcs/worktreeRemoval.ts";
 import { withWorkspaceLease } from "./workspace/workspaceLease.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
+import { isNetworkPath } from "@t3tools/shared/path";
 
 const decodeCleanupThread = Schema.decodeUnknownEffect(
   Schema.fromJsonString(OrchestrationV2AppThreadJson),
@@ -544,6 +546,11 @@ const make = Effect.gen(function* () {
       const nodeModules = path.join(root, "node_modules");
       const text = yield* fs.readFileString(path.join(nodeModules, ".modules.yaml"));
       const manifest = yield* decodePnpmModulesManifest(yield* Effect.try(() => parseYaml(text)));
+      // An agent can write this manifest, and statting a network path makes
+      // Windows sign in to its host with the user's NTLM credentials.
+      if (isNetworkPath(manifest.storeDir) || isNetworkPath(manifest.virtualStoreDir ?? "")) {
+        return null;
+      }
       const virtualStore = path.resolve(nodeModules, manifest.virtualStoreDir ?? ".pnpm");
       const [store, virtual] = yield* Effect.all([
         fs.stat(manifest.storeDir),
@@ -1315,20 +1322,15 @@ const make = Effect.gen(function* () {
           );
           if (changes !== null) return keep(changes);
         }
-        yield* cleanupGit(
-          project.workspaceRoot,
-          [
-            "-c",
-            "status.showUntrackedFiles=normal",
-            "worktree",
-            "remove",
-            // Git requires force for submodules; recursive checks above cannot make removal atomic.
-            ...(submodules.force ? ["--force"] : []),
-            "--",
-            worktreePath,
-          ],
-          "git worktree remove",
-        );
+        yield* removeLinkedWorktree({
+          operation: "StorageCleanup.cleanupGit",
+          cwd: project.workspaceRoot,
+          worktreePath,
+          // Git requires force for submodules; recursive checks above cannot make removal atomic.
+          force: submodules.force,
+          execute: git.execute,
+          run: (args) => cleanupGit(project.workspaceRoot, [...args], "git worktree remove"),
+        });
         entries.push({ ...entry, outcome: "removed", reason: sentence(removalReason), bytes });
         yield* gitManager.invalidateStatus(project.workspaceRoot);
         // Preserve branch and path: ProviderTurnStartService recreates the checkout

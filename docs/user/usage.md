@@ -87,8 +87,10 @@ the dialog.
 ## Track subscription limits
 
 **Usage → Limits** pools every subscription account it can see per provider, so with several Codex
-or Claude accounts across your environments and hubs you read one number per window rather than a
-list. When Claude, Codex, Cursor, Devin, or Grok publishes a service problem, Limits names it and opens that provider's status page. Each window card shows how much of the pool is left and a bar with one segment per account,
+or Claude accounts across your enabled environments and hubs you read one number per window rather than a
+list. When Claude, Codex, Cursor, Devin, or Grok publishes a service problem, Limits names it and
+opens that provider's status page. Each window card shows how much of the pool is left and a bar
+with one segment per account,
 kept in the same column across windows. Accounts are ordered by their next 5-hour refill, soonest
 first. For an account with no weekly quota left, this is when its session becomes usable again.
 The first available window is used when no account reports a 5-hour limit. A gap means the

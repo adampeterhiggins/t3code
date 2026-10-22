@@ -1,3 +1,8 @@
+import {
+  readPromptUltrathink,
+  shouldRenderTraitsControls,
+  TraitsPicker,
+} from "../chat/TraitsPicker";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { availableScratchWorkspaceRoot } from "@t3tools/client-runtime/operations/projects";
 import {
@@ -125,7 +130,7 @@ import {
   shouldShowProviderAccountPicker,
 } from "../chat/providerAccountSelection";
 import { ProviderModelPicker } from "../chat/ProviderModelPicker";
-import { shouldRenderTraitsControls, TraitsPicker } from "../chat/TraitsPicker";
+
 import { useComposerCheckoutItems } from "../chat/useComposerCheckoutItems";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { sortLogicalProjectsForSidebar } from "../Sidebar.logic";
@@ -428,7 +433,7 @@ export function QuickMessagePanel() {
       provider: providerEntry.driverKind,
       models: providerEntry.models,
       model: modelSelection.model,
-      prompt,
+      promptUltrathink: readPromptUltrathink(prompt),
       modelOptions: modelSelection.options ?? [],
       planModeEnabled,
     });
@@ -800,8 +805,8 @@ export function QuickMessagePanel() {
                           instanceId={modelSelection.instanceId}
                           models={providerEntry.models}
                           model={modelSelection.model}
-                          prompt={prompt}
-                          onPromptChange={setPrompt}
+                          promptUltrathink={readPromptUltrathink(prompt)}
+                          onPromptEdit={(edit) => setPrompt((current) => edit(current))}
                           modelOptions={modelSelection.options ?? []}
                           planModeEnabled={planModeEnabled}
                           isComposerOwned
