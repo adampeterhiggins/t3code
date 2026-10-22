@@ -37,6 +37,32 @@ Then search for fork features that merged cleanly but are now dead, such as a pr
 newly added upstream switch. `git diff upstream/main -- <path>` shows everything the fork still
 differs by.
 
+### Files upstream split
+
+Git does not follow code that upstream moves into new files. A fork edit inside a moved block
+conflicts with a deletion, and taking upstream's version drops it without any error. Typecheck
+cannot see a missing feature, and upstream may have pruned the tests that would. The #415 sync lost
+the composer's account picker, the `#` menu tabs, and most command palette actions this way.
+
+A conflicted file is split when upstream's `refactor` commits shrank it a lot:
+
+```bash
+base=$(git merge-base origin/main upstream/main)
+git diff --stat $base upstream/main -- <file>
+git log --oneline $base..upstream/main -- <file>
+```
+
+For each split file:
+
+1. Before resolving, list the fork commits that changed it since the last sync with
+   `git log --oneline $base..origin/main -- <file>`, and copy the list into the PR body. The PR
+   body survives an interrupted run; your context does not.
+2. Port each commit's behavior into the file upstream moved that code to.
+3. After resolving, check off every commit. Its key identifiers, strings, and props exist in the
+   merged tree (`git grep`), and something still calls them. A hook, reducer case, or shortcut
+   with no caller is a dropped feature. Props passed through a spread are not type-checked against
+   the component, so check that the receiving component still declares them.
+
 ## 3. Verify
 
 Follow the repository's Verifying rules. Do not run repo-wide checks.
@@ -60,7 +86,8 @@ gh pr create -R adampeterhiggins/t3code --base main --head "$(git branch --show-
 ```
 
 The body opens with a "What's in this sync" summary of the upstream commits the PR adds, then says
-how far behind and ahead the fork was, lists each conflict resolution by area, what you verified,
+how far behind and ahead the fork was, lists each conflict resolution by area (with each split
+file's checked-off fork commits), what you verified,
 and ends with: "Merge with **Create a merge commit**. It keeps upstream history and
 the merge base for the next sync." Close with the model and harness that did the work. Register the
 PR with `link_pull_request` when that tool is available.
