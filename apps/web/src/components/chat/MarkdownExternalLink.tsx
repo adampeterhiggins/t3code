@@ -1,21 +1,12 @@
-import { faviconUrlForOrigin } from "@t3tools/shared/favicon";
+import { INTEGRATION_ICONS, toolActivityBrandMark } from "@t3tools/shared/brandMarks";
 import { GlobeIcon } from "lucide-react";
-import { Children, Fragment, memo, useState, type ReactNode } from "react";
+import { Children, Fragment, memo, type ReactNode } from "react";
 
-import { cn } from "../../lib/utils";
 import type { GitHubRefType } from "@t3tools/contracts";
 
-import { GitHubIcon } from "../Icons";
 import { GitHubRefIcon } from "../gitHubRefPresentation";
 
 const MARKDOWN_LINK_FAVICON_CLASS_NAME = "block size-full shrink-0 select-none";
-
-const failedFaviconHosts = new Set<string>();
-
-function isGitHubHost(host: string): boolean {
-  const hostname = host.toLowerCase();
-  return hostname === "github.com" || hostname.endsWith(".github.com");
-}
 
 const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon({
   host,
@@ -24,9 +15,8 @@ const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon({
   host: string;
   gitHubRefType?: GitHubRefType | null | undefined;
 }) {
-  const [failedHost, setFailedHost] = useState<string | null>(null);
-  const brandIcon = isGitHubHost(host);
-  const faviconUrl = brandIcon ? null : faviconUrlForOrigin(`https://${host}`);
+  const brand = toolActivityBrandMark({ _tag: "website", pageUrl: `https://${host}` });
+  const mark = brand ? INTEGRATION_ICONS[brand] : null;
   return (
     <span
       className="ms-[0.25em] me-[0.2em] inline-flex size-[14px] [vertical-align:-0.125em]"
@@ -34,22 +24,16 @@ const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon({
     >
       {gitHubRefType ? (
         <GitHubRefIcon refType={gitHubRefType} className={MARKDOWN_LINK_FAVICON_CLASS_NAME} />
-      ) : brandIcon ? (
-        <GitHubIcon className={MARKDOWN_LINK_FAVICON_CLASS_NAME} />
-      ) : faviconUrl === null || failedHost === host || failedFaviconHosts.has(host) ? (
-        <GlobeIcon className={MARKDOWN_LINK_FAVICON_CLASS_NAME} />
+      ) : mark ? (
+        <svg
+          viewBox={mark.viewBox}
+          fill="currentColor"
+          className={MARKDOWN_LINK_FAVICON_CLASS_NAME}
+        >
+          <path d={mark.path} transform={"transform" in mark ? mark.transform : undefined} />
+        </svg>
       ) : (
-        <img
-          src={faviconUrl}
-          alt=""
-          loading="lazy"
-          draggable={false}
-          className={cn(MARKDOWN_LINK_FAVICON_CLASS_NAME, "rounded-sm")}
-          onError={() => {
-            failedFaviconHosts.add(host);
-            setFailedHost(host);
-          }}
-        />
+        <GlobeIcon className={MARKDOWN_LINK_FAVICON_CLASS_NAME} />
       )}
     </span>
   );

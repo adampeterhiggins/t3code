@@ -30,7 +30,7 @@ import {
 } from "../../session-logic";
 import ChatMarkdown from "../ChatMarkdown";
 import { ChatMarkdownAssetImage } from "./ChatMarkdownMedia";
-import { ChevronRightIcon, CircleAlertIcon, CornerDownRightIcon, XIcon } from "lucide-react";
+import { ChevronRightIcon, CircleAlertIcon, CornerDownRightIcon } from "lucide-react";
 import { InlineButton } from "../ui/button";
 import { useAssetUrls } from "../../assets/assetUrls";
 import { useQuietThreadShell, useThreadShell } from "../../state/entities";
@@ -70,11 +70,7 @@ import {
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 import { observeVisibleAnimation } from "../../lib/visibleAnimation";
-import {
-  failedToolIconClassName,
-  toolIconAcceptsTint,
-  ToolActivityIconView,
-} from "./TimelineToolActivityIcon";
+import { failedToolIconClassName, ToolActivityIconView } from "./TimelineToolActivityIcon";
 import {
   workToneIcon,
   workEntryRawCommand,
@@ -634,11 +630,6 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
             >
               Open subagent
             </InlineButton>
-          ) : null}
-          {showFailedIndicator &&
-          !showDestructiveRowStyle &&
-          !toolIconAcceptsTint(entryToolIcon) ? (
-            <XIcon aria-hidden className={cn("size-3 shrink-0", failedToolIconClassName)} />
           ) : null}
           {inPreviewCard ? (
             <WorkEntryDuration

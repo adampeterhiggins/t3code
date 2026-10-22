@@ -1,6 +1,6 @@
 import React, { type SVGProps, useId } from "react";
 import { cn } from "~/lib/utils";
-import { INTEGRATION_ICONS } from "./integrationIcons";
+import { INTEGRATION_ICONS } from "@t3tools/shared/brandMarks";
 export type Icon = React.FC<SVGProps<SVGSVGElement>>;
 
 export const UltrafastIcon: Icon = (props) => (
@@ -729,89 +729,6 @@ export const GitCafeIcon: Icon = (props) => (
     <rect x="4.8" y="4.8" width="54.4" height="54.4" fill="#a78bfa" />
   </svg>
 );
-
-export const MacScreenRecordingIcon: Icon = (props) => {
-  const gradientId = useId();
-  return (
-    <svg viewBox="0 0 32 32" aria-hidden="true" {...props}>
-      <defs>
-        <linearGradient id={gradientId} x2="0" y2="1">
-          <stop stopColor="#ff6972" />
-          <stop offset="1" stopColor="#ff2938" />
-        </linearGradient>
-      </defs>
-      <rect
-        x="0.5"
-        y="0.5"
-        width="31"
-        height="31"
-        rx="7"
-        fill={`url(#${gradientId})`}
-        stroke="#ffffff40"
-      />
-      <circle cx="16" cy="16" r="10" fill="none" stroke="#fff" strokeWidth="2" />
-      <circle cx="16" cy="16" r="4.5" fill="#fff" />
-    </svg>
-  );
-};
-
-export const MacAccessibilityIcon: Icon = (props) => {
-  const gradientId = useId();
-  return (
-    <svg viewBox="0 0 32 32" aria-hidden="true" {...props}>
-      <defs>
-        <linearGradient id={gradientId} x2="0" y2="1">
-          <stop stopColor="#48b6ff" />
-          <stop offset="1" stopColor="#0085ff" />
-        </linearGradient>
-      </defs>
-      <rect
-        x="0.5"
-        y="0.5"
-        width="31"
-        height="31"
-        rx="7"
-        fill={`url(#${gradientId})`}
-        stroke="#ffffff40"
-      />
-      <circle cx="16" cy="16" r="10" fill="none" stroke="#fff" strokeWidth="1.75" />
-      <circle cx="16" cy="10" r="1.6" fill="#fff" />
-      <path
-        d="m10 13 6 1 6-1M16 14v4m0 0-2.5 6m2.5-6 2.5 6"
-        fill="none"
-        stroke="#fff"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-};
-
-// Codex's Computer Use app mark, shown on computer-use rows in the work log.
-export const ComputerUseAppIcon: Icon = (props) => {
-  const gradientId = `${useId().replaceAll(":", "")}-computer-use-app-gradient`;
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
-      <defs>
-        <linearGradient id={gradientId} x1="2" y1="2" x2="22" y2="22">
-          <stop offset="0" stopColor="#00dff0" />
-          <stop offset="0.42" stopColor="#3b9cff" />
-          <stop offset="0.72" stopColor="#b044f5" />
-          <stop offset="1" stopColor="#ff78b6" />
-        </linearGradient>
-      </defs>
-      <rect x="1" y="1" width="22" height="22" rx="5" fill={`url(#${gradientId})`} />
-      <path
-        d="m7.2 6.2 10.5 4.1-4.2 2.1-2 4.7z"
-        fill="white"
-        stroke="#315cff"
-        strokeWidth="1.1"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-};
 
 /** Slack's mark (Simple Icons, CC0). Fills with `currentColor`, so it takes the surrounding text color. */
 export const SlackIcon: Icon = (props) => (

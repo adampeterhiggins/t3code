@@ -27,7 +27,7 @@ import {
 import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { workEntryDisplayIndicatesToolFailure } from "../../session-logic";
 import ChatMarkdown from "../ChatMarkdown";
-import { Minimize2Icon, XIcon } from "lucide-react";
+import { Minimize2Icon } from "lucide-react";
 import { Button } from "../ui/button";
 import { getVirtualizedScrollFadeClassName } from "../ui/scroll-area";
 import {
@@ -58,7 +58,6 @@ import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import { TimelineRowTimestamp, ActivityShimmerOverlay, ElapsedTimer } from "./TimelineRowParts";
 import {
   failedToolIconClassName,
-  toolIconAcceptsTint,
   type WorkEntryIconName,
   ToolActivityIconView,
 } from "./TimelineToolActivityIcon";
@@ -444,9 +443,6 @@ function LiveActivityContent({
   highlighted?: boolean;
   wrapLabel?: boolean;
 }) {
-  const showTrailingFailureMark =
-    failed && iconName !== undefined && !toolIconAcceptsTint(toolIcon);
-
   return (
     <WorkLogRow
       wrapLabel={wrapLabel}
@@ -483,11 +479,6 @@ function LiveActivityContent({
         >
           {label}
         </span>
-      }
-      trailing={
-        showTrailingFailureMark ? (
-          <XIcon aria-hidden className={cn("size-3 shrink-0", failedToolIconClassName)} />
-        ) : null
       }
     />
   );
