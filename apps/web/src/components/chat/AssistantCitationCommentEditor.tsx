@@ -4,11 +4,13 @@ import {
   ASSISTANT_CITATION_MAX_COMMENT_LENGTH,
   type AssistantCitation,
   type EnvironmentId,
+  type ModelSelection,
+  type ProjectId,
   type ThreadId,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { ChevronDownIcon } from "lucide-react";
-import { useState, type MouseEvent, type Ref } from "react";
+import { useRef, useState, type MouseEvent, type RefObject } from "react";
 
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { readLocalApi } from "~/localApi";
@@ -55,6 +57,9 @@ type DraftChoice = { label: string; description: string };
 export interface AssistantCitationDestinations {
   environmentId: EnvironmentId;
   threadId: ThreadId;
+  /** A new thread starts in this project with this model until the reader picks others. */
+  projectId: ProjectId;
+  modelSelection: ModelSelection;
   followUpBehavior: "queue" | "steer";
   onSubmit: (
     destination: Exclude<CitationDestination, { kind: "here" }>,
@@ -108,7 +113,7 @@ export function AssistantCitationCommentEditor({
   destinations,
 }: {
   citation: AssistantCitation;
-  inputRef?: Ref<HTMLTextAreaElement>;
+  inputRef?: RefObject<HTMLTextAreaElement | null>;
   onSubmit: (comment: string) => boolean;
   onSubmitAndSend?: (comment: string) => boolean;
   /** Saves the comment into the prompt, then keeps the whole message as a thread draft. */
@@ -119,6 +124,8 @@ export function AssistantCitationCommentEditor({
   destinations?: AssistantCitationDestinations | undefined;
 }) {
   const [comment, setComment] = useState(citation.comment ?? "");
+  const ownTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const textareaRef = inputRef ?? ownTextareaRef;
   const [choice, setChoice] = useLocalStorage(
     SUBMIT_CHOICE_STORAGE_KEY,
     "send",
@@ -185,7 +192,7 @@ export function AssistantCitationCommentEditor({
       }}
     >
       <textarea
-        ref={inputRef}
+        ref={textareaRef}
         aria-label="Comment on selected text"
         aria-description={
           enterChoice === "send"
@@ -227,8 +234,11 @@ export function AssistantCitationCommentEditor({
             <CitationDestinationPicker
               environmentId={destinations.environmentId}
               currentThreadId={destinations.threadId}
+              defaultProjectId={destinations.projectId}
+              defaultModelSelection={destinations.modelSelection}
               destination={destination}
               onChange={setDestination}
+              onModelPicked={() => textareaRef.current?.focus()}
             />
           </div>
         ) : null}

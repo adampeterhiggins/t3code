@@ -32,6 +32,8 @@ import type {
   AssistantCitation,
   ComposerContextClipboardFragment,
   EnvironmentId,
+  ModelSelection,
+  ProjectId,
   ServerProviderSkill,
   ThreadId,
 } from "@t3tools/contracts";
@@ -200,6 +202,8 @@ export interface ComposerPromptEditorProps {
 export type ComposerCitationDestinations = {
   environmentId: EnvironmentId;
   threadId: ThreadId;
+  projectId: ProjectId;
+  modelSelection: ModelSelection;
   followUpBehavior: "queue" | "steer";
   onSubmit: (
     destination: Exclude<CitationDestination, { kind: "here" }>,

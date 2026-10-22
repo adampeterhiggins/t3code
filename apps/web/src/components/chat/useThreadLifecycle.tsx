@@ -45,7 +45,11 @@ import { useAcknowledgeThreadWoke, useThreadActions } from "../../hooks/useThrea
 import { settleAndAdvance } from "../../settleAndAdvance";
 import type { ChatShortcutCommands } from "./useChatShortcuts";
 import { resolveThreadLastVisitedAt } from "../Sidebar.logic";
-import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import {
+  scopedThreadKey,
+  scopeProjectRef,
+  scopeThreadRef,
+} from "@t3tools/client-runtime/environment";
 
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import {
@@ -88,7 +92,6 @@ interface ThreadLifecycleInput {
   readonly interactionMode: ProviderInteractionMode;
   readonly phase: import("../../types").SessionPhase;
   readonly activeProject: import("../../types").Project | null;
-  readonly activeProjectRef: import("@t3tools/contracts").ScopedProjectRef | null;
   readonly activeThreadBranch: string | null;
   readonly settings: import("@t3tools/contracts").UnifiedSettings;
   readonly messageDraftActions: ReturnType<
@@ -150,7 +153,6 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
     interactionMode,
     phase,
     activeProject,
-    activeProjectRef,
     activeThreadBranch,
     settings,
     messageDraftActions,
@@ -618,12 +620,15 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
       }),
     );
   };
-  // A citation the comment panel sends to a new thread starts it in this project and checkout,
-  // with this composer's model, and leaves the reader here.
-  const startCitationThread = async (text: string): Promise<boolean> => {
-    if (!activeThread || !activeProject || !isServerThread) return false;
-    const sendCtx = composerRef.current?.getSendContext();
-    if (!sendCtx?.providerAvailable) return false;
+  // A citation the comment panel sends to a new thread starts it with the project and model the
+  // reader picked, and leaves the reader here. In this thread's own project it shares this
+  // checkout; another project starts at that project's root.
+  const startCitationThread = async (
+    destination: Extract<CitationDestination, { kind: "new-thread" }>,
+    text: string,
+  ): Promise<boolean> => {
+    if (!activeThread || !isServerThread) return false;
+    const sameProject = destination.projectId === activeProject?.id;
     const createdAt = new Date().toISOString();
     const nextThreadId = newThreadId();
     const nextThreadRef = scopeThreadRef(activeThread.environmentId, nextThreadId);
@@ -632,13 +637,13 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
       environmentId,
       input: {
         threadId: nextThreadId,
-        projectId: activeProject.id,
+        projectId: destination.projectId,
         title,
-        modelSelection: sendCtx.selectedModelSelection,
+        modelSelection: destination.modelSelection,
         runtimeMode,
         interactionMode: "default",
-        branch: activeThreadBranch,
-        worktreePath: activeThread.worktreePath,
+        branch: sameProject ? activeThreadBranch : null,
+        worktreePath: sameProject ? activeThread.worktreePath : null,
         createdAt,
       },
     });
@@ -650,7 +655,7 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
             input: {
               threadId: nextThreadId,
               message: { messageId: newMessageId(), role: "user", text, attachments: [] },
-              modelSelection: sendCtx.selectedModelSelection,
+              modelSelection: destination.modelSelection,
               titleSeed: title,
               runtimeMode,
               interactionMode: "default",
@@ -677,11 +682,17 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
     return true;
   };
   // Saving to a new thread opens one with the quote in its composer, unsent.
-  const openCitationInNewThread = async (text: string): Promise<boolean> => {
-    if (!activeProjectRef) return false;
-    const opened = await handleNewThread(activeProjectRef);
+  const openCitationInNewThread = async (
+    destination: Extract<CitationDestination, { kind: "new-thread" }>,
+    text: string,
+  ): Promise<boolean> => {
+    const opened = await handleNewThread(scopeProjectRef(environmentId, destination.projectId));
     if (!opened) return false;
     const store = useComposerDraftStore.getState();
+    store.setModelSelection(opened.draftId, destination.modelSelection, {
+      explicit: true,
+      replaceOptions: true,
+    });
     store.setPrompt(
       opened.draftId,
       appendCitationToPrompt(store.getComposerDraft(opened.draftId)?.prompt ?? "", text),
@@ -699,7 +710,9 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
       return false;
     }
     if (destination.kind === "new-thread") {
-      return action === "send" ? startCitationThread(text) : openCitationInNewThread(text);
+      return action === "send"
+        ? startCitationThread(destination, text)
+        : openCitationInNewThread(destination, text);
     }
     const targetRef = scopeThreadRef(environmentId, destination.threadId);
     const targetTitle = destination.title || "Untitled thread";

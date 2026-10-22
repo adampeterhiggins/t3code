@@ -1687,7 +1687,10 @@ The comment panel also has a destination picker (**This thread**, **New thread**
 thread in the environment), and its split button then acts on that thread. **Send** starts or
 queues a turn there with that thread's own model and modes, **Save** adds the quote to that
 thread's composer, and **Save as draft** stores a message draft there. For a new thread, the
-button reads **Start thread**, and **Save** opens a new thread with the quote in its composer. A
+button reads **Start thread**, and **Save** opens a new thread with the quote in its composer.
+Choosing **New thread** opens a second page of the menu with the environment's projects and the
+composer's model picker, starting on this thread's project and model; a thread in another project
+starts at that project's root. A
 quote shown outside the thread it came from names its source thread in its preview. See
 [Quote an assistant response](user/composer.md#quote-an-assistant-response).
 

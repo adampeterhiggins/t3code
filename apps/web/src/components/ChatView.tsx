@@ -2725,7 +2725,6 @@ export default function ChatView(props: ChatViewProps) {
     interactionMode,
     phase,
     activeProject,
-    activeProjectRef,
     activeThreadBranch,
     settings,
     messageDraftActions,

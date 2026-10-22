@@ -5,7 +5,7 @@ import {
   type ProviderDriverKind,
   type ResolvedKeybindingsConfig,
 } from "@t3tools/contracts";
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useState, type ComponentProps } from "react";
 import { Badge } from "../ui/badge";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -50,6 +50,8 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   triggerLabel?: string;
   triggerAriaLabel?: string;
   onOpenChange?: (open: boolean) => void;
+  /** Where focus goes when the menu closes, for a picker hosted inside another menu. */
+  finalFocus?: ComponentProps<typeof PopoverPopup>["finalFocus"];
   onOpenProviderSetup?: (instanceId: ProviderInstanceId) => void;
   getModelDisabledReason?: (instanceId: ProviderInstanceId, model: string) => string | null;
   onInstanceModelChange: (instanceId: ProviderInstanceId, model: string) => void;
@@ -272,6 +274,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
       </PopoverTrigger>
       <PopoverPopup
         {...(props.isComposerOwned ? composerFloatingLayerProps : {})}
+        {...(props.finalFocus !== undefined ? { finalFocus: props.finalFocus } : {})}
         align="start"
         className="before:hidden"
         padding="none"

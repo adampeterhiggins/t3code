@@ -2,12 +2,16 @@ import {
   threadRuntimeIsActive,
   type EnvironmentThreadShell,
 } from "@t3tools/client-runtime/state/models";
-import type { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
+import type { EnvironmentId, ModelSelection, ProjectId, ThreadId } from "@t3tools/contracts";
 
 /** Where a citation from the comment panel goes: its own composer, a new thread, or another thread. */
 export type CitationDestination =
   | { readonly kind: "here" }
-  | { readonly kind: "new-thread" }
+  | {
+      readonly kind: "new-thread";
+      readonly projectId: ProjectId;
+      readonly modelSelection: ModelSelection;
+    }
   | { readonly kind: "thread"; readonly threadId: ThreadId; readonly title: string };
 
 /** What the panel's split button does with the citation at a destination other than here. */

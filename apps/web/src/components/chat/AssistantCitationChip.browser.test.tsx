@@ -2,11 +2,13 @@ import {
   ASSISTANT_CITATION_MAX_COMMENT_LENGTH,
   EnvironmentId,
   MessageId,
+  ProjectId,
+  ProviderInstanceId,
   ThreadId,
 } from "@t3tools/contracts";
 import { useState, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { userEvent } from "vite-plus/test/browser";
+import { page, userEvent } from "vite-plus/test/browser";
 
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
 import "~/index.css";
@@ -16,10 +18,11 @@ const mocks = vi.hoisted(() => ({
   observeSource: vi.fn(),
   dispose: vi.fn(),
   threads: [] as unknown[],
+  projects: [] as unknown[],
 }));
 vi.mock(import("~/state/entities"), async (importOriginal) => ({
   ...(await importOriginal()),
-  useProjects: () => [],
+  useProjects: () => mocks.projects as never,
   useThreadShells: () => mocks.threads as never,
   useThreadShell: (ref) =>
     (ref
@@ -56,6 +59,7 @@ function setup() {
   mocks.observeSource.mockReset().mockReturnValue(mocks.dispose);
   mocks.dispose.mockClear();
   mocks.threads = [];
+  mocks.projects = [];
   const source = document.createElement("p");
   source.textContent = "hello";
   document.body.append(source);
@@ -205,7 +209,80 @@ describe("citation comment Enter", () => {
   });
 });
 
+const destinationDefaults = {
+  environmentId: citation.environmentId,
+  threadId: citation.threadId,
+  projectId: ProjectId.make("current-project"),
+  modelSelection: {
+    instanceId: ProviderInstanceId.make("codex"),
+    model: "gpt-5.4",
+    options: [{ id: "reasoningEffort", value: "high" }],
+  },
+};
+
+function project(id: string, title: string) {
+  return {
+    environmentId: citation.environmentId,
+    id: ProjectId.make(id),
+    title,
+    workspaceRoot: `/repo/${id}`,
+    faviconPath: null,
+    projectIcon: { kind: "monogram", text: title[0], color: "blue" },
+  };
+}
+
+async function clickItem(text: string) {
+  const item = await vi.waitFor(() => {
+    const match = [...document.querySelectorAll("[data-slot=command-item]")].find((element) =>
+      element.textContent?.includes(text),
+    );
+    expect(match, `item ${text}`).toBeDefined();
+    return match as HTMLElement;
+  });
+  await act(async () => item.click());
+}
+
 describe("citation comment destinations", () => {
+  it("starts a new thread in the picked project with this thread's model", async () => {
+    localStorage.clear();
+    using source = setup();
+    mocks.projects = [project("current-project", "t3code"), project("website", "website")];
+    const onSubmit = vi.fn(() => true);
+    await using _screen = await mount(
+      source.sourceAnchor,
+      vi.fn(() => true),
+      vi.fn(() => true),
+      {
+        ...destinationDefaults,
+        followUpBehavior: "queue",
+        onSubmit,
+      },
+    );
+    await typeComment("try it there");
+
+    await act(async () =>
+      document
+        .querySelector<HTMLButtonElement>('button[aria-label="Send citation to: This thread"]')!
+        .click(),
+    );
+    await clickItem("New thread");
+    await clickItem("website");
+
+    await expect
+      .element(page.getByRole("button", { name: /^Send citation to: New thread in website with/ }))
+      .toBeInTheDocument();
+    await clickButton("Start thread");
+    expect(onSubmit).toHaveBeenCalledWith(
+      {
+        kind: "new-thread",
+        projectId: "website",
+        modelSelection: destinationDefaults.modelSelection,
+      },
+      "send",
+      "try it there",
+    );
+  });
+
   it("sends the quote to the chosen thread, queueing behind its running turn", async () => {
     localStorage.clear();
     using source = setup();
@@ -225,8 +302,7 @@ describe("citation comment destinations", () => {
     const onSaveAndSend = vi.fn(() => true);
     const onSubmit = vi.fn(() => true);
     await using _screen = await mount(source.sourceAnchor, onSave, onSaveAndSend, {
-      environmentId: citation.environmentId,
-      threadId: citation.threadId,
+      ...destinationDefaults,
       followUpBehavior: "queue",
       onSubmit,
     });
