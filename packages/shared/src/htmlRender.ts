@@ -1,6 +1,8 @@
 import {
   T3_CODE_DARK_THEME_COLORS,
   T3_CODE_LIGHT_THEME_COLORS,
+  THEME_COLOR_ROLES,
+  THEME_COLOR_VARIABLES,
   type ThemeAppearance,
   type ThemeColors,
 } from "./themePalettes.ts";
@@ -184,7 +186,9 @@ const FIXED_COLORS = {
 
 /**
  * Names follow the app's own tokens, except `--accent`, which is the theme's
- * brand color here rather than the app's neutral hover surface.
+ * brand color here rather than the app's neutral hover surface. The whole
+ * palette also comes under the web app's `--app-theme-*` names, so a mock built
+ * from the app's stylesheet wears the reader's theme the way the app does.
  */
 export function htmlRenderTheme(
   colors: ThemeColors,
@@ -231,6 +235,9 @@ export function htmlRenderTheme(
       "--radius": "0.625rem",
       "--font-sans": fonts.sans,
       "--font-mono": fonts.mono,
+      ...Object.fromEntries(
+        THEME_COLOR_ROLES.map((role) => [THEME_COLOR_VARIABLES[role], colors[role]]),
+      ),
     },
   };
 }

@@ -46,8 +46,9 @@ await NodeFSP.writeFile(
   ].join("\n"),
 );
 
-// The page follows the viewer's light or dark mode, which html_render's theme
-// style announces, and falls back to the system setting outside a frame.
+// The page wears the reader's theme, which html_render's theme style carries
+// under the app's own --app-theme-* names, and falls back to the default
+// palette and the system appearance outside a frame.
 const entryPath = NodePath.join(buildDir, "entry.js");
 await NodeFSP.writeFile(
   entryPath,
@@ -65,8 +66,14 @@ const applyAppearance = () => {
     : matchMedia("(prefers-color-scheme: dark)").matches;
   const root = document.documentElement;
   root.classList.toggle("dark", dark);
-  // The app's theme module, which many components import, paints the window
-  // background inline for the system appearance when it loads.
+  // As the app does for a chosen theme; index.css then maps the palette onto its tokens.
+  if (text.includes("--app-theme-canvas:")) root.dataset.themeId = "html-render";
+  else delete root.dataset.themeId;
+  // The app's theme module, which many components import, applies the system
+  // appearance and any stored theme inline when it loads.
+  for (const property of [...root.style]) {
+    if (property.startsWith("--app-theme-")) root.style.removeProperty(property);
+  }
   root.style.removeProperty("background-color");
   document.body.style.removeProperty("background-color");
 };

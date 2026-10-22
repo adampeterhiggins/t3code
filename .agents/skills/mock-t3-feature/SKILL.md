@@ -55,7 +55,11 @@ prints the page, a few lines that link the bundle by absolute path. Pass that
 page as-is to `html_preview`, check both `dark` and `light`, then publish it
 with `html_render`. The tools inline the bundle. Rebuild after every edit.
 
-The mock follows the reader's light or dark mode, in T3 Code's default palette.
+The mock wears the reader's current theme, light or dark and any custom
+palette, the way the app does. Keep that working: colour new parts with the
+app's tokens (`bg-card`, `text-muted-foreground`, `border-border`), never fixed
+colours. Check a preview in each appearance.
+
 The script runs on the machine that hosts the T3 server, since the tools read
 the bundle from there.
 
