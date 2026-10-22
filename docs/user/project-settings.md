@@ -229,7 +229,7 @@ file without its comments.
 
 ## Review worktree storage
 
-Open **Settings → Storage → Managed worktrees** to review each selected machine’s checkouts, linked threads, and last synced pull request state. Measure sizes when needed. Select clean worktrees and remove them together, or remove one at a time. Running work and local changes are protected, including changes made since the list was loaded. Branches and thread history are kept; resuming a thread recreates its checkout. On mobile, open a machine in **Settings → Environments** to review and remove its worktrees.
+Open **Settings → Storage → Managed worktrees** to review each selected machine’s checkouts, linked threads, and last synced pull request state. Click a column header to sort, and use **Filters** to narrow by state, checkout, pull request, or project. The arrow beside **Created** and **Updated** switches between relative dates, dates, and dates with times. Use **Measure all** to size every worktree shown, then sort by **Size** to find the largest. Select clean worktrees and remove them together, or remove one at a time. Running work and local changes are protected, including changes made since the list was loaded. Branches and thread history are kept; resuming a thread recreates its checkout. On mobile, open a machine in **Settings → Environments** to review and remove its worktrees.
 
 ## Storage cleanup
 

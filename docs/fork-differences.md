@@ -2272,7 +2272,7 @@ entry.
 
 ## Managed worktree storage
 
-**Settings → Storage → Managed worktrees** inventories managed checkouts per selected environment with linked threads, branch, local changes, and last synced pull request state. Sizes are measured on demand. Individual and bulk removal rechecks local changes and running work under the workspace lease, refuses project checkouts and unmanaged paths, and keeps branches and thread history. Mobile offers the same inventory and safe cleanup in each environment’s Settings page.
+**Settings → Storage → Managed worktrees** inventories managed checkouts per selected environment in a table of branch, linked threads, project, pull request, thread state, checkout state, created and updated dates, and size. Columns sort from their headers, the Filters menu narrows by state, checkout, pull request and project, and the date columns can show relative, date, or date and time. Sizes are measured on demand, one at a time or all at once. Individual and bulk removal rechecks local changes and running work under the workspace lease, refuses project checkouts and unmanaged paths, and keeps branches and thread history. Mobile offers the same inventory and safe cleanup in each environment’s Settings page.
 
 Code: [`WorktreeInventory.ts`](../apps/server/src/git/WorktreeInventory.ts) and [`WorktreeInventory.tsx`](../apps/web/src/components/settings/WorktreeInventory.tsx). User guide: [Review worktree storage](user/project-settings.md#review-worktree-storage).
 
