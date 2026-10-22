@@ -25,6 +25,13 @@ export const HTML_RENDER_MEASURE_WIDTHS = [320, 375, 430, 520, 640, 728, 860, 10
 
 export const HTML_RENDER_COLUMN_WIDTH = 728;
 
+/**
+ * A local stylesheet or script is inlined into a page only when its text starts
+ * with this line. A page could otherwise pull any `.js` or `.css` file on the
+ * host, such as one holding secrets, into a page that can send it anywhere.
+ */
+export const HTML_RENDER_ASSET_MARKER = "/* t3:html-render-asset */";
+
 const MAX_MEASURED_HEIGHTS = 24;
 
 function readMeasuredHeights(value: unknown) {
