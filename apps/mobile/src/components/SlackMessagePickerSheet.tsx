@@ -1,4 +1,9 @@
-import type { EnvironmentId, SlackMessageSummary, ThreadId } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  SlackMessageSummary,
+  SlackSearchScope,
+  ThreadId,
+} from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
@@ -7,7 +12,7 @@ import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
 import { useState, type ReactNode } from "react";
-import { ActivityIndicator, Alert, FlatList, Pressable, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { relativeTime } from "../lib/time";
@@ -22,6 +27,7 @@ import {
   type ComposerDraftInsertion,
 } from "../state/use-composer-drafts";
 import { AppText as Text, AppTextInput } from "./ui/AppText";
+import { Chip } from "./ui/Chip";
 import { PickerSheet } from "./PickerSheet";
 
 /** Slack allows about 20 searches a minute, so typing settles longer before it queries. */
@@ -123,8 +129,16 @@ function SlackMessagePickerSheet(
 
 function SlackMessageSearch(props: OpenedSlackMessagePicker & { readonly onClose: () => void }) {
   const [query, setQuery] = useState("");
+  const [scope, setScope] = useState<SlackSearchScope | null>(null);
   const trimmed = query.trim();
   const settled = useDebouncedValue(trimmed, SEARCH_DEBOUNCE_MS);
+  const suggestions = useAtomValue(
+    slackEnvironment.suggestions({ environmentId: props.environmentId, input: {} }),
+  );
+  const suggested = Option.getOrNull(AsyncResult.value(suggestions));
+  const scopes = suggested?.scopes ?? [];
+  const suggestedThreads = suggested?.threads ?? [];
+  const searchQuery = [scope?.query ?? "", settled].join(" ").trim();
   const getThread = useAtomCommand(slackEnvironment.getThread, {
     label: "slack thread fetch",
     reportFailure: false,
@@ -210,23 +224,59 @@ function SlackMessageSearch(props: OpenedSlackMessagePicker & { readonly onClose
           autoCapitalize="none"
           autoCorrect={false}
           clearButtonMode="while-editing"
-          placeholder="Search Slack"
+          placeholder={scope === null ? "Search Slack" : `Search ${scope.label}`}
           returnKeyType="search"
           value={query}
           onChangeText={setQuery}
         />
       </View>
-      {settled ? (
+      {scopes.length > 0 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          className="grow-0"
+          contentContainerClassName="gap-2 px-4 pb-3"
+        >
+          {scopes.map((option) => {
+            const selected = scope?.query === option.query;
+            return (
+              <Chip
+                key={option.query}
+                label={option.label}
+                selected={selected}
+                {...(selected ? { trailingIcon: "xmark" as const } : {})}
+                accessibilityLabel={
+                  selected
+                    ? `Stop searching ${option.kind === "channel" ? "in" : "from"} ${option.label}`
+                    : `Search ${option.kind === "channel" ? "in" : "from"} ${option.label}`
+                }
+                onPress={() => setScope(selected ? null : option)}
+              />
+            );
+          })}
+        </ScrollView>
+      ) : null}
+      {searchQuery ? (
         <SlackMessageResults
           environmentId={props.environmentId}
-          query={settled}
+          query={searchQuery}
           pendingInput={settled !== trimmed}
+          attaching={attaching}
+          onPick={(message) => void attach(message)}
+        />
+      ) : !trimmed && suggestedThreads.length > 0 ? (
+        <SlackMessageList
+          header="Threads you posted in"
+          messages={suggestedThreads}
+          pending={false}
+          error={null}
           attaching={attaching}
           onPick={(message) => void attach(message)}
         />
       ) : (
         <View className="items-center p-6">
-          {trimmed ? (
+          {trimmed || (suggested === null && suggestions.waiting) ? (
             <ActivityIndicator />
           ) : (
             <Text className="text-center text-foreground-muted">
@@ -247,7 +297,6 @@ function SlackMessageResults(props: {
   readonly attaching: string | null;
   readonly onPick: (message: SlackMessageSummary) => void;
 }) {
-  const insets = useSafeAreaInsets();
   const result = useAtomValue(
     slackEnvironment.messages({
       environmentId: props.environmentId,
@@ -261,8 +310,34 @@ function SlackMessageResults(props: {
       ? slackErrorMessage(Cause.squash(result.cause), "Could not search Slack.")
       : null;
   return (
+    <SlackMessageList
+      messages={messages}
+      pending={pending}
+      error={error}
+      attaching={props.attaching}
+      onPick={props.onPick}
+    />
+  );
+}
+
+function SlackMessageList(props: {
+  readonly header?: string;
+  readonly messages: ReadonlyArray<SlackMessageSummary>;
+  readonly pending: boolean;
+  readonly error: string | null;
+  readonly attaching: string | null;
+  readonly onPick: (message: SlackMessageSummary) => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const { pending, error } = props;
+  return (
     <FlatList
-      data={messages}
+      data={props.messages}
+      ListHeaderComponent={
+        props.header ? (
+          <Text className="px-4 pb-1 text-sm text-foreground-muted">{props.header}</Text>
+        ) : undefined
+      }
       keyExtractor={(message) => message.url}
       keyboardShouldPersistTaps="handled"
       contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) }}

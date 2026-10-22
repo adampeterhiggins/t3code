@@ -5,9 +5,15 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { slackThreadContextRecord } from "@t3tools/shared/integrationContextRecords";
-import type { ScopedThreadRef, SlackGetThreadInput, SlackMessageSummary } from "@t3tools/contracts";
+import type {
+  ScopedThreadRef,
+  SlackGetThreadInput,
+  SlackMessageSummary,
+  SlackSearchScope,
+} from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
+import { AtSignIcon, HashIcon } from "lucide-react";
 import { useState } from "react";
 
 import { useComposerDraftStore } from "~/composerDraftStore";
@@ -20,6 +26,7 @@ import { slackEnvironment } from "~/state/slack";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { CommandPaletteContent } from "../CommandPaletteContent";
+import { FilterPill } from "../FilterPill";
 import { SlackIcon } from "../Icons";
 import { Button } from "../ui/button";
 import {
@@ -27,6 +34,7 @@ import {
   CommandDialog,
   CommandDialogPopup,
   CommandGroup,
+  CommandGroupLabel,
   CommandItem,
   CommandList,
 } from "../ui/command";
@@ -157,6 +165,14 @@ export function SlackMessageRow(props: { message: SlackMessageSummary }) {
   );
 }
 
+function scopeLabel(scope: SlackSearchScope): string {
+  return scope.kind === "channel" ? `in ${scope.label}` : `from ${scope.label}`;
+}
+
+function ScopeIcon(props: { scope: SlackSearchScope }) {
+  return props.scope.kind === "channel" ? <HashIcon /> : <AtSignIcon />;
+}
+
 /** Mounted once at the app root; shows the picker for whichever thread asked for it. */
 export function SlackMessagePickerHost() {
   const target = useAtomValue(slackMessagePickerThreadAtom);
@@ -176,6 +192,7 @@ function SlackMessagePickerDialog(props: {
   const redirect = useComposerAttachRedirect();
   const linkThread = useLinkSlackThread();
   const [query, setQuery] = useState("");
+  const [scope, setScope] = useState<SlackSearchScope | null>(null);
   const [attaching, setAttaching] = useState(false);
   const [menuMessage, setMenuMessage] = useState<SlackMessageSummary | null>(null);
   const debouncedQuery = useDebouncedValue(query.trim(), SEARCH_DEBOUNCE_MS);
@@ -183,9 +200,14 @@ function SlackMessagePickerDialog(props: {
     slackEnabled ? slackEnvironment.connection({ environmentId, input: {} }) : null,
   );
   const connected = connection.data?.phase === "connected";
+  const suggestionsQuery = useEnvironmentQuery(
+    slackEnabled && connected ? slackEnvironment.suggestions({ environmentId, input: {} }) : null,
+  );
+  const suggesting = scope === null && query.trim().length === 0;
+  const searchQuery = [scope?.query ?? "", debouncedQuery].join(" ").trim();
   const messagesQuery = useEnvironmentQuery(
-    slackEnabled && connected && debouncedQuery.length > 0
-      ? slackEnvironment.messages({ environmentId, input: { query: debouncedQuery } })
+    slackEnabled && connected && searchQuery.length > 0
+      ? slackEnvironment.messages({ environmentId, input: { query: searchQuery } })
       : null,
   );
   // A new query starts from an empty atom; keep the last results on screen until it answers.
@@ -194,7 +216,13 @@ function SlackMessagePickerDialog(props: {
   if (latestMessages !== undefined && latestMessages !== shownMessages) {
     setShownMessages(latestMessages);
   }
-  const messages = debouncedQuery.length === 0 ? EMPTY_MESSAGES : (latestMessages ?? shownMessages);
+  const suggestedThreads = suggestionsQuery.data?.threads ?? EMPTY_MESSAGES;
+  const messages = suggesting
+    ? suggestedThreads
+    : searchQuery.length === 0
+      ? EMPTY_MESSAGES
+      : (latestMessages ?? shownMessages);
+  const scopes = suggestionsQuery.data?.scopes ?? [];
   const searching = messagesQuery.isPending || query.trim() !== debouncedQuery;
 
   async function select(message: SlackMessageSummary, scope: SlackGetThreadInput["scope"]) {
@@ -221,8 +249,12 @@ function SlackMessagePickerDialog(props: {
   const status =
     connection.data === null
       ? "Reading Slack status…"
-      : query.trim().length === 0
-        ? "Search Slack. Try in:#channel, from:@name, or a phrase."
+      : suggesting
+        ? suggestedThreads.length > 0
+          ? null
+          : suggestionsQuery.isPending
+            ? "Loading suggestions…"
+            : "Search Slack. Try in:#channel, from:@name, or a phrase."
         : messagesQuery.error !== null && messages.length === 0
           ? messagesQuery.error
           : messages.length === 0
@@ -259,9 +291,44 @@ function SlackMessagePickerDialog(props: {
           >
             <CommandPaletteContent
               inputProps={{
-                placeholder: "Search Slack messages",
+                placeholder:
+                  scope === null ? "Search Slack messages" : `Search messages ${scopeLabel(scope)}`,
                 startAddon: <SlackIcon />,
+                onKeyDown: (event) => {
+                  if (event.key === "Backspace" && query.length === 0 && scope !== null) {
+                    event.preventDefault();
+                    setScope(null);
+                  }
+                },
               }}
+              inputAccessory={
+                scope !== null ? (
+                  <div className="flex px-3 pb-2">
+                    <FilterPill
+                      icon={<ScopeIcon scope={scope} />}
+                      label={scope.kind === "channel" ? `In ${scope.label}` : `From ${scope.label}`}
+                      onRemove={() => setScope(null)}
+                    />
+                  </div>
+                ) : scopes.length > 0 ? (
+                  <div className="flex flex-wrap items-center gap-1.5 px-3 pb-2">
+                    {scopes.map((option) => (
+                      <Button
+                        key={option.query}
+                        type="button"
+                        size="xs"
+                        variant="outline"
+                        // Keeps focus in the search box, so typing carries on after a click.
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => setScope(option)}
+                      >
+                        <ScopeIcon scope={option} />
+                        {option.label.slice(1)}
+                      </Button>
+                    ))}
+                  </div>
+                ) : null
+              }
               footerActionLabel={
                 mode === "link"
                   ? attaching
@@ -280,6 +347,9 @@ function SlackMessagePickerDialog(props: {
               ) : (
                 <ContextMenu.Trigger render={<CommandList />}>
                   <CommandGroup items={[...messages]}>
+                    {suggesting ? (
+                      <CommandGroupLabel>Threads you posted in</CommandGroupLabel>
+                    ) : null}
                     <CommandCollection>
                       {(message: SlackMessageSummary) => (
                         <CommandItem

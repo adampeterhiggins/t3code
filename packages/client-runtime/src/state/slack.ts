@@ -42,6 +42,12 @@ export function createSlackEnvironmentAtoms<R, E>(
       tag: WS_METHODS.slackSearchMessages,
       staleTimeMs: 30_000,
     }),
+    // What the picker offers before anything is typed. One search per read, so it is kept a while.
+    suggestions: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:slack:suggestions",
+      tag: WS_METHODS.slackSuggestions,
+      staleTimeMs: 2 * 60_000,
+    }),
     // Fetched once when a message is attached; the result is snapshotted into the message.
     getThread: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:slack:get-thread",

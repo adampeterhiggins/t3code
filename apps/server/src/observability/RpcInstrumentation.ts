@@ -59,6 +59,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.slackCancelLogin]: "slack",
   [WS_METHODS.slackDisconnect]: "slack",
   [WS_METHODS.slackSearchMessages]: "slack",
+  [WS_METHODS.slackSuggestions]: "slack",
   [WS_METHODS.slackGetThread]: "slack",
   [WS_METHODS.slackGetLinkPreview]: "slack",
   [WS_METHODS.slackSubscribeThreadLinks]: "slack",

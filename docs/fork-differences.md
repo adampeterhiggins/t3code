@@ -1066,6 +1066,10 @@ linked message highlighted. Chips captured before this show their markdown inste
 
 A thread's chat-tab group can also be linked to one Slack thread, from the thread menu, the web
 command palette, or the mobile tab menu, which open the same picker in link mode. Picking a reply links its whole thread.
+Before anything is typed, the picker shows the account's own recent threads and its most-used
+channels and DM partners as one-tap search scopes, from one `from:me` search
+(`slack.suggestions`, [`suggestionsFromOwnPosts`](../apps/server/src/slack/SlackApi.ts)). Scopes
+search by id (`in:<#C…>`, `from:<@U…>`), since display names don't work as Slack search terms.
 The link lives in the fork-owned `fork_slack_thread_links` table, keyed by tab group, and streams
 over `slack.subscribeThreadLinks`. Slack threads have no status, so the channel, author, and the
 picked message's first line are copied when linked. The web thread details panel's Links row shows the
