@@ -740,8 +740,11 @@ function UserMessageReviewCommentCard({ comment }: { comment: ReviewCommentConte
           <ChatMarkdown
             text={comment.text}
             cwd={ctx.markdownCwd}
+            threadRef={ctx.threadRef ?? undefined}
             skills={ctx.skills}
-            parseRawHtml={false}
+            // GitHub writes bot metadata and theme badges as HTML. Other user-message
+            // text stays literal; the shared sanitizer still applies here.
+            parseRawHtml={true}
             lineBreaks
           />
         </div>
