@@ -5,7 +5,9 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { slackThreadContextRecord } from "@t3tools/shared/integrationContextRecords";
+import { parseComposerObjectLink } from "@t3tools/shared/composerObjectLinks";
 import type {
+  EnvironmentId,
   ScopedThreadRef,
   SlackGetThreadInput,
   SlackMessageSummary,
@@ -41,6 +43,8 @@ import {
 import { MenuItem, MenuPopup } from "../ui/menu";
 import { toastManager } from "../ui/toast";
 import { useComposerAttachRedirect } from "./composerAttachRedirect";
+import { CursorPreviewCard } from "./CursorPreviewCard";
+import { isPreviewableObjectLink, LinkedObjectPreviewBody } from "./LinkedObjectLinkPreview";
 
 // Slack search is rate-limited per minute, so typing settles before a search goes out.
 const SEARCH_DEBOUNCE_MS = 400;
@@ -143,18 +147,18 @@ export function useLinkSlackThread() {
   };
 }
 
-/** A search result row. Fixed widths so channels and times line up down the list. */
-export function SlackMessageRow(props: { message: SlackMessageSummary }) {
+/** A search result row. Fixed widths so channels, authors, and times line up down the list. */
+function SlackMessageRow(props: { message: SlackMessageSummary }) {
   const { message } = props;
   return (
     <span className="flex min-w-0 flex-1 items-center gap-2">
       <span className="w-28 shrink-0 truncate text-muted-foreground text-xs">
         {message.channelLabel}
       </span>
-      <span className="min-w-0 flex-1 truncate text-sm">
-        <span className="font-medium text-foreground">{message.authorName}</span>
-        <span className="text-muted-foreground"> · {message.text}</span>
+      <span className="w-20 shrink-0 truncate font-medium text-foreground text-sm">
+        {message.authorName}
       </span>
+      <span className="min-w-0 flex-1 truncate text-muted-foreground text-sm">{message.text}</span>
       {message.threadTs === null ? null : (
         <span className="shrink-0 text-muted-foreground/70 text-xs">in thread</span>
       )}
@@ -162,6 +166,32 @@ export function SlackMessageRow(props: { message: SlackMessageSummary }) {
         {formatRelativeTimeLabel(message.postedAt)}
       </span>
     </span>
+  );
+}
+
+/** The row, with the same thread card a pasted link to the message shows on hover. */
+function SlackMessageHoverPreview(props: {
+  environmentId: EnvironmentId;
+  threadRef: ScopedThreadRef;
+  message: SlackMessageSummary;
+}) {
+  const row = (
+    <span className="flex min-w-0 flex-1">
+      <SlackMessageRow message={props.message} />
+    </span>
+  );
+  const objectLink = parseComposerObjectLink(props.message.url);
+  if (!isPreviewableObjectLink(objectLink)) return row;
+  return (
+    <CursorPreviewCard trigger={row} bare>
+      <div className="px-3 py-2">
+        <LinkedObjectPreviewBody
+          objectLink={objectLink}
+          environmentId={props.environmentId}
+          threadRef={props.threadRef}
+        />
+      </div>
+    </CursorPreviewCard>
   );
 }
 
@@ -360,7 +390,11 @@ function SlackMessagePickerDialog(props: {
                           onMouseDown={(event) => event.preventDefault()}
                           onClick={() => void select(message, "thread")}
                         >
-                          <SlackMessageRow message={message} />
+                          <SlackMessageHoverPreview
+                            environmentId={environmentId}
+                            threadRef={threadRef}
+                            message={message}
+                          />
                         </CommandItem>
                       )}
                     </CommandCollection>
