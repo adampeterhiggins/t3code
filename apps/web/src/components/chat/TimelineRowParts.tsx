@@ -1,8 +1,9 @@
-import { type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
+import { formatWorkingTimerNow } from "./TimelineWorkGroupRows.logic";
 
 export const MESSAGE_HEADING_LEVEL = 3;
 
@@ -51,6 +52,29 @@ export function ActivityShimmerOverlay({ children }: { children: ReactNode }) {
       <span className="live-activity-focus-counter block">
         <span className="live-activity-focus-aligned block text-foreground">{children}</span>
       </span>
+    </span>
+  );
+}
+
+/** Counts up from `since` once a second by writing its own text, so the owner never re-renders. */
+export function ElapsedTimer({ since }: { since: string }) {
+  const textRef = useRef<HTMLSpanElement>(null);
+  const initialText = formatWorkingTimerNow(since);
+
+  useEffect(() => {
+    const updateText = () => {
+      if (textRef.current) {
+        textRef.current.textContent = formatWorkingTimerNow(since);
+      }
+    };
+    updateText();
+    const id = setInterval(updateText, 1000);
+    return () => clearInterval(id);
+  }, [since]);
+
+  return (
+    <span ref={textRef} className="tabular-nums">
+      {initialText}
     </span>
   );
 }

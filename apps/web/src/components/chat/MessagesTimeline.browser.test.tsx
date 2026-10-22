@@ -334,6 +334,7 @@ describe("MessagesTimeline work rows", () => {
     await userEvent.hover(summary);
     const groupCard = page.getByRole("region", { name: "Tool calls" });
     await expect.element(groupCard.getByText("vp lint")).toBeVisible();
+    await expect.element(page.getByText("2 commands", { exact: true })).toBeVisible();
     expect(summary.getAttribute("aria-expanded")).toBe("false");
 
     await userEvent.hover(groupCard.getByRole("button", { name: /vp test run/ }));

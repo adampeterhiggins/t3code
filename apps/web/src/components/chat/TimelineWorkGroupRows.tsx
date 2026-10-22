@@ -18,7 +18,6 @@ import { observeVisibleAnimation } from "../../lib/visibleAnimation";
 import {
   memo,
   use,
-  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -50,9 +49,13 @@ import {
   WorkGroupViewCtx,
   type TimelineWorkEntry,
   type TimelineRow,
+  WorkGroupPreviewCtx,
   type WorkGroupViewState,
 } from "./timelineRowContext";
-import { TimelineRowTimestamp, ActivityShimmerOverlay } from "./TimelineRowParts";
+import { DiffStatLabel } from "./DiffStatLabel";
+import { formatShortTimestamp } from "../../timestampFormat";
+import { formatDuration } from "@t3tools/shared/orchestrationTiming";
+import { TimelineRowTimestamp, ActivityShimmerOverlay, ElapsedTimer } from "./TimelineRowParts";
 import {
   failedToolIconClassName,
   toolIconAcceptsTint,
@@ -66,13 +69,14 @@ import {
   QuestionAnswerLabel,
   ReasoningTraceContent,
   SimpleWorkEntryRow,
+  useWorkEntryIsRunning,
 } from "./TimelineWorkEntryRow";
 import {
   remarkThoughtPreview,
   toolGroupSummaryIconName,
   workEntryIconName,
 } from "./TimelineWorkEntryRow.logic";
-import { formatWorkingTimerNow } from "./TimelineWorkGroupRows.logic";
+import { summarizeWorkGroupPreview } from "./TimelineWorkGroupRows.logic";
 
 export const WorkGroupSection = memo(function WorkGroupSection({
   anchorKey,
@@ -124,28 +128,6 @@ export const WorkGroupSection = memo(function WorkGroupSection({
     </section>
   );
 });
-
-function WorkingTimer({ createdAt }: { createdAt: string }) {
-  const textRef = useRef<HTMLSpanElement>(null);
-  const initialText = formatWorkingTimerNow(createdAt);
-
-  useEffect(() => {
-    const updateText = () => {
-      if (textRef.current) {
-        textRef.current.textContent = formatWorkingTimerNow(createdAt);
-      }
-    };
-    updateText();
-    const id = setInterval(updateText, 1000);
-    return () => clearInterval(id);
-  }, [createdAt]);
-
-  return (
-    <span ref={textRef} className="tabular-nums">
-      {initialText}
-    </span>
-  );
-}
 
 const compactWorkEntryHeight = 24;
 
@@ -310,7 +292,7 @@ export function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: 
     <CompactingLabel />
   ) : row.createdAt ? (
     <>
-      Working for <WorkingTimer createdAt={row.createdAt} />
+      Working for <ElapsedTimer since={row.createdAt} />
     </>
   ) : (
     "Working..."
@@ -698,9 +680,7 @@ function WorkGroupHoverPreview({
         onClick={() => setOpen(false)}
       />
       <PreviewCardPopup {...cursorAnchor.popupProps} className="w-lg max-w-[calc(100vw-2rem)]">
-        <div className="p-1">
-          <WorkGroupPreviewEntries groupedEntries={groupedEntries} />
-        </div>
+        <WorkGroupPreviewEntries groupedEntries={groupedEntries} />
       </PreviewCardPopup>
     </PreviewCard>
   );
@@ -718,11 +698,67 @@ function WorkGroupPreviewEntries({ groupedEntries }: { groupedEntries: TimelineW
   }));
   return (
     <TimelineRowCtx value={{ ...ctx, workGroupViewState, onToggleWorkEntry: () => {} }}>
-      <WorkGroupSection
-        anchorKey="hover-preview"
-        groupedEntries={groupedEntries}
-        isExpandedToolGroup
-      />
+      <WorkGroupPreviewCtx value>
+        <WorkGroupPreviewHeader
+          entries={groupedEntries.filter((entry) => workEntryIsVisibleInGroup(entry, true))}
+        />
+        <div className="p-1">
+          <WorkGroupSection
+            anchorKey="hover-preview"
+            groupedEntries={groupedEntries}
+            isExpandedToolGroup
+          />
+        </div>
+      </WorkGroupPreviewCtx>
     </TimelineRowCtx>
+  );
+}
+
+function WorkGroupPreviewHeader({ entries }: { entries: TimelineWorkEntry[] }) {
+  const { timestampFormat } = use(TimelineRowCtx);
+  const summary = summarizeWorkGroupPreview(entries, useWorkEntryIsRunning());
+  if (summary === null) return null;
+  const startedAt = formatShortTimestamp(summary.startedAt, timestampFormat);
+  const completedAt = summary.completedAt
+    ? formatShortTimestamp(summary.completedAt, timestampFormat)
+    : null;
+  const range =
+    completedAt === null
+      ? `since ${startedAt}`
+      : completedAt === startedAt
+        ? startedAt
+        : `${startedAt}–${completedAt}`;
+  return (
+    <div className="flex flex-col gap-0.5 border-b border-border/60 px-3 py-2 text-xs">
+      <div className="flex items-center justify-between gap-3">
+        <span className="min-w-0 truncate text-muted-foreground tabular-nums">
+          {summary.completedAt === null ? (
+            <span className="text-foreground">
+              <ElapsedTimer since={summary.startedAt} />
+              {" · "}
+            </span>
+          ) : summary.elapsedMs !== null ? (
+            <span className="text-foreground">{formatDuration(summary.elapsedMs)} · </span>
+          ) : null}
+          {range}
+        </span>
+        {summary.diff ? (
+          <DiffStatLabel
+            additions={summary.diff.additions}
+            deletions={summary.diff.deletions}
+            layout="inline"
+          />
+        ) : null}
+      </div>
+      <div className="text-muted-foreground">
+        {[
+          ...summary.counts,
+          ...(summary.runningCount > 0 ? [`${summary.runningCount} running`] : []),
+        ].join(" · ")}
+        {summary.failedCount > 0 ? (
+          <span className="text-destructive"> · {summary.failedCount} failed</span>
+        ) : null}
+      </div>
+    </div>
   );
 }
