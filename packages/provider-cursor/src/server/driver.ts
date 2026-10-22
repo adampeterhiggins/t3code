@@ -41,7 +41,11 @@ import {
   type ProviderInstance,
 } from "@t3tools/provider-core/server/driver";
 import { withInstanceIdentity } from "@t3tools/provider-core/server/instanceIdentity";
-import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
+import {
+  mergeProviderInstanceEnvironment,
+  resolveInstanceHomePath,
+} from "@t3tools/provider-core/server/instanceEnvironment";
+import { makeCursorEnvironment, materializeCursorShadowHome } from "./CursorHome.ts";
 import { makeManualOnlyProviderMaintenanceCapabilities } from "@t3tools/provider-core/server/maintenanceResolver";
 import {
   haveProviderSnapshotSettingsChanged,
@@ -95,7 +99,12 @@ export const CursorDriver: ProviderDriver<
       CursorUsageAccounts.CursorUsageAccounts.pipe(
         Effect.flatMap((accounts) =>
           accounts.scan({
-            instances,
+            instances: instances.map((instance) => ({
+              instanceId: instance.instanceId,
+              environment: instance.environment,
+              homePath: instance.config?.homePath ?? "",
+              configuredEnvironment: settings.providerInstances[instance.instanceId]?.environment,
+            })),
             keychainUsageEnabled: settings.cursorKeychainUsageEnabled,
             windowStartMs,
             retentionCutoffMs,
@@ -118,7 +127,30 @@ export const CursorDriver: ProviderDriver<
     const httpClient = yield* HttpClient.HttpClient;
     const keychain = yield* CursorKeychain.CursorKeychain;
     const sdkRunner = yield* CursorAgentSdk.CursorAgentSdkRunner;
-    const processEnv = yield* mergeProviderInstanceEnvironment(environment);
+    const homePath = yield* resolveInstanceHomePath({
+      homePath: config.homePath,
+      stateDir: host.paths.stateDir,
+      driver: DRIVER_KIND,
+      instanceId,
+      environment,
+      homeVariables: ["HOME"],
+    });
+    const configWithHome = { ...config, homePath };
+    yield* materializeCursorShadowHome(configWithHome).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ProviderDriverError({
+            driver: DRIVER_KIND,
+            instanceId,
+            detail: cause.message,
+            cause,
+          }),
+      ),
+    );
+    const processEnv = yield* makeCursorEnvironment(
+      configWithHome,
+      yield* mergeProviderInstanceEnvironment(environment),
+    );
     const continuationIdentity = defaultProviderContinuationIdentity({
       driverKind: DRIVER_KIND,
       instanceId,
@@ -130,7 +162,7 @@ export const CursorDriver: ProviderDriver<
       accentColor,
       continuationGroupKey: continuationIdentity.continuationKey,
     });
-    const effectiveConfig = { ...config, enabled } satisfies CursorSettings;
+    const effectiveConfig = { ...configWithHome, enabled } satisfies CursorSettings;
     const credentials = yield* CursorCredentialStore.makeCursorCredentialStore(
       instanceId,
       path.join(

@@ -1,5 +1,12 @@
+import {
+  ProviderDriverKind,
+  type ProviderInstanceEnvironment,
+  type ProviderInstanceId,
+} from "@t3tools/contracts";
+import { resolveInstanceHomePath } from "@t3tools/provider-core/server/instanceEnvironment";
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
-import type { ProviderUsageInstance, ProviderUsageScan } from "@t3tools/provider-core/server/usage";
+import type { ProviderUsageScan } from "@t3tools/provider-core/server/usage";
+import { makeCursorEnvironment } from "./CursorHome.ts";
 import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Clock from "effect/Clock";
@@ -42,9 +49,14 @@ export class CursorUsageAccounts extends Context.Service<
   {
     readonly scan: (input: {
       /** Every Cursor instance; each one's own SDK sign-in is its own account source. */
-      readonly instances: ReadonlyArray<
-        Pick<ProviderUsageInstance<unknown>, "instanceId" | "environment">
-      >;
+      readonly instances: ReadonlyArray<{
+        readonly instanceId: ProviderInstanceId;
+        readonly environment: NodeJS.ProcessEnv;
+        /** Configured home, or `""` when the instance uses its default. */
+        readonly homePath: string;
+        /** Instance environment variables, before they are merged over the host. */
+        readonly configuredEnvironment: ProviderInstanceEnvironment | undefined;
+      }>;
       /** From the same settings snapshot as the rest of the usage read. */
       readonly keychainUsageEnabled: boolean;
       readonly windowStartMs: number;
@@ -321,61 +333,82 @@ const make = Effect.gen(function* () {
       }
       const haveInstanceAccount = instanceSources.some((source) => source.hostId === "cursor.com");
       const home = yield* HostProcess.HomeDirectory;
-      const userHome =
-        (platform === "win32" ? hostEnvironment["USERPROFILE"] : hostEnvironment["HOME"]) || home;
-      const configHome = hostEnvironment["XDG_CONFIG_HOME"]?.trim();
-      const cursorHome =
-        platform === "darwin"
-          ? path.join(userHome, "Library", "Application Support")
-          : platform === "win32"
-            ? hostEnvironment["APPDATA"] || path.join(userHome, "AppData", "Roaming")
-            : configHome && path.isAbsolute(configHome)
-              ? configHome
-              : path.join(userHome, ".config");
-      const authPath =
-        platform === "darwin"
-          ? path.join(userHome, ".cursor", "auth.json")
-          : path.join(cursorHome, platform === "win32" ? "Cursor" : "cursor", "auth.json");
-      const credentialStore = hostEnvironment["AGENT_CLI_CREDENTIAL_STORE"];
-      const loginUnavailable =
-        Boolean(hostEnvironment["CURSOR_AUTH_TOKEN"]?.trim()) ||
-        Boolean(hostEnvironment["CURSOR_API_KEY"]?.trim()) ||
-        credentialStore === "memory";
-      const useKeychain = platform === "darwin" && credentialStore !== "file";
-      if (useKeychain && !loginUnavailable && !keychainUsageEnabled) {
-        if (haveInstanceAccount) return instanceSources;
-        return [
-          ...instanceSources,
-          {
+      const cliSources: ProviderUsageScan[] = [];
+      const seenCliLogins = new Set<string>();
+      const instanceEnvironments = yield* Effect.forEach(instances, (instance) =>
+        Effect.gen(function* () {
+          const homePath = yield* resolveInstanceHomePath({
+            homePath: instance.homePath,
+            stateDir: host.paths.stateDir,
+            driver: ProviderDriverKind.make("cursor"),
+            instanceId: instance.instanceId,
+            environment: instance.configuredEnvironment,
+            homeVariables: ["HOME"],
+          });
+          return yield* makeCursorEnvironment({ homePath }, instance.environment);
+        }).pipe(
+          Effect.provideService(FileSystem.FileSystem, fileSystem),
+          Effect.provideService(Path.Path, path),
+        ),
+      );
+      // The host CLI login, plus each instance's shadow home. Instances that share a
+      // login (or the macOS keychain) count once.
+      for (const environment of [hostEnvironment, ...instanceEnvironments]) {
+        const userHome =
+          (platform === "win32" ? environment["USERPROFILE"] : environment["HOME"]) || home;
+        const configHome = environment["XDG_CONFIG_HOME"]?.trim();
+        const cursorHome =
+          platform === "darwin"
+            ? path.join(userHome, "Library", "Application Support")
+            : platform === "win32"
+              ? environment["APPDATA"] || path.join(userHome, "AppData", "Roaming")
+              : configHome && path.isAbsolute(configHome)
+                ? configHome
+                : path.join(userHome, ".config");
+        const authPath =
+          platform === "darwin"
+            ? path.join(userHome, ".cursor", "auth.json")
+            : path.join(cursorHome, platform === "win32" ? "Cursor" : "cursor", "auth.json");
+        const credentialStore = environment["AGENT_CLI_CREDENTIAL_STORE"];
+        const loginUnavailable =
+          Boolean(environment["CURSOR_AUTH_TOKEN"]?.trim()) ||
+          Boolean(environment["CURSOR_API_KEY"]?.trim()) ||
+          credentialStore === "memory";
+        const useKeychain = platform === "darwin" && credentialStore !== "file";
+        const credentialKey = useKeychain ? "keychain" : `file:${authPath}`;
+        if (seenCliLogins.has(credentialKey)) continue;
+        seenCliLogins.add(credentialKey);
+        if (useKeychain && !loginUnavailable && !keychainUsageEnabled) {
+          if (haveInstanceAccount) continue;
+          cliSources.push({
             dir: authPath,
             volumeId: "",
             files: null,
             message: "Cursor account usage is off on this environment.",
             action: "enableCursorKeychain",
-          },
-        ];
-      }
-      if (loginUnavailable) {
-        if (haveInstanceAccount) return instanceSources;
-        return [
-          ...instanceSources,
-          {
+          });
+          continue;
+        }
+        if (loginUnavailable) {
+          if (haveInstanceAccount) continue;
+          cliSources.push({
             dir: authPath,
             files: null,
             message: "Cursor account history needs a Cursor CLI login on this server.",
-          },
-        ];
+          });
+          continue;
+        }
+        const source = yield* accountSource(
+          useKeychain ? { kind: "keychain" } : authPath,
+          authPath,
+          windowStartMs,
+          retentionCutoffMs,
+          awaitRefresh,
+        );
+        if (source === null || (haveInstanceAccount && source.files === null)) continue;
+        cliSources.push(source);
       }
-      const source = yield* accountSource(
-        useKeychain ? { kind: "keychain" } : authPath,
-        authPath,
-        windowStartMs,
-        retentionCutoffMs,
-        awaitRefresh,
-      );
-      return source === null || (haveInstanceAccount && source.files === null)
-        ? instanceSources
-        : [...instanceSources, source];
+      return [...instanceSources, ...cliSources];
     },
   );
 

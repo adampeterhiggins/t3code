@@ -1014,6 +1014,45 @@ describe("UsageService", () => {
     }).pipe(Effect.scoped),
   );
 
+  it.live("reads a second Cursor instance's CLI login from its own home", () =>
+    Effect.gen(function* () {
+      const { settings, home } = yield* setup;
+      const personalHome = NodePath.join(home, "cursor-personal");
+      const writeInvalidLogin = (authPath: string) =>
+        Effect.promise(async () => {
+          await NodeFSP.mkdir(NodePath.dirname(authPath), { recursive: true });
+          await NodeFSP.writeFile(authPath, "invalid json");
+        });
+      yield* writeInvalidLogin(NodePath.join(home, "config", "cursor", "auth.json"));
+      yield* writeInvalidLogin(NodePath.join(personalHome, ".config", "cursor", "auth.json"));
+      const service = yield* UsageService.make.pipe(
+        Effect.provide(
+          layerService({
+            prefix: "usage-service-cursor-shadow-home",
+            home,
+            settings: {
+              ...settings,
+              providerInstances: {
+                ...settings.providerInstances,
+                [ProviderInstanceId.make("cursor-personal")]: {
+                  driver: ProviderDriverKind.make("cursor"),
+                  enabled: false,
+                  config: { homePath: personalHome },
+                },
+              },
+            },
+          }),
+        ),
+      );
+      const summary = yield* service.readSummary({ ...WINDOW, awaitRefresh: true });
+      const cursor = summary.sources.filter((source) => source.fingerprint.provider === "cursor");
+      assert.strictEqual(cursor.length, 2);
+      assert.isTrue(
+        cursor.every((source) => source.message === "Cursor credentials could not be read."),
+      );
+    }).pipe(Effect.scoped),
+  );
+
   it.live("keeps Cursor credential errors visible when a saved login cannot be read", () =>
     Effect.gen(function* () {
       const { settings, home } = yield* setup;
