@@ -37,6 +37,9 @@ SOURCE_FINGERPRINT = { git rev-parse HEAD; git diff HEAD; git ls-files --others 
 SKIP_BUILD ?= 0
 # FORCE=1 lets update-next rebuild even when nothing changed since the last one.
 FORCE ?= 0
+# Builds kept in release-mock after each build (~150 MB each). Whatever a feed
+# manifest or the installed app points at is always kept on top of these.
+KEEP_RELEASES ?= 3
 # The repo's pinned vite-plus, not whatever `vp` is on PATH: an older global
 # install can't parse newer task configs and fails to load the task graph.
 # Deferred so a fresh checkout falls back to the global one for its first
@@ -45,7 +48,7 @@ VP = $(if $(wildcard node_modules/.bin/vp),./node_modules/.bin/vp,vp)
 
 .DEFAULT_GOAL := help
 
-.PHONY: help deps phone update-cert update-next update-serve update-serve-stop update-status
+.PHONY: help deps phone update-cert update-next update-prune update-serve update-serve-stop update-status
 
 ##@ Local update loop
 
@@ -124,6 +127,19 @@ update-build-%: deps ## Build version % into release-mock (signed, mock feed, zi
 	  --build-version $*
 	@$(SOURCE_FINGERPRINT) > $(SOURCE_STAMP)
 	@echo "--> $(MANIFEST) now advertises $*"
+	@$(MAKE) --no-print-directory update-prune
+
+# The installed version's zip and blockmap stay so differential updates from it
+# still work; DMGs are left over from older builds and always go.
+update-prune: ## Delete all but the newest $(KEEP_RELEASES) builds in release-mock
+	@set -e; cd $(MOCK_DIR); \
+	INSTALLED="$$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' '$(APP_PATH)/Contents/Info.plist' 2>/dev/null || true)"; \
+	KEEP="$$( { ls -t | grep -E -- '-$(ARCH)\.zip$$' | head -n $(KEEP_RELEASES); \
+		awk '/^path:/{print $$2}' $$(ls | grep -E '\.yml$$') /dev/null; \
+		if [ -n "$$INSTALLED" ]; then echo "T3-Code-$$INSTALLED-$(ARCH).zip"; fi; } | sort -u)"; \
+	ls | grep -E '\.(zip|dmg)$$' | while read -r f; do \
+		if ! printf '%s\n' "$$KEEP" | grep -qxF "$$f"; then rm -f "$$f" "$$f.blockmap"; echo "$$f"; fi; \
+	done | wc -l | tr -d ' ' | xargs -I{} echo "--> pruned {} old builds from $(MOCK_DIR), kept: $$(printf '%s\n' "$$KEEP" | tr '\n' ' ')"
 
 update-next: ## Build the next upstream-based dated fork version
 	@set -e; \
