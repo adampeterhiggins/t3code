@@ -1534,8 +1534,19 @@ html:root .chat-markdown.chat-thread-markdown {
     margin-top: 1lh;
   }
 
-  & pre {
+  & .chat-markdown-codeblock {
     margin: 0.25rem 0;
+    border-radius: 4px;
+  }
+
+  & .chat-markdown-codeblock-header {
+    display: none;
+  }
+
+  & .chat-markdown-codeblock pre {
+    padding: 0.5rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 
   & :is(ul, ol) {
