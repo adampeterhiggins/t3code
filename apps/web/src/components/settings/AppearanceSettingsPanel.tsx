@@ -1,3 +1,4 @@
+import { QuickMessageAppearanceSettings } from "./QuickMessageAppearanceSettings";
 import type { CSSProperties } from "react";
 import { useState } from "react";
 import {
@@ -102,6 +103,8 @@ export function AppearanceSettingsPanel() {
           />
         </div>
       </SettingsSection>
+
+      <QuickMessageAppearanceSettings />
 
       <SettingsSection id="appearance-interface" title="Interface">
         <SettingsRow
