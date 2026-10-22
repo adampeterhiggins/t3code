@@ -268,19 +268,23 @@ export const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: WorkEn
   const item = props.workEntry.projectedItem?.item;
   const childThreadId =
     item?.type === "notification" ? notificationChildThreadId(item.source) : undefined;
-  if (item?.type !== "notification" || childThreadId === undefined) {
-    return <WorkEntryLogRow {...props} />;
-  }
+  // Transcript citations find, pick, and tint each call by this id.
   return (
-    <SubagentNotificationLink
-      parentRef={scopeThreadRef(ctx.activeThreadEnvironmentId, item.threadId)}
-      childThreadId={childThreadId}
-      outcome={item.outcome}
-      createdAt={props.workEntry.createdAt}
-      timestampFormat={ctx.timestampFormat}
-      onOpenThread={ctx.onOpenThread}
-      fallback={<WorkEntryLogRow {...props} />}
-    />
+    <div data-work-entry-id={props.workEntry.id}>
+      {item?.type !== "notification" || childThreadId === undefined ? (
+        <WorkEntryLogRow {...props} />
+      ) : (
+        <SubagentNotificationLink
+          parentRef={scopeThreadRef(ctx.activeThreadEnvironmentId, item.threadId)}
+          childThreadId={childThreadId}
+          outcome={item.outcome}
+          createdAt={props.workEntry.createdAt}
+          timestampFormat={ctx.timestampFormat}
+          onOpenThread={ctx.onOpenThread}
+          fallback={<WorkEntryLogRow {...props} />}
+        />
+      )}
+    </div>
   );
 });
 

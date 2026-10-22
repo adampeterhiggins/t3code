@@ -1,6 +1,6 @@
 import { ASSISTANT_CITATION_CONTEXT_LENGTH, type AssistantCitation } from "@t3tools/contracts";
 
-import { mathWrapperOf } from "../markdown-clipboard";
+import { mathWrapperOf, serializeSelectedMarkdownQuote } from "../markdown-clipboard";
 
 export type AssistantTextSelector = {
   readonly text: string;
@@ -20,6 +20,8 @@ export function findAssistantCitationSourceAnchor(
   document: Document,
   citation: AssistantCitation,
 ): AssistantCitationSourceAnchor | null {
+  // A transcript excerpt spans rows; it has no single source to anchor beside.
+  if (citation.segments) return null;
   const source = [
     ...document.querySelectorAll<HTMLElement>("[data-assistant-citation-source]"),
   ].find(
@@ -240,6 +242,11 @@ export function captureAssistantTextSelection(
   else range.setEnd(last, last === range.endContainer ? range.endOffset : last.length);
   if (!isUsableRange(source, range)) return null;
 
+  const selector = rangeSelector(source, range);
+  return selector === null ? null : { source, selector, range };
+}
+
+function rangeSelector(source: HTMLElement, range: Range): AssistantTextSelector | null {
   const stream = readAssistantText(source);
   let rawStart: number | null = null;
   let rawEnd = 0;
@@ -252,8 +259,74 @@ export function captureAssistantTextSelection(
     rawEnd = chunk.start + end;
   }
   if (rawStart === null) return null;
-  const selector = createAssistantTextSelector(stream.text, rawStart, rawEnd);
-  return selector === null ? null : { source, selector, range };
+  return createAssistantTextSelector(stream.text, rawStart, rawEnd);
+}
+
+/** A tool call's row in the timeline. Its id is the call's turn item id. */
+export const TRANSCRIPT_TOOL_SELECTOR = "[data-work-entry-id]";
+
+/** The transcript item a node sits in: a tool call, or the message its timeline row shows. */
+export function transcriptItemIdAt(viewport: HTMLElement, node: Node | null): string | null {
+  const element = node?.nodeType === 1 ? (node as Element) : (node?.parentElement ?? null);
+  const tool = element?.closest<HTMLElement>(TRANSCRIPT_TOOL_SELECTOR);
+  if (tool && viewport.contains(tool)) return tool.dataset.workEntryId ?? null;
+  const row = element?.closest<HTMLElement>("[data-timeline-row-id]");
+  return row && viewport.contains(row) ? (row.dataset.messageId ?? null) : null;
+}
+
+export type TranscriptQuote = { text: string; markdown: string; range: Range };
+
+/** One end of a selection, and the part of its assistant response a quote takes, if any. */
+export type TranscriptSelectionEdge = { itemId: string; quote?: TranscriptQuote };
+
+function edgeQuote(
+  viewport: HTMLElement,
+  node: Text,
+  range: Range,
+  side: "first" | "last",
+  part: "selected" | "extended",
+): TranscriptQuote | undefined {
+  const source = node.parentElement?.closest<HTMLElement>("[data-assistant-citation-source]");
+  if (!source || !viewport.contains(source)) return undefined;
+  const quoted = source.ownerDocument.createRange();
+  quoted.selectNodeContents(source);
+  const clipsStart =
+    source.contains(range.startContainer) && (part === "selected" || side === "first");
+  const clipsEnd = source.contains(range.endContainer) && (part === "selected" || side === "last");
+  if (clipsStart) quoted.setStart(range.startContainer, range.startOffset);
+  if (clipsEnd) quoted.setEnd(range.endContainer, range.endOffset);
+  const selector = rangeSelector(source, quoted);
+  if (selector === null) return undefined;
+  return { text: selector.text, markdown: serializeSelectedMarkdownQuote(quoted), range: quoted };
+}
+
+/**
+ * The first and last transcript items a selection covers text in, in document order, or null
+ * when it stays inside one item and `allowSingleItem` is off. `part` picks each end's quote:
+ * the text selected in its response, or from that end to the response's far edge, for an
+ * excerpt that grows past it.
+ */
+export function captureTranscriptSelectionEdges(
+  viewport: HTMLElement,
+  selection: Selection | null,
+  { part, allowSingleItem = false }: { part: "selected" | "extended"; allowSingleItem?: boolean },
+): { first: TranscriptSelectionEdge; last: TranscriptSelectionEdge; range: Range } | null {
+  if (selection === null || selection.isCollapsed || selection.rangeCount !== 1) return null;
+  const range = selection.getRangeAt(0).cloneRange();
+  if (!viewport.contains(range.commonAncestorContainer)) return null;
+  const firstNode = selectedTextBoundary(range, range.commonAncestorContainer, false);
+  const lastNode = selectedTextBoundary(range, range.commonAncestorContainer, true);
+  if (firstNode === null || lastNode === null) return null;
+  const firstId = transcriptItemIdAt(viewport, firstNode);
+  const lastId = transcriptItemIdAt(viewport, lastNode);
+  if (firstId === null || lastId === null || (firstId === lastId && !allowSingleItem)) return null;
+  const firstQuote = edgeQuote(viewport, firstNode, range, "first", part);
+  const lastQuote = edgeQuote(viewport, lastNode, range, "last", part);
+  return {
+    first: { itemId: firstId, ...(firstQuote ? { quote: firstQuote } : {}) },
+    last: { itemId: lastId, ...(lastQuote ? { quote: lastQuote } : {}) },
+    range,
+  };
 }
 
 function rawTextOffset(text: string, normalizedOffset: number): number {

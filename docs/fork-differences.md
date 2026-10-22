@@ -1677,6 +1677,27 @@ Code: `markdown` on `AssistantCitation` in
 [AssistantSelectionToolbar.tsx](../apps/web/src/components/chat/AssistantSelectionToolbar.tsx) and
 shown by [AssistantCitationChip.tsx](../apps/web/src/components/chat/AssistantCitationChip.tsx).
 
+## Cite a stretch of the transcript, tool calls included
+
+Upstream citations quote text inside one assistant response. The fork also quotes a stretch of
+the transcript: dragging a selection from one message to another cites everything between,
+including user messages and the tool calls the drag passes over, with only the selected part of
+the first and last response. Shift-clicking a tool call picks it instead of expanding it, and
+grows a text selection to it. While picking, shift-clicking more tool calls or messages moves the
+end of the excerpt, scrolling keeps the pick, and a **Cite** button at the foot of the timeline
+inserts it. Picked items are tinted because tool rows cannot hold a text selection.
+
+The chip reads what the excerpt spans, such as "2 messages, 3 tool calls". Agents get the
+excerpt as a short transcript, with each tool call's name, label, status and a trimmed detail,
+plus its segments naming each item's id. Going to the source scrolls to the first cited item and
+tints the rest. Entries hidden by a collapsed tool group or a folded turn are still quoted;
+reasoning is left out. See [Quote an assistant response](user/composer.md#quote-an-assistant-response).
+
+Code: `segments` on `AssistantCitation` in
+[assistantCitations.ts](../packages/contracts/src/assistantCitations.ts), built by
+[transcriptCitation.logic.ts](../apps/web/src/components/chat/transcriptCitation.logic.ts) and
+captured by [AssistantSelectionToolbar.tsx](../apps/web/src/components/chat/AssistantSelectionToolbar.tsx).
+
 ## Send a citation comment straight away, or to another thread
 
 Upstream's comment popover on an assistant-response citation only has **Save**, with Cmd/Ctrl+Enter

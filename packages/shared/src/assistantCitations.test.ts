@@ -9,6 +9,7 @@ import {
   type AssistantCitation,
 } from "@t3tools/contracts";
 import {
+  assistantCitationLabel,
   assistantCitationsToLabels,
   assistantCitationsToPlainText,
   collectAssistantCitations,
@@ -306,5 +307,65 @@ describe("assistant citation references", () => {
         "",
       ].join("\n"),
     );
+  });
+
+  describe("transcript excerpts", () => {
+    const excerpt: AssistantCitation = {
+      ...legacyCitation,
+      messageId: MessageId.make("message:user-1"),
+      text: "User:\nWhy?\n\nTool call · Command: vp test\n\nAssistant:\nBecause.",
+      markdown: "**User**\n\nWhy?\n\n**Tool call · Command**\n\n```text\nvp test\n```",
+      start: 0,
+      end: 62,
+      prefix: "",
+      suffix: "",
+      segments: [
+        { kind: "user", id: "message:user-1" },
+        { kind: "tool", id: "item:tool,1" },
+        { kind: "assistant", id: "message:assistant-1" },
+      ],
+    };
+
+    it("round-trips its segments and rejects a repeated segments parameter", () => {
+      const href = formatAssistantCitationHref(excerpt);
+      expect(parseAssistantCitationHref(href)).toStrictEqual(excerpt);
+      expect(parseAssistantCitationHref(`${href}&segments=%5B%5D`)).toBeNull();
+      expect(
+        parseAssistantCitationHref(href.replace(/segments=[^&]*/, "segments=%5B%5D")),
+      ).toBeNull();
+      expect(
+        parseAssistantCitationHref(href.replace(/segments=[^&]*/, "segments=not-json")),
+      ).toBeNull();
+    });
+
+    it("labels what it spans unless it has a comment or a single item", () => {
+      expect(assistantCitationLabel(excerpt)).toBe("2 messages, 1 tool call");
+      expect(assistantCitationLabel({ ...excerpt, comment: "Look here" })).toBe("Look here");
+      expect(
+        assistantCitationLabel({
+          ...excerpt,
+          text: "Tool call · Command: vp test",
+          segments: [{ kind: "tool", id: "item:tool,1" }],
+        }),
+      ).toBe("Tool call · Command: vp test");
+    });
+
+    it("tells providers the segments name transcript items", () => {
+      const expanded = expandAssistantCitationsForProvider(
+        `See ${serializeAssistantCitation(excerpt)}`,
+      );
+      expect(expanded).toContain(
+        "A citation with segments quotes a stretch of the thread's transcript",
+      );
+      expect(readProviderContext(expanded)).toStrictEqual([
+        {
+          id: "assistant-quote-1",
+          citation: (({ markdown, ...rest }) => ({ ...rest, text: markdown }))(excerpt),
+        },
+      ]);
+      expect(renderAssistantCitationsAsText(serializeAssistantCitation(excerpt))).toContain(
+        "> Transcript excerpt:\n> **User**",
+      );
+    });
   });
 });
