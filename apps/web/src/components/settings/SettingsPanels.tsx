@@ -431,6 +431,12 @@ export function useSettingsRestore(onRestored?: () => void) {
       ? ["Contrast"]
       : []),
     ...(settings.glassOpacity !== DEFAULT_UNIFIED_SETTINGS.glassOpacity ? ["Glass opacity"] : []),
+    ...(settings.quickMessageThemeSource !== DEFAULT_UNIFIED_SETTINGS.quickMessageThemeSource ||
+    settings.quickMessageTheme !== DEFAULT_UNIFIED_SETTINGS.quickMessageTheme ||
+    settings.quickMessageAppearance !== DEFAULT_UNIFIED_SETTINGS.quickMessageAppearance ||
+    settings.quickMessageExtraContrast !== DEFAULT_UNIFIED_SETTINGS.quickMessageExtraContrast
+      ? ["Quick message appearance"]
+      : []),
     ...(settings.diffColorScheme !== DEFAULT_UNIFIED_SETTINGS.diffColorScheme
       ? ["Diff colors"]
       : []),
@@ -644,6 +650,10 @@ export function useSettingsRestore(onRestored?: () => void) {
       return;
     }
     updateSettings({
+      quickMessageThemeSource: DEFAULT_UNIFIED_SETTINGS.quickMessageThemeSource,
+      quickMessageTheme: DEFAULT_UNIFIED_SETTINGS.quickMessageTheme,
+      quickMessageAppearance: DEFAULT_UNIFIED_SETTINGS.quickMessageAppearance,
+      quickMessageExtraContrast: DEFAULT_UNIFIED_SETTINGS.quickMessageExtraContrast,
       appearanceContrast: DEFAULT_UNIFIED_SETTINGS.appearanceContrast,
       diffColorScheme: DEFAULT_UNIFIED_SETTINGS.diffColorScheme,
       chatWidth: DEFAULT_UNIFIED_SETTINGS.chatWidth,
