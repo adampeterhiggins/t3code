@@ -16,7 +16,7 @@ import {
   composerAttachmentsStillUploading,
 } from "./composer-attachment-uploads";
 import { useAtomValue } from "@effect/atom-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { type ProviderApprovalDecision, type RuntimeRequestId } from "@t3tools/contracts";
 import {
@@ -240,6 +240,7 @@ export function useSelectedThreadRequests() {
   const onRespondToApproval = async (
     requestId: RuntimeRequestId,
     decision: ProviderApprovalDecision,
+    feedback?: string,
   ) => {
     if (
       !selectedThreadShell ||
@@ -261,6 +262,7 @@ export function useSelectedThreadRequests() {
         threadId: selectedThreadShell.id,
         requestId,
         decision,
+        ...(feedback === undefined ? {} : { feedback }),
       },
     });
     setRespondingApprovalId((current) => (current === requestId ? null : current));

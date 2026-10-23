@@ -314,6 +314,8 @@ function codexHeaders(account: typeof AuthFile.Type): Record<string, string> {
 const CLAUDE_HEADERS = {
   Authorization: BEARER,
   "anthropic-beta": "oauth-2025-04-20",
+  // The OAuth usage endpoint can return 429 without a Claude Code user agent.
+  "User-Agent": "claude-code/2.1.273",
 };
 const GROK_USAGE_URL = "https://cli-chat-proxy.grok.com/v1/billing?format=credits";
 const GROK_HEADERS = {

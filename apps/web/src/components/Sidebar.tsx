@@ -280,6 +280,11 @@ import { getTriggerDisplayModelLabel } from "./chat/providerIconUtils";
 import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../providerInstances";
 import { useThreadRunningTerminalIds } from "../state/terminalSessions";
 import { useStableCallback } from "../hooks/useStableCallback";
+import {
+  completeSidebarRouteReveal,
+  pendingSidebarRouteReveal,
+  type SidebarRouteReveal,
+} from "./sidebar/routeReveal";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
@@ -1113,7 +1118,7 @@ function useSidebarTabProvider(
     modelLabel: selectedModel ? getTriggerDisplayModelLabel(selectedModel) : modelSelection.model,
   };
 }
-export default function Sidebar() {
+export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReveal }) {
   const projects = useProjects();
   const threads = useQuietThreadShells();
   const {
@@ -1695,6 +1700,45 @@ export default function Sidebar() {
   );
   const searchEnvironmentIds = useConnectedEnvironmentIds();
   const threadSearch = useThreadSearch(searchEnvironmentIds, threadSearchQuery);
+
+  // History, the command palette, and links can open a thread the project
+  // scope hides or the list has scrolled away. A remount starts the list at
+  // the top, so each mount also scrolls to the open thread once, without
+  // widening the scope.
+  const mountRevealOwed = useRef(true);
+  const revealRouteRow = useStableCallback(() => {
+    const pendingKey = pendingSidebarRouteReveal(routeReveal, sidebarRouteThreadKey);
+    // Search results replace the thread list; reveal once the list returns.
+    if (isSearchingThreads) return;
+    const revealKey = pendingKey ?? (mountRevealOwed.current ? sidebarRouteThreadKey : null);
+    if (revealKey === null) return;
+    const thread = threads.find((candidate) => sidebarThreadKey(candidate) === revealKey);
+    if (thread === undefined) return;
+    if (
+      pendingKey !== null &&
+      scopedProjectKeys !== null &&
+      filterSidebarV2VisibleThreads([thread], scopedProjectKeys).length === 0 &&
+      filterSidebarV2VisibleThreads([thread], null).length === 1
+    ) {
+      // The row renders under the widened scope; scroll on that pass.
+      setProjectScopeKeys([]);
+      setOrganisationKeys([]);
+      return;
+    }
+    const activeRow = document.querySelector('[data-sidebar="content"] [aria-current="page"]');
+    if (!activeRow) return;
+    completeSidebarRouteReveal(routeReveal);
+    mountRevealOwed.current = false;
+    activeRow.scrollIntoView({ block: "nearest" });
+  });
+  useEffect(revealRouteRow, [
+    revealRouteRow,
+    sidebarRouteThreadKey,
+    threads,
+    persistedProjectScopeKeys,
+    storedOrganisationKeys,
+    isSearchingThreads,
+  ]);
   const threadSearchMatchByKey = new Map(
     threadSearch.matches.map((match) => [threadSearchMatchKey(match), match] as const),
   );
