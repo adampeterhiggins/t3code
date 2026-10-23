@@ -63,9 +63,11 @@ For each split file:
    with no caller is a dropped feature. Props passed through a spread are not type-checked against
    the component, so check that the receiving component still declares them.
 
-## 3. Verify
+## 3. Run focused checks
 
 Follow the repository's Verifying rules. Do not run repo-wide checks.
+Complete these required checks before opening the PR. The optional runtime verification round
+below is separate and needs the user's permission after the PR is open.
 
 - `vp i` if lockfiles changed.
 - Typecheck the packages touched by the conflicts, for example
@@ -111,10 +113,27 @@ Fork CI runs on Blacksmith runners the fork does not have, so checks sit queued 
 out. Do not wait on them; your local verification is the gate. Cancel queued runs from the PR with
 `gh run cancel -R adampeterhiggins/t3code <run-id>` if they clutter the checks list.
 
+### Offer runtime verification after opening the PR
+
+Open and register the PR first; do not delay PR creation for permission to run this round.
+Then report the PR URL and focused-check results, briefly name the fork flows most exposed by
+the sync, and end the handoff in this thread with a direct yes/no question, for example:
+"Would you like me to run a runtime fork-regression verification round on this PR?"
+
+End the turn and wait for an explicit yes before starting that round. Do not automatically
+launch dev servers, apps, browsers, or devices for it. If the user declines, finish without
+running it. If they agree, use [test-t3-app](../test-t3-app/SKILL.md),
+[test-t3-desktop](../test-t3-desktop/SKILL.md), and
+[test-t3-mobile](../test-t3-mobile/SKILL.md) for the relevant surfaces against isolated state.
+Record the exercised flows, findings, and any unavailable coverage in the PR.
+
+Permission for runtime verification does not authorize merging the PR or publishing a release.
+
 ## 5. Merge with a merge commit
 
 Only merge when the developer asked you to take the sync all the way through; otherwise stop after
-the PR and hand over its link.
+the PR handoff and verification offer above. The optional verification round does not require a
+merge.
 
 ```bash
 gh pr merge <number> -R adampeterhiggins/t3code --merge --delete-branch
