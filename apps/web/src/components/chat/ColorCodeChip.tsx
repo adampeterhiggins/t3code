@@ -39,7 +39,7 @@ export function ColorCodeChip({ code }: { code: string }) {
   );
 }
 
-function ColorCodePreview({ code }: { code: string }) {
+export function ColorCodePreview({ code }: { code: string }) {
   const facts = describeColorCode(code);
   const values = [
     ["HEX", code.toUpperCase()],
