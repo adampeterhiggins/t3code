@@ -27,6 +27,7 @@ import {
   TextSelection,
 } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
+import { ComposerColorCodesExtension, useComposerColorCodeHover } from "./composerColorCodes";
 
 import type {
   AssistantCitation,
@@ -936,6 +937,7 @@ function createComposerExtensions(richText: boolean) {
     ComposerCitationExtension,
     ComposerContextReferenceExtension,
     ComposerMarkersExtension,
+    ComposerColorCodesExtension,
     ComposerLoadingLinksExtension,
     ...(richText
       ? [
@@ -1118,6 +1120,7 @@ function ComposerPromptEditorTiptapInner(
   const [openCitation, setOpenCitation] = useState<OpenCitationComment | null>(null);
   const citationDraftRef = useRef<{ key: string; comment: string } | null>(null);
   const [isEmpty, setIsEmpty] = useState(value.length === 0);
+  const colorCodeHover = useComposerColorCodeHover();
 
   const citationCommentActions = {
     openComment: openCitation,
@@ -1929,6 +1932,7 @@ function ComposerPromptEditorTiptapInner(
       <ComposerContextRecordsContext value={contextRecords}>
         <ComposerCitationCommentContext value={citationCommentActions}>
           <div
+            {...colorCodeHover.containerProps}
             className={cn(
               "relative flow-root font-(family-name:--font-composer,var(--font-sans)) text-(length:--font-size-prompt,var(--text-sm)) max-sm:pointer-coarse:text-(length:--font-size-prompt-touch)",
               containerClassName,
@@ -1987,6 +1991,7 @@ function ComposerPromptEditorTiptapInner(
                 {placeholder}
               </div>
             ) : null}
+            {colorCodeHover.popover}
           </div>
         </ComposerCitationCommentContext>
       </ComposerContextRecordsContext>

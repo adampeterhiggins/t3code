@@ -11,7 +11,7 @@ import type { ServerProviderSkill } from "@t3tools/contracts";
 import type { Editor } from "@tiptap/core";
 import { createElement, createRef, useEffect, useState } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { userEvent } from "vite-plus/test/browser";
+import { page, userEvent } from "vite-plus/test/browser";
 
 import { act, render } from "../../test/render";
 
@@ -478,5 +478,15 @@ describe("an Arabic line", () => {
     expect(editor.view.coordsAtPos(editor.state.selection.head).left).toBeGreaterThan(
       box.left + box.width / 2,
     );
+  });
+});
+
+describe("colour codes", () => {
+  it("previews a colour's swatch on hover, leaving issue references as text", async () => {
+    await using screen = await mountEditor("Card #F2EDE5, not #123");
+    const swatches = [...screen.editor.view.dom.querySelectorAll<HTMLElement>("[data-color-code]")];
+    expect(swatches.map((swatch) => swatch.textContent)).toEqual(["#F2EDE5"]);
+    await userEvent.hover(swatches[0]!);
+    await expect.element(page.getByText("242 237 229")).toBeVisible();
   });
 });

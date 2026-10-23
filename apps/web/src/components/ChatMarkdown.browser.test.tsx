@@ -368,3 +368,16 @@ describe("ChatMarkdown Windows file links", () => {
     }
   });
 });
+
+describe("ChatMarkdown colour codes", () => {
+  it("draws colours in prose and lone colours in inline code as swatch chips", async () => {
+    setup();
+    await using screen = await renderText(
+      "Use #F2EDE5 and `#1F6FEB`, not `color: #E5484D` or issue #123.",
+    );
+    const chips = [...screen.container.querySelectorAll("button")].map((button) =>
+      button.getAttribute("aria-label"),
+    );
+    expect(chips).toEqual(["Colour #F2EDE5. Show swatch", "Colour #1F6FEB. Show swatch"]);
+  });
+});

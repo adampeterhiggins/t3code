@@ -116,7 +116,7 @@ export const gitConfigEnv = (
 export const explicitBareRepositoryEnv = (env: NodeJS.ProcessEnv, platform: NodeJS.Platform) =>
   gitConfigEnv(env, "safe.bareRepository", "explicit", platform);
 
-const classifyNonZeroExit = (command: string, stderr: string): VcsProcessExitFailureKind => {
+export const classifyNonZeroExit = (command: string, stderr: string): VcsProcessExitFailureKind => {
   const normalized = stderr.toLowerCase();
 
   if (
@@ -148,7 +148,9 @@ const classifyNonZeroExit = (command: string, stderr: string): VcsProcessExitFai
         normalized.includes("repository.pullrequest") ||
         normalized.includes("no pull requests found for branch") ||
         normalized.includes("pull request not found") ||
-        normalized.includes("could not resolve to an issue"))) ||
+        normalized.includes("could not resolve to an issue") ||
+        // No issue can exist in a repository with issues turned off.
+        normalized.includes("has disabled issues"))) ||
     (command === "glab" &&
       (normalized.includes("merge request not found") ||
         normalized.includes("not found") ||

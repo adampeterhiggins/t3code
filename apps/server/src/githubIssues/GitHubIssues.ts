@@ -189,7 +189,13 @@ export const make = Effect.gen(function* () {
       ...(text.length > 0 ? ["--search", text] : []),
       "--json",
       SUMMARY_FIELDS,
-    ]);
+    ]).pipe(
+      // A repository with issues turned off has none to list.
+      Effect.catchIf(
+        (error) => error.reason === "not-found",
+        () => Effect.succeed(""),
+      ),
+    );
     const json =
       raw.length === 0 ? [] : yield* decodeSummaries(raw).pipe(Effect.mapError(decodeError));
     return { issues: json.flatMap((issue) => toSummary(issue) ?? []) };

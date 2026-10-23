@@ -972,6 +972,26 @@ Web applies these as remark plugins in `ChatMarkdown`; mobile rewrites message m
 [`referenceLinks.ts`](../apps/mobile/src/state/referenceLinks.ts). The orchestration
 instructions also ask agents to link anything T3 Code can preview by its full URL.
 
+## Colour codes in chat
+
+Hex colours (`#F2EDE5`, `#fff`, `#1f6feb80`) in user and agent messages render as chips tinted
+by the colour, with a swatch thumbnail. Hovering one shows a larger swatch, its contrast against
+white and black, and HEX/RGB/HSL values to copy. Inline code holding only a colour becomes a chip
+too, in place of click-to-copy. The composer draws the same swatch over the text as it is typed
+or pasted, with the same hover preview, but the prompt stays plain text.
+
+An all-digit code such as `#333333` or `#123` may also be an issue or pull request number. In
+a thread whose project is on GitHub, the message looks the number up in that repository: if an
+issue or pull request has it, it stays a reference (linked in the user's messages, plain text in
+the agent's); once both lookups report it missing, it becomes a colour chip. A lookup that cannot
+tell, for example with `gh` signed out, keeps the reference. In a project not on GitHub it is a
+colour, and in markdown shown outside a thread, such as an issue preview, it stays text. A code
+with a letter or a leading zero is always a colour. The composer leaves all-digit codes plain, since only the sent message
+checks. Web only: mobile shows the plain text.
+Code: [`colorCodes.ts`](../apps/web/src/lib/colorCodes.ts),
+[`ColorCodeChip.tsx`](../apps/web/src/components/chat/ColorCodeChip.tsx), and
+[`composerColorCodes.tsx`](../apps/web/src/components/composerColorCodes.tsx).
+
 ## Linear integration
 
 **Settings > Integrations > Linear** connects a Linear account to the environment with OAuth

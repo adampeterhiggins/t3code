@@ -75,6 +75,11 @@ const execute: GitHubCli.GitHubCli["Service"]["execute"] = (input) => {
     );
   }
   const [, action, reference] = input.args;
+  if (action === "list" && input.cwd === "/issues-disabled") {
+    return Effect.fail(
+      new GitHubCli.GitHubPullRequestNotFoundError({ command: "gh", cwd: input.cwd, cause: null }),
+    );
+  }
   if (action === "list")
     return Effect.succeed(output(JSON.stringify([issueJson(1), issueJson(2)])));
   if (reference === "404") {
@@ -137,6 +142,14 @@ layer("GitHubIssues", (it) => {
         labels: [{ name: "bug", color: "d73a4a" }],
         updatedAt: "2026-09-30T00:00:00Z",
       });
+    }),
+  );
+
+  it.effect("lists nothing in a repository with issues turned off", () =>
+    Effect.gen(function* () {
+      const issues = yield* GitHubIssues.GitHubIssues;
+      const result = yield* issues.listIssues({ cwd: "/issues-disabled" });
+      assert.deepEqual(result.issues, []);
     }),
   );
 
