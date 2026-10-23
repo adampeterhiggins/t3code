@@ -147,8 +147,13 @@ const CHAT_MARKDOWN_SANITIZE_SCHEMA = {
     ],
     blockquote: [...(defaultSchema.attributes?.blockquote ?? []), "dataAlert"],
     div: [...(defaultSchema.attributes?.div ?? []), ...CODEX_ARTIFACT_TEMPLATE_HAST_PROPERTIES],
-    a: [...(defaultSchema.attributes?.a ?? []), "dataPullRequestAutolink"],
-    span: [...(defaultSchema.attributes?.span ?? []), "dataChatMention", "dataColorCode"],
+    a: [...(defaultSchema.attributes?.a ?? []), "dataPullRequestAutolink", "dataColorCode"],
+    span: [
+      ...(defaultSchema.attributes?.span ?? []),
+      "dataChatMention",
+      "dataColorCode",
+      "dataColorReference",
+    ],
     img: [
       ...(defaultSchema.attributes?.img ?? []),
       "dataLocalSrc",

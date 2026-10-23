@@ -4,7 +4,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 
-import { COLOR_CODE, wholeColorCode } from "~/lib/colorCodes";
+import { COLOR_CODE, mayBeIssueReference, wholeColorCode } from "~/lib/colorCodes";
 import { ColorCodePreview } from "./chat/ColorCodeChip";
 import { composerFloatingLayerProps } from "./chat/composerEventScope";
 import { Popover, PopoverPopup, PopoverTitle } from "./ui/popover";
@@ -12,6 +12,8 @@ import { Popover, PopoverPopup, PopoverTitle } from "./ui/popover";
 /**
  * Fork: draws colour codes in the composer with a swatch, the way sent messages show them.
  * A decoration rather than a chip node, so the prompt stays plain text the user can edit.
+ * `#123`-shaped codes are left plain: only the sent message checks whether an issue or pull
+ * request has that number.
  */
 function colorCodeDecorations(doc: ProseMirrorNode): DecorationSet {
   const decorations: Decoration[] = [];
@@ -19,7 +21,8 @@ function colorCodeDecorations(doc: ProseMirrorNode): DecorationSet {
     if (node.type.spec.code) return false;
     if (!node.isText || !node.text) return true;
     const inCode = node.marks.some((mark) => mark.type.spec.code);
-    const add = (code: string, offset: number) =>
+    const add = (code: string, offset: number) => {
+      if (mayBeIssueReference(code)) return;
       decorations.push(
         Decoration.inline(pos + offset, pos + offset + code.length, {
           class: "composer-color-code",
@@ -27,6 +30,7 @@ function colorCodeDecorations(doc: ProseMirrorNode): DecorationSet {
           "data-color-code": code,
         }),
       );
+    };
     if (inCode) {
       const code = wholeColorCode(node.text);
       if (code) add(code, node.text.indexOf(code));

@@ -980,8 +980,14 @@ white and black, and HEX/RGB/HSL values to copy. Inline code holding only a colo
 too, in place of click-to-copy. The composer draws the same swatch over the text as it is typed
 or pasted, with the same hover preview, but the prompt stays plain text.
 
-At least one digit must be a letter, so `#123` and `#123456` stay issue references; an all-digit
-colour such as `#333333` stays text. Web only: mobile shows the plain text.
+An all-digit code such as `#333333` or `#123` may also be an issue or pull request number. In
+a thread whose project is on GitHub, the message looks the number up in that repository: if an
+issue or pull request has it, it stays a reference (linked in the user's messages, plain text in
+the agent's); once both lookups report it missing, it becomes a colour chip. A lookup that cannot
+tell, for example with `gh` signed out, keeps the reference. In a project not on GitHub it is a
+colour, and in markdown shown outside a thread, such as an issue preview, it stays text. A code
+with a letter or a leading zero is always a colour. The composer leaves all-digit codes plain, since only the sent message
+checks. Web only: mobile shows the plain text.
 Code: [`colorCodes.ts`](../apps/web/src/lib/colorCodes.ts),
 [`ColorCodeChip.tsx`](../apps/web/src/components/chat/ColorCodeChip.tsx), and
 [`composerColorCodes.tsx`](../apps/web/src/components/composerColorCodes.tsx).

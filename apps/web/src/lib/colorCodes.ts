@@ -1,12 +1,17 @@
+import { githubIssueReferenceUrl } from "@t3tools/shared/githubIssueReferences";
+
 import { findAndReplaceText, type MarkdownNode } from "~/vendor/mdast-find-and-replace";
 
 /**
- * A hex colour such as `#F2EDE5`, `#fff` or `#0008`. At least one digit must be a letter, so
- * `#123` and `#123456` stay issue and pull request references. URL fragments, entities and
- * anchors like `#abc-def` are left alone.
+ * A hex colour such as `#F2EDE5`, `#fff` or `#333333`. URL fragments, entities and anchors like
+ * `#abc-def` are left alone.
  */
-export const COLOR_CODE =
-  /(?<![\w/&#-])#(?=[\da-f]*[a-f])(?:[\da-f]{8}|[\da-f]{6}|[\da-f]{3,4})(?![\w-])/giu;
+export const COLOR_CODE = /(?<![\w/&#-])#(?:[\da-f]{8}|[\da-f]{6}|[\da-f]{3,4})(?![\w-])/giu;
+
+/** All digits without a leading zero, so it may also be an issue or pull request number. */
+export function mayBeIssueReference(code: string): boolean {
+  return /^#[1-9]\d*$/u.test(code);
+}
 
 const WHOLE_COLOR_CODE = new RegExp(`^${COLOR_CODE.source}$`, "iu");
 
@@ -23,20 +28,55 @@ export function wholeColorCode(text: string): string | null {
 
 const IGNORED_TYPES = new Set(["link", "linkReference"]);
 
-/** Fork: wraps colour codes in prose so the renderer can draw them as swatch chips. */
-export function remarkColorCodes() {
+/**
+ * Fork: wraps colour codes in prose so the renderer can draw them as swatch chips. A code that
+ * may be an issue or pull request number depends on `repositoryUrl`, the thread's GitHub
+ * repository: given one, the code carries its URL there and the renderer shows the colour only
+ * once neither exists; null means the project is not on GitHub, so it is a colour; undefined
+ * means there is no thread to ask, so it stays text. `#123` links made by
+ * `remarkGitHubIssueReferences` are marked for the same check.
+ */
+export function remarkColorCodes(repositoryUrl: string | null | undefined) {
   return (tree: MarkdownNode) => {
     findAndReplaceText(
       tree,
       COLOR_CODE,
-      (code) => ({
-        type: "text",
-        value: code,
-        data: { hName: "span", hProperties: { dataColorCode: code } },
-      }),
+      (code) => {
+        if (!mayBeIssueReference(code) || repositoryUrl === null) return colorCodeNode(code);
+        if (repositoryUrl === undefined) return false;
+        return colorCodeNode(
+          code,
+          githubIssueReferenceUrl(undefined, code.slice(1), repositoryUrl),
+        );
+      },
       IGNORED_TYPES,
     );
+    markIssueReferenceLinks(tree);
   };
+}
+
+function colorCodeNode(code: string, reference?: string | null): MarkdownNode {
+  return {
+    type: "text",
+    value: code,
+    data: {
+      hName: "span",
+      hProperties: { dataColorCode: code, ...(reference ? { dataColorReference: reference } : {}) },
+    },
+  };
+}
+
+function markIssueReferenceLinks(node: MarkdownNode): void {
+  for (const child of node.children ?? []) {
+    const text = child.children?.length === 1 ? child.children[0] : undefined;
+    const code = text?.type === "text" ? wholeColorCode(text.value ?? "") : null;
+    const isIssueLink = child.type === "link" && /\/issues\/\d+$/u.test(child.url ?? "");
+    if (isIssueLink && code !== null && mayBeIssueReference(code)) {
+      child.data = { hProperties: { dataColorCode: code } };
+    } else {
+      markIssueReferenceLinks(child);
+    }
+  }
 }
 
 export interface ColorFacts {

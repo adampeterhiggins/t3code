@@ -226,6 +226,8 @@ import { gitHubRefTypeFromUrl } from "./gitHubRefPresentation";
 import { objectLinkLabel, parseComposerObjectLink } from "@t3tools/shared/composerObjectLinks";
 import { useEnvironmentSettings } from "../hooks/useSettings";
 import { useEnvironmentQuery } from "../state/query";
+import { githubIssueEnvironment } from "../state/githubIssues";
+import { pullRequestEnvironment } from "../state/pullRequests";
 import { slackEnvironment } from "../state/slack";
 import { discordEnvironment } from "../state/discord";
 import { granolaEnvironment } from "../state/granola";
@@ -1206,6 +1208,48 @@ function GranolaLinkText({
   );
 }
 
+const isNotFound = (failure: unknown) =>
+  typeof failure === "object" &&
+  failure !== null &&
+  "reason" in failure &&
+  failure.reason === "not-found";
+
+/**
+ * Fork: a colour that is also a `#123` number reads as the issue or pull request when the
+ * thread's repository has one, and as the colour once both lookups report it missing. Anything
+ * else, such as `gh` being signed out, keeps the reference.
+ */
+function MarkdownColorCodeReference(props: { code: string; url: string; reference: ReactNode }) {
+  const { environmentId, projects, pullRequestsEnabled, threadPullRequestsEnabled } = use(
+    ChatMarkdownRendererContext,
+  );
+  const pullRequestUrl = pullRequestCandidateUrlFromReferenceAutolink(props.url);
+  const pullRequestTarget = pullRequestUrl
+    ? resolvePullRequestPreviewTarget({
+        environmentId,
+        projects,
+        capabilities: {
+          pullRequests: pullRequestsEnabled,
+          threadPullRequests: threadPullRequestsEnabled,
+        },
+        url: pullRequestUrl,
+      })
+    : null;
+  const pullRequest = useEnvironmentQuery(
+    pullRequestTarget ? pullRequestEnvironment.preview(pullRequestTarget) : null,
+  );
+  const issue = useEnvironmentQuery(
+    environmentId === null
+      ? null
+      : githubIssueEnvironment.issueSummary({ environmentId, input: { url: props.url } }),
+  );
+  return isNotFound(pullRequest.failure) && isNotFound(issue.failure) ? (
+    <ColorCodeChip code={props.code} />
+  ) : (
+    props.reference
+  );
+}
+
 const CHAT_MARKDOWN_COMPONENTS = {
   h1: markdownHeadingRenderer(1),
   h2: markdownHeadingRenderer(2),
@@ -1305,6 +1349,21 @@ const CHAT_MARKDOWN_COMPONENTS = {
     );
   },
   a: function MarkdownAnchor({ node, href, children, title: _title, ...props }) {
+    const colorCode = node?.properties?.dataColorCode;
+    if (typeof colorCode === "string" && href && node) {
+      const { dataColorCode: _colorCode, ...properties } = node.properties;
+      return (
+        <MarkdownColorCodeReference
+          code={colorCode}
+          url={href}
+          reference={
+            <CHAT_MARKDOWN_COMPONENTS.a node={{ ...node, properties }} href={href} {...props}>
+              {children}
+            </CHAT_MARKDOWN_COMPONENTS.a>
+          }
+        />
+      );
+    }
     const {
       canOperateHost,
       canOperatePreview,
@@ -1669,10 +1728,12 @@ const CHAT_MARKDOWN_COMPONENTS = {
   },
   span: function MarkdownSpan({ node, ...props }) {
     const colorCode = node?.properties?.dataColorCode;
-    return typeof colorCode === "string" && wholeColorCode(colorCode) ? (
-      <ColorCodeChip code={colorCode} />
+    const reference = node?.properties?.dataColorReference;
+    if (typeof colorCode !== "string" || !wholeColorCode(colorCode)) return <span {...props} />;
+    return typeof reference === "string" ? (
+      <MarkdownColorCodeReference code={colorCode} url={reference} reference={colorCode} />
     ) : (
-      <span {...props} />
+      <ColorCodeChip code={colorCode} />
     );
   },
   img: function MarkdownImage({ node, title, src, alt, ...props }) {
@@ -1921,8 +1982,13 @@ function ChatMarkdown({
       : NO_LINEAR_ISSUE_REFERENCES_ATOM,
   );
   const hasGitHubIssueReference = mayHaveGitHubIssueReference(text);
+  const hasColorCode = mayHaveColorCode(text);
+  // A colour that may be an issue number is checked against the thread's repository even where
+  // bare references are not linked, such as agent messages.
   const githubThread = useQuietThreadShell(
-    hasGitHubIssueReference && linkBareGitHubReferences ? (props.threadRef ?? null) : null,
+    hasGitHubIssueReference && (linkBareGitHubReferences || hasColorCode)
+      ? (props.threadRef ?? null)
+      : null,
   );
   const githubProject = useProject(
     githubThread === null
@@ -1933,13 +1999,20 @@ function ChatMarkdown({
   if (linearIssueReferences !== null) {
     referenceRemarkPlugins.push([remarkLinearIssueReferences, linearIssueReferences]);
   }
+  const repositoryUrl = githubRepositoryUrl(githubProject?.repositoryIdentity);
   if (hasGitHubIssueReference) {
     referenceRemarkPlugins.push([
       remarkGitHubIssueReferences,
-      githubRepositoryUrl(githubProject?.repositoryIdentity),
+      linkBareGitHubReferences ? repositoryUrl : null,
     ]);
   }
-  if (mayHaveColorCode(text)) referenceRemarkPlugins.push(remarkColorCodes);
+  if (hasColorCode) {
+    // Without the thread's project, a colour that may be an issue number cannot be checked.
+    referenceRemarkPlugins.push([
+      remarkColorCodes,
+      githubProject === null ? undefined : repositoryUrl,
+    ]);
+  }
   const remarkPlugins = [
     ...(lineBreaks ? CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS : CHAT_MARKDOWN_REMARK_PLUGINS),
     ...extraRemarkPlugins,

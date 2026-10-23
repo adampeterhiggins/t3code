@@ -487,3 +487,14 @@ describe("VcsProcess.run", () => {
     }).pipe(provideLive),
   );
 });
+
+describe("VcsProcess.classifyNonZeroExit", () => {
+  it("reads gh's missing issue and pull request errors as not found", () => {
+    for (const stderr of [
+      "GraphQL: Could not resolve to an issue or pull request with the number of 333333.",
+      "the 'acme/web' repository has disabled issues",
+    ]) {
+      expect(VcsProcess.classifyNonZeroExit("gh", stderr)).toBe("not-found");
+    }
+  });
+});
