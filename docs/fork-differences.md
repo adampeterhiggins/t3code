@@ -972,6 +972,20 @@ Web applies these as remark plugins in `ChatMarkdown`; mobile rewrites message m
 [`referenceLinks.ts`](../apps/mobile/src/state/referenceLinks.ts). The orchestration
 instructions also ask agents to link anything T3 Code can preview by its full URL.
 
+## Colour codes in chat
+
+Hex colours (`#F2EDE5`, `#fff`, `#1f6feb80`) in user and agent messages render as chips tinted
+by the colour, with a swatch thumbnail. Hovering one shows a larger swatch, its contrast against
+white and black, and HEX/RGB/HSL values to copy. Inline code holding only a colour becomes a chip
+too, in place of click-to-copy. The composer draws the same swatch over the text as it is typed
+or pasted, but the prompt stays plain text.
+
+At least one digit must be a letter, so `#123` and `#123456` stay issue references; an all-digit
+colour such as `#333333` stays text. Web only: mobile shows the plain text.
+Code: [`colorCodes.ts`](../apps/web/src/lib/colorCodes.ts),
+[`ColorCodeChip.tsx`](../apps/web/src/components/chat/ColorCodeChip.tsx), and
+[`composerColorCodes.ts`](../apps/web/src/components/composerColorCodes.ts).
+
 ## Linear integration
 
 **Settings > Integrations > Linear** connects a Linear account to the environment with OAuth

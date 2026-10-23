@@ -27,6 +27,7 @@ import {
   TextSelection,
 } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
+import { ComposerColorCodesExtension } from "./composerColorCodes";
 
 import type {
   AssistantCitation,
@@ -936,6 +937,7 @@ function createComposerExtensions(richText: boolean) {
     ComposerCitationExtension,
     ComposerContextReferenceExtension,
     ComposerMarkersExtension,
+    ComposerColorCodesExtension,
     ComposerLoadingLinksExtension,
     ...(richText
       ? [

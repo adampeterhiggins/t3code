@@ -93,6 +93,7 @@ import { parseAssistantCitationHref } from "@t3tools/shared/assistantCitations";
 import { parseComposerContextHref } from "@t3tools/shared/composerContextReferences";
 import { parseThreadLinkHref } from "@t3tools/shared/threadLinks";
 import { AssistantCitationChip } from "./chat/AssistantCitationChip";
+import { ColorCodeChip } from "./chat/ColorCodeChip";
 import { MarkdownThreadLink } from "./chat/MarkdownThreadLink";
 import { mathKind } from "@t3tools/shared/markdownMath";
 import remarkMath from "remark-math";
@@ -155,6 +156,7 @@ import { serverEnvironment } from "../state/server";
 import { linearEnvironment } from "../state/linear";
 import { remarkLinearIssueReferences } from "../lib/linearMarkdown";
 import { remarkGitHubIssueReferences } from "../lib/githubIssueMarkdown";
+import { mayHaveColorCode, remarkColorCodes, wholeColorCode } from "../lib/colorCodes";
 import {
   githubRepositoryUrl,
   mayHaveGitHubIssueReference,
@@ -1641,6 +1643,8 @@ const CHAT_MARKDOWN_COMPONENTS = {
     }
     if (node?.properties?.dataInlineCode != null) {
       const codeText = nodeToPlainText(children);
+      const colorCode = wholeColorCode(codeText);
+      if (colorCode) return <ColorCodeChip code={colorCode} />;
       const fileLinkMeta =
         inlineCodeFileLinkMetaByText.get(codeText.trim()) ??
         resolveInlineCodeFileLinkMeta(codeText, cwd, imageBaseDir ?? cwd);
@@ -1661,6 +1665,14 @@ const CHAT_MARKDOWN_COMPONENTS = {
       <code {...props} className={className}>
         {children}
       </code>
+    );
+  },
+  span: function MarkdownSpan({ node, ...props }) {
+    const colorCode = node?.properties?.dataColorCode;
+    return typeof colorCode === "string" && wholeColorCode(colorCode) ? (
+      <ColorCodeChip code={colorCode} />
+    ) : (
+      <span {...props} />
     );
   },
   img: function MarkdownImage({ node, title, src, alt, ...props }) {
@@ -1927,6 +1939,7 @@ function ChatMarkdown({
       githubRepositoryUrl(githubProject?.repositoryIdentity),
     ]);
   }
+  if (mayHaveColorCode(text)) referenceRemarkPlugins.push(remarkColorCodes);
   const remarkPlugins = [
     ...(lineBreaks ? CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS : CHAT_MARKDOWN_REMARK_PLUGINS),
     ...extraRemarkPlugins,
