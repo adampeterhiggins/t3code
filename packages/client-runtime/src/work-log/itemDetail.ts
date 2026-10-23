@@ -4,7 +4,7 @@ import {
   collectToolFilePaths,
   summarizeToolActivityInput,
 } from "@t3tools/shared/toolActivity";
-import { readToolOutputImage, toolOutputImages } from "@t3tools/shared/toolOutput";
+import { toolOutputImageBlocks, toolOutputImages } from "@t3tools/shared/toolOutput";
 import * as DateTime from "effect/DateTime";
 import { webToolView } from "./webTool.ts";
 
@@ -18,18 +18,22 @@ function isSummarizedValue(value: unknown): boolean {
   return isRecord(value) && value.truncated === true && typeof value.summary === "string";
 }
 
-function textFromBlocks(value: unknown, depth: number): string | null {
+function textFromBlocks(
+  value: unknown,
+  depth: number,
+  imageBlocks: ReadonlyArray<unknown>,
+): string | null {
   if (depth > MAX_TEXT_BLOCK_DEPTH) return null;
   if (typeof value === "string") return value;
   if (Array.isArray(value)) {
-    const parts = value.map((block) => textFromBlocks(block, depth + 1));
+    const parts = value.map((block) => textFromBlocks(block, depth + 1, imageBlocks));
     return parts.every((part) => part !== null)
       ? parts.filter((part) => part !== "").join("\n")
       : null;
   }
   if (!isRecord(value)) return null;
   if (value.type === "text" && typeof value.text === "string") return value.text;
-  if (value.type === "image") return readToolOutputImage(value) ? "" : "[image]";
+  if (value.type === "image") return imageBlocks.includes(value) ? "" : "[image]";
   // Cursor nests block text as `{ text: { text } }` and images as `{ image: { data } }`.
   if (isRecord(value.text) && typeof value.text.text === "string") return value.text.text;
   if (isRecord(value.image) && Object.keys(value).length === 1) return "[image]";
@@ -43,9 +47,10 @@ function textFromBlocks(value: unknown, depth: number): string | null {
   const keys = Object.keys(value).filter(
     (key) => key !== "isError" && key !== "is_error" && key !== "_meta",
   );
-  if (keys.length === 1 && keys[0] === "content") return textFromBlocks(value.content, depth + 1);
+  if (keys.length === 1 && keys[0] === "content")
+    return textFromBlocks(value.content, depth + 1, imageBlocks);
   if (keys.length === 2 && keys.includes("content") && keys.includes("structuredContent")) {
-    const text = textFromBlocks(value.content, depth + 1);
+    const text = textFromBlocks(value.content, depth + 1, imageBlocks);
     return text?.trim() ? text : null;
   }
   return null;
@@ -83,7 +88,7 @@ export function toolCallArgs(input: unknown): unknown {
 
 /** A tool result's text blocks joined, or null when it carries no text. */
 export function toolResultText(output: unknown): string | null {
-  const text = textFromBlocks(output, 0);
+  const text = textFromBlocks(output, 0, toolOutputImageBlocks(output));
   return text?.trim() ? text : null;
 }
 
@@ -93,7 +98,7 @@ export function toolResultText(output: unknown): string | null {
  */
 export function toolResultData(output: unknown): unknown {
   if (isRecord(output) && isRecord(output.structuredContent)) return output.structuredContent;
-  const text = textFromBlocks(output, 0);
+  const text = textFromBlocks(output, 0, toolOutputImageBlocks(output));
   if (text === null) return output;
   const trimmed = text.trim();
   return /^[[{]/.test(trimmed) ? parseJson(trimmed) : undefined;
@@ -145,7 +150,7 @@ function formatToolValue(input: unknown, hasImagePreview = false): string | null
   const value = withoutTransportKeys(input);
   if (value === undefined || value === null) return null;
   if (hasImagePreview && isRecord(value) && value.type === "image") return null;
-  const text = textFromBlocks(value, 0);
+  const text = textFromBlocks(value, 0, toolOutputImageBlocks(value));
   if (text !== null) return text.trim() ? prettyJsonText(text) : null;
   let json: string | undefined;
   try {
@@ -344,7 +349,7 @@ export function turnItemReadFile(item: OrchestrationV2TurnItem): ReadFileOutput 
     if (typeof record.filePath === "string") path = record.filePath;
   } else {
     // Claude's older text results, OpenCode and Pi report text, numbered or not.
-    const text = textFromBlocks(output, 0);
+    const text = textFromBlocks(output, 0, toolOutputImageBlocks(output));
     if (text?.trim()) file = stripReadLineNumbers(text) ?? { text, startLine: null };
   }
   if (file === null || !file.text.trim()) return null;

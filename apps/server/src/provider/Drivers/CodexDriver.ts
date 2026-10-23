@@ -83,6 +83,7 @@ import {
 import { makeManagedCodexProvider } from "./CodexManagedProvider.ts";
 import { codexUsageReader } from "./codexUsage.ts";
 import * as CodexInstallation from "../CodexInstallation.ts";
+import * as CodexManagedTokenBroker from "../CodexManagedTokenBroker.ts";
 import * as ServerSecretStore from "../../auth/ServerSecretStore.ts";
 import * as ServerEnvironment from "../../environment/ServerEnvironment.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -129,7 +130,8 @@ export type CodexDriverEnv =
   | ServerConfig.ServerConfig
   | ServerSecretStore.ServerSecretStore
   | ServerEnvironment.ServerEnvironmentIdentity
-  | CodexInstallation.CodexInstallation;
+  | CodexInstallation.CodexInstallation
+  | CodexManagedTokenBroker.CodexManagedTokenBroker;
 
 export const CodexDriver: ProviderDriver<
   CodexSettings,
@@ -225,7 +227,7 @@ export const CodexDriver: ProviderDriver<
         id: "browser",
         label: "Sign in with browser",
         description:
-          "Runs `codex login` and shows a ChatGPT sign-in URL to open in your browser. Only works when a browser can reach this environment's localhost — use the device code on remote machines.",
+          "Runs `codex login` and shows a ChatGPT sign-in URL to open in your browser. Only works when a browser can reach this environment's localhost. Use the device code on remote machines.",
         args: ["login"],
         // Suppresses `codex login`'s automatic browser open where the
         // webbrowser crate honors $BROWSER; the URL is surfaced in the UI
@@ -239,7 +241,7 @@ export const CodexDriver: ProviderDriver<
         id: "device",
         label: "Sign in with device code",
         description:
-          "Runs `codex login --device-auth` — sign in at the shown URL with a one-time code. Works on remote and headless environments.",
+          "Runs `codex login --device-auth`: sign in at the shown URL with a one-time code. Works on remote and headless environments.",
         args: ["login", "--device-auth"],
         urlPattern: /https:\/\/auth\.openai\.com\/codex\/device\S*/,
         codePattern: /one-time code[^A-Z0-9]*(?:\([^)]*\))?[^A-Z0-9]*([A-Z0-9]{4}-[A-Z0-9]{4,6})/i,
