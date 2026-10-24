@@ -88,13 +88,17 @@ function RecoveryActions({
   const canSchedule = resetAt !== null && Date.parse(resetAt) > Date.parse(stoppedAt);
   const scheduled =
     recovery?.runId === runId && recovery.resetAt === resetAt && recovery.autoResume;
+  // The server leaves snoozedUntil in place after the timer wakes the thread,
+  // so a snooze whose reset has passed is no longer active.
+  const resetPassed = Date.parse(resetAt ?? "") <= nowMs;
   const snoozed =
     recovery?.snooze === true &&
     recovery.runId === runId &&
     recovery.resetAt === resetAt &&
     resetAt !== null &&
     snoozedUntil !== null &&
-    Date.parse(snoozedUntil) === Date.parse(resetAt);
+    Date.parse(snoozedUntil) === Date.parse(resetAt) &&
+    !resetPassed;
   async function run(
     key: NonNullable<typeof pendingAction>,
     action: () => Promise<void>,
@@ -157,14 +161,14 @@ function RecoveryActions({
               : "Resume at reset"}
         </Button>
       ) : null}
-      {canSchedule && !snoozed ? (
+      {canSchedule ? (
         <Button
           size="xs"
           variant="ghost"
-          disabled={pending || Date.parse(resetAt!) <= nowMs}
+          disabled={pending || (!snoozed && resetPassed)}
           onClick={() => toggle("snooze")}
         >
-          {pendingAction === "snooze" ? "Saving..." : "Snooze until reset"}
+          {pendingAction === "snooze" ? "Saving..." : snoozed ? "Wake now" : "Snooze until reset"}
         </Button>
       ) : null}
       {continueElsewhere ? (

@@ -143,6 +143,18 @@ export function PullRequestPickerFilterBar(props: {
     onFilters: (filters: PullRequestListFilters) => props.onChange({ ...view, filters }),
     optionsPending: props.list.isPending || broad.isPending,
     facets,
+    optionScope: [
+      {
+        environmentId,
+        input: {
+          projectId,
+          state: view.state,
+          involvement: view.involvement,
+          filters: view.filters,
+          ...(query ? { query } : {}),
+        },
+      },
+    ],
     host: undefined,
     hostOptions: NONE,
     onHost: ignore,

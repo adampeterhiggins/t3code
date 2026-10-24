@@ -1,4 +1,7 @@
-import type { ProjectIconColor, ProjectIconOverride } from "@t3tools/contracts";
+import { isScratchProject } from "@t3tools/client-runtime/state/projects";
+import { ProjectIconColor, type ProjectIconOverride } from "@t3tools/contracts";
+import { isProjectFaviconFallbackUrl } from "@t3tools/shared/projectFavicon";
+import type { AppSymbolName } from "../components/ui/AppSymbol";
 
 export type ProjectIconGlyph =
   | { readonly kind: "emoji"; readonly emoji: string }
@@ -30,6 +33,24 @@ export function projectMonogram(projectName: string): string {
   return Array.from(`${first}${second}`.toUpperCase()).slice(0, 2).join("");
 }
 
+export function projectMonogramColor(projectName: string): ProjectIconColor {
+  const seed = projectName.normalize("NFKC").trim().toLocaleLowerCase("en-US") || "project";
+  let index = 0;
+  for (const glyph of seed) {
+    index = (index * 31 + (glyph.codePointAt(0) ?? 0)) % ProjectIconColor.literals.length;
+  }
+  return ProjectIconColor.literals[index] ?? "blue";
+}
+
+export function projectAutoMonogram(projectTitle: string): ProjectIconGlyph | null {
+  if (!projectTitle.trim()) return null;
+  return {
+    kind: "monogram",
+    text: projectMonogram(projectTitle),
+    color: projectMonogramColor(projectTitle),
+  };
+}
+
 export function resolveProjectIconGlyph(
   projectIcon: ProjectIconOverride | null | undefined,
   projectTitle: string,
@@ -44,6 +65,37 @@ export function resolveProjectIconGlyph(
     case undefined:
       return null;
   }
+}
+
+const SYMBOL_BY_LUCIDE_NAME: Partial<Record<string, AppSymbolName>> = {
+  "message-square-dashed": "text.bubble",
+};
+
+export function resolveProjectIconSymbol(
+  projectIcon: ProjectIconOverride | null | undefined,
+): { readonly name: AppSymbolName; readonly color: ProjectIconColor } | null {
+  if (projectIcon?.kind !== "lucide") return null;
+  const name = SYMBOL_BY_LUCIDE_NAME[projectIcon.name];
+  return name ? { name, color: projectIcon.color } : null;
+}
+
+export type ProjectChipIcon = { readonly kind: "favicon"; readonly uri: string } | ProjectIconGlyph;
+
+export function resolveProjectChipIcon(
+  project: {
+    readonly title: string;
+    readonly workspaceRoot: string;
+    readonly projectIcon?: ProjectIconOverride | null;
+  } | null,
+  scratchWorkspaceRoot: string | null | undefined,
+  faviconUrl: () => string | null,
+): ProjectChipIcon | null {
+  if (!project || isScratchProject(project, scratchWorkspaceRoot)) return null;
+  const glyph = resolveProjectIconGlyph(project.projectIcon, project.title);
+  if (glyph) return glyph;
+  const url = faviconUrl();
+  if (url && !isProjectFaviconFallbackUrl(url)) return { kind: "favicon", uri: url };
+  return projectAutoMonogram(project.title);
 }
 
 // Literal class names so Uniwind can see them: text and tile background for

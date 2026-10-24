@@ -18,6 +18,7 @@ import {
   type Command,
   type Editor,
   InputRule,
+  Extension,
   markInputRule,
   markPasteRule,
   mergeAttributes,
@@ -203,13 +204,25 @@ export const ComposerEmphasisExtensions = [
 ];
 
 /**
- * Tiptap's block extensions each bind a chord that turns the current block
- * into their node (Mod-Shift-8 for a list, Mod-Alt-c for a fence, and so on).
- * The composer does not offer them, and they are not harmless: run inside a
- * quote they nest a block the quote serializer cannot write, and the text in
- * it drops out of the stored draft. `drop` names the chords to remove; the
- * keys the composer relies on, such as Backspace and the arrows at a block's
- * edge, stay.
+ * Mod+B bolds selected text only. Without a selection Tiptap would toggle bold
+ * for the next typed text, which users hit by accident when they mean the
+ * sidebar toggle. Runs ahead of the Bold extension and swallows the chord.
+ */
+export const ComposerBoldSelectionOnlyExtension = Extension.create({
+  name: "composerBoldSelectionOnly",
+  priority: 1000,
+  addKeyboardShortcuts() {
+    const ignoreWithoutSelection = () => this.editor.state.selection.empty;
+    return { "Mod-b": ignoreWithoutSelection, "Mod-B": ignoreWithoutSelection };
+  },
+});
+
+/**
+ * Tiptap's block extensions each bind a chord that turns the current block into
+ * their node (Mod-Shift-8 for a list, Mod-Alt-c for a fence, and so on). The
+ * composer does not offer them, and they are not harmless: run inside a quote
+ * they nest a block the quote serializer cannot write, and the text in it drops
+ * out of the stored draft.
  */
 function withoutBlockChords<Shortcuts extends Record<string, unknown>>(
   shortcuts: Shortcuts | undefined,

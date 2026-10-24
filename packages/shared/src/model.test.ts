@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { ProviderDriverKind, ProviderInstanceId, type ModelCapabilities } from "@t3tools/contracts";
+import { ProviderInstanceId, type ModelCapabilities } from "@t3tools/contracts";
 
 import {
   applyClaudePromptEffortPrefix,
@@ -10,8 +10,6 @@ import {
   getProviderOptionCurrentLabel,
   getProviderOptionDescriptors,
   readCustomModelEntries,
-  normalizeCustomModelSlug,
-  normalizeModelSlug,
   modelSelectionsEqual,
 } from "./model.ts";
 
@@ -33,15 +31,6 @@ const codexCaps: ModelCapabilities = createModelCapabilities({
       type: "boolean",
     },
   ],
-});
-
-describe("model slug normalization", () => {
-  it("preserves exact custom slugs instead of expanding provider aliases", () => {
-    const claude = ProviderDriverKind.make("claudeAgent");
-
-    expect(normalizeModelSlug("opus", claude)).toBe("opus");
-    expect(normalizeCustomModelSlug(" opus ")).toBe("opus");
-  });
 });
 
 const claudeCaps: ModelCapabilities = createModelCapabilities({

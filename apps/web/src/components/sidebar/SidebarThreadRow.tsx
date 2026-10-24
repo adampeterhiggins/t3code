@@ -1318,7 +1318,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                                     )}
                                   >
                                     <AlarmClockIcon aria-hidden className="size-4 shrink-0" />
-                                    <span role="status">{headerStatus.label}</span>
+                                    <span role={props.isRouteThread ? undefined : "status"}>
+                                      {headerStatus.label}
+                                    </span>
                                   </button>
                                 }
                               />
@@ -1338,7 +1340,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                               {/* The label alone is the live region: a role="status"
                   wrapper around the ticking duration would make
                   screen readers announce every second. */}
-                              <span role="status">{headerStatus.label}</span>
+                              <span role={props.isRouteThread ? undefined : "status"}>
+                                {headerStatus.label}
+                              </span>
                               {status === "working" ? (
                                 <span aria-hidden>
                                   <WorkingDuration startedAt={resolveWorkingStartedAt(thread)} />
@@ -1760,6 +1764,8 @@ export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props
   resultId: string;
   searchMatch: EnvironmentThreadSearchMatch | null;
   searchQuery: string;
+  /** The query `searchMatch` was found for, which lags `searchQuery` while a search runs. */
+  searchMatchQuery?: string;
   onHighlight: () => void;
   onSelect: () => void;
   onFileDropThreads: (threadRef: ScopedThreadRef, files: File[]) => void;
@@ -1866,7 +1872,7 @@ export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props
                   match={{
                     source: props.searchMatch.source,
                     snippet: props.searchMatch.snippet,
-                    query: props.searchQuery,
+                    query: props.searchMatchQuery ?? props.searchQuery,
                   }}
                 />
               ) : null}

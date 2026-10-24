@@ -15,6 +15,10 @@ const shell = (
   projectId: ProjectId.make("project-1"),
   title,
   branch: null,
+  createdAt: "2026-01-01T00:00:00.000Z",
+  latestUserMessageAt: null,
+  opens: null,
+  lineage: { rootThreadId: ThreadId.make(id), parentThreadId: null, relationshipToParent: null },
   updatedAt: "2026-01-01T00:00:00.000Z",
   archivedAt: null,
   ...overrides,
@@ -30,6 +34,7 @@ describe("matchComposerThreadItems", () => {
       ),
       environmentId: env,
       excludeThreadId: null,
+      now: Date.parse("2026-10-23T00:00:00.000Z"),
       query: "  ",
     });
     expect(items).toHaveLength(20);
@@ -48,6 +53,7 @@ describe("matchComposerThreadItems", () => {
       ],
       environmentId: env,
       excludeThreadId: ThreadId.make("self"),
+      now: Date.parse("2026-10-23T00:00:00.000Z"),
       query: "LOGIN",
     });
     expect(items.map((item) => item.thread.threadId)).toEqual(["new", "old"]);
@@ -59,9 +65,34 @@ describe("matchComposerThreadItems", () => {
       shells: [shell("a", "On a branch", { branch: "feat/login" }), shell("b", "Unknown project")],
       environmentId: env,
       excludeThreadId: null,
+      now: Date.parse("2026-10-23T00:00:00.000Z"),
       query: "",
       projectTitles: new Map([[ProjectId.make("project-1"), "t3code"]]),
     });
     expect(items.map((item) => item.description)).toEqual(["t3code · feat/login", "t3code"]);
   });
+});
+
+it("ranks thread mentions like the palette and leaves out subagent threads", () => {
+  const items = matchComposerThreadItems({
+    shells: [
+      shell("newer-mid-word", "Remodel the settings page", {
+        updatedAt: "2026-10-20T00:00:00.000Z",
+      }),
+      shell("word", "Fix model picker"),
+      shell("subagent", "Model review", {
+        lineage: {
+          rootThreadId: ThreadId.make("word"),
+          parentThreadId: ThreadId.make("word"),
+          relationshipToParent: "subagent",
+        },
+      }),
+      shell("other-environment", "Model docs", { environmentId: EnvironmentId.make("env-other") }),
+    ],
+    environmentId: env,
+    excludeThreadId: null,
+    query: "model",
+    now: Date.parse("2026-10-23T00:00:00.000Z"),
+  });
+  expect(items.map((item) => item.thread.threadId)).toEqual(["word", "newer-mid-word"]);
 });

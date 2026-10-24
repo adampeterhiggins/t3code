@@ -81,7 +81,10 @@ export function PullRequestListFilters(props: {
   readonly onChange: (value: PullRequestListControls) => void;
   /** Each menu's choices and counts under the other filters, from `pullRequestListFacets`. */
   readonly facets: PullRequestListFacets;
+  readonly labelColors: Readonly<Record<string, string>>;
   readonly projects: readonly { id: string; title: string; environmentId: string }[];
+  /** Opens a picker that searches the host, for a label or author no loaded row carries. */
+  readonly onSearch: (kind: "labels" | "authors") => void;
 }) {
   const { value, facets } = props;
   const projects = useProjectsInSidebarOrder(props.projects);
@@ -152,6 +155,9 @@ export function PullRequestListFilters(props: {
         break;
       case "author":
         props.onChange({ ...value, filters: { ...value.filters, author: next || undefined } });
+        break;
+      case "search":
+        if (next === "labels" || next === "authors") props.onSearch(next);
         break;
       case "draft":
         props.onChange({
@@ -259,14 +265,19 @@ export function PullRequestListFilters(props: {
     facets.involvement,
   );
   const labelActions: MenuProps["actions"] = [
+    { id: id("search", "labels"), title: "Search labels…", image: "magnifyingglass" },
     { id: id("labels", ""), title: "All labels", state: selectedLabels.length ? "off" : "on" },
     ...labels.map((label) => ({
+      ...(props.labelColors[label.value.toLowerCase()]
+        ? { image: "circle.fill", imageColor: props.labelColors[label.value.toLowerCase()] }
+        : {}),
       id: id("label", label.value),
       title: counted(label.value, label.count),
       state: selectedLabelSet.has(label.value) ? ("on" as const) : ("off" as const),
     })),
   ];
   const authorActions: MenuProps["actions"] = [
+    { id: id("search", "authors"), title: "Search authors…", image: "magnifyingglass" },
     ...choices("author", { "": "All authors", me: "Me" }, author ?? ""),
     ...authors.map((login) => ({
       id: id("author", login.value),

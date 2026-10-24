@@ -10,6 +10,7 @@ import { createStaticNavigation, getStateFromPath } from "@react-navigation/nati
 import { githubPullRequestAppPath } from "@t3tools/shared/promptLinks";
 
 import { RegistryContext } from "@effect/atom-react";
+import { ProjectChipIconRasterizer } from "./native/ProjectChipIconImages";
 import { ThreadArrangementHost } from "./features/threads/ThreadArrangementSheet";
 import { ThreadGroupEditorHost } from "./features/threads/ThreadGroupEditor";
 import * as Dialog from "./components/ui/Dialog";
@@ -113,6 +114,7 @@ function AppContent() {
                   <Dialog.Host />
                   <ThreadArrangementHost />
                   <ThreadGroupEditorHost />
+                  <ProjectChipIconRasterizer />
                 </NativeLayoutMetricsProvider>
               </GlobalVoiceInputControl>
               {/* Anchored-menu overlays render here — in-window, so the
