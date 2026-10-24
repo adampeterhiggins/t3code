@@ -1,4 +1,5 @@
 import { matchComposerThreadItems } from "@t3tools/client-runtime/composerThreadItems";
+import { useState } from "react";
 import type {
   EnvironmentId,
   ProjectId,
@@ -21,7 +22,7 @@ import {
   getProviderSlashCommandsForSlashMenu,
 } from "@t3tools/client-runtime/providerSkills";
 import { searchProviderSkills } from "../../providerSkillSearch";
-import { useThreadShells } from "~/state/entities";
+import { useProjects, useThreadShells } from "~/state/entities";
 import {
   pullRequestEnvironment,
   usePullRequestList,
@@ -74,6 +75,8 @@ export function useComposerMenuItems({
   readonly selectedProviderSlashCommands: ServerProvider["slashCommands"];
   readonly showSkillsInSlashMenu: boolean;
 }) {
+  // Thread mentions rank by recency as of when the composer mounted.
+  const [now] = useState(() => Date.now());
   const composerTriggerKind = composerTrigger?.kind ?? null;
   const pathTriggerQuery = composerTrigger?.kind === "path" ? composerTrigger.query : "";
   const pullRequestTriggerQuery =
@@ -89,6 +92,12 @@ export function useComposerMenuItems({
     pullRequestTextQuery === debouncedPullRequestTextQuery ? pullRequestTextQuery : null;
   const isPathTrigger = composerTriggerKind === "path";
   const environmentThreadShells = useThreadShells(isPathTrigger);
+  const projects = useProjects();
+  const projectTitles = new Map(
+    projects
+      .filter((project) => project.environmentId === environmentId)
+      .map((project) => [project.id, project.title]),
+  );
   const workspaceEntries = useComposerPathSearch({
     environmentId,
     cwd: isPathTrigger ? gitCwd : null,
@@ -162,6 +171,8 @@ export function useComposerMenuItems({
           environmentId,
           excludeThreadId: activeThreadId,
           query: composerTrigger.query,
+          projectTitles,
+          now,
         }),
         ...workspaceEntries.entries.map((entry) => ({
           id: `path:${entry.kind}:${entry.path}`,

@@ -44,7 +44,14 @@ import {
 } from "@t3tools/client-runtime/state/thread-settled";
 import { createInboxReturnTracker } from "@t3tools/client-runtime/state/thread-inbox";
 import { sortSettledThreads } from "@t3tools/client-runtime/state/thread-sort";
-import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
+import {
+  nextShownOrder,
+  threadSearchMatchKey,
+  threadSearchSubject,
+  type ShownOrder,
+} from "@t3tools/client-runtime/state/thread-search";
+import { foldSearchQuery, rankMessageMatches } from "@t3tools/shared/paletteSearch";
+import { findForMessageMatch, requestThreadFindQuery } from "./chat/threadFindActionBus";
 import {
   threadRuntimeCanArchive,
   type EnvironmentThreadShell,
@@ -1682,7 +1689,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const threadSearchInputRef = useRef<HTMLInputElement>(null);
   const [threadSearchQuery, setThreadSearchQuery] = useState("");
   const [isThreadSearchApplied, setIsThreadSearchApplied] = useState(false);
-  const [searchHighlight, setSearchHighlight] = useState({ orderKey: "", index: 0 });
+  const [searchHighlightKey, setSearchHighlightKey] = useState<string | null>(null);
   const isSearchingThreads = threadSearchQuery.trim().length > 0;
   const searchableThreads = withSidebarTabThreads(
     [
@@ -1739,33 +1746,83 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     storedOrganisationKeys,
     isSearchingThreads,
   ]);
+
+  // Ranked across environments as the palette ranks them, so one
+  // environment's list does not sit above another's better matches; rows
+  // already shown keep their places while slower environments answer.
+  const threadByMatchKey =
+    threadSearch.matches.length === 0
+      ? null
+      : new Map(
+          searchableThreads.map((thread) => [
+            threadSearchMatchKey({ environmentId: thread.environmentId, threadId: thread.id }),
+            thread,
+          ]),
+        );
+  const rankedServerMatches =
+    threadByMatchKey === null
+      ? []
+      : rankMessageMatches(
+          threadSearch.matches,
+          (match) => {
+            const thread = threadByMatchKey.get(threadSearchMatchKey(match));
+            return thread ? threadSearchSubject(thread, null) : undefined;
+          },
+          foldSearchQuery(threadSearchQuery),
+          Date.now(),
+          // A list filter, as on mobile: a pick would move rows unexplained.
+          { picks: false },
+        );
+  const serverMatchByKey = new Map(
+    rankedServerMatches.map((match) => [threadSearchMatchKey(match), match] as const),
+  );
+  const [shownMessageOrder, setShownMessageOrder] = useState<ShownOrder | null>(null);
+  const messageOrder = nextShownOrder(
+    shownMessageOrder,
+    threadSearch.query,
+    [...serverMatchByKey.keys()],
+    Number.POSITIVE_INFINITY,
+  );
+  if (messageOrder !== shownMessageOrder) setShownMessageOrder(messageOrder);
+  const { titleMatches: threadTitleResults, contentMatches: threadContentResults } =
+    searchSidebarThreads(
+      searchableThreads,
+      threadSearchQuery,
+      new Set(messageOrder.keys),
+      Date.now(),
+      tabGroupNames,
+    );
+  const threadSearchResults = [...threadTitleResults, ...threadContentResults];
+  // Only rows listed for their messages show one, and open find on it.
   const threadSearchMatchByKey = new Map(
-    threadSearch.matches.map((match) => [threadSearchMatchKey(match), match] as const),
+    threadContentResults.flatMap((thread) => {
+      const key = threadSearchMatchKey({
+        environmentId: thread.environmentId,
+        threadId: thread.id,
+      });
+      const match = serverMatchByKey.get(key);
+      return match ? [[key, match] as const] : [];
+    }),
   );
-  const threadSearchResults = searchSidebarThreads(
-    searchableThreads,
-    threadSearchQuery,
-    new Set(threadSearchMatchByKey.keys()),
-    tabGroupNames,
+  const threadSearchResultKeys = threadSearchResults.map((thread) =>
+    scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
   );
-  const threadSearchResultOrderKey = threadSearchResults
-    .map((thread) => scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)))
-    .join("\0");
-  const activeSearchResultIndex =
-    searchHighlight.orderKey === threadSearchResultOrderKey ? searchHighlight.index : 0;
+
+  // The highlight follows its thread, so rows that arrive late do not move
+  // it under Enter; a new query starts at the top.
+  const activeSearchResultIndex = Math.max(
+    0,
+    searchHighlightKey === null ? 0 : threadSearchResultKeys.indexOf(searchHighlightKey),
+  );
   const setActiveSearchResultIndex = (index: number | ((index: number) => number)) =>
-    setSearchHighlight((current) => {
-      const previousIndex = current.orderKey === threadSearchResultOrderKey ? current.index : 0;
-      return {
-        orderKey: threadSearchResultOrderKey,
-        index: typeof index === "function" ? index(previousIndex) : index,
-      };
-    });
-  const activeSearchResult = isSearchingThreads
-    ? threadSearchResults[activeSearchResultIndex]
-    : undefined;
-  const activeSearchResultKey =
-    activeSearchResult === undefined ? null : sidebarThreadKey(activeSearchResult);
+    setSearchHighlightKey(
+      threadSearchResultKeys[
+        typeof index === "function" ? index(activeSearchResultIndex) : index
+      ] ?? null,
+    );
+  const activeSearchResultKey = isSearchingThreads
+    ? (threadSearchResultKeys[activeSearchResultIndex] ?? null)
+    : null;
   useEffect(() => {
     if (activeSearchResultKey === null) return;
     document
@@ -2113,12 +2170,18 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const clearThreadSearch = () => {
     setThreadSearchQuery("");
     setIsThreadSearchApplied(false);
-    setActiveSearchResultIndex(0);
+    setSearchHighlightKey(null);
   };
   const selectThreadSearchResult = (thread: EnvironmentThreadShell) => {
     setIsThreadSearchApplied(true);
     threadSearchInputRef.current?.blur();
-    navigateToThread(scopeThreadRef(thread.environmentId, thread.id));
+    const ref = scopeThreadRef(thread.environmentId, thread.id);
+    const match = threadSearchMatchByKey.get(
+      threadSearchMatchKey({ environmentId: thread.environmentId, threadId: thread.id }),
+    );
+    navigateToThread(ref);
+    if (match && match.source !== "group_name")
+      requestThreadFindQuery(scopedThreadKey(ref), findForMessageMatch(match, threadSearch.query));
   };
   const handleThreadSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (event.nativeEvent.isComposing || event.keyCode === 229) return;
@@ -4058,7 +4121,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               onSearchFocus={() => setIsThreadSearchApplied(false)}
               onSearchQueryChange={(value) => {
                 setThreadSearchQuery(value);
-                setActiveSearchResultIndex(0);
+                setSearchHighlightKey(null);
               }}
               onSearchKeyDown={handleThreadSearchKeyDown}
               isSearching={isSearchingThreads && !isThreadSearchApplied}
@@ -4169,6 +4232,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                           ) ?? null
                         }
                         searchQuery={threadSearchQuery}
+                        searchMatchQuery={threadSearch.query}
                         onHighlight={() => setActiveSearchResultIndex(index)}
                         onSelect={() => selectThreadSearchResult(thread)}
                         onFileDropThreads={handleThreadFileDrop}

@@ -13,7 +13,7 @@ describe("HTML in native Markdown", () => {
       markdownHtmlContent(
         "<a href='https://example.com'><img src='https://example.com/banner.svg' alt='Review' /></a>",
       ),
-    ).toBe("![Review](<https://example.com/banner.svg>)");
+    ).toBe("[![Review](<https://example.com/banner.svg>)](<https://example.com>)");
   });
 
   it("decodes HTML attributes once and preserves entity-shaped query values through Markdown", () => {
@@ -50,7 +50,7 @@ describe("HTML in native Markdown", () => {
       '<a href="https://app.devin.ai/review/acme/pull/1"><picture><source media="(prefers-color-scheme: dark)" srcset="https://static.example/badge-dark.svg"><img src="https://static.example/badge-light.svg" alt="Devin Review"></picture></a>',
     ].join("\n");
     expect(markdownWithHtml(markdown)).toBe(
-      "\n\n**Browser proof is missing**\n\n![Devin Review](<https://static.example/badge-light.svg>)",
+      "\n\n**Browser proof is missing**\n\n[![Devin Review](<https://static.example/badge-light.svg>)](<https://app.devin.ai/review/acme/pull/1>)",
     );
     expect(markdownWithHtml(markdown, "dark")).toContain(
       "![Devin Review](<https://static.example/badge-dark.svg>)",
@@ -79,5 +79,37 @@ describe("HTML in native Markdown", () => {
     const result = markdownWithHtml(markdown);
     expect(result).toContain('```html\n<img src="literal.png">\n```');
     expect(result).toContain('`<img src="inline.png">`');
+  });
+
+  it("links HTML anchors in a table cell without breaking the row at <br>", () => {
+    const document = parseMarkdownDocument(
+      "| Status | Preview URL |\n| - | - |\n| Done | <a href='https://commit.example.com'>Commit</a><br><a href='https://branch.example.com'>Branch</a> |",
+    );
+    const table = document.children[0];
+    expect(table?.type).toBe("table");
+    if (table?.type !== "table") return;
+    expect(table.children).toHaveLength(2);
+    expect(table.children[1]?.children[1]?.children).toMatchObject([
+      { type: "link", url: "https://commit.example.com", children: [{ value: "Commit" }] },
+      { type: "text", value: " " },
+      { type: "link", url: "https://branch.example.com", children: [{ value: "Branch" }] },
+    ]);
+  });
+
+  it("keeps a table row intact when an anchor href contains a pipe", () => {
+    const document = parseMarkdownDocument(
+      "| Preview | Logs |\n| - | - |\n| <a href='https://example.com/?a=1&#124;2'>Open</a> | done |",
+    );
+    const table = document.children[0];
+    expect(table?.type).toBe("table");
+    if (table?.type !== "table") return;
+    expect(table.children[1]?.children).toMatchObject([
+      { children: [{ type: "link", url: "https://example.com/?a=1%7C2" }] },
+      { children: [{ value: "done" }] },
+    ]);
+  });
+
+  it("keeps anchor text unlinked for unsafe hrefs", () => {
+    expect(markdownWithHtml('Run <a href="javascript:alert(1)">this</a> now')).toBe("Run this now");
   });
 });

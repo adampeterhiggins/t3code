@@ -106,6 +106,8 @@ export const layer: Layer.Layer<ThreadForkServiceV2> = Layer.succeed(
         // A fork files alongside the thread it came from.
         groupName: input.sourceProjection.thread.groupName ?? null,
         lastVisitedAt: null,
+        // A fork is a new thread; it does not inherit how often the source was opened.
+        opens: null,
         deletedAt: null,
       };
       const transfer: OrchestrationV2ContextTransfer = {

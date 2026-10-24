@@ -1,4 +1,3 @@
-import { threadPullRequestSearchTerms } from "@t3tools/shared/threadPullRequests";
 import {
   canSnooze,
   effectiveSnoozed,
@@ -11,7 +10,12 @@ import {
 import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { resolveThreadProviderStack } from "@t3tools/client-runtime/state/models";
-import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
+import {
+  threadSearchMatchKey,
+  threadSearchSubject,
+} from "@t3tools/client-runtime/state/thread-search";
+import { threadPullRequestSearchTerms } from "@t3tools/shared/threadPullRequests";
+import { foldSearchQuery, rankSearchItems, scoreThreadSearch } from "@t3tools/shared/paletteSearch";
 import {
   createInboxReturnTracker,
   isThreadWorking,
@@ -518,6 +522,8 @@ export interface ThreadListV2Layout {
       a timeout at this boundary so the list re-partitions the moment a
       snooze expires instead of on the next minute tick. */
   readonly nextSnoozeWakeAt: string | null;
+  /** Threads listed only because their messages match the search. */
+  readonly contentOnlyThreadKeys: ReadonlySet<string>;
 }
 
 export interface ThreadListV2ThreadListItem {
@@ -928,7 +934,8 @@ export function buildThreadListV2Items(input: {
             pendingOrder: null,
           }),
         );
-  const query = input.searchQuery.trim().toLocaleLowerCase();
+  const query = foldSearchQuery(input.searchQuery);
+  const nowMs = Date.parse(now);
   const projectKeys = input.projectRefs
     ? new Set(input.projectRefs.map((ref) => `${ref.environmentId}:${ref.projectId}`))
     : null;
@@ -949,13 +956,40 @@ export function buildThreadListV2Items(input: {
   }> = [];
   let nextSnoozeWakeAt: string | null = null;
   const queuedThreadKeys = input.queuedThreadKeys?.size ? input.queuedThreadKeys : undefined;
-  for (const thread of input.threads) {
-    if (thread.archivedAt !== null || thread.lineage.relationshipToParent === "subagent") continue;
-    if (input.environmentId !== null && thread.environmentId !== input.environmentId) continue;
-    if (projectKeys !== null && !projectKeys.has(`${thread.environmentId}:${thread.projectId}`)) {
-      continue;
+  const showPage = (page: ThreadListPage) =>
+    input.pages?.includes(page) ?? (page !== "hidden" && !page.startsWith("group:"));
+  const listedThreads = input.threads.filter(
+    (thread) =>
+      thread.archivedAt === null &&
+      thread.lineage.relationshipToParent !== "subagent" &&
+      (input.environmentId === null || thread.environmentId === input.environmentId) &&
+      (projectKeys === null || projectKeys.has(`${thread.environmentId}:${thread.projectId}`)) &&
+      threadListV2Pages(thread, input).some(showPage),
+  );
+  // The same matches as the command palette, typo fallback included. Only
+  // listed threads are ranked: a hidden exact match must not turn typos off.
+  const rankedMatches =
+    query.length > 0
+      ? rankSearchItems(listedThreads, (thread, options) =>
+          scoreThreadSearch(query, threadSearchSubject(thread, null), nowMs, {
+            ...options,
+            picks: false,
+          }),
+        ).map(({ item }) => item)
+      : null;
+  const matchingThreads = rankedMatches === null ? null : new Set(rankedMatches);
+  // Threads listed only because their messages match; only their rows show
+  // the message and open at it.
+  const contentOnlyThreadKeys = new Set<string>();
+  for (const thread of listedThreads) {
+    if (matchingThreads !== null && !matchingThreads.has(thread)) {
+      const key = threadSearchMatchKey({
+        environmentId: thread.environmentId,
+        threadId: thread.id,
+      });
+      if (input.matchedThreadKeys?.has(key) !== true) continue;
+      contentOnlyThreadKeys.add(key);
     }
-    if (!threadListV2MatchesSearch(thread, query, input.matchedThreadKeys)) continue;
     const supportsSettlement = input.settlementEnvironmentIds?.has(thread.environmentId) ?? true;
     const supportsSnooze = input.snoozeEnvironmentIds?.has(thread.environmentId) ?? true;
     if (isThreadListV2Hidden(thread, input.hidingEnvironmentIds)) {
@@ -1007,8 +1041,6 @@ export function buildThreadListV2Items(input: {
 
   // Groups outside the picked pages are dropped after classification, so a
   // thread never falls through into another group.
-  const showPage = (page: ThreadListPage) =>
-    input.pages?.includes(page) ?? (page !== "hidden" && !page.startsWith("group:"));
   if (!showPage("threads")) {
     pinned.length = 0;
     active.length = 0;
@@ -1021,6 +1053,66 @@ export function buildThreadListV2Items(input: {
   // A group shown in Threads lists only the members no other picked page already lists.
   for (const { groupName, page, thread } of shownGrouped) {
     if (!showPage(page)) grouped.set(groupName, [...(grouped.get(groupName) ?? []), thread]);
+  }
+  if (rankedMatches !== null) {
+    // Searching lists every match by rank across shelves, as the palette and
+    // the web sidebar do, then threads listed for their messages in the
+    // server's order. Each row keeps its shelf's look.
+    const slim = new Set([...snoozed, ...settled]);
+    const snoozedThreads = new Set(snoozed);
+    const pinnedThreads = new Set(pinned);
+    const threadByKey = new Map(
+      listedThreads.map((thread) => [
+        threadSearchMatchKey({ environmentId: thread.environmentId, threadId: thread.id }),
+        thread,
+      ]),
+    );
+    const contentOnly = [...(input.matchedThreadKeys ?? [])].flatMap((key) => {
+      const thread = contentOnlyThreadKeys.has(key) ? threadByKey.get(key) : undefined;
+      return thread ? [thread] : [];
+    });
+    const visible = new Set([
+      ...pinned,
+      ...active,
+      ...working,
+      ...settled,
+      ...snoozed,
+      ...hidden,
+      ...automations,
+      ...[...grouped.entries()]
+        .filter(([name]) => showPage(`group:${name}`))
+        .flatMap(([, threads]) => threads),
+    ]);
+    const results = [...rankedMatches, ...contentOnly].filter((thread) => visible.has(thread));
+    return {
+      items: results.map((thread, index) => ({
+        thread,
+        variant: slim.has(thread) ? "slim" : "card",
+        snoozed: snoozedThreads.has(thread),
+        pinned: pinnedThreads.has(thread),
+        hidden: hidden.includes(thread),
+        grouped: isThreadListV2Grouped(
+          thread,
+          input.groupEnvironmentIds,
+          input.groupsShownInThreads,
+        ),
+        wokeAt: slim.has(thread) ? null : resolveThreadListV2WokeAt(thread, { now }),
+        isLast: index === results.length - 1,
+      })),
+      hiddenSettledCount: 0,
+      hiddenCount: hidden.length,
+      hiddenSectionHeaderIndex: null,
+      automationsSectionHeaderIndex: null,
+      groupSections: [],
+      workingCount: 0,
+      workingShelfHeaderIndex: null,
+      snoozedCount: 0,
+      snoozedShelfHeaderIndex: null,
+      settledCount: 0,
+      settledShelfHeaderIndex: null,
+      nextSnoozeWakeAt,
+      contentOnlyThreadKeys,
+    };
   }
 
   const orderedActive = workingShelfEnabled
@@ -1212,6 +1304,7 @@ export function buildThreadListV2Items(input: {
     hiddenSectionHeaderIndex,
     groupSections,
     nextSnoozeWakeAt,
+    contentOnlyThreadKeys,
   };
 }
 

@@ -66,24 +66,56 @@ function attribute(tag: string, name: string): string | null {
   return null;
 }
 
-function imageMarkdown(alt: string, src: string): string {
-  const escapedAlt = alt.replace(/[\\[\]&]/g, "\\$&");
-  const href = src
-    .replace(/&/g, "\\&")
-    .replace(/</g, "%3C")
-    .replace(/>/g, "%3E")
-    .replace(/\n/g, "");
-  return `![${escapedAlt}](<${href}>)`;
+function markdownDestination(url: string): string {
+  return `<${url.replace(/&/g, "\\&").replace(/</g, "%3C").replace(/>/g, "%3E").replace(/\|/g, "%7C").replace(/\n/g, "")}>`;
+}
+
+const ANCHOR_TAG = /^<\/?a[\s/>]/i;
+
+/** Replacements for the anchor tags still ahead, and how many emitted links are open. */
+type AnchorState = { readonly pending: string[]; open: number };
+
+// Code spans keep their text; an odd trailing backslash would escape the closing "]".
+function escapeLinkLabel(text: string): string {
+  return text
+    .replace(/(`+)[\s\S]*?\1|\\*[[\]]/g, (match) =>
+      match.startsWith("`") || match.length % 2 === 0
+        ? match
+        : `${match.slice(0, -1)}\\${match.slice(-1)}`,
+    )
+    .replace(/\\+$/, (slashes) => (slashes.length % 2 ? `${slashes}\\` : slashes));
+}
+
+// An unescaped "!" before the inserted "[" would turn the link into an image.
+function bangBefore(text: string, index: number): boolean {
+  if (text[index - 1] !== "!") return false;
+  let backslashes = 0;
+  while (text[index - 2 - backslashes] === "\\") backslashes += 1;
+  return backslashes % 2 === 0;
 }
 
 /**
- * Called only for parsed HTML nodes, so Markdown code examples keep their literal tags.
- * `appearance` chooses a `<picture>` source; the `<img>` is the fallback.
+ * Pairs `<a>` tags in order. Only a closed anchor with an http(s) or mailto href becomes a
+ * Markdown link; any other anchor keeps its text unlinked.
  */
-export function markdownHtmlContent(
-  content: string,
-  appearance: "light" | "dark" = "light",
-): string {
+function anchorMarkdown(tags: readonly string[]): AnchorState {
+  const replacements = tags.map(() => "");
+  const open: Array<{ index: number; href: string | undefined }> = [];
+  tags.forEach((tag, index) => {
+    if (tag[1] !== "/") {
+      const href = attribute(tag, "href")?.trim();
+      open.push({ index, href: href && /^(?:https?|mailto):/i.test(href) ? href : undefined });
+      return;
+    }
+    const opening = open.pop();
+    if (!opening?.href) return;
+    replacements[opening.index] = "[";
+    replacements[index] = `](${markdownDestination(opening.href)})`;
+  });
+  return { pending: replacements, open: 0 };
+}
+
+function markdownHtmlTags(content: string): RegExpExecArray[] {
   // An HTML block such as <details> can also contain Markdown fences and code spans.
   const codeRanges: Array<{ start: number; end: number }> = [];
   const tags = [...content.matchAll(HTML_TAG)];
@@ -128,105 +160,184 @@ export function markdownHtmlContent(
     codeRanges.push({ start: opening.index, end: closing.index + closing[0].length });
     index = closingIndex;
   }
+  return tags.filter(
+    (tag) => !codeRanges.some((range) => tag.index >= range.start && tag.index < range.end),
+  );
+}
+
+/**
+ * Called only for parsed HTML nodes, so Markdown code examples keep their literal tags.
+ * `anchors` is shared across sibling inline HTML nodes because each of those carries a single tag.
+ */
+export function markdownHtmlContent(
+  content: string,
+  optionsOrAppearance:
+    | {
+        readonly anchors?: AnchorState;
+        readonly inTableCell?: boolean;
+        readonly appearance?: "light" | "dark";
+      }
+    | "light"
+    | "dark" = {},
+): string {
+  const options =
+    typeof optionsOrAppearance === "string"
+      ? { appearance: optionsOrAppearance }
+      : optionsOrAppearance;
+  const tags = markdownHtmlTags(content);
+  const anchors =
+    options.anchors ??
+    anchorMarkdown(tags.map((tag) => tag[0]).filter((tag) => ANCHOR_TAG.test(tag)));
+  let result = "";
+  let end = 0;
   let inPicture = false;
   const sources: PictureSource[] = [];
   let pictureImage: { src: string; alt: string } | null = null;
   const renderedPicture = () => {
-    const src = pictureSourceUrl(sources, pictureImage?.src || undefined, appearance);
-    return src ? imageMarkdown(pictureImage?.alt ?? "", src) : "";
+    const src = pictureSourceUrl(
+      sources,
+      pictureImage?.src || undefined,
+      options.appearance ?? "light",
+    );
+    const alt = (pictureImage?.alt ?? "").replace(/[\\[\]&]/g, "\\$&");
+    return src ? `![${alt}](${markdownDestination(src)})` : "";
   };
-  const rendered = content.replace(HTML_TAG, (tag, offset: number) => {
-    if (codeRanges.some((range) => offset >= range.start && offset < range.end)) return tag;
-    if (tag.startsWith("<!--")) return "";
+  for (const match of tags) {
+    const text = content.slice(end, match.index);
+    result += anchors.open > 0 ? escapeLinkLabel(text) : text;
+    const tag = match[0];
+    let replacement: string;
     if (/^<picture\b/i.test(tag)) {
       inPicture = true;
       sources.length = 0;
       pictureImage = null;
-      return "";
-    }
-    if (inPicture && /^<source\b/i.test(tag)) {
+      replacement = "";
+    } else if (inPicture && /^<source\b/i.test(tag)) {
       sources.push({
         media: attribute(tag, "media") ?? undefined,
         srcSet: attribute(tag, "srcset") ?? undefined,
       });
-      return "";
-    }
-    if (inPicture && /^<img\b/i.test(tag)) {
+      replacement = "";
+    } else if (inPicture && /^<img\b/i.test(tag)) {
       pictureImage = { src: attribute(tag, "src") ?? "", alt: attribute(tag, "alt") ?? "" };
-      return "";
-    }
-    if (inPicture && /^<\/picture\s*>/i.test(tag)) {
+      replacement = "";
+    } else if (inPicture && /^<\/picture\s*>/i.test(tag)) {
       inPicture = false;
-      return renderedPicture();
-    }
-    if (/^<img\b/i.test(tag)) {
-      const src = attribute(tag, "src");
-      if (!src) return "";
-      return imageMarkdown(attribute(tag, "alt") ?? "", src);
-    }
-    if (/^<summary\b/i.test(tag)) return "\n\n**";
-    if (/^<\/summary\s*>/i.test(tag)) return "**\n\n";
-    if (/^<br\b/i.test(tag)) return "  \n";
-    if (/^<\/?(?:p|div|details)\b/i.test(tag)) return "\n\n";
-    return "";
-  });
-  return inPicture ? rendered + renderedPicture() : rendered;
+      replacement = renderedPicture();
+    } else replacement = htmlTagMarkdown(tag, anchors, options);
+    if (replacement === "[" && bangBefore(result, result.length))
+      result = `${result.slice(0, -1)}\\!`;
+    result +=
+      anchors.open > 0 && /[\s[]/.test(result.at(-1) ?? "")
+        ? replacement.replace(/^ /, "")
+        : replacement;
+    end = match.index + match[0].length;
+  }
+  const text = content.slice(end);
+  return (
+    result +
+    (anchors.open > 0 ? escapeLinkLabel(text) : text) +
+    (inPicture ? renderedPicture() : "")
+  );
+}
+
+function htmlTagMarkdown(
+  tag: string,
+  anchors: AnchorState,
+  options: { readonly inTableCell?: boolean },
+): string {
+  if (tag.startsWith("<!--")) return "";
+  if (ANCHOR_TAG.test(tag)) {
+    const replacement = anchors.pending.shift() ?? "";
+    if (replacement === "[") anchors.open += 1;
+    else if (replacement) anchors.open -= 1;
+    return replacement;
+  }
+  if (/^<img\b/i.test(tag)) {
+    const src = attribute(tag, "src");
+    if (!src) return "";
+    const alt = (attribute(tag, "alt") ?? "").replace(/[\\[\]&]/g, "\\$&");
+    return `![${alt}](${markdownDestination(src)})`;
+  }
+  // A blank line inside an open link label would end the paragraph before its "]".
+  const blockBreak = anchors.open === 0 ? "\n\n" : " ";
+  if (/^<summary\b/i.test(tag)) return `${blockBreak}**`;
+  if (/^<\/summary\s*>/i.test(tag)) return `**${blockBreak}`;
+  // A line break would end the table row, so a cell keeps its content on one line.
+  if (/^<br\b/i.test(tag)) return options.inTableCell ? " " : "  \n";
+  if (/^<\/?(?:p|div|details)\b/i.test(tag)) return blockBreak;
+  return "";
 }
 
 export function markdownWithHtml(markdown: string, appearance: "light" | "dark" = "light"): string {
   if (!/<(?:!--|\/?[a-z])/i.test(markdown)) return markdown;
   const edits: Array<{ start: number; end: number; content: string }> = [];
-  const visit = (node: MarkdownNode) => {
+  const visit = (node: MarkdownNode, inTableCell: boolean, inLink: boolean) => {
     if (!("children" in node)) return;
-    const children = node.children;
-    let index = 0;
-    while (index < children.length) {
+    inTableCell ||= node.type === "tableCell";
+    const children: readonly MarkdownNode[] = node.children;
+    // Inline HTML arrives one tag per node, so anchors pair across phrasing siblings.
+    const anchors =
+      node.type === "root" || node.type === "blockquote" || node.type === "listItem"
+        ? undefined
+        : anchorMarkdown(
+            children.flatMap((child) =>
+              child.type === "html"
+                ? markdownHtmlTags(child.value)
+                    .map((tag) => tag[0])
+                    .filter((tag) => ANCHOR_TAG.test(tag))
+                : [],
+            ),
+          );
+    for (let index = 0; index < children.length; index += 1) {
       const child = children[index]!;
-      // A <picture> is several inline tags. Read them together so the scheme source wins
-      // over the fallback <img>, which is a later tag.
-      if (child.type !== "html") {
-        visit(child);
-        index += 1;
+      if (child.type === "html" && /^<picture\b/i.test(child.value)) {
+        let last = index;
+        while (last + 1 < children.length) {
+          const next = children[last + 1]!;
+          if (next.type !== "html" && !(next.type === "text" && /^\s*$/.test(next.value))) break;
+          last += 1;
+          if (next.type === "html" && /<\/picture\s*>/i.test(next.value)) break;
+        }
+        const pictureStart = child.position?.start.offset;
+        const pictureEnd = children[last]?.position?.end.offset;
+        if (pictureStart !== undefined && pictureEnd !== undefined) {
+          edits.push({
+            start: pictureStart,
+            end: pictureEnd,
+            content: markdownHtmlContent(markdown.slice(pictureStart, pictureEnd), {
+              anchors,
+              inTableCell,
+              appearance,
+            }),
+          });
+          index = last;
+          continue;
+        }
+      }
+      const start = child.position?.start.offset;
+      const end = child.position?.end.offset;
+      const linkLabel = inLink || (anchors?.open ?? 0) > 0;
+      if (child.type === "text") {
+        if (linkLabel && start !== undefined && end !== undefined) {
+          const content = escapeLinkLabel(markdown.slice(start, end));
+          if (content !== markdown.slice(start, end)) edits.push({ start, end, content });
+        }
         continue;
       }
-      let end = index;
-      while (end + 1 < children.length) {
-        const next = children[end + 1]!;
-        if (next.type === "html") {
-          end += 1;
-          continue;
-        }
-        const after = children[end + 2];
-        if (next.type === "text" && /^\s*$/.test(next.value) && after?.type === "html") {
-          end += 1;
-          continue;
-        }
-        break;
+      if (child.type !== "html") {
+        visit(child, inTableCell, linkLabel);
+        continue;
       }
-      while (end > index && children[end]?.type === "text") end -= 1;
-      const htmlNodes = children.slice(index, end + 1).filter((item) => item.type === "html");
-      const combined = htmlNodes.map((item) => item.value).join("");
-      const start = child.position?.start.offset;
-      const stop = children[end]?.position?.end.offset;
-      if (start !== undefined && stop !== undefined && /<picture\b/i.test(combined)) {
-        edits.push({ start, end: stop, content: markdownHtmlContent(combined, appearance) });
-      } else {
-        for (const html of htmlNodes) {
-          const htmlStart = html.position?.start.offset;
-          const htmlEnd = html.position?.end.offset;
-          if (htmlStart !== undefined && htmlEnd !== undefined) {
-            edits.push({
-              start: htmlStart,
-              end: htmlEnd,
-              content: markdownHtmlContent(html.value, appearance),
-            });
-          }
-        }
-      }
-      index = end + 1;
+      const content = markdownHtmlContent(child.value, { anchors, inTableCell, appearance });
+      if (start === undefined || end === undefined) continue;
+      // Text before an outermost link is never edited, so this edit cannot overlap another.
+      if (content.startsWith("[") && !linkLabel && bangBefore(markdown, start))
+        edits.push({ start: start - 1, end: start, content: "\\!" });
+      edits.push({ start, end, content });
     }
   };
-  visit(parser.parse(markdown));
+  visit(parser.parse(markdown), false, false);
   for (const edit of edits.reverse())
     markdown = markdown.slice(0, edit.start) + edit.content + markdown.slice(edit.end);
   return markdown;
