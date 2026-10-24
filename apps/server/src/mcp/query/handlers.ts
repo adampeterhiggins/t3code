@@ -1,5 +1,5 @@
 import { ThreadId } from "@t3tools/contracts";
-import { parseChangeRequestUrl } from "@t3tools/shared/changeRequestUrl";
+import { sourceControlDefinitions } from "../../sourceControl/sourceControlDefinitions.ts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -159,55 +159,52 @@ const make = Effect.gen(function* () {
   });
 
   return QueryToolkit.of({
-    get_environment: (input) =>
-      Effect.gen(function* () {
-        const descriptor = yield* environment.getDescriptor;
-        const counts = yield* store.countEnvironment();
-        const now = yield* DateTime.now;
-        const serverZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        const timeZone = input.timeZone ?? serverZone;
-        const today = yield* Effect.fromOption(todayIn(now, timeZone)).pipe(
-          Effect.mapError(
-            () => new QueryToolError({ reason: `${timeZone} is not a known time zone.` }),
-          ),
-        );
-        return {
-          environmentId: descriptor.environmentId,
-          label: descriptor.label,
-          platform: descriptor.platform,
-          serverVersion: descriptor.serverVersion,
-          now: DateTime.formatIso(now),
-          timeZone,
-          today,
-          counts,
-          guide: GUIDE,
-        };
-      }).pipe(sqlDies),
+    get_environment: Effect.fn("QueryToolkit.get_environment")(function* (input) {
+      const descriptor = yield* environment.getDescriptor;
+      const counts = yield* store.countEnvironment();
+      const now = yield* DateTime.now;
+      const serverZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const timeZone = input.timeZone ?? serverZone;
+      const today = yield* Effect.fromOption(todayIn(now, timeZone)).pipe(
+        Effect.mapError(
+          () => new QueryToolError({ reason: `${timeZone} is not a known time zone.` }),
+        ),
+      );
+      return {
+        environmentId: descriptor.environmentId,
+        label: descriptor.label,
+        platform: descriptor.platform,
+        serverVersion: descriptor.serverVersion,
+        now: DateTime.formatIso(now),
+        timeZone,
+        today,
+        counts,
+        guide: GUIDE,
+      };
+    }, sqlDies),
 
-    get_activity_timeline: (input) =>
-      Effect.gen(function* () {
-        const page = yield* store.timeline(
-          {
-            window: yield* windowOf(input.since, input.until),
-            projectId: input.projectId,
-            threadId: input.threadId,
-            kinds: input.kinds,
-          },
-          yield* pageRequest({ ...input, defaultLimit: 100 }),
-        );
-        const { items, nextCursor } = withCursor(page);
-        return { entries: items, nextCursor };
-      }).pipe(sqlDies),
+    get_activity_timeline: Effect.fn("QueryToolkit.get_activity_timeline")(function* (input) {
+      const page = yield* store.timeline(
+        {
+          window: yield* windowOf(input.since, input.until),
+          projectId: input.projectId,
+          threadId: input.threadId,
+          kinds: input.kinds,
+        },
+        yield* pageRequest({ ...input, defaultLimit: 100 }),
+      );
+      const { items, nextCursor } = withCursor(page);
+      return { entries: items, nextCursor };
+    }, sqlDies),
 
-    list_projects: (input) =>
-      Effect.gen(function* () {
-        const page = yield* store.listProjects(
-          yield* optionalWindowOf(input.activeSince, input.activeUntil),
-          yield* pageRequest({ ...input, defaultLimit: 50 }),
-        );
-        const { items, nextCursor } = withCursor(page);
-        return { projects: items, nextCursor };
-      }).pipe(sqlDies),
+    list_projects: Effect.fn("QueryToolkit.list_projects")(function* (input) {
+      const page = yield* store.listProjects(
+        yield* optionalWindowOf(input.activeSince, input.activeUntil),
+        yield* pageRequest({ ...input, defaultLimit: 50 }),
+      );
+      const { items, nextCursor } = withCursor(page);
+      return { projects: items, nextCursor };
+    }, sqlDies),
 
     get_project: (input) =>
       store.getProject(input.projectId).pipe(
@@ -215,24 +212,23 @@ const make = Effect.gen(function* () {
         Effect.flatMap((project) => requireFound(project, "project", input.projectId)),
       ),
 
-    list_threads: (input) =>
-      Effect.gen(function* () {
-        const page = yield* store.listThreads(
-          {
-            projectId: input.projectId,
-            window: yield* optionalWindowOf(input.activeSince, input.activeUntil),
-            archived: input.archived,
-            needsAttention: input.needsAttention,
-            hasPullRequest: input.hasPullRequest,
-            provider: input.provider,
-            branch: input.branch,
-            titleContains: input.titleContains,
-          },
-          yield* pageRequest({ ...input, defaultLimit: 25 }),
-        );
-        const { items, nextCursor } = withCursor(page);
-        return { threads: items, nextCursor };
-      }).pipe(sqlDies),
+    list_threads: Effect.fn("QueryToolkit.list_threads")(function* (input) {
+      const page = yield* store.listThreads(
+        {
+          projectId: input.projectId,
+          window: yield* optionalWindowOf(input.activeSince, input.activeUntil),
+          archived: input.archived,
+          needsAttention: input.needsAttention,
+          hasPullRequest: input.hasPullRequest,
+          provider: input.provider,
+          branch: input.branch,
+          titleContains: input.titleContains,
+        },
+        yield* pageRequest({ ...input, defaultLimit: 25 }),
+      );
+      const { items, nextCursor } = withCursor(page);
+      return { threads: items, nextCursor };
+    }, sqlDies),
 
     get_thread: (input) =>
       store.getThreadDetail(input.threadId).pipe(
@@ -240,48 +236,45 @@ const make = Effect.gen(function* () {
         Effect.flatMap((thread) => requireFound(thread, "thread", input.threadId)),
       ),
 
-    list_turns: (input) =>
-      Effect.gen(function* () {
-        yield* requireThread(input.threadId);
-        const page = yield* store.listTurns(
-          {
-            threadId: input.threadId,
-            window: yield* windowOf(input.since, input.until),
-            maxChars: input.maxChars ?? 400,
-          },
-          yield* pageRequest({ ...input, defaultLimit: 20 }),
-        );
-        const { items, nextCursor } = withCursor(page);
-        return { turns: items, nextCursor };
-      }).pipe(sqlDies),
-
-    get_turn: (input) =>
-      Effect.gen(function* () {
-        yield* requireThread(input.threadId);
-        const turn = yield* store.getTurn({
+    list_turns: Effect.fn("QueryToolkit.list_turns")(function* (input) {
+      yield* requireThread(input.threadId);
+      const page = yield* store.listTurns(
+        {
           threadId: input.threadId,
-          turnId: input.turnId,
-          maxChars: input.maxChars ?? 20_000,
-        });
-        return yield* requireFound(turn, "turn", input.turnId);
-      }).pipe(sqlDies),
+          window: yield* windowOf(input.since, input.until),
+          maxChars: input.maxChars ?? 400,
+        },
+        yield* pageRequest({ ...input, defaultLimit: 20 }),
+      );
+      const { items, nextCursor } = withCursor(page);
+      return { turns: items, nextCursor };
+    }, sqlDies),
 
-    list_messages: (input) =>
-      Effect.gen(function* () {
-        const page = yield* store.listMessages(
-          {
-            threadId: input.threadId,
-            projectId: input.projectId,
-            role: input.role ?? "any",
-            includeReasoning: input.includeReasoning ?? false,
-            window: yield* windowOf(input.since, input.until),
-            maxChars: input.maxChars ?? 500,
-          },
-          yield* pageRequest({ ...input, defaultLimit: 25 }),
-        );
-        const { items, nextCursor } = withCursor(page);
-        return { messages: items, nextCursor };
-      }).pipe(sqlDies),
+    get_turn: Effect.fn("QueryToolkit.get_turn")(function* (input) {
+      yield* requireThread(input.threadId);
+      const turn = yield* store.getTurn({
+        threadId: input.threadId,
+        turnId: input.turnId,
+        maxChars: input.maxChars ?? 20_000,
+      });
+      return yield* requireFound(turn, "turn", input.turnId);
+    }, sqlDies),
+
+    list_messages: Effect.fn("QueryToolkit.list_messages")(function* (input) {
+      const page = yield* store.listMessages(
+        {
+          threadId: input.threadId,
+          projectId: input.projectId,
+          role: input.role ?? "any",
+          includeReasoning: input.includeReasoning ?? false,
+          window: yield* windowOf(input.since, input.until),
+          maxChars: input.maxChars ?? 500,
+        },
+        yield* pageRequest({ ...input, defaultLimit: 25 }),
+      );
+      const { items, nextCursor } = withCursor(page);
+      return { messages: items, nextCursor };
+    }, sqlDies),
 
     get_message: (input) =>
       store.getMessage(input.messageId, input.maxChars ?? 50_000).pipe(
@@ -289,34 +282,32 @@ const make = Effect.gen(function* () {
         Effect.flatMap((message) => requireFound(message, "message", input.messageId)),
       ),
 
-    search: (input) =>
-      Effect.gen(function* () {
-        return yield* store.search({
-          query: input.query,
-          projectId: input.projectId,
-          threadId: input.threadId,
-          role: input.role ?? "any",
-          window: yield* windowOf(input.since, input.until),
-          limit: input.limit ?? 20,
-        });
-      }).pipe(sqlDies),
+    search: Effect.fn("QueryToolkit.search")(function* (input) {
+      return yield* store.search({
+        query: input.query,
+        projectId: input.projectId,
+        threadId: input.threadId,
+        role: input.role ?? "any",
+        window: yield* windowOf(input.since, input.until),
+        limit: input.limit ?? 20,
+      });
+    }, sqlDies),
 
-    list_activities: (input) =>
-      Effect.gen(function* () {
-        const page = yield* store.listActivities(
-          {
-            threadId: input.threadId,
-            turnId: input.turnId,
-            projectId: input.projectId,
-            tone: input.tone,
-            kinds: input.kinds,
-            window: yield* windowOf(input.since, input.until),
-          },
-          yield* pageRequest({ ...input, defaultLimit: 50 }),
-        );
-        const { items, nextCursor } = withCursor(page);
-        return { activities: items, nextCursor };
-      }).pipe(sqlDies),
+    list_activities: Effect.fn("QueryToolkit.list_activities")(function* (input) {
+      const page = yield* store.listActivities(
+        {
+          threadId: input.threadId,
+          turnId: input.turnId,
+          projectId: input.projectId,
+          tone: input.tone,
+          kinds: input.kinds,
+          window: yield* windowOf(input.since, input.until),
+        },
+        yield* pageRequest({ ...input, defaultLimit: 50 }),
+      );
+      const { items, nextCursor } = withCursor(page);
+      return { activities: items, nextCursor };
+    }, sqlDies),
 
     get_activity: (input) =>
       store.getActivity(input.activityId, input.maxChars ?? 20_000).pipe(
@@ -324,27 +315,25 @@ const make = Effect.gen(function* () {
         Effect.flatMap((activity) => requireFound(activity, "activity", input.activityId)),
       ),
 
-    get_subagent_transcript: (input) =>
-      Effect.gen(function* () {
-        yield* requireThread(input.threadId);
-        const transcript = yield* store.getSubagentTranscript(input);
-        return yield* requireFound(transcript, "subagent", input.taskId);
-      }).pipe(sqlDies),
+    get_subagent_transcript: Effect.fn("QueryToolkit.get_subagent_transcript")(function* (input) {
+      yield* requireThread(input.threadId);
+      const transcript = yield* store.getSubagentTranscript(input);
+      return yield* requireFound(transcript, "subagent", input.taskId);
+    }, sqlDies),
 
-    list_plans: (input) =>
-      Effect.gen(function* () {
-        const page = yield* store.listPlans(
-          {
-            threadId: input.threadId,
-            projectId: input.projectId,
-            implemented: input.implemented,
-            window: yield* windowOf(input.since, input.until),
-          },
-          yield* pageRequest({ ...input, defaultLimit: 20 }),
-        );
-        const { items, nextCursor } = withCursor(page);
-        return { plans: items, nextCursor };
-      }).pipe(sqlDies),
+    list_plans: Effect.fn("QueryToolkit.list_plans")(function* (input) {
+      const page = yield* store.listPlans(
+        {
+          threadId: input.threadId,
+          projectId: input.projectId,
+          implemented: input.implemented,
+          window: yield* windowOf(input.since, input.until),
+        },
+        yield* pageRequest({ ...input, defaultLimit: 20 }),
+      );
+      const { items, nextCursor } = withCursor(page);
+      return { plans: items, nextCursor };
+    }, sqlDies),
 
     get_plan: (input) =>
       store.getPlan(input.planId, input.maxChars ?? 50_000).pipe(
@@ -352,76 +341,73 @@ const make = Effect.gen(function* () {
         Effect.flatMap((plan) => requireFound(plan, "plan", input.planId)),
       ),
 
-    get_turn_diff: (input) =>
-      Effect.gen(function* () {
-        yield* requireThread(input.threadId).pipe(sqlDies);
-        const range = yield* resolveTurnRange(input).pipe(sqlDies);
-        const files = yield* store
-          .filesBetween({ threadId: input.threadId, ...range })
-          .pipe(sqlDies);
-        if (input.includePatch !== true) {
-          return { threadId: input.threadId, ...range, files, patch: null, truncated: false };
-        }
-        const maxChars = input.maxChars ?? 20_000;
-        const diff = yield* checkpointDiffs
-          .getTurnDiff({ threadId: ThreadId.make(input.threadId), ...range })
-          .pipe(
-            Effect.mapError(
-              (error) =>
-                new QueryToolError({ reason: `The patch is not available: ${error.message}` }),
-            ),
-          );
-        const truncated = diff.diff.length > maxChars;
-        return {
-          threadId: input.threadId,
-          ...range,
-          files,
-          patch: truncated ? `${diff.diff.slice(0, maxChars)}…` : diff.diff,
-          truncated,
-        };
-      }),
-
-    list_pull_requests: (input) =>
-      Effect.gen(function* () {
-        const page = yield* store.listPullRequests(
-          {
-            threadId: input.threadId,
-            projectId: input.projectId,
-            state: input.state,
-            window: yield* windowOf(input.since, input.until),
-          },
-          yield* pageRequest({ ...input, defaultLimit: 25 }),
+    get_turn_diff: Effect.fn("QueryToolkit.get_turn_diff")(function* (input) {
+      yield* requireThread(input.threadId).pipe(sqlDies);
+      const range = yield* resolveTurnRange(input).pipe(sqlDies);
+      const files = yield* store.filesBetween({ threadId: input.threadId, ...range }).pipe(sqlDies);
+      if (input.includePatch !== true) {
+        return { threadId: input.threadId, ...range, files, patch: null, truncated: false };
+      }
+      const maxChars = input.maxChars ?? 20_000;
+      const diff = yield* checkpointDiffs
+        .getTurnDiff({ threadId: ThreadId.make(input.threadId), ...range })
+        .pipe(
+          Effect.mapError(
+            (error) =>
+              new QueryToolError({ reason: `The patch is not available: ${error.message}` }),
+          ),
         );
-        const { items, nextCursor } = withCursor(page);
-        return { pullRequests: items, nextCursor };
-      }).pipe(sqlDies),
+      const truncated = diff.diff.length > maxChars;
+      return {
+        threadId: input.threadId,
+        ...range,
+        files,
+        patch: truncated ? `${diff.diff.slice(0, maxChars)}…` : diff.diff,
+        truncated,
+      };
+    }),
 
-    get_pull_request: (input) =>
-      Effect.gen(function* () {
-        const parsed = input.url === undefined ? null : parseChangeRequestUrl(input.url);
-        if (input.url !== undefined && parsed === null) {
-          return yield* new QueryToolError({
-            reason:
-              "This is not a recognised pull request URL. Pass repository and number instead.",
-          });
-        }
-        const key =
-          parsed !== null
-            ? { host: parsed.host, repository: parsed.repository, number: parsed.number }
-            : input.repository !== undefined && input.number !== undefined
-              ? { host: null, repository: input.repository, number: input.number }
-              : null;
-        if (key === null) {
-          return yield* new QueryToolError({ reason: "Pass url, or both repository and number." });
-        }
-        const links = yield* store.getPullRequest(key).pipe(sqlDies);
-        if (links.length === 0) {
-          return yield* new QueryToolError({
-            reason: `${key.repository}#${key.number} is not linked to any thread.`,
-          });
-        }
-        return { links };
-      }),
+    list_pull_requests: Effect.fn("QueryToolkit.list_pull_requests")(function* (input) {
+      const page = yield* store.listPullRequests(
+        {
+          threadId: input.threadId,
+          projectId: input.projectId,
+          state: input.state,
+          window: yield* windowOf(input.since, input.until),
+        },
+        yield* pageRequest({ ...input, defaultLimit: 25 }),
+      );
+      const { items, nextCursor } = withCursor(page);
+      return { pullRequests: items, nextCursor };
+    }, sqlDies),
+
+    get_pull_request: Effect.fn("QueryToolkit.get_pull_request")(function* (input) {
+      const parsed =
+        input.url === undefined
+          ? null
+          : (sourceControlDefinitions.parseChangeRequestUrl(input.url)?.link ?? null);
+      if (input.url !== undefined && parsed === null) {
+        return yield* new QueryToolError({
+          reason: "This is not a recognised pull request URL. Pass repository and number instead.",
+        });
+      }
+      const key =
+        parsed !== null
+          ? { host: parsed.host, repository: parsed.repository, number: parsed.number }
+          : input.repository !== undefined && input.number !== undefined
+            ? { host: null, repository: input.repository, number: input.number }
+            : null;
+      if (key === null) {
+        return yield* new QueryToolError({ reason: "Pass url, or both repository and number." });
+      }
+      const links = yield* store.getPullRequest(key).pipe(sqlDies);
+      if (links.length === 0) {
+        return yield* new QueryToolError({
+          reason: `${key.repository}#${key.number} is not linked to any thread.`,
+        });
+      }
+      return { links };
+    }),
 
     get_usage_summary: (input) =>
       usage

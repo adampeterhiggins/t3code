@@ -2,7 +2,7 @@ import {
   composerPullRequestRepositories,
   composerPullRequestsFromLinks,
   filterComposerPullRequestMatches,
-} from "@t3tools/shared/composerPullRequestMatches";
+} from "@t3tools/source-control-definitions/composerPullRequestMatches";
 import type {
   EnvironmentId,
   ProjectId,

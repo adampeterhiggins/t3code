@@ -17,7 +17,7 @@ import {
   type ComposerObjectLink,
   locateComposerObjectLink,
   parseComposerObjectLink,
-} from "@t3tools/shared/composerObjectLinks";
+} from "@t3tools/source-control-definitions/composerObjectLinks";
 import {
   discordThreadContextRecord,
   gitHubIssueContextRecord,
@@ -29,7 +29,7 @@ import {
   promptLinkContextRecord,
   repositoryContextRecord,
   slackThreadContextRecord,
-} from "@t3tools/shared/integrationContextRecords";
+} from "@t3tools/source-control-definitions/integrationContextRecords";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

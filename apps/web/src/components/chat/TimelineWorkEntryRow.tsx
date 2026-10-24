@@ -36,7 +36,7 @@ import { useAssetUrls } from "../../assets/assetUrls";
 import { useQuietThreadShell, useThreadShell } from "../../state/entities";
 import { usePreferredOpenPrLink, usePullRequestPreviewTarget } from "~/lib/openPullRequestLink";
 import { PullRequestLinkPreview } from "../pullRequest/PullRequestLinkPreview";
-import { parseComposerObjectLink } from "@t3tools/shared/composerObjectLinks";
+import { parseComposerObjectLink } from "@t3tools/source-control-definitions/composerObjectLinks";
 import { useLinkClickHandler } from "~/browser/useOpenLink";
 import { isPreviewableObjectLink, LinkedObjectLinkPreview } from "./LinkedObjectLinkPreview";
 import {

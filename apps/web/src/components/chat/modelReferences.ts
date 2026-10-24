@@ -6,7 +6,7 @@ import type {
   ScopedThreadRef,
   ServerProviderModel,
 } from "@t3tools/contracts";
-import { modelContextRecord } from "@t3tools/shared/integrationContextRecords";
+import { modelContextRecord } from "@t3tools/source-control-definitions/integrationContextRecords";
 
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useIssueContextStore } from "~/issueContextStore";

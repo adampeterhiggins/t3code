@@ -1,4 +1,4 @@
-import { parseComposerObjectLink } from "@t3tools/shared/composerObjectLinks";
+import { parseComposerObjectLink } from "@t3tools/source-control-definitions/composerObjectLinks";
 import {
   EnvironmentId,
   ThreadId,

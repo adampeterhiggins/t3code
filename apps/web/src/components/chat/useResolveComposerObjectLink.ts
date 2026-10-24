@@ -1,4 +1,7 @@
-import { commentAnchor, type ComposerObjectLink } from "@t3tools/shared/composerObjectLinks";
+import {
+  commentAnchor,
+  type ComposerObjectLink,
+} from "@t3tools/source-control-definitions/composerObjectLinks";
 import { repositoryContextRecord } from "@t3tools/client-runtime/context-repositories";
 import {
   gitHubIssueContextRecord,
@@ -8,7 +11,7 @@ import {
   linearIssueContextRecord,
   linearObjectContextRecord,
   promptLinkContextRecord,
-} from "@t3tools/shared/integrationContextRecords";
+} from "@t3tools/source-control-definitions/integrationContextRecords";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -20,7 +23,7 @@ import { granolaEnvironment } from "~/state/granola";
 import {
   discordThreadContextRecord,
   slackThreadContextRecord,
-} from "@t3tools/shared/integrationContextRecords";
+} from "@t3tools/source-control-definitions/integrationContextRecords";
 import type {
   DiscordErrorReason,
   GranolaError,

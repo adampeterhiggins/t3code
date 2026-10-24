@@ -1,16 +1,18 @@
 import type {
   EnvironmentId,
+  ScopedThreadRef,
   ExecutionEnvironmentCapabilities,
   PullRequestRef,
-  ScopedThreadRef,
 } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
 import { type MouseEvent } from "react";
 
-import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
-import { parseChangeRequestUrl, type ChangeRequestLink } from "@t3tools/shared/changeRequestUrl";
-import { sourceControlRepositorySelector } from "@t3tools/shared/sourceControl";
+import { findProjectForChangeRequest } from "@t3tools/client-runtime/change-request-links";
+import {
+  sourceControlClients,
+  type ChangeRequestLink,
+} from "@t3tools/client-runtime/source-control-clients";
 
 import { useOpenLink } from "../browser/useOpenLink";
 import { useClientSettings } from "../hooks/useSettings";
@@ -22,28 +24,6 @@ import { appAtomRegistry } from "../rpc/atomRegistry";
 import { readProjects, useProjects } from "../state/entities";
 import { environmentServerConfigsAtom, serverEnvironment } from "../state/server";
 import { usePrimaryEnvironmentId } from "../state/environments";
-
-export {
-  parseChangeRequestUrl,
-  type ChangeRequestLink,
-  gitHubPullRequestBrowserUrl,
-  pullRequestCandidateUrlFromReferenceAutolink,
-  matchesLinkedPullRequestUrl,
-  changeRequestRepositoryUrl,
-} from "@t3tools/shared/changeRequestUrl";
-
-export function findProjectForChangeRequest(
-  projects: ReadonlyArray<EnvironmentProject>,
-  link: ChangeRequestLink,
-): EnvironmentProject | undefined {
-  return projects.find((project) => {
-    const identity = project.repositoryIdentity;
-    return (
-      identity?.provider !== undefined &&
-      sourceControlClients.get(identity.provider).isChangeRequestInRepository(identity, link)
-    );
-  });
-}
 
 /**
  * The reference that reads a change request link on one environment. The project only lends
@@ -65,8 +45,8 @@ export function resolvePullRequestPreviewTarget({
   url: string;
 }): { environmentId: EnvironmentId; input: PullRequestRef } | null {
   if (capabilities?.pullRequests !== true || environmentId === null) return null;
-  const parsed = parseChangeRequestUrl(url);
-  if (parsed === null) return null;
+  const parsed = sourceControlClients.parseChangeRequestUrl(url)?.link;
+  if (parsed === undefined) return null;
   const candidates = projects.filter((candidate) => candidate.environmentId === environmentId);
   const own = findProjectForChangeRequest(candidates, parsed);
   const project =
@@ -81,7 +61,8 @@ export function resolvePullRequestPreviewTarget({
       projectId: project.id,
       host: parsed.authority ?? parsed.host,
       repository:
-        (own && sourceControlRepositorySelector(own.repositoryIdentity)) ?? parsed.repository,
+        (own && sourceControlClients.repositorySelector(own.repositoryIdentity)) ??
+        parsed.repository,
       number: parsed.number,
     },
   };
@@ -113,7 +94,7 @@ export function findProjectOnChangeRequestHost(
   });
 }
 
-export function shouldOpenPullRequestExternally(
+function shouldOpenPullRequestExternally(
   event: Pick<MouseEvent<HTMLElement>, "metaKey" | "ctrlKey"> &
     Partial<Pick<MouseEvent<HTMLElement>, "button">>,
 ): boolean {
@@ -144,8 +125,8 @@ export function useOpenChangeRequestLink(
     const allProjects = readProjects();
     const resolvedThreadRef = targetThreadRef ?? threadRef;
     const resolvedPanelRef = panelRef ?? resolvedThreadRef;
-    const parsed = parseChangeRequestUrl(targetUrl);
-    if (parsed === null) return false;
+    const parsed = sourceControlClients.parseChangeRequestUrl(targetUrl)?.link;
+    if (parsed === undefined) return false;
     const reads = (environmentId: string) =>
       serverConfigs.get(environmentId as EnvironmentId)?.environment.capabilities.pullRequests ===
       true;
@@ -180,7 +161,8 @@ export function useOpenChangeRequestLink(
     const repository =
       serverConfigs.get(project.environmentId)?.environment.capabilities.threadPullRequests === true
         ? parsed.repository
-        : (sourceControlRepositorySelector(project.repositoryIdentity) ?? parsed.repository);
+        : (sourceControlClients.repositorySelector(project.repositoryIdentity) ??
+          parsed.repository);
     event.preventDefault();
     event.stopPropagation();
     if (resolvedPanelRef) {

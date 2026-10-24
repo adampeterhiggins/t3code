@@ -7,14 +7,14 @@ import {
 import { granolaNoteContextRecord } from "@t3tools/client-runtime/state/granola";
 import { notionPageContextRecord } from "@t3tools/client-runtime/state/notion";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import type { ComposerObjectLink } from "@t3tools/shared/composerObjectLinks";
+import type { ComposerObjectLink } from "@t3tools/source-control-definitions/composerObjectLinks";
 import {
   discordThreadContextRecord,
   linearIssueContextRecord,
   linearObjectContextRecord,
   promptLinkContextRecord,
   slackThreadContextRecord,
-} from "@t3tools/shared/integrationContextRecords";
+} from "@t3tools/source-control-definitions/integrationContextRecords";
 import { useRef, useState, type ReactElement } from "react";
 
 import { useLinkClickHandler } from "~/browser/useOpenLink";

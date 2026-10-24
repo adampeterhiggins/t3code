@@ -8,7 +8,7 @@ import {
 } from "./runtime.ts";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 
-export { discordThreadContextRecord } from "@t3tools/shared/integrationContextRecords";
+export { discordThreadContextRecord } from "@t3tools/source-control-definitions/integrationContextRecords";
 
 export function createDiscordEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,

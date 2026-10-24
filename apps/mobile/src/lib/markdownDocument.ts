@@ -2,7 +2,7 @@ import type { Root, RootContent } from "mdast";
 import { unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkGfm from "remark-gfm";
-import { objectLinkLabel } from "@t3tools/shared/composerObjectLinks";
+import { objectLinkLabel } from "@t3tools/source-control-definitions/composerObjectLinks";
 import { pictureSourceUrl, type PictureSource } from "@t3tools/shared/markdownPipeline";
 import {
   GITHUB_ISSUE_REFERENCE,

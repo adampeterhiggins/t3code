@@ -1,4 +1,4 @@
-import { filterComposerPullRequestMatches } from "@t3tools/shared/composerPullRequestMatches";
+import { filterComposerPullRequestMatches } from "@t3tools/source-control-definitions/composerPullRequestMatches";
 import { EnvironmentId, MessageId, ThreadId, type AssistantCitation } from "@t3tools/contracts";
 import {
   collectAssistantCitations,

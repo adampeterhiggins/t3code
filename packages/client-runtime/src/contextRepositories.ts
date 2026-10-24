@@ -6,7 +6,7 @@ import {
   type ContextRepositoryOutcome,
 } from "@t3tools/contracts";
 
-export { repositoryContextRecord } from "@t3tools/shared/integrationContextRecords";
+export { repositoryContextRecord } from "@t3tools/source-control-definitions/integrationContextRecords";
 
 /**
  * Reads what a user pasted into the picker: `owner/repo`, an https or ssh clone URL, or a

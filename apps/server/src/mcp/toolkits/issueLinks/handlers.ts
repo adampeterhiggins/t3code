@@ -2,7 +2,7 @@ import { OrchestratorMcpFailure, type ThreadId, type ThreadLinkKind } from "@t3t
 import * as Effect from "effect/Effect";
 
 import { formatComposerContextProviderPayload } from "@t3tools/shared/composerContextReferences";
-import { parseComposerObjectLink } from "@t3tools/shared/composerObjectLinks";
+import { parseComposerObjectLink } from "@t3tools/source-control-definitions/composerObjectLinks";
 
 import * as DiscordThreadLinks from "../../../discord/DiscordThreadLinks.ts";
 import * as GitHubIssueThreadLinks from "../../../githubIssues/GitHubIssueThreadLinks.ts";

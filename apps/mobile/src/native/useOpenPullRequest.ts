@@ -1,10 +1,9 @@
 import { useNavigation, useRoute, StackActions } from "@react-navigation/native";
 import { nativePullRequestDestination } from "../lib/pullRequestNavigation";
-import { useCallback } from "react";
 import { Platform } from "react-native";
 import { resetAndroidWorkspace } from "../lib/android-workspace-navigation";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
-import { useThreadShell } from "../state/entities";
+import { useProjects, useThreadShell } from "../state/entities";
 import { tryOpenExternalUrl } from "../lib/openExternalUrl";
 
 type PullRequestContext = { readonly environmentId: string; readonly projectId: string };
@@ -13,9 +12,10 @@ type PullRequestContext = { readonly environmentId: string; readonly projectId: 
 // route context for useRoute, can open pull requests for any thread.
 export function useNavigateToPullRequest(options?: { readonly replace?: boolean }) {
   const navigation = useNavigation();
+  const projects = useProjects();
   const replace = options?.replace;
   return async (url: string, context: PullRequestContext | null) => {
-    const params = nativePullRequestDestination(url, context);
+    const params = nativePullRequestDestination(url, context, projects);
     if (!params) return tryOpenExternalUrl(url, "pull-request");
     if (Platform.OS === "android")
       resetAndroidWorkspace(navigation, { name: "PullRequest", params });

@@ -9,7 +9,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { threadsForLinearIssue } from "@t3tools/client-runtime/state/linear";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
-import { linearIssueContextRecord } from "@t3tools/shared/integrationContextRecords";
+import { linearIssueContextRecord } from "@t3tools/source-control-definitions/integrationContextRecords";
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";

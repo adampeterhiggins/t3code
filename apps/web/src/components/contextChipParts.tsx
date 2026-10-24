@@ -27,7 +27,7 @@ import type {
   RepositoryContextRecord,
 } from "@t3tools/contracts";
 import { CircleDashedIcon, FilmIcon, ImageIcon, UnlinkIcon } from "lucide-react";
-import { composerObjectLinkNoun } from "@t3tools/shared/composerObjectLinks";
+import { composerObjectLinkNoun } from "@t3tools/source-control-definitions/composerObjectLinks";
 import {
   Fragment,
   useRef,

@@ -1,5 +1,5 @@
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
-import { repositoryContextRecord } from "@t3tools/shared/integrationContextRecords";
+import { repositoryContextRecord } from "@t3tools/source-control-definitions/integrationContextRecords";
 import {
   decodeComposerContextFragment,
   encodeComposerContextFragment,

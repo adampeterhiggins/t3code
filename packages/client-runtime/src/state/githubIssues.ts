@@ -17,7 +17,7 @@ export {
   gitHubIssueContextRecord,
   gitHubIssueLabel,
   gitHubRefContextRecord,
-} from "@t3tools/shared/integrationContextRecords";
+} from "@t3tools/source-control-definitions/integrationContextRecords";
 
 export function createGitHubIssueEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,

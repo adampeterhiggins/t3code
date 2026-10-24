@@ -11,6 +11,7 @@ import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as VcsProjectConfig from "../vcs/VcsProjectConfig.ts";
 import * as ServerSourceControlHost from "./ServerSourceControlHost.ts";
+import * as SourceControlRateLimit from "@t3tools/source-control-core/server/SourceControlRateLimit";
 import * as GitHubRest from "@t3tools/source-control-github/server/GitHubRest";
 import type * as GitHubRequestPolicy from "@t3tools/source-control-github/server/GitHubRequestPolicy";
 import * as GitHubCredentials from "@t3tools/source-control-github/server/GitHubCredentials";
@@ -30,18 +31,20 @@ export class GitHubCliUnavailableError extends Schema.TaggedError<GitHubCliUnava
   }
 }
 
+const isGitHubCredentialError = Schema.is(
+  Schema.Union([
+    GitHubCredentials.GitHubNotSignedInError,
+    GitHubCredentials.GitHubHostDisabledError,
+  ]),
+);
+
 export class GitHubCliAuthenticationError extends Schema.TaggedError<GitHubCliAuthenticationError>()(
   "GitHubCliAuthenticationError",
   gitHubCliFailureFields,
 ) {
   override get message(): string {
     // A missing or turned-off credential already says what to do about it.
-    return Schema.is(
-      Schema.Union([
-        GitHubCredentials.GitHubNotSignedInError,
-        GitHubCredentials.GitHubHostDisabledError,
-      ]),
-    )(this.cause)
+    return isGitHubCredentialError(this.cause)
       ? this.cause.message
       : "GitHub is not authenticated. Run `gh auth login` (or set GH_TOKEN) and retry.";
   }
@@ -187,6 +190,19 @@ export const make = Effect.gen(function* () {
           args: input.args,
           cwd: input.cwd,
           timeoutMs: 30_000,
+          classifyFailure: (stderr) => {
+            const normalized = stderr.toLowerCase();
+            if (normalized.includes("gh auth login")) return "authentication";
+            return normalized.includes("could not resolve to a pullrequest") ||
+              normalized.includes("repository.pullrequest") ||
+              normalized.includes("no pull requests found for branch") ||
+              normalized.includes("pull request not found") ||
+              normalized.includes("could not resolve to an issue") ||
+              // No issue can exist in a repository with issues turned off.
+              normalized.includes("has disabled issues")
+              ? "not-found"
+              : null;
+          },
           env: {
             GH_HOST: host,
             GH_TOKEN: token,
@@ -207,6 +223,7 @@ export const layer = Layer.effect(GitHubCli, make).pipe(
   // GitHub API reads run against the server's source control host port.
   Layer.provide(
     GitHubRest.layerWithDependencies.pipe(
+      Layer.provide(SourceControlRateLimit.layer),
       Layer.provide(
         ServerSourceControlHost.layer.pipe(
           Layer.provide(GitVcsDriver.layer),

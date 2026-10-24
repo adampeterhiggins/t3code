@@ -2,7 +2,7 @@ import type { DiscordMessageSummary, EnvironmentId, ThreadId } from "@t3tools/co
 import { useAtomValue } from "@effect/atom-react";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
-import { discordThreadContextRecord } from "@t3tools/shared/integrationContextRecords";
+import { discordThreadContextRecord } from "@t3tools/source-control-definitions/integrationContextRecords";
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";

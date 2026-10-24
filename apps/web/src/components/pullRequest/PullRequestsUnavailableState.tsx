@@ -12,14 +12,14 @@ export function PullRequestsUnavailableState({
   error,
   onRetry,
   refreshing = false,
-  gitHubUrl,
+  host,
   threadRef,
 }: {
   title?: string;
   error: string;
   onRetry?: () => void;
   refreshing?: boolean;
-  gitHubUrl?: string;
+  host?: { readonly url: string; readonly openLabel: string };
   /** Thread the host link can open beside; the surrounding detail's by default. */
   threadRef?: ScopedThreadRef | null;
 }) {
@@ -35,7 +35,7 @@ export function PullRequestsUnavailableState({
             shows its message rather than trying to infer one from the failure text. */}
         <EmptyDescription>{error}</EmptyDescription>
       </EmptyHeader>
-      {onRetry || gitHubUrl ? (
+      {onRetry || host ? (
         <div className="flex flex-wrap justify-center gap-2">
           {onRetry ? (
             <Button
@@ -49,21 +49,21 @@ export function PullRequestsUnavailableState({
               Retry
             </Button>
           ) : null}
-          {gitHubUrl ? (
+          {host ? (
             <Button
               size="sm"
               variant="outline"
               render={
                 <a
-                  href={gitHubUrl}
+                  href={host.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={(event) => onLinkClick(event, gitHubUrl)}
+                  onClick={(event) => onLinkClick(event, host.url)}
                 />
               }
             >
               <ExternalLinkIcon aria-hidden className="size-3.5" />
-              Open on GitHub
+              {host.openLabel}
             </Button>
           ) : null}
         </div>
