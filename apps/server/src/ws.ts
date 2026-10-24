@@ -181,7 +181,9 @@ import { GranolaApi } from "./granola/GranolaApi.ts";
 import { GranolaAuth } from "./granola/GranolaAuth.ts";
 import { GranolaThreadLinks } from "./granola/GranolaThreadLinks.ts";
 import { NotionApi } from "./notion/NotionApi.ts";
+import { GoogleApi } from "./google/GoogleApi.ts";
 import { NotionAuth } from "./notion/NotionAuth.ts";
+import { GoogleAuth } from "./google/GoogleAuth.ts";
 import { SlackApi } from "./slack/SlackApi.ts";
 import { SlackAuth } from "./slack/SlackAuth.ts";
 import { SlackThreadLinks } from "./slack/SlackThreadLinks.ts";
@@ -190,6 +192,7 @@ import { DiscordAuth } from "./discord/DiscordAuth.ts";
 import { DiscordThreadLinks } from "./discord/DiscordThreadLinks.ts";
 import { ThreadLinkWatches } from "./threadLinkWatch/ThreadLinkWatches.ts";
 import { NotionThreadLinks } from "./notion/NotionThreadLinks.ts";
+import { GoogleThreadLinks } from "./google/GoogleThreadLinks.ts";
 import { GitHubIssues } from "./githubIssues/GitHubIssues.ts";
 import { GitHubIssueThreadLinks } from "./githubIssues/GitHubIssueThreadLinks.ts";
 import * as MessageDrafts from "./messageDrafts/MessageDrafts.ts";
@@ -1366,8 +1369,11 @@ export const layerWsRpc = (
       const slackAuth = yield* SlackAuth;
       const slackApi = yield* SlackApi;
       const notionApi = yield* NotionApi;
+      const googleApi = yield* GoogleApi;
       const notionAuth = yield* NotionAuth;
+      const googleAuth = yield* GoogleAuth;
       const notionThreadLinks = yield* NotionThreadLinks;
+      const googleThreadLinks = yield* GoogleThreadLinks;
       const granolaApi = yield* GranolaApi;
       const granolaAuth = yield* GranolaAuth;
       const granolaThreadLinks = yield* GranolaThreadLinks;
@@ -2860,6 +2866,17 @@ export const layerWsRpc = (
         [WS_METHODS.notionLinkThread]: (input) => notionThreadLinks.link(input),
         [WS_METHODS.notionUnlinkThread]: (input) =>
           notionThreadLinks.unlink(input).pipe(Effect.as({})),
+        [WS_METHODS.googleSubscribeState]: (_input) => googleAuth.state,
+        [WS_METHODS.googleStartLogin]: (input) => googleAuth.startLogin(input),
+        [WS_METHODS.googleCompleteLogin]: (input) => googleAuth.completeLogin(input),
+        [WS_METHODS.googleCancelLogin]: (input) => googleAuth.cancelLogin(input),
+        [WS_METHODS.googleDisconnect]: (_input) => googleAuth.disconnect,
+        [WS_METHODS.googleSearchFiles]: (input) => googleApi.searchFiles(input),
+        [WS_METHODS.googleGetFile]: (input) => googleApi.getFile(input),
+        [WS_METHODS.googleSubscribeThreadLinks]: (_input) => googleThreadLinks.links,
+        [WS_METHODS.googleLinkThread]: (input) => googleThreadLinks.link(input),
+        [WS_METHODS.googleUnlinkThread]: (input) =>
+          googleThreadLinks.unlink(input).pipe(Effect.as({})),
         [WS_METHODS.granolaSubscribeState]: (_input) => granolaAuth.state,
         [WS_METHODS.granolaStartLogin]: (_input) => granolaAuth.startLogin,
         [WS_METHODS.granolaCancelLogin]: (input) => granolaAuth.cancelLogin(input),

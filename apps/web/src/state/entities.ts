@@ -417,6 +417,7 @@ export function readEnvironmentLinkIntegrations(environmentId: EnvironmentId): {
   readonly slack: boolean;
   readonly discord: boolean;
   readonly notion: boolean;
+  readonly google: boolean;
   readonly granola: boolean;
 } {
   const settings = appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.settings;
@@ -424,6 +425,7 @@ export function readEnvironmentLinkIntegrations(environmentId: EnvironmentId): {
     slack: settings?.enableSlackIntegration === true,
     discord: settings?.enableDiscordIntegration === true,
     notion: settings?.enableNotionIntegration === true,
+    google: settings?.enableGoogleIntegration === true,
     granola: settings?.enableGranolaIntegration === true,
   };
 }

@@ -14,8 +14,14 @@ import { createRoot, type Root } from "react-dom/client";
 const refreshProviders = vi.hoisted(() => vi.fn());
 vi.mock("react-native", () => ({ Alert: { alert: vi.fn() } }));
 
+vi.mock("../../state/google", () => ({ googleEnvironment: { getFile: Symbol("getGoogleFile") } }));
+vi.mock("../../state/entities", () => ({ useEnvironmentServerConfig: () => null }));
+vi.mock("../../state/query", () => ({
+  useEnvironmentQuery: () => ({ data: null, error: null, isPending: false }),
+}));
 vi.mock("../../state/queries", () => ({
   useThreadSearch: () => ({ threads: [], isPending: false }),
+  useDebouncedValue: (value: string) => value,
   useComposerPathSearch: () => ({ entries: [], isPending: false }),
   useComposerPullRequestSearch: () => ({ entries: [], isPending: false, error: null }),
 }));

@@ -52,6 +52,7 @@ import { WEBHOOK_ROUTE_PREFIX } from "./scheduledTasks/ScheduledTaskService.ts";
 import { LINEAR_SERVER_CALLBACK_PATH } from "./linear/linearOAuth.ts";
 import { SLACK_SERVER_CALLBACK_PATH } from "./slack/slackOAuth.ts";
 import { NOTION_SERVER_CALLBACK_PATH } from "./notion/notionOAuth.ts";
+import { GOOGLE_SERVER_CALLBACK_PATH } from "./google/googleOAuth.ts";
 import {
   browserApiCorsAllowedHeaders,
   browserApiCorsAllowedMethods,
@@ -390,6 +391,7 @@ const UNTRACED_REQUEST_PATHS: ReadonlySet<string> = new Set([
   OTLP_TRACES_PROXY_PATH,
   LINEAR_SERVER_CALLBACK_PATH,
   NOTION_SERVER_CALLBACK_PATH,
+  GOOGLE_SERVER_CALLBACK_PATH,
   SLACK_SERVER_CALLBACK_PATH,
 ]);
 

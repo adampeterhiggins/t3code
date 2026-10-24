@@ -1645,6 +1645,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
         return (
           <LinkedObjectLinkPreview
             link={link}
+            sourceLabel={children}
             objectLink={objectLink}
             environmentId={environmentId}
             threadRef={threadRef ?? null}

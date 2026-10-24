@@ -64,8 +64,11 @@ import * as GranolaApi from "./granola/GranolaApi.ts";
 import * as GranolaAuth from "./granola/GranolaAuth.ts";
 import * as GranolaThreadLinks from "./granola/GranolaThreadLinks.ts";
 import * as NotionApi from "./notion/NotionApi.ts";
+import * as GoogleApi from "./google/GoogleApi.ts";
 import * as NotionAuth from "./notion/NotionAuth.ts";
+import * as GoogleAuth from "./google/GoogleAuth.ts";
 import * as NotionThreadLinks from "./notion/NotionThreadLinks.ts";
+import * as GoogleThreadLinks from "./google/GoogleThreadLinks.ts";
 import * as SlackApi from "./slack/SlackApi.ts";
 import * as SlackAuth from "./slack/SlackAuth.ts";
 import * as SlackMentionTrigger from "./slack/SlackMentionTrigger.ts";
@@ -729,9 +732,15 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
     ),
   ),
   Layer.provideMerge(
-    NotionThreadLinks.layer.pipe(
-      Layer.provideMerge(NotionApi.layer),
-      Layer.provideMerge(NotionAuth.layer),
+    Layer.mergeAll(
+      NotionThreadLinks.layer.pipe(
+        Layer.provideMerge(NotionApi.layer),
+        Layer.provideMerge(NotionAuth.layer),
+      ),
+      GoogleThreadLinks.layer.pipe(
+        Layer.provideMerge(GoogleApi.layer),
+        Layer.provideMerge(GoogleAuth.layer),
+      ),
     ),
   ),
   Layer.provideMerge(
@@ -871,6 +880,7 @@ const layerMakeRoutes = Layer.mergeAll(
     ServerHttp.layerAttachmentUploadRoute,
     LinearAuth.layerCallbackRoute,
     NotionAuth.layerCallbackRoute,
+    GoogleAuth.layerCallbackRoute,
     SlackAuth.layerCallbackRoute,
     GuestHttp.layer,
     DeviceHubProxy.layer,

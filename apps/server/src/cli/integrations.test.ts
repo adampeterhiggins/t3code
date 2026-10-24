@@ -95,6 +95,7 @@ it("Linear is always on; the others follow their settings toggle", () => {
     enableSlackIntegration: false,
     enableDiscordIntegration: true,
     enableNotionIntegration: false,
+    enableGoogleIntegration: false,
     enableGranolaIntegration: true,
   };
   assert.isTrue(integrationEnabled("linear", settings));

@@ -3,6 +3,7 @@ import {
   type LinearObjectType,
   parseGranolaNoteId,
   parseNotionPageId,
+  parseGoogleFileLink,
   parseGitHubIssueUrl,
   parseGitHubRefUrl,
 } from "@t3tools/contracts";
@@ -24,6 +25,7 @@ import {
  */
 export type ComposerObjectLink =
   | { readonly kind: "notion-page"; readonly url: string; readonly pageId: string }
+  | { readonly kind: "google-file"; readonly url: string; readonly fileId: string }
   | { readonly kind: "granola-note"; readonly url: string; readonly noteId: string }
   | { readonly kind: "linear-issue"; readonly url: string; readonly identifier: string }
   | {
@@ -203,6 +205,8 @@ export function parseComposerObjectLink(url: string): ComposerObjectLink | null 
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
   const promptLink = parsePromptLink(url);
   if (promptLink !== null) return promptLink;
+  const google = parseGoogleFileLink(url);
+  if (google !== null) return { kind: "google-file", url, fileId: google.fileId };
   const notionPageId = parseNotionPageId(url);
   if (notionPageId !== null) return { kind: "notion-page", url, pageId: notionPageId };
   const granolaNoteId = parseGranolaNoteId(url);
@@ -286,6 +290,8 @@ export function objectLinkLabel(url: string): string | null {
       return null;
     case "notion-page":
       return "Notion page";
+    case "google-file":
+      return "Google document";
     case "granola-note":
       return "Granola note";
     case "linear-issue":
@@ -329,6 +335,7 @@ export function objectLinkLabel(url: string): string | null {
 
 const OBJECT_LINK_NOUNS: Record<ComposerObjectLink["kind"], string> = {
   "notion-page": "Notion page",
+  "google-file": "Google document",
   "granola-note": "Granola note",
   "linear-issue": "Linear issue",
   "linear-object": "Linear project, document, or initiative",

@@ -17,6 +17,7 @@ import { useAttachGitHubIssue } from "../chat/GitHubIssuePicker";
 import { useAttachGranolaNote } from "../chat/GranolaNotePicker";
 import { useAttachLinearIssue } from "../chat/LinearIssuePicker";
 import { useAttachNotionPage } from "../chat/NotionPagePicker";
+import { useAttachGoogleFile } from "../chat/GoogleFilePicker";
 import { attachRepository } from "../chat/RepositoryAttachPicker";
 import { useAttachSlackMessage } from "../chat/SlackMessagePicker";
 import { useApplyStartFrom } from "../chat/StartFromPicker";
@@ -86,6 +87,7 @@ export function QuickMessageDraftApplier(props: {
 function useApplyAttachment(threadRef: ScopedThreadRef) {
   const attachLinearIssue = useAttachLinearIssue();
   const attachNotionPage = useAttachNotionPage();
+  const attachGoogleFile = useAttachGoogleFile();
   const attachGranolaNote = useAttachGranolaNote();
   const attachSlackMessage = useAttachSlackMessage();
   const attachDiscordMessage = useAttachDiscordMessage();
@@ -127,6 +129,8 @@ function useApplyAttachment(threadRef: ScopedThreadRef) {
         return attachLinearIssue(threadRef, attachment.issueId);
       case "notion-page":
         return attachNotionPage(threadRef, attachment.pageId);
+      case "google-file":
+        return attachGoogleFile(threadRef, attachment.fileId);
       case "granola-note":
         return attachGranolaNote(threadRef, attachment.noteId);
       case "slack-message":

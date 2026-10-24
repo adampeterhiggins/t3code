@@ -43,6 +43,7 @@ vi.mock("../components/chat/GitHubIssuePicker", () => ({ openGitHubIssuePicker: 
 vi.mock("../components/chat/LinearIssuePicker", () => ({ openLinearIssuePicker: vi.fn() }));
 vi.mock("../components/chat/SlackMessagePicker", () => ({ openSlackMessagePicker: vi.fn() }));
 vi.mock("../components/chat/DiscordMessagePicker", () => ({ openDiscordMessagePicker: vi.fn() }));
+vi.mock("../components/chat/GoogleFilePicker", () => ({ openGoogleFilePicker: vi.fn() }));
 vi.mock("../components/chat/NotionPagePicker", () => ({ openNotionPagePicker: vi.fn() }));
 vi.mock("../components/chat/GranolaNotePicker", () => ({ openGranolaNotePicker: vi.fn() }));
 vi.mock("../components/chat/ThreadTabs", () => ({

@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
 import { readPastedLinearCallback } from "./linear/linearOAuth.ts";
+import { readPastedGoogleCallback } from "./google/googleOAuth.ts";
 import { readPastedNotionCallback } from "./notion/notionOAuth.ts";
 import { readPastedSlackCallback } from "./slack/slackOAuth.ts";
 
 describe.each([
   ["linear", readPastedLinearCallback],
   ["notion", readPastedNotionCallback],
+  ["google", readPastedGoogleCallback],
   ["slack", readPastedSlackCallback],
 ] as const)("%s remote paste-back", (integration, read) => {
   const uri = `https://t3.example.test/oauth/${integration}/callback`;

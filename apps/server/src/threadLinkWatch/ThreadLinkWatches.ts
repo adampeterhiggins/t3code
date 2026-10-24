@@ -24,7 +24,9 @@ import * as GranolaThreadLinks from "../granola/GranolaThreadLinks.ts";
 import * as LinearApi from "../linear/LinearApi.ts";
 import * as LinearThreadLinks from "../linear/LinearThreadLinks.ts";
 import * as NotionApi from "../notion/NotionApi.ts";
+import * as GoogleApi from "../google/GoogleApi.ts";
 import * as NotionThreadLinks from "../notion/NotionThreadLinks.ts";
+import * as GoogleThreadLinks from "../google/GoogleThreadLinks.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as SlackApi from "../slack/SlackApi.ts";
@@ -39,6 +41,7 @@ import {
   type LinkSnapshot,
   linearSnapshot,
   notionSnapshot,
+  googleSnapshot,
   slackSnapshot,
   THREAD_LINK_KIND_LABELS,
 } from "./linkWatchSnapshot.ts";
@@ -84,6 +87,7 @@ const INTEGRATION_SETTING = {
   slack: "enableSlackIntegration",
   discord: "enableDiscordIntegration",
   notion: "enableNotionIntegration",
+  google: "enableGoogleIntegration",
   granola: "enableGranolaIntegration",
 } as const;
 
@@ -134,12 +138,14 @@ export const make = Effect.gen(function* () {
   const slackLinks = yield* SlackThreadLinks.SlackThreadLinks;
   const discordLinks = yield* DiscordThreadLinks.DiscordThreadLinks;
   const notionLinks = yield* NotionThreadLinks.NotionThreadLinks;
+  const googleLinks = yield* GoogleThreadLinks.GoogleThreadLinks;
   const granolaLinks = yield* GranolaThreadLinks.GranolaThreadLinks;
   const linear = yield* LinearApi.LinearApi;
   const gitHub = yield* GitHubIssues.GitHubIssues;
   const slack = yield* SlackApi.SlackApi;
   const discord = yield* DiscordApi.DiscordApi;
   const notion = yield* NotionApi.NotionApi;
+  const google = yield* GoogleApi.GoogleApi;
   const granola = yield* GranolaApi.GranolaApi;
 
   const read = sql<WatchRow>`
@@ -237,6 +243,12 @@ export const make = Effect.gen(function* () {
         if (link === undefined) return notLinked;
         const page = yield* notion.getPage({ id: link.pageId }).pipe(Effect.mapError(unreadable));
         return found(link.url, notionSnapshot(page));
+      }
+      case "google": {
+        const link = yield* googleLinks.forThread(threadId);
+        if (link === undefined) return notLinked;
+        const page = yield* google.getFile({ id: link.url }).pipe(Effect.mapError(unreadable));
+        return found(link.url, googleSnapshot(page));
       }
       case "granola": {
         const link = yield* granolaLinks.forThread(threadId);

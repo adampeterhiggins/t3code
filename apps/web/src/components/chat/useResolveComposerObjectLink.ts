@@ -1,3 +1,4 @@
+import { GoogleError } from "@t3tools/contracts";
 import {
   commentAnchor,
   type ComposerObjectLink,
@@ -17,7 +18,9 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { notionPageContextRecord } from "@t3tools/client-runtime/state/notion";
+import { googleFileContextRecord } from "@t3tools/client-runtime/state/google";
 import { notionEnvironment } from "~/state/notion";
+import { googleEnvironment } from "~/state/google";
 import { granolaNoteContextRecord } from "@t3tools/client-runtime/state/granola";
 import { granolaEnvironment } from "~/state/granola";
 import {
@@ -188,6 +191,54 @@ function reportUnreadableNotionLink(
   });
 }
 
+function reportUnreadableGoogleLink(
+  failure: unknown,
+  url: string,
+  retry: (() => void) | undefined,
+) {
+  const reason =
+    typeof failure === "object" && failure !== null && "reason" in failure
+      ? (failure.reason as GoogleError["reason"])
+      : null;
+  if (reason !== "not-found") {
+    toastManager.add({
+      type: "info",
+      title: "Could not attach that Google page",
+      description:
+        failure instanceof Error
+          ? `The agent gets the link instead. ${failure.message}`
+          : "The agent gets the link instead. Check the Google connection in Settings → Integrations.",
+    });
+    return;
+  }
+  const toastId = toastManager.add({
+    type: "info",
+    title: "T3 Code can't read this Google page",
+    description:
+      "Check that the Google account connected in Settings → Integrations can open this document, then retry.",
+    timeout: 0,
+    ...(retry
+      ? {
+          actionProps: {
+            children: "Retry",
+            onClick: () => {
+              toastManager.close(toastId);
+              retry();
+            },
+          },
+        }
+      : {}),
+    data: {
+      hideCopyButton: true,
+      actionLayout: "stacked-end",
+      secondaryActionProps: {
+        children: "Open in Google",
+        onClick: () => void ensureLocalApi().shell.openExternal(url),
+      },
+    },
+  });
+}
+
 export interface ResolvedComposerObjectLink {
   readonly reference: ComposerContextReference;
   /** Stores the payload behind the chip. Call it once the reference is in the prompt. */
@@ -204,12 +255,14 @@ export function useResolveComposerObjectLink(input: {
   const slackEnabled = useEnvironmentSettings(environmentId, (s) => s.enableSlackIntegration);
   const discordEnabled = useEnvironmentSettings(environmentId, (s) => s.enableDiscordIntegration);
   const notionEnabled = useEnvironmentSettings(environmentId, (s) => s.enableNotionIntegration);
+  const googleEnabled = useEnvironmentSettings(environmentId, (s) => s.enableGoogleIntegration);
   const granolaEnabled = useEnvironmentSettings(environmentId, (s) => s.enableGranolaIntegration);
   const getLinearIssue = useAtomCommand(linearEnvironment.getIssue, { reportFailure: false });
   const getLinearObject = useAtomCommand(linearEnvironment.getObject, { reportFailure: false });
   const getGitHubIssue = useAtomCommand(githubIssueEnvironment.getIssue, { reportFailure: false });
   const getGitHubRef = useAtomCommand(githubIssueEnvironment.getRef, { reportFailure: false });
   const getNotionPage = useAtomCommand(notionEnvironment.getPage, { reportFailure: false });
+  const getGoogleFile = useAtomCommand(googleEnvironment.getFile, { reportFailure: false });
   const getSlackThread = useAtomCommand(slackEnvironment.getThread, { reportFailure: false });
   const getDiscordThread = useAtomCommand(discordEnvironment.getThread, { reportFailure: false });
   const getGranolaNote = useAtomCommand(granolaEnvironment.getNote, { reportFailure: false });
@@ -247,6 +300,20 @@ export function useResolveComposerObjectLink(input: {
           return "unreadable";
         }
         const record = notionPageContextRecord(result.value);
+        return {
+          reference: { kind: record.kind, contextId: record.contextId, label: record.label },
+          commit: () => useIssueContextStore.getState().upsert(threadRef.threadId, record),
+        };
+      }
+      case "google-file": {
+        if (!googleEnabled) return "skipped";
+        const result = await getGoogleFile({ environmentId, input: { id: link.url } });
+        if (result._tag === "Failure") {
+          if (!isAtomCommandInterrupted(result))
+            reportUnreadableGoogleLink(squashAtomCommandFailure(result), link.url, options?.retry);
+          return "unreadable";
+        }
+        const record = googleFileContextRecord(result.value);
         return {
           reference: { kind: record.kind, contextId: record.contextId, label: record.label },
           commit: () => useIssueContextStore.getState().upsert(threadRef.threadId, record),

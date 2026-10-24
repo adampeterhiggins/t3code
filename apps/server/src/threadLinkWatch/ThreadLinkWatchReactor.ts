@@ -31,6 +31,7 @@ const READ_EVERY_MS: Record<ThreadLinkKind, number> = {
   linear: 2 * 60_000,
   github: 2 * 60_000,
   notion: 5 * 60_000,
+  google: 5 * 60_000,
   granola: 5 * 60_000,
 };
 
