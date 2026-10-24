@@ -3436,7 +3436,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             projectId: command.projectId,
             branch: command.branch ?? null,
             worktreePath: command.worktreePath ?? null,
-            groupName: null,
             linkedPullRequest: null,
             branchPullRequest: null,
             pullRequests: [],

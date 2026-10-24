@@ -2024,10 +2024,10 @@ and the Stop handlers in [`ChatView.tsx`](../apps/web/src/components/ChatView.ts
 
 An existing conversation can move into another registered project on the same environment. Users
 pick **Move to project** from a thread's menu in the sidebar, the chat header, or a mobile thread
-row, and confirm; agents use `t3_thread_move`. The move keeps the thread and its history, switches
-to the destination's main checkout, and clears the old project's branch, sidebar group, and pull
-request links. Files stay where they are. The tool's optional continuation resumes work after the
-provider session closes, and a request ID makes retries idempotent. An agent can also land the
+row, and confirm; agents use `t3_thread_move`. The move keeps the thread, its history, and its
+sidebar group, switches to the destination's main checkout, and clears the old project's branch
+and pull request links. Files stay where they are. The tool's optional continuation resumes work
+after the provider session closes, and a request ID makes retries idempotent. An agent can also land the
 thread in one of the destination's worktrees, or on a pull request's branch: the pull request is
 checked out first, as when starting from it, so a checkout that fails moves nothing, and a new
 worktree gets the project's setup script.
