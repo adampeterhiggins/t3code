@@ -115,7 +115,7 @@ it.effect("moves an idle thread to the destination checkout and can move it back
     assert.equal(after.thread.projectId, destination);
     assert.isNull(after.thread.worktreePath);
     assert.isNull(after.thread.branch);
-    assert.isNull(after.thread.groupName);
+    assert.equal(after.thread.groupName, "Source group");
     assert.isNull(after.thread.linkedPullRequest);
     assert.deepEqual(after.thread.pullRequests, []);
     assert.isEmpty(after.runs);
@@ -125,7 +125,9 @@ it.effect("moves an idle thread to the destination checkout and can move it back
       threadId,
       projectId: source,
     });
-    assert.equal((yield* orchestrator.getThreadShell(threadId))?.projectId, source);
+    const restored = yield* orchestrator.getThreadProjection(threadId);
+    assert.equal(restored.thread.projectId, source);
+    assert.equal(restored.thread.groupName, "Source group");
   }).pipe(Effect.provide(layer)),
 );
 
@@ -144,6 +146,7 @@ it.effect("moves a thread into a checkout of the destination project", () =>
     assert.equal(after.thread.projectId, destination);
     assert.equal(after.thread.worktreePath, "/tmp/project:destination-pr-12");
     assert.equal(after.thread.branch, "feature/pr-12");
+    assert.equal(after.thread.groupName, "Source group");
   }).pipe(Effect.provide(layer)),
 );
 
