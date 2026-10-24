@@ -22,7 +22,9 @@ import * as GranolaThreadLinks from "../../../granola/GranolaThreadLinks.ts";
 import * as LinearApi from "../../../linear/LinearApi.ts";
 import * as LinearThreadLinks from "../../../linear/LinearThreadLinks.ts";
 import * as NotionApi from "../../../notion/NotionApi.ts";
+import * as GoogleApi from "../../../google/GoogleApi.ts";
 import * as NotionThreadLinks from "../../../notion/NotionThreadLinks.ts";
+import * as GoogleThreadLinks from "../../../google/GoogleThreadLinks.ts";
 import * as ServerSettings from "../../../serverSettings.ts";
 import * as SlackApi from "../../../slack/SlackApi.ts";
 import * as SlackThreadLinks from "../../../slack/SlackThreadLinks.ts";
@@ -90,6 +92,10 @@ const makeHarness = (settings: Parameters<typeof ServerSettings.layerTest>[0] = 
         Effect.sync(() => [...watches.values()].filter((watch) => watch.threadId === threadId)),
     }),
     ServerSettings.layerTest(settings),
+    Layer.mock(GoogleApi.GoogleApi)({
+      searchFiles: () => Effect.succeed({ files: [], hasMore: false }),
+    }),
+    Layer.mock(GoogleThreadLinks.GoogleThreadLinks)({ forThread: () => Effect.succeed(undefined) }),
     Layer.mock(SlackApi.SlackApi)({
       searchMessages: ({ query }) =>
         Effect.sync(() => {
@@ -330,6 +336,7 @@ describe("issue link toolkit handlers", () => {
         slack: null,
         discord: null,
         notion: null,
+        google: null,
         granola: null,
         watches: [],
       });

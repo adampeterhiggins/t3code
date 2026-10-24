@@ -34,6 +34,7 @@ export * from "./vcs.ts";
 export * from "./sourceControl.ts";
 export * from "./linear.ts";
 export * from "./notion.ts";
+export * from "./google.ts";
 export * from "./granola.ts";
 export * from "./chatThread.ts";
 export * from "./slack.ts";

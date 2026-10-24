@@ -9,6 +9,7 @@ export const ThreadLinkKind = Schema.Literals([
   "slack",
   "discord",
   "notion",
+  "google",
   "granola",
 ]);
 export type ThreadLinkKind = typeof ThreadLinkKind.Type;

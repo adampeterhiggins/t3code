@@ -550,3 +550,31 @@ export const NotionIcon: Icon = (props) => (
     <path d={INTEGRATION_ICONS.notion.path} />
   </svg>
 );
+
+export function GoogleDocIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" {...props}>
+      <path
+        fillRule="evenodd"
+        d="M3.5 1h6L13 4.5v9.75c0 .41-.34.75-.75.75h-8.5a.75.75 0 0 1-.75-.75V1.75c0-.41.34-.75.75-.75ZM9 1.8V5h3.2L9 1.8ZM5 7.25h6v1H5v-1Zm0 2.25h6v1H5v-1Zm0 2.25h4v1H5v-1Z"
+      />
+    </svg>
+  );
+}
+export function GoogleSheetIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg data-google-sheet="" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" {...props}>
+      <path
+        fillRule="evenodd"
+        d="M3.5 1h6L13 4.5v9.75c0 .41-.34.75-.75.75h-8.5a.75.75 0 0 1-.75-.75V1.75c0-.41.34-.75.75-.75ZM9 1.8V5h3.2L9 1.8ZM4.5 6.75h7v6.5h-7v-6.5Zm1 1v1.5h2v-1.5h-2Zm3 0v1.5h2v-1.5h-2Zm-3 2.5v2h2v-2h-2Zm3 0v2h2v-2h-2Z"
+      />
+    </svg>
+  );
+}
+export function GoogleDriveIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" {...props}>
+      <path d="M5.6 1.5h4.8l4.6 8h-4.8l-4.6-8Zm-.86.5 2.4 4.16L2.4 14.4 0 10.24 4.74 2Zm3.1 5.37L10.24 11.5H15l-2.4 4.16H3.12l4.72-8.29Z" />
+    </svg>
+  );
+}

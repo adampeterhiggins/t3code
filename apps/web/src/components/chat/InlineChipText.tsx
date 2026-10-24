@@ -24,7 +24,15 @@ import type { ReactNode } from "react";
 import { useTheme } from "../../hooks/useTheme";
 import { basenameOfPath } from "../../pierre-icons";
 import { ContextChip, ContextChipLabel, type ContextChipKind } from "../ContextChip";
-import { GitHubIcon, DiscordIcon, GranolaIcon, LinearIcon, NotionIcon, SlackIcon } from "../Icons";
+import {
+  GitHubIcon,
+  DiscordIcon,
+  GranolaIcon,
+  LinearIcon,
+  NotionIcon,
+  GoogleDriveIcon,
+  SlackIcon,
+} from "../Icons";
 import { FileTagChipContent } from "./FileTagChip";
 import { SkillChipIcon } from "./SkillChipIcon";
 
@@ -48,6 +56,7 @@ const CHIP_ICONS: Partial<Record<ContextChipKind, ReactNode>> = {
   "slack-thread": <SlackIcon />,
   "discord-thread": <DiscordIcon />,
   "notion-page": <NotionIcon />,
+  "google-file": <GoogleDriveIcon />,
   "granola-note": <GranolaIcon />,
   repository: <FolderGit2Icon />,
   checkout: <FolderIcon />,

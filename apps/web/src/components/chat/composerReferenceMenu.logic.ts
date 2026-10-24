@@ -7,6 +7,7 @@ export type ComposerReferenceTab =
   | "pull-requests"
   | "linear-issues"
   | "notion-pages"
+  | "google-files"
   | "granola-notes"
   | "slack-messages"
   | "discord-messages"
@@ -24,6 +25,7 @@ export type ComposerReferenceItem = Extract<
       | "slack-message"
       | "discord-message"
       | "notion-page"
+      | "google-file"
       | "granola-note"
       | "repository"
       | "checkout";
@@ -37,6 +39,7 @@ const TAB_FOR_ITEM_TYPE: Record<ComposerReferenceItem["type"], ComposerReference
   "slack-message": "slack-messages",
   "discord-message": "discord-messages",
   "notion-page": "notion-pages",
+  "google-file": "google-files",
   "granola-note": "granola-notes",
   repository: "repositories",
   checkout: "checkouts",

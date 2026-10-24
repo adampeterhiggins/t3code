@@ -47,6 +47,7 @@ function loadingLinkIcon(link: ComposerObjectLink) {
     case "repository":
       return <FolderGit2Icon />;
     case "notion-page":
+    case "google-file":
       return <NotionIcon />;
     case "granola-note":
       return <GranolaIcon />;

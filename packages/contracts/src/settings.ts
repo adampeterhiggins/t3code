@@ -1603,6 +1603,7 @@ export const ServerSettings = Schema.Struct({
   ),
   /** Enable Notion attachment entry points and automatic link resolution for this environment. */
   enableNotionIntegration: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  enableGoogleIntegration: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   /** Enable Granola attachment entry points and automatic link resolution for this environment. */
   enableGranolaIntegration: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   /** Fork: Linear issues assigned to the connected account start threads. Empty is off. */
@@ -2034,6 +2035,7 @@ export const ServerSettingsPatch = Schema.Struct({
   /** Replaces the whole trigger, so a cleared channel list sticks. */
   discordMentionTrigger: Schema.optionalKey(DiscordMentionTriggerSettings),
   enableNotionIntegration: Schema.optionalKey(Schema.Boolean),
+  enableGoogleIntegration: Schema.optionalKey(Schema.Boolean),
   enableGranolaIntegration: Schema.optionalKey(Schema.Boolean),
   linearAssignmentTriggers: Schema.optionalKey(LinearAssignmentTriggers),
   continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),

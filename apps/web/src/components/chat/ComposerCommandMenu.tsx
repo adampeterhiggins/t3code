@@ -1,3 +1,5 @@
+import { LinkedObjectLinkPreview } from "./LinkedObjectLinkPreview";
+import { GoogleDocIcon, GoogleSheetIcon } from "../Icons";
 import { formatProviderSkillDisplayName } from "@t3tools/shared/inlineSkills";
 import type { ComposerPathSearchTarget } from "@t3tools/client-runtime/state/threads";
 import {
@@ -59,6 +61,7 @@ import { formatRelativeTimeLabel } from "~/timestampFormat";
 
 export type ComposerCommandItem =
   | { id: string; type: "notion-page"; pageId: string; label: string; description: string }
+  | { id: string; type: "google-file"; fileId: string; label: string; description: string }
   | { id: string; type: "granola-note"; noteId: string; label: string; description: string }
   | {
       id: string;
@@ -529,6 +532,13 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
       {props.item.type === "notion-page" ? (
         <NotionIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
       ) : null}
+      {props.item.type === "google-file" ? (
+        props.item.fileId.includes("/spreadsheets/") ? (
+          <GoogleSheetIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
+        ) : (
+          <GoogleDocIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
+        )
+      ) : null}
       {props.item.type === "granola-note" ? (
         <GranolaIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
       ) : null}
@@ -559,6 +569,20 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
         <LinearIssueRow item={props.item} environmentId={props.environmentId} />
       ) : props.item.type === "github-issue" ? (
         <GitHubIssueRow item={props.item} environmentId={props.environmentId} />
+      ) : props.item.type === "google-file" && props.environmentId !== null ? (
+        <LinkedObjectLinkPreview
+          environmentId={props.environmentId}
+          threadRef={null}
+          objectLink={{ kind: "google-file", url: props.item.fileId, fileId: props.item.fileId }}
+          link={
+            <span tabIndex={-1} className="flex min-w-0 flex-1 items-center gap-2 text-xs">
+              <span className="min-w-0 flex-1 truncate font-medium">{props.item.label}</span>
+              <span className="text-secondary-label">
+                {props.item.fileId.includes("/spreadsheets/") ? "Sheet" : "Doc"}
+              </span>
+            </span>
+          }
+        />
       ) : props.item.type === "slack-message" || props.item.type === "discord-message" ? (
         <ChatMessageCommandRow item={props.item} />
       ) : props.item.type === "thread" ? (

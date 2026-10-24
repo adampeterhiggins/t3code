@@ -382,6 +382,7 @@ export function useComposerContextImport(input: {
         case "slack-thread":
         case "discord-thread":
         case "notion-page":
+        case "google-file":
         case "granola-note":
         case "subagent":
         case "prompt-link":

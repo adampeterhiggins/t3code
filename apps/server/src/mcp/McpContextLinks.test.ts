@@ -5,6 +5,7 @@ import {
   type LinearGetObjectInput,
   type LinearIssueContext,
   NotionError,
+  GoogleError,
   type SlackGetThreadInput,
   SlackError,
   type SlackThreadContext,
@@ -17,12 +18,14 @@ import * as GitHubIssues from "../githubIssues/GitHubIssues.ts";
 import * as LinearApi from "../linear/LinearApi.ts";
 import * as GranolaApi from "../granola/GranolaApi.ts";
 import * as NotionApi from "../notion/NotionApi.ts";
+import * as GoogleApi from "../google/GoogleApi.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as SlackApi from "../slack/SlackApi.ts";
 import * as McpContextLinks from "./McpContextLinks.ts";
 
 const LINEAR_URL = "https://linear.app/acme/issue/ENG-12/fix-the-thing";
 const SLACK_URL = "https://acme.slack.com/archives/C0123ABCD/p1700000000123456";
+const GOOGLE_URL = "https://docs.google.com/spreadsheets/d/sheet_1/edit#gid=42&range=B4:D6";
 const NOTION_URL = "https://www.notion.so/acme/Plan-0123456789abcdef0123456789abcdef";
 
 const linearIssue = {
@@ -111,6 +114,23 @@ const layer = (settings: Parameters<typeof ServerSettings.layerTest>[0] = {}) =>
         Layer.mock(NotionApi.NotionApi, {
           getPage: () =>
             Effect.fail(new NotionError({ reason: "not-found", detail: "Page not found." })),
+        }),
+        Layer.mock(GoogleApi.GoogleApi, {
+          getFile: ({ id }) =>
+            id === GOOGLE_URL
+              ? Effect.succeed({
+                  id: "sheet_1",
+                  title: "Budget",
+                  fileType: "sheet",
+                  url: id,
+                  location: "Forecast!B4:D6",
+                  grid: [["Budget", "20"]],
+                  markdown: "| Budget | 20 |",
+                  updatedAt: "2026-10-01T00:00:00.000Z",
+                })
+              : Effect.fail(
+                  new GoogleError({ reason: "not-found", detail: "Document not found." }),
+                ),
         }),
         Layer.mock(GranolaApi.GranolaApi, {
           getNote: (input) =>
@@ -259,6 +279,7 @@ it.effect("passes on why an integration could not read a link", () =>
             }),
             Layer.mock(DiscordApi.DiscordApi, {}),
             Layer.mock(NotionApi.NotionApi, {}),
+            Layer.mock(GoogleApi.GoogleApi, {}),
             Layer.mock(GranolaApi.GranolaApi, {}),
             Layer.mock(GitHubIssues.GitHubIssues, {}),
             ServerSettings.layerTest(),
@@ -304,4 +325,24 @@ it.effect("refuses to read repositories, pull requests, and unknown links", () =
     const ordinary = yield* Effect.flip(read("https://example.com/page"));
     assert.include(ordinary.message, "is not a link T3 Code can read");
   }).pipe(Effect.provide(layer())),
+);
+
+it.effect("reads and attaches a Google citation at its native range", () =>
+  Effect.gen(function* () {
+    const record = yield* read(GOOGLE_URL);
+    assert.strictEqual(record.kind, "google-file");
+    if (record.kind === "google-file") {
+      assert.strictEqual(record.location, "Forecast!B4:D6");
+      assert.deepEqual(record.grid, [["Budget", "20"]]);
+    }
+    const result = yield* attach(`Use [Budget](${GOOGLE_URL})`, [GOOGLE_URL]);
+    assert.strictEqual(result.context?.records[0]?.kind, "google-file");
+    assert.notInclude(result.text, GOOGLE_URL);
+  }).pipe(Effect.provide(layer())),
+);
+it.effect("honors the environment's Google off switch for agents", () =>
+  Effect.gen(function* () {
+    const error = yield* read(GOOGLE_URL).pipe(Effect.flip);
+    assert.include(error.message, "turned off");
+  }).pipe(Effect.provide(layer({ enableGoogleIntegration: false }))),
 );

@@ -1,3 +1,5 @@
+import { ContextChip, ContextChipLabel } from "../ContextChip";
+import { GoogleDocIcon, GoogleSheetIcon } from "../Icons";
 import type { PreviewCard as PreviewCardPrimitive } from "@base-ui/react/preview-card";
 import { repositoryContextRecord } from "@t3tools/client-runtime/context-repositories";
 import {
@@ -6,6 +8,7 @@ import {
 } from "@t3tools/client-runtime/state/github-issues";
 import { granolaNoteContextRecord } from "@t3tools/client-runtime/state/granola";
 import { notionPageContextRecord } from "@t3tools/client-runtime/state/notion";
+import { googleFileContextRecord } from "@t3tools/client-runtime/state/google";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import type { ComposerObjectLink } from "@t3tools/source-control-definitions/composerObjectLinks";
 import {
@@ -15,7 +18,7 @@ import {
   promptLinkContextRecord,
   slackThreadContextRecord,
 } from "@t3tools/source-control-definitions/integrationContextRecords";
-import { useRef, useState, type ReactElement } from "react";
+import { useRef, useState, type ReactElement, type ReactNode } from "react";
 
 import { useLinkClickHandler } from "~/browser/useOpenLink";
 import { useEnvironmentSettings } from "~/hooks/useSettings";
@@ -24,6 +27,7 @@ import { githubIssueEnvironment } from "~/state/githubIssues";
 import { granolaEnvironment } from "~/state/granola";
 import { linearEnvironment } from "~/state/linear";
 import { notionEnvironment } from "~/state/notion";
+import { googleEnvironment } from "~/state/google";
 import { useEnvironmentQuery } from "~/state/query";
 import { slackEnvironment } from "~/state/slack";
 
@@ -55,6 +59,7 @@ export function useLinkedObjectRecord(
   const slackEnabled = useEnvironmentSettings(environmentId, (s) => s.enableSlackIntegration);
   const discordEnabled = useEnvironmentSettings(environmentId, (s) => s.enableDiscordIntegration);
   const notionEnabled = useEnvironmentSettings(environmentId, (s) => s.enableNotionIntegration);
+  const googleEnabled = useEnvironmentSettings(environmentId, (s) => s.enableGoogleIntegration);
   const granolaEnabled = useEnvironmentSettings(environmentId, (s) => s.enableGranolaIntegration);
   const linear = useEnvironmentQuery(
     open && link.kind === "linear-issue"
@@ -82,6 +87,11 @@ export function useLinkedObjectRecord(
   const notion = useEnvironmentQuery(
     open && notionEnabled && link.kind === "notion-page"
       ? notionEnvironment.page({ environmentId, input: { id: link.pageId } })
+      : null,
+  );
+  const google = useEnvironmentQuery(
+    open && googleEnabled && link.kind === "google-file"
+      ? googleEnvironment.file({ environmentId, input: { id: link.url } })
       : null,
   );
   const granola = useEnvironmentQuery(
@@ -158,6 +168,12 @@ export function useLinkedObjectRecord(
           record: notion.data && notionPageContextRecord(notion.data),
           failed: notion.error !== null,
         };
+      case "google-file":
+        return {
+          available: googleEnabled,
+          record: google.data && googleFileContextRecord(google.data),
+          failed: google.error !== null,
+        };
       case "granola-note":
         return {
           available: granolaEnabled,
@@ -206,6 +222,7 @@ export function LinkedObjectPreviewBody(props: {
  */
 export function LinkedObjectLinkPreview(props: {
   link: ReactElement;
+  sourceLabel?: ReactNode;
   objectLink: PreviewableObjectLink;
   environmentId: EnvironmentId;
   threadRef: ScopedThreadRef | null;
@@ -229,6 +246,18 @@ export function LinkedObjectLinkPreview(props: {
       </Tooltip>
     );
   }
+  const link =
+    props.objectLink.kind === "google-file" && props.link.type === "a" ? (
+      <ContextChip kind="google-file" render={props.link}>
+        {props.objectLink.url.includes("/spreadsheets/") ? <GoogleSheetIcon /> : <GoogleDocIcon />}
+        <ContextChipLabel>
+          {props.sourceLabel ??
+            (props.link as ReactElement<{ children?: ReactNode }>).props.children}
+        </ContextChipLabel>
+      </ContextChip>
+    ) : (
+      props.link
+    );
   return (
     <PreviewCard
       open={open}
@@ -245,7 +274,7 @@ export function LinkedObjectLinkPreview(props: {
         }}
       >
         <PreviewCardTrigger
-          render={<TooltipTrigger render={props.link} />}
+          render={<TooltipTrigger render={link} />}
           delay={350}
           closeDelay={120}
           {...cursorAnchor.triggerProps}

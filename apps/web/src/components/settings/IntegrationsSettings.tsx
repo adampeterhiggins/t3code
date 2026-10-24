@@ -121,6 +121,7 @@ import {
 import { searchableSetting } from "./settingsSearch";
 import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
 import { NotionSettingsSection } from "./NotionSettings";
+import { GoogleSettingsSection } from "./GoogleSettings";
 import { GranolaSettingsSection } from "./GranolaSettings";
 import { LinearSettingsSection } from "./LinearSettings";
 import { SlackSettingsSection } from "./SlackSettings";
@@ -1653,6 +1654,7 @@ export function IntegrationsSettingsPanel() {
       <DeviceIntegrationSettings />
       <LinearSettingsSection />
       <NotionSettingsSection />
+      <GoogleSettingsSection />
       <GranolaSettingsSection />
       <SlackSettingsSection />
       <DiscordSettingsSection />

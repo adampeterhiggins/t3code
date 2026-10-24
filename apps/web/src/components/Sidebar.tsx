@@ -196,6 +196,7 @@ import { isGitHubProject } from "@t3tools/client-runtime/state/github-issues";
 import { openGitHubIssuePicker } from "./chat/GitHubIssuePicker";
 import { openLinearIssuePicker } from "./chat/LinearIssuePicker";
 import { openNotionPagePicker } from "./chat/NotionPagePicker";
+import { openGoogleFilePicker } from "./chat/GoogleFilePicker";
 import { openGranolaNotePicker } from "./chat/GranolaNotePicker";
 import { openSlackMessagePicker } from "./chat/SlackMessagePicker";
 import { openDiscordMessagePicker } from "./chat/DiscordMessagePicker";
@@ -3814,6 +3815,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
             return;
           case "link-notion-page":
             openNotionPagePicker(threadRef, "link");
+            return;
+          case "link-google-file":
+            openGoogleFilePicker(threadRef, "link");
             return;
           case "link-granola-note":
             openGranolaNotePicker(threadRef, "link");
