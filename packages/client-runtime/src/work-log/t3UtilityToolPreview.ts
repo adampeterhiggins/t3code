@@ -80,6 +80,7 @@ const LINK_SOURCES: Record<string, string> = {
   slack: "Slack",
   discord: "Discord",
   notion: "Notion",
+  google: "Google",
   granola: "Granola",
 };
 

@@ -12,6 +12,7 @@ import { ensureLinearThreadLinksSchema } from "../linear/threadLinksSchema.ts";
 import { ensureLinearAssignmentTriggerSchema } from "../linear/assignmentTriggerSchema.ts";
 import { ensureGitHubIssueThreadLinksSchema } from "../githubIssues/threadLinksSchema.ts";
 import { ensureNotionThreadLinksSchema } from "../notion/threadLinksSchema.ts";
+import { ensureGoogleThreadLinksSchema } from "../google/threadLinksSchema.ts";
 import { ensureGranolaThreadLinksSchema } from "../granola/threadLinksSchema.ts";
 import { ensureSlackThreadLinksSchema } from "../slack/threadLinksSchema.ts";
 import { ensureThreadLinkWatchesSchema } from "../threadLinkWatch/threadLinkWatchSchema.ts";
@@ -55,6 +56,7 @@ const layerSetup = Layer.effectDiscard(
     yield* ensureSlackThreadLinksSchema();
     yield* ensureDiscordThreadLinksSchema();
     yield* ensureNotionThreadLinksSchema();
+    yield* ensureGoogleThreadLinksSchema();
     yield* ensureGranolaThreadLinksSchema();
     yield* ensureThreadLinkWatchesSchema();
     yield* ensureMessageDraftsSchema();

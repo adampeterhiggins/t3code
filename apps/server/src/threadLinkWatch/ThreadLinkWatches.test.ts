@@ -1,4 +1,5 @@
 import {
+  type GoogleThreadLink,
   type OrchestrationV2ThreadShell,
   type SlackThreadContext,
   type SlackThreadLink,
@@ -20,7 +21,9 @@ import * as LinearApi from "../linear/LinearApi.ts";
 import * as LinearThreadLinks from "../linear/LinearThreadLinks.ts";
 import { liveThreadShell } from "../mcp/McpToolAccess.testkit.ts";
 import * as NotionApi from "../notion/NotionApi.ts";
+import * as GoogleApi from "../google/GoogleApi.ts";
 import * as NotionThreadLinks from "../notion/NotionThreadLinks.ts";
+import * as GoogleThreadLinks from "../google/GoogleThreadLinks.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import { runMigrations } from "../persistence/Migrations.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -73,6 +76,7 @@ const makeHarness = (settings: Parameters<typeof ServerSettings.layerTest>[0] = 
   const state = {
     link: slackLink("1.000100") as SlackThreadLink | undefined,
     text: "Review the plan",
+    googleLink: undefined as GoogleThreadLink | undefined,
     shell: liveThreadShell(THREAD_ID, { activeRunId: null }) as OrchestrationV2ThreadShell | null,
   };
   const none = { forThread: () => Effect.succeed(undefined) };
@@ -100,11 +104,25 @@ const makeHarness = (settings: Parameters<typeof ServerSettings.layerTest>[0] = 
         Layer.mock(GitHubIssueThreadLinks.GitHubIssueThreadLinks)(none),
         Layer.mock(DiscordThreadLinks.DiscordThreadLinks)(none),
         Layer.mock(NotionThreadLinks.NotionThreadLinks)(none),
+        Layer.mock(GoogleThreadLinks.GoogleThreadLinks)({
+          forThread: () => Effect.sync(() => state.googleLink),
+        }),
         Layer.mock(GranolaThreadLinks.GranolaThreadLinks)(none),
         Layer.mock(LinearApi.LinearApi)({}),
         Layer.mock(GitHubIssues.GitHubIssues)({}),
         Layer.mock(DiscordApi.DiscordApi)({}),
         Layer.mock(NotionApi.NotionApi)({}),
+        Layer.mock(GoogleApi.GoogleApi)({
+          getFile: ({ id }) =>
+            Effect.succeed({
+              id: "doc-1",
+              title: "Plan",
+              fileType: "doc",
+              url: id,
+              updatedAt: "2026-10-22T10:00:00.000Z",
+              markdown: state.text,
+            }),
+        }),
         Layer.mock(GranolaApi.GranolaApi)({}),
       ),
     ),
@@ -159,4 +177,28 @@ describe("ThreadLinkWatches", () => {
       expect(yield* watches.list).toEqual([]);
     }).pipe(Effect.provide(harness.layer));
   });
+});
+
+it.effect("watches Google content and comments at the linked source location", () => {
+  const h = makeHarness();
+  return Effect.gen(function* () {
+    h.state.googleLink = {
+      groupId: THREAD_ID,
+      threadIds: [THREAD_ID],
+      fileId: "doc-1",
+      fileType: "doc",
+      title: "Plan",
+      url: "https://docs.google.com/document/d/doc-1/edit#heading=h.price",
+      linkedAt: "2026-10-22T10:00:00.000Z",
+    };
+    const watches = yield* ThreadLinkWatches.ThreadLinkWatches;
+    const watch = yield* watches.watch(THREAD_ID, "google");
+    expect(watch.url).toBe(h.state.googleLink.url);
+    const [baseline] = yield* watches.list;
+    h.state.text += "\n\n## Comments\nPriya: Please revise pricing";
+    const read = yield* watches.readLink(THREAD_ID, "google");
+    expect(read._tag).toBe("read");
+    if (read._tag === "read") expect(read.snapshot.bodyHash).not.toBe(baseline!.baseline.bodyHash);
+    expect(yield* watches.unwatch(THREAD_ID, "google")).toBe(true);
+  }).pipe(Effect.provide(h.layer));
 });

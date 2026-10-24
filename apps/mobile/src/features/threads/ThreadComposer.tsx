@@ -76,6 +76,7 @@ import { useLinearIssuePicker } from "../../components/LinearIssuePickerSheet";
 import { useGitHubIssuePicker } from "../../components/GitHubIssuePickerSheet";
 import { useGranolaNotePicker } from "../../components/GranolaNotePickerSheet";
 import { useNotionPagePicker } from "../../components/NotionPagePickerSheet";
+import { useGoogleFilePicker } from "../../components/GoogleFilePickerSheet";
 import { useSlackMessagePicker } from "../../components/SlackMessagePickerSheet";
 import { useDiscordMessagePicker } from "../../components/DiscordMessagePickerSheet";
 import { useCheckoutPicker } from "../../components/CheckoutPickerSheet";
@@ -553,6 +554,10 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     draftKey: composerDraftKey,
   });
   const notionPagePicker = useNotionPagePicker({
+    environmentId: props.environmentId,
+    draftKey: composerDraftKey,
+  });
+  const googleFilePicker = useGoogleFilePicker({
     environmentId: props.environmentId,
     draftKey: composerDraftKey,
   });
@@ -1086,6 +1091,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                 onPickLinearIssue={linearIssuePicker.open}
                 onPickGitHubIssue={workspaceCwd ? gitHubIssuePicker.open : undefined}
                 onPickNotionPage={notionPagePicker.open}
+                onPickGoogleFile={googleFilePicker.open}
                 onPickGranolaNote={granolaNotePicker.open}
                 onPickSlackMessage={slackMessagePicker.open}
                 onPickDiscordMessage={discordMessagePicker.open}
@@ -1359,6 +1365,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                       onPickLinearIssue={linearIssuePicker.open}
                       onPickGitHubIssue={workspaceCwd ? gitHubIssuePicker.open : undefined}
                       onPickNotionPage={notionPagePicker.open}
+                      onPickGoogleFile={googleFilePicker.open}
                       onPickGranolaNote={granolaNotePicker.open}
                       onPickSlackMessage={slackMessagePicker.open}
                       onPickDiscordMessage={discordMessagePicker.open}
@@ -1424,6 +1431,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
       {slackMessagePicker.sheet}
       {discordMessagePicker.sheet}
       {notionPagePicker.sheet}
+      {googleFilePicker.sheet}
       {granolaNotePicker.sheet}
       {checkoutPicker.sheet}
       {repositoryPicker.sheet}

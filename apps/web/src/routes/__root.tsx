@@ -23,6 +23,7 @@ import { ThreadTabGroupNameDialogHost } from "../components/ThreadTabGroupNameDi
 import { ThreadGroupDialogHost } from "../components/ThreadGroupDialog";
 import { TranscriptExportDialogHost } from "../components/TranscriptExportDialog";
 import { NotionPagePickerHost } from "../components/chat/NotionPagePicker";
+import { GoogleFilePickerHost } from "../components/chat/GoogleFilePicker";
 import { GranolaNotePickerHost } from "../components/chat/GranolaNotePicker";
 import { SlackMessagePickerHost } from "../components/chat/SlackMessagePicker";
 import { DiscordMessagePickerHost } from "../components/chat/DiscordMessagePicker";
@@ -276,6 +277,7 @@ function RootRouteView() {
           <SlackMessagePickerHost />
           <DiscordMessagePickerHost />
           <NotionPagePickerHost />
+          <GoogleFilePickerHost />
           <GranolaNotePickerHost />
           <SlowRpcRequestToastCoordinator />
           <HostFreezeToastCoordinator />

@@ -38,6 +38,13 @@ import { pullRequestStatus } from "../pull-requests/pullRequestStatus";
 export type ComposerCommandItem =
   | {
       readonly id: string;
+      readonly type: "google-file";
+      readonly url: string;
+      readonly label: string;
+      readonly description: string;
+    }
+  | {
+      readonly id: string;
       readonly type: "pull-request";
       readonly pullRequest: PullRequestContextMetadata;
       readonly label: string;
@@ -140,6 +147,8 @@ const SKILL_SOURCE_SYMBOL_BY_KIND: Record<ProviderSkillSourceKind, AppSymbolName
 
 function itemIcon(item: ComposerCommandItem): AppSymbolName | null {
   switch (item.type) {
+    case "google-file":
+      return "doc.text";
     case "pull-request":
       return pullRequestStatus(item.pullRequest).icon;
     case "slash-command":
@@ -159,7 +168,7 @@ function itemIcon(item: ComposerCommandItem): AppSymbolName | null {
 function groupLabel(triggerKind: ComposerTriggerKind | null): string | null {
   switch (triggerKind) {
     case "pull-request":
-      return "Pull requests";
+      return "References";
     case "slash-command":
       return "Commands";
     case "skill":

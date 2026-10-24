@@ -278,6 +278,11 @@ export const DesktopQuickMessageAttachment = Schema.Union([
     label: Schema.String,
   }),
   Schema.Struct({
+    type: Schema.Literal("google-file"),
+    fileId: Schema.String,
+    label: Schema.String,
+  }),
+  Schema.Struct({
     type: Schema.Literal("granola-note"),
     noteId: Schema.String,
     label: Schema.String,

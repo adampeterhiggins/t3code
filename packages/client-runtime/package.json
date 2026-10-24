@@ -519,6 +519,10 @@
       "types": "./src/state/notion.ts",
       "default": "./src/state/notion.ts"
     },
+    "./state/google": {
+      "types": "./src/state/google.ts",
+      "default": "./src/state/google.ts"
+    },
     "./diff-count": {
       "types": "./src/diffCount.ts",
       "default": "./src/diffCount.ts"

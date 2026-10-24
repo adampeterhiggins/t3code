@@ -125,6 +125,7 @@ import { useAttachGitHubIssue } from "./GitHubIssuePicker";
 import { useAttachGranolaNote } from "./GranolaNotePicker";
 import { useAttachLinearIssue } from "./LinearIssuePicker";
 import { useAttachNotionPage } from "./NotionPagePicker";
+import { useAttachGoogleFile } from "./GoogleFilePicker";
 
 import { useCaptureThreadTabContext } from "./ThreadTabs";
 import { useCheckoutContextRecords } from "~/checkoutContextStore";
@@ -1425,6 +1426,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const attachCheckout = useAttachCheckout(selectedProvider);
   const attachLinearIssue = useAttachLinearIssue();
   const attachNotionPage = useAttachNotionPage();
+  const attachGoogleFile = useAttachGoogleFile();
   const attachGranolaNote = useAttachGranolaNote();
   const attachSlackMessage = useAttachSlackMessage();
   const attachDiscordMessage = useAttachDiscordMessage();
@@ -2352,6 +2354,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         if (item.type === "linear-issue") void attachLinearIssue(routeThreadRef, item.issueId);
         if (item.type === "github-issue") void attachGitHubIssue(routeThreadRef, item.url);
         if (item.type === "notion-page") void attachNotionPage(routeThreadRef, item.pageId);
+        if (item.type === "google-file") void attachGoogleFile(routeThreadRef, item.fileId);
         if (item.type === "granola-note") void attachGranolaNote(routeThreadRef, item.noteId);
         if (item.type === "slack-message") {
           void attachSlackMessage(routeThreadRef, slackGetThreadInput(item.message, "thread"));

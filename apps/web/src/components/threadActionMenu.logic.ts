@@ -46,6 +46,7 @@ export type ThreadActionMenuId =
   | "link-slack-thread"
   | "link-discord-thread"
   | "link-notion-page"
+  | "link-google-file"
   | "link-granola-note"
   | "link-github-issue"
   | "archive"
@@ -149,6 +150,7 @@ export interface ThreadActionMenuState {
     readonly slack: boolean;
     readonly discord: boolean;
     readonly notion: boolean;
+    readonly google?: boolean;
     readonly granola: boolean;
   };
 }
@@ -375,6 +377,9 @@ export function buildThreadActionMenuItems(
           : []),
         ...(state.integrations?.notion
           ? [{ id: "link-notion-page" as const, label: "Notion page…", icon: "notion" }]
+          : []),
+        ...(state.integrations?.google
+          ? [{ id: "link-google-file" as const, label: "Google page…", icon: "google" }]
           : []),
         ...(state.integrations?.granola
           ? [{ id: "link-granola-note" as const, label: "Granola note…", icon: "granola" }]

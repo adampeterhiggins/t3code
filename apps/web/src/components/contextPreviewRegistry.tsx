@@ -64,6 +64,7 @@ export interface ContextPreviewPropsByKind {
   "slack-thread": LinkedObjectPreviewProps;
   "discord-thread": LinkedObjectPreviewProps;
   "notion-page": LinkedObjectPreviewProps;
+  "google-file": LinkedObjectPreviewProps;
   "granola-note": LinkedObjectPreviewProps;
   thread: ThreadPreviewProps;
   subagent: SubagentPreviewProps;
@@ -193,6 +194,7 @@ export const CONTEXT_PRESENTATION_DEFINITIONS: ContextPresentationDefinitions = 
   "slack-thread": { capabilities: COMPACT, preview: linkedObjectPreview },
   "discord-thread": { capabilities: COMPACT, preview: linkedObjectPreview },
   "notion-page": { capabilities: COMPACT, preview: linkedObjectPreview },
+  "google-file": { capabilities: COMPACT, preview: linkedObjectPreview },
   "granola-note": { capabilities: COMPACT, preview: linkedObjectPreview },
   thread: {
     capabilities: COMPACT,

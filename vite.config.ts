@@ -358,7 +358,7 @@ export default defineConfig({
       {
         files: ["apps/web/src/**"],
         excludeFiles: [
-          "apps/web/src/components/contextPresentationRegistry.tsx",
+          "apps/web/src/components/contextPreviewRegistry.tsx",
           "apps/web/src/components/contextPreviews.tsx",
           "**/*.{test,spec}.{ts,tsx}",
         ],

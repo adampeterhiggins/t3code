@@ -273,6 +273,13 @@ export function formatComposerContextProviderPayload(record: KnownComposerContex
       return `name: ${record.name}`;
     case "thread-tab":
       return [`chat: ${record.title}`, `threadId: ${record.threadId}`, record.summary].join("\n");
+    case "google-file":
+      return [
+        `Google ${record.fileType}: ${record.title}`,
+        `url: ${record.url}`,
+        "Cite this source using a Markdown link to its URL; headings and sheet ranges in the content have location-specific citation links.",
+        record.markdown,
+      ].join("\n");
     case "notion-page":
       return [`notion page: ${record.title}`, `url: ${record.url}`, record.markdown].join("\n");
     case "granola-note":

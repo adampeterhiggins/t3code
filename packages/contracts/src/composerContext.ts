@@ -17,6 +17,7 @@ import { LINEAR_ISSUE_MARKDOWN_MAX_CHARS, LinearObjectType } from "./linear.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import { GRANOLA_NOTE_MARKDOWN_MAX_CHARS } from "./granola.ts";
 import { NOTION_PAGE_MARKDOWN_MAX_CHARS } from "./notion.ts";
+import { GOOGLE_FILE_MARKDOWN_MAX_CHARS } from "./google.ts";
 import { SLACK_THREAD_MARKDOWN_MAX_CHARS } from "./slack.ts";
 import { DISCORD_THREAD_MARKDOWN_MAX_CHARS } from "./discord.ts";
 
@@ -42,6 +43,7 @@ export const COMPOSER_CONTEXT_KINDS = [
   "slack-thread",
   "discord-thread",
   "notion-page",
+  "google-file",
   "granola-note",
   "thread",
   "subagent",
@@ -486,6 +488,18 @@ export const NotionPageContextRecord = Schema.Struct({
   markdown: BoundedString(NOTION_PAGE_MARKDOWN_MAX_CHARS),
 });
 export type NotionPageContextRecord = typeof NotionPageContextRecord.Type;
+export const GoogleFileContextRecord = Schema.Struct({
+  ...recordBase,
+  kind: Schema.Literal("google-file"),
+  fileType: Schema.Literals(["doc", "sheet"]),
+  location: Schema.optional(Schema.String),
+  grid: Schema.optional(Schema.Array(Schema.Array(Schema.String))),
+  fileId: TrimmedNonEmptyString.check(Schema.isMaxLength(128)),
+  title: ShortString,
+  url: ShortString,
+  markdown: BoundedString(GOOGLE_FILE_MARKDOWN_MAX_CHARS),
+});
+export type GoogleFileContextRecord = typeof GoogleFileContextRecord.Type;
 
 export const GranolaNoteContextRecord = Schema.Struct({
   ...recordBase,
@@ -599,6 +613,7 @@ const KnownComposerContextRecordGroupB = Schema.Union([
   SlackThreadContextRecord,
   DiscordThreadContextRecord,
   NotionPageContextRecord,
+  GoogleFileContextRecord,
   GranolaNoteContextRecord,
   ThreadContextRecord,
   SubagentContextRecord,

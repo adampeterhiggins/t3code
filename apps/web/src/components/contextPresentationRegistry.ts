@@ -85,6 +85,10 @@ const DEFINITIONS = [
     capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
   },
   {
+    kind: "google-file",
+    capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
+  },
+  {
     kind: "granola-note",
     capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
   },

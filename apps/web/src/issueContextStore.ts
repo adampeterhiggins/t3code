@@ -5,6 +5,7 @@ import { resolveStorage } from "./lib/storage";
 
 import type {
   NotionPageContextRecord,
+  GoogleFileContextRecord,
   GranolaNoteContextRecord,
   PromptLinkContextRecord,
   GitHubIssueContextRecord,
@@ -31,6 +32,7 @@ export type IssueContextRecord =
   | SlackThreadContextRecord
   | DiscordThreadContextRecord
   | NotionPageContextRecord
+  | GoogleFileContextRecord
   | GranolaNoteContextRecord
   | SubagentContextRecord
   | PromptLinkContextRecord
