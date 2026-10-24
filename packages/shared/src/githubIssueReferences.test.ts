@@ -1,3 +1,4 @@
+import { SourceControlProviderKind } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -41,13 +42,16 @@ describe("githubRepositoryUrl", () => {
   it("is the repository's web URL for GitHub projects only", () => {
     expect(
       githubRepositoryUrl({
-        provider: "github",
+        provider: SourceControlProviderKind.make("github"),
         canonicalKey: "github.com/acme/api",
         displayName: "Acme/API",
       }),
     ).toBe("https://github.com/Acme/API");
     expect(
-      githubRepositoryUrl({ provider: "gitlab", canonicalKey: "gitlab.com/acme/api" }),
+      githubRepositoryUrl({
+        provider: SourceControlProviderKind.make("gitlab"),
+        canonicalKey: "gitlab.com/acme/api",
+      }),
     ).toBeNull();
     expect(githubRepositoryUrl(null)).toBeNull();
   });
@@ -55,7 +59,7 @@ describe("githubRepositoryUrl", () => {
   it("prefers the web URL of the repository gh opens pull requests in", () => {
     expect(
       githubRepositoryUrl({
-        provider: "github",
+        provider: SourceControlProviderKind.make("github"),
         canonicalKey: "github.com/acme/api",
         displayName: "acme/api",
         webUrl: "https://github.com/me/api",

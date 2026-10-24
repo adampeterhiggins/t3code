@@ -4,7 +4,7 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { discordThreadContextRecord } from "@t3tools/shared/integrationContextRecords";
+import { discordThreadContextRecord } from "@t3tools/source-control-definitions/integrationContextRecords";
 import type {
   DiscordGetThreadInput,
   DiscordMessageSummary,

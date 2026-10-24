@@ -6,7 +6,17 @@ import type { GitHubRefType } from "@t3tools/contracts";
 
 import { GitHubRefIcon } from "../gitHubRefPresentation";
 
+import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
+import { sourceControlIcon } from "../../sourceControlPresentation";
+
 const MARKDOWN_LINK_FAVICON_CLASS_NAME = "block size-full shrink-0 select-none";
+
+function sourceControlHostIcon(host: string): ReactNode {
+  const definition = sourceControlClients.findByPublicDomain(host);
+  if (definition === undefined) return null;
+  const Icon = sourceControlIcon(definition);
+  return <Icon className={MARKDOWN_LINK_FAVICON_CLASS_NAME} />;
+}
 
 const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon({
   host,
@@ -17,6 +27,7 @@ const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon({
 }) {
   const brand = toolActivityBrandMark({ _tag: "website", pageUrl: `https://${host}` });
   const mark = brand ? INTEGRATION_ICONS[brand] : null;
+  const brandIcon = sourceControlHostIcon(host);
   return (
     <span
       className="ms-[0.25em] me-[0.2em] inline-flex size-[14px] [vertical-align:-0.125em]"
@@ -32,6 +43,8 @@ const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon({
         >
           <path d={mark.path} transform={"transform" in mark ? mark.transform : undefined} />
         </svg>
+      ) : brandIcon ? (
+        brandIcon
       ) : (
         <GlobeIcon className={MARKDOWN_LINK_FAVICON_CLASS_NAME} />
       )}

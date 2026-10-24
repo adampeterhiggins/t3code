@@ -3,7 +3,7 @@ import {
   composerObjectLinkChipLabel,
   composerObjectLinkNoun,
   findComposerObjectLinks,
-} from "@t3tools/shared/composerObjectLinks";
+} from "@t3tools/source-control-definitions/composerObjectLinks";
 import { Extension } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { type EditorState, Plugin, PluginKey } from "@tiptap/pm/state";

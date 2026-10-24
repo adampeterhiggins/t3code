@@ -27,6 +27,7 @@ export function PullRequestGuideTab({
   workspaceRoot,
   active,
   canComment,
+  rangeComments,
   onAskAboutLines,
   canSaveAgentDraft,
   onAskAboutStop,
@@ -40,6 +41,7 @@ export function PullRequestGuideTab({
   workspaceRoot: string;
   active: boolean;
   canComment: boolean;
+  rangeComments: boolean;
   /** Opens an agent thread about lines of the change. Null where no thread can be opened. */
   onAskAboutLines:
     | ((comment: ReviewCommentContext, request: string, delivery: PullRequestAgentDelivery) => void)
@@ -68,12 +70,14 @@ export function PullRequestGuideTab({
       ? null
       : {
           canComment,
+          rangeComments,
           pending,
-          onComment: ({ path, oldPath, position, body }) =>
+          onComment: ({ path, oldPath, position, startPosition, body }) =>
             addComment(reviewKey, {
               id: nextPendingReviewCommentId(),
               path,
               ...(oldPath === null ? {} : { oldPath }),
+              ...(startPosition === undefined ? {} : { startPosition }),
               position,
               body,
             }),

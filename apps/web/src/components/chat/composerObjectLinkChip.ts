@@ -2,8 +2,8 @@ import type { ThreadId, UnreadLinkContextRecord } from "@t3tools/contracts";
 import {
   type ComposerObjectLink,
   locateComposerObjectLink,
-} from "@t3tools/shared/composerObjectLinks";
-import { unreadLinkContextRecord } from "@t3tools/shared/integrationContextRecords";
+} from "@t3tools/source-control-definitions/composerObjectLinks";
+import { unreadLinkContextRecord } from "@t3tools/source-control-definitions/integrationContextRecords";
 
 import { useIssueContextStore } from "~/issueContextStore";
 import {

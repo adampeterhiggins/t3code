@@ -1,5 +1,5 @@
 import { EnvironmentId, type SlackThreadContext } from "@t3tools/contracts";
-import { parseComposerObjectLink } from "@t3tools/shared/composerObjectLinks";
+import { parseComposerObjectLink } from "@t3tools/source-control-definitions/composerObjectLinks";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";

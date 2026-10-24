@@ -27,6 +27,7 @@ import {
 
 import {
   buildAddSelectionToAgentHandoff,
+  buildResolveConflictsPrompt,
   resolveThreadPanelPullRequestAction,
   buildAskAboutGuideStopHandoff,
   buildAskAboutPullRequestHandoff,
@@ -58,8 +59,6 @@ import {
   mergePullRequestThreadComments,
   orderPullRequestComments,
   groupPullRequestConversation,
-  pullRequestActionMenuHasGroup,
-  pullRequestActionNeedsHostRefresh,
   pullRequestCheckoutCommand,
   checkoutFailureDescription,
   readPullRequestDetailSnapshot,
@@ -72,6 +71,7 @@ import {
   resolveBaseFreshness,
   buildPullRequestTimeline,
   writePullRequestDetailSnapshot,
+  readableFailure,
 } from "./pullRequestDetail.logic";
 import type { ReviewCommentContext } from "~/reviewCommentContext";
 
@@ -103,7 +103,7 @@ describe("pull request checkout commands", () => {
       remoteName: "origin",
       remoteUrl: "git@github.com:acme/web.git",
     },
-    provider,
+    provider: SourceControlProviderKind.make(provider),
   });
 
   it("uses a matching enterprise identity and rejects an explicit host mismatch", () => {
@@ -128,8 +128,9 @@ describe("pull request checkout commands", () => {
 
 const TIMELINE_SOURCE: Pick<
   PullRequestDetailView,
-  "createdAt" | "author" | "commits" | "comments" | "mergedAt" | "closedAt"
+  "provider" | "createdAt" | "author" | "commits" | "comments" | "mergedAt" | "closedAt"
 > = {
+  provider: SourceControlProviderKind.make("github"),
   createdAt: "2026-07-01T00:00:00Z",
   author: { login: "octocat", name: null, avatarUrl: null },
   commits: [
@@ -429,6 +430,19 @@ describe("pull request timeline", () => {
     });
     expect(events[0]?.id).toBe("merged");
     expect(events.some((event) => event.id === "closed")).toBe(false);
+  });
+
+  it("names the change request in its host's own term", () => {
+    const titles = (provider: string) =>
+      buildPullRequestTimeline({
+        ...TIMELINE_SOURCE,
+        provider: SourceControlProviderKind.make(provider),
+        closedAt: "2026-07-04T00:00:00Z",
+      })
+        .filter((event) => event.kind === "opened" || event.kind === "closed")
+        .map((event) => event.title);
+    expect(titles("github")).toEqual(["Pull request closed", "opened this pull request"]);
+    expect(titles("gitlab")).toEqual(["Merge request closed", "opened this merge request"]);
   });
 
   it("groups conversation sections without crossing commits or PR updates", () => {
@@ -739,6 +753,20 @@ describe("fix findings handoff", () => {
     expect(texts).not.toContain("reviewer: finding 0");
     expect(handoff.prompt).toContain("typecheck");
     expect(handoff.prompt).toContain("6 further findings were omitted");
+  });
+
+  it("names a GitLab merge request as one", () => {
+    const handoff = buildFixFindingsHandoff({
+      ...base,
+      title: "Add the page",
+      url: "https://gitlab.com/pingdotgg/t3code/-/merge_requests/42",
+      reviewThreads: [],
+      checks: [],
+    });
+    expect(handoff.prompt).toContain("Fix the actionable findings on MR #42");
+    expect(handoff.prompt).toContain("The MR branch is `feat/page`");
+    expect(handoff.prompt).toContain("inspect the merge request and its failing checks");
+    expect(handoff.prompt).not.toMatch(/\bPR\b|pull request/u);
   });
 });
 
@@ -1184,6 +1212,23 @@ describe("buildAskAboutGuideStopHandoff", () => {
     expect(handoff.prompt).toBe("");
     expect(handoff.reviewComments[1]?.text).not.toContain("judge");
     expect(handoff.reviewComments[1]?.text).not.toContain("lines it showed");
+  });
+
+  it("explains a GitLab merge request in its own term", () => {
+    const handoff = buildExplainPullRequestHandoff({
+      ...base,
+      title: "Add the page",
+      url: "https://gitlab.com/pingdotgg/t3code/-/merge_requests/42",
+    });
+    expect(handoff.prompt).toBe("Explain this merge request.");
+    expect(handoff.reviewComments[0]?.instructions).toContain("The merge request is #42");
+    expect(handoff.reviewComments[0]?.instructions).not.toContain("pull request");
+    expect(
+      buildResolveConflictsPrompt({
+        ...base,
+        url: "https://gitlab.com/pingdotgg/t3code/-/merge_requests/42",
+      }),
+    ).toMatch(/^MR #42 /u);
   });
 });
 
@@ -2003,5 +2048,20 @@ describe("pasting a link to lines of a pull request file", () => {
     expect(attach(`diff-${pageHash}`)).toBe(null);
     expect(attach(`diff-${"0".repeat(64)}L1`)).toBe(null);
     expect(attach(`diff-${pageHash}R40`)).toBe(null);
+  });
+});
+
+describe("readableFailure", () => {
+  it("replaces a host tool's bare failure with the hint, for every host", () => {
+    for (const message of [
+      "GitHub CLI failed.",
+      "Azure DevOps API failed",
+      "Forgejo command failed",
+    ]) {
+      expect(readableFailure(new Error(message), "Try again.")).toBe("Try again.");
+    }
+    expect(readableFailure(new Error("Branch is protected."), "Try again.")).toBe(
+      "Branch is protected.",
+    );
   });
 });

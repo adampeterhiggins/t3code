@@ -4,8 +4,8 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { slackThreadContextRecord } from "@t3tools/shared/integrationContextRecords";
-import { parseComposerObjectLink } from "@t3tools/shared/composerObjectLinks";
+import { slackThreadContextRecord } from "@t3tools/source-control-definitions/integrationContextRecords";
+import { parseComposerObjectLink } from "@t3tools/source-control-definitions/composerObjectLinks";
 import type {
   EnvironmentId,
   ScopedThreadRef,

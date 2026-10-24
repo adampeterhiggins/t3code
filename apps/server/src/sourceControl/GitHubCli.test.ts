@@ -58,6 +58,15 @@ it.effect("fork context reads use the selected host credential without requiring
     assert.deepEqual(hosts, ["github.com"]);
     assert.equal(calls.length, 1);
     assert.equal(calls[0]?.command, "gh");
+    for (const stderr of [
+      "GraphQL: Could not resolve to an issue or pull request with the number of 333333.",
+      "the 'acme/web' repository has disabled issues",
+      "GraphQL: Could not resolve to a PullRequest with the number of 333333.",
+    ]) {
+      assert.equal(calls[0]?.classifyFailure?.(stderr), "not-found");
+    }
+    assert.equal(calls[0]?.classifyFailure?.("run gh auth login"), "authentication");
+    assert.equal(calls[0]?.classifyFailure?.("unexpected error"), null);
     assert.equal(calls[0]?.env?.GH_TOKEN, "test-selected-account");
   }),
 );

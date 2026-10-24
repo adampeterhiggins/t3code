@@ -8,7 +8,7 @@ import {
 } from "./runtime.ts";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 
-export { slackThreadContextRecord } from "@t3tools/shared/integrationContextRecords";
+export { slackThreadContextRecord } from "@t3tools/source-control-definitions/integrationContextRecords";
 
 export function createSlackEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,

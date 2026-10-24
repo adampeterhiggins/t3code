@@ -258,7 +258,7 @@ describe("VcsProcess.run", () => {
       }),
   );
 
-  it.effect("bounds a synthetic burst of GitHub API processes", () =>
+  it.effect("bounds a burst of processes that share a concurrency key", () =>
     Effect.gen(function* () {
       const gate = yield* Deferred.make<void>();
       const starts = yield* Queue.unbounded<number>();
@@ -294,10 +294,11 @@ describe("VcsProcess.run", () => {
       const burst = yield* Effect.all(
         Array.from({ length: 32 }, (_, index) =>
           service.run({
-            operation: `synthetic.github.${index}`,
-            command: "gh",
+            operation: `synthetic.cli.${index}`,
+            command: "host-cli",
             args: ["api", "user"],
             cwd: "/workspace",
+            concurrency: { key: "host-cli", limit: 4 },
           }),
         ),
         { concurrency: "unbounded" },
@@ -391,6 +392,30 @@ describe("VcsProcess.run", () => {
     }).pipe(provideLive),
   );
 
+  it.effect("reads a failure with the command's own classifier and names it in its terms", () =>
+    Effect.gen(function* () {
+      const fail = (input: Partial<VcsProcess.VcsProcessInput>) =>
+        run({
+          operation: "test.classify",
+          command: "node",
+          args: ["-e", "process.stderr.write('HTTP 404: 404 Not Found'); process.exit(1)"],
+          cwd: process.cwd(),
+          ...input,
+        }).pipe(Effect.flip);
+
+      expect(yield* fail({})).toMatchObject({
+        failureKind: "command-failed",
+        detail: "Process exited with a non-zero status.",
+      });
+      expect(
+        yield* fail({
+          classifyFailure: (stderr) => (stderr.includes("404") ? "not-found" : null),
+          notFoundDetail: "Merge request not found.",
+        }),
+      ).toMatchObject({ failureKind: "not-found", detail: "Merge request not found." });
+    }).pipe(provideLive),
+  );
+
   it.effect("retains spawn causes without exposing process arguments in the error message", () =>
     Effect.gen(function* () {
       const secretArgument = "--token=super-secret-token";
@@ -464,15 +489,4 @@ describe("VcsProcess.run", () => {
       expect(Buffer.concat(chunks).toString()).toBe("x".repeat(131072) + "\0S final\0");
     }).pipe(provideLive),
   );
-});
-
-describe("VcsProcess.classifyNonZeroExit", () => {
-  it("reads gh's missing issue and pull request errors as not found", () => {
-    for (const stderr of [
-      "GraphQL: Could not resolve to an issue or pull request with the number of 333333.",
-      "the 'acme/web' repository has disabled issues",
-    ]) {
-      expect(VcsProcess.classifyNonZeroExit("gh", stderr)).toBe("not-found");
-    }
-  });
 });

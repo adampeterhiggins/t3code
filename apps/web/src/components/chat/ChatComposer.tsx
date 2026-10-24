@@ -3,7 +3,7 @@ import {
   findTypedComposerObjectLink,
   type ComposerObjectLink,
   parseComposerObjectLink,
-} from "@t3tools/shared/composerObjectLinks";
+} from "@t3tools/source-control-definitions/composerObjectLinks";
 
 import {
   objectLinkChipDestination,
@@ -31,7 +31,7 @@ import {
   type ResolvedComposerObjectLink,
   useResolveComposerObjectLink,
 } from "./useResolveComposerObjectLink";
-import { unreadLinkContextRecord } from "@t3tools/shared/integrationContextRecords";
+import { unreadLinkContextRecord } from "@t3tools/source-control-definitions/integrationContextRecords";
 import { Button } from "../ui/button";
 import { ComposerAttachMenu, openComposerAttachPicker } from "./ComposerAttachMenu";
 import { ComposerModelChipPicker } from "./ComposerModelChipPicker";

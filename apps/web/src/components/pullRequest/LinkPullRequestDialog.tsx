@@ -1,3 +1,4 @@
+import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import {
   type LinkCandidate,
   planLinkSelection,
@@ -8,12 +9,12 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 import {
   threadPullRequestKeyOf,
   visibleThreadPullRequests,
-} from "@t3tools/shared/threadPullRequests";
+} from "@t3tools/client-runtime/thread-pull-requests";
 import { useAtomValue } from "@effect/atom-react";
 import { type ReactNode, useState } from "react";
 
 import { cn, isMacPlatform } from "~/lib/utils";
-import { parseChangeRequestUrl } from "~/lib/openPullRequestLink";
+
 import { useProjects, useServerConfigs, useThreadShell } from "~/state/entities";
 import { usePullRequestLinking } from "~/hooks/usePullRequestLinking";
 import { usePullRequestList } from "~/state/pullRequests";
@@ -128,7 +129,9 @@ function LinkPullRequestPicker({
       }));
     }
     const single = thread.linkedPullRequest;
-    const parsed = single ? parseChangeRequestUrl(single.url) : null;
+    const parsed = single
+      ? (sourceControlClients.parseChangeRequestUrl(single.url)?.link ?? null)
+      : null;
     if (!single || parsed === null) return [];
     return [
       {

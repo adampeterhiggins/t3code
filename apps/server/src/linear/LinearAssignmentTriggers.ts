@@ -5,7 +5,7 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
-import { linearIssueContextRecord } from "@t3tools/shared/integrationContextRecords";
+import { linearIssueContextRecord } from "@t3tools/source-control-definitions/integrationContextRecords";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";

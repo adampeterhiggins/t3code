@@ -1015,7 +1015,7 @@ provider. An **Open Linear links in** setting can send issue links to the Linear
 
 A pasted link to a Linear project, document, or initiative becomes a `linear-object` chip
 ([user guide](user/linear.md#projects-documents-and-initiatives)). The parser reads the 12-character slug id at the end of
-the URL's name segment ([`composerObjectLinks.ts`](../packages/shared/src/composerObjectLinks.ts)),
+the URL's name segment ([`composerObjectLinks.ts`](../packages/source-control-definitions/src/composerObjectLinks.ts)),
 which Linear's API accepts in place of the UUID, and `linear.getObject` renders the object to
 markdown ([`LinearApi.ts`](../apps/server/src/linear/LinearApi.ts)). Agents can attach the same
 links through `contextLinks` and read them with `read_context_link`.
@@ -1573,7 +1573,7 @@ previews, and copies as the full URL. Link text the writer chose is left alone. 
 is not one of these: it names the message only when Slack is on and connected (see
 [Slack messages and threads](#slack-messages-and-threads)).
 
-Code: `packages/shared/src/composerObjectLinks.ts`,
+Code: `packages/source-control-definitions/src/composerObjectLinks.ts`,
 `apps/web/src/components/chat/useResolveComposerObjectLink.ts`, and `convertObjectLinks` in
 `apps/web/src/components/chat/ChatComposer.tsx`; GitHub refs are read in
 `apps/server/src/githubIssues/gitHubRefs.ts`. User guide:
@@ -1607,7 +1607,7 @@ attached to the thread as context or through a linked pull request. Web, desktop
 fetch the exact number even when it is outside the recent PR list. Suggestions include the
 repository name, and identical numbers in different repositories remain separate choices.
 
-Code: [repository scoping and matching](../packages/shared/src/composerPullRequestMatches.ts),
+Code: [repository scoping and matching](../packages/source-control-definitions/src/composerPullRequestMatches.ts),
 [web composer](../apps/web/src/components/chat/useComposerPullRequestItems.ts), and
 [mobile composer](../apps/mobile/src/state/queries.ts).
 
@@ -1955,8 +1955,8 @@ search syntax, newest 20) and `search_notion_pages` (pages shared with the conne
 to read, and refuse while the integration is turned off.
 
 Code: [`McpContextLinks.ts`](../apps/server/src/mcp/McpContextLinks.ts), the link parser in
-[`composerObjectLinks.ts`](../packages/shared/src/composerObjectLinks.ts), and the chip records in
-[`integrationContextRecords.ts`](../packages/shared/src/integrationContextRecords.ts). User guide:
+[`composerObjectLinks.ts`](../packages/source-control-definitions/src/composerObjectLinks.ts), and the chip records in
+[`integrationContextRecords.ts`](../packages/source-control-definitions/src/integrationContextRecords.ts). User guide:
 [agent-access.md](./user/agent-access.md#attach-links-as-context).
 
 ## Agents start threads from pull requests

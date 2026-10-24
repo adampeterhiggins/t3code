@@ -1,4 +1,8 @@
 import {
+  capitalizeTerm,
+  sourceControlClients,
+} from "@t3tools/client-runtime/source-control-clients";
+import {
   COMPOSER_CONTEXT_REVIEW_DIFF_MAX_CHARS,
   COMPOSER_CONTEXT_REVIEW_TEXT_MAX_CHARS,
 } from "@t3tools/contracts";
@@ -25,7 +29,7 @@ import type {
   RepositoryContextRecord,
 } from "@t3tools/contracts";
 import { upgradeLegacyContextMessage } from "@t3tools/shared/composerContextLegacy";
-import { parseChangeRequestUrl } from "@t3tools/shared/changeRequestUrl";
+
 import { encodeComposerContextFragment } from "@t3tools/shared/composerContextClipboard";
 import {
   collectComposerContextReferences,
@@ -73,7 +77,7 @@ export function reviewCommentContextLabel(comment: ReviewCommentPresentation): s
   const pullRequestNumber = pullRequestContextNumber(comment);
   if (isPullRequestSummaryContext(comment) && pullRequestNumber !== null) {
     const repository = comment.pullRequest
-      ? parseChangeRequestUrl(comment.pullRequest.url)?.repository
+      ? sourceControlClients.parseChangeRequestUrl(comment.pullRequest.url)?.link.repository
       : undefined;
     return `${repository ?? ""}#${pullRequestNumber}`;
   }
@@ -116,9 +120,12 @@ export function pullRequestContextDisplayState(
 }
 
 export function pullRequestContextKindLabel(comment: ReviewCommentPresentation): string {
+  const url = comment.pullRequest?.url;
+  const host = url === undefined ? null : sourceControlClients.findByChangeRequestUrl(url);
+  const term = (host ?? sourceControlClients.get(undefined)).changeRequest.singular;
   const state = pullRequestContextDisplayState(comment);
-  if (state === null) return "Pull request";
-  return `${state[0]!.toUpperCase()}${state.slice(1)} pull request`;
+  if (state === null) return capitalizeTerm(term);
+  return `${capitalizeTerm(state)} ${term}`;
 }
 
 export function previewAnnotationContextLabel(annotation: PreviewAnnotationPayload): string {

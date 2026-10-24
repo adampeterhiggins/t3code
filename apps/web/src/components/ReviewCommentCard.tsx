@@ -1,3 +1,4 @@
+import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { ChevronDownIcon, ExternalLinkIcon } from "lucide-react";
 import type { ReactNode } from "react";
@@ -5,7 +6,7 @@ import type { ReactNode } from "react";
 import { useLinkClickHandler } from "~/browser/useOpenLink";
 import { cn } from "~/lib/utils";
 import { reviewCommentCodeLines, type ReviewCommentContext } from "~/reviewCommentContext";
-import { parseChangeRequestUrl } from "@t3tools/shared/changeRequestUrl";
+
 import { PULL_REQUEST_STATE_PRESENTATION } from "./pullRequest/pullRequestIcons";
 import { PullRequestActorAvatar } from "./pullRequest/pullRequestPresentation";
 
@@ -38,7 +39,8 @@ function PullRequestHeader({
 }) {
   const state = pullRequest.state === "open" && pullRequest.isDraft ? "draft" : pullRequest.state;
   const { Icon, toneClassName } = PULL_REQUEST_STATE_PRESENTATION[state];
-  const repository = parseChangeRequestUrl(pullRequest.url)?.repository ?? "";
+  const repository =
+    sourceControlClients.parseChangeRequestUrl(pullRequest.url)?.link.repository ?? "";
   return (
     <div className="flex min-w-0 items-center gap-1.5 border-b border-border px-2.5 py-1.5 text-xs">
       <Icon aria-hidden className={cn("size-3.5 shrink-0", toneClassName)} />

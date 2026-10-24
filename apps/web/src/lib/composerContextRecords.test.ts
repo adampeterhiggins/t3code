@@ -460,6 +460,38 @@ describe("composerContextRecords", () => {
   });
 });
 
+describe("pullRequestContextKindLabel", () => {
+  const comment = (url: string, isDraft: boolean) => ({
+    id: "pull-request-context:7",
+    sectionId: "pull-request:7",
+    sectionTitle: "PR #7",
+    filePath: "PR #7",
+    startIndex: 0,
+    endIndex: 0,
+    rangeLabel: "Title",
+    text: "",
+    diff: "",
+    pullRequest: {
+      number: 7,
+      title: "Title",
+      url,
+      headBranch: "feature",
+      baseBranch: "main",
+      state: "open" as const,
+      isDraft,
+    },
+  });
+
+  it("names the change request the way its host does", () => {
+    expect(pullRequestContextKindLabel(comment("https://github.com/acme/app/pull/7", false))).toBe(
+      "Open pull request",
+    );
+    expect(
+      pullRequestContextKindLabel(comment("https://gitlab.com/acme/app/-/merge_requests/7", true)),
+    ).toBe("Draft merge request");
+  });
+});
+
 describe("producer ids that do not fit the grammar", () => {
   it("folds review comment ids and keeps the raw id in the draft shape", () => {
     const record = reviewCommentContextRecord({

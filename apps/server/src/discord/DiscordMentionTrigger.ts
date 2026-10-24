@@ -10,7 +10,7 @@ import {
   type ServerSettings,
 } from "@t3tools/contracts";
 import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
-import { discordThreadContextRecord } from "@t3tools/shared/integrationContextRecords";
+import { discordThreadContextRecord } from "@t3tools/source-control-definitions/integrationContextRecords";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";

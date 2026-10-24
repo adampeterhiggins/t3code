@@ -433,6 +433,21 @@ const ids = (items: ReadonlyArray<Record<string, any>>, key: string) =>
   items.map((item) => item[key]);
 
 describe("query toolkit", () => {
+  it.effect("finds the same linked pull request by URL and repository number", () =>
+    Effect.gen(function* () {
+      yield* seed;
+      const byUrl = yield* structured("get_pull_request", {
+        url: "https://github.com/acme/web/pull/12/files",
+      });
+      const byNumber = yield* structured("get_pull_request", {
+        repository: "acme/web",
+        number: 12,
+      });
+      expect(byUrl.links).toHaveLength(1);
+      expect(byUrl.links).toEqual(byNumber.links);
+    }).pipe(Effect.provide(TestLayer)),
+  );
+
   it.effect("marks every tool read-only", () =>
     Effect.gen(function* () {
       const server = yield* McpServer.McpServer;

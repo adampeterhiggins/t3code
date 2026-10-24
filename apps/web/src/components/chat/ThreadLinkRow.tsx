@@ -1,7 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { threadLinkWatchFor } from "@t3tools/client-runtime/state/threadLinkWatches";
 import type { ScopedThreadRef, ThreadLinkKind } from "@t3tools/contracts";
-import { parseComposerObjectLink } from "@t3tools/shared/composerObjectLinks";
+import { parseComposerObjectLink } from "@t3tools/source-control-definitions/composerObjectLinks";
 import { EyeIcon, EyeOffIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
