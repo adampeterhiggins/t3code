@@ -198,7 +198,10 @@ function GoogleFilePickerDialog({
                           if (picked._tag === "Success" && picked.value) closePicker();
                         }}
                       >
-                        {<GoogleSourceIcon fileType={page.fileType} />}
+                        <GoogleSourceIcon
+                          fileType={page.fileType}
+                          className="size-4 shrink-0 text-muted-foreground"
+                        />
                         <LinkedObjectLinkPreview
                           environmentId={threadRef.environmentId}
                           threadRef={threadRef}
