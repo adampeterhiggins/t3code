@@ -14,7 +14,7 @@ A headless environment can set `T3CODE_GOOGLE_CLIENT_ID` and `T3CODE_GOOGLE_CLIE
 
 ## Attach and cite sources
 
-Paste a Google Drive, Docs, Sheets, Slides or Calendar event link into the web or desktop composer, choose **Google Drive & Calendar** from the paperclip menu, or search the **Google** tab after typing `#`. The command palette also offers **Attach Google file or event**. On mobile, use the attachment menu or search Google files and events with `#`.
+Paste a Google Drive, Docs, Sheets, Slides or Calendar event link into the web or desktop composer, choose **Google** from the paperclip menu, or search the **Google** tab after typing `#`. The command palette also offers **Attach Google file or event**. On mobile, use the attachment menu or search Google files and events with `#`.
 
 The picker has Drive and Calendar tabs. The `#` menu searches both. Drive text files and Slides include text; folders include their first 100 children. Binary files such as PDFs and images include metadata and comments, with a link to view their contents in Drive. File text reads are bounded to 64,000 characters.
 

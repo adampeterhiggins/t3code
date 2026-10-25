@@ -142,7 +142,7 @@ export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
         {googleEnabled ? (
           <MenuItem onClick={() => props.onPick("google-file")}>
             <GoogleIcon />
-            Google Drive & Calendar
+            Google
           </MenuItem>
         ) : null}
         {granolaEnabled ? (
