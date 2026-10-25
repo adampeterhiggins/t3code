@@ -59,6 +59,7 @@ import { createContextPresentationRegistry } from "../contextPresentationRegistr
 import { buttonContextChip, ContextPreviewHover } from "../contextPreviewRegistry";
 import {
   isLinkedObjectContextRecord,
+  LINKED_OBJECT_CONTEXT_KINDS,
   linkedObjectIcon,
   linkedObjectKindLabel,
   type LinkedObjectContextKind,
@@ -110,19 +111,6 @@ function reviewCommentFromRecord(
     ...(record.thread !== undefined ? { thread: record.thread } : {}),
   };
 }
-
-const LINKED_OBJECT_KINDS = [
-  "linear-issue",
-  "linear-object",
-  "github-issue",
-  "repository",
-  "slack-thread",
-  "discord-thread",
-  "notion-page",
-  "granola-note",
-  "prompt-link",
-  "github-ref",
-] as const satisfies readonly LinkedObjectContextKind[];
 
 function previewChip<K extends KnownComposerContextKind>(
   kind: K,
@@ -408,7 +396,7 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
           })
         : null,
     ),
-    ...LINKED_OBJECT_KINDS.map((kind) => previewChip(kind, linkedObjectChip(kind))),
+    ...LINKED_OBJECT_CONTEXT_KINDS.map((kind) => previewChip(kind, linkedObjectChip(kind))),
     previewChip("checkout", (record, context) =>
       record.kind === "checkout"
         ? buttonContextChip({

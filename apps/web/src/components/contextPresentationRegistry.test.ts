@@ -39,6 +39,11 @@ function surfaceHandlers(options: {
 }
 
 describe("contextPresentationRegistry", () => {
+  it("initializes the sent-message context registry with every known kind", async () => {
+    const { UserMessageContextReferenceChip } = await import("./chat/UserMessageContextChips");
+    expect(UserMessageContextReferenceChip).toBeTypeOf("function");
+  });
+
   it("decides a preview for every known context kind", () => {
     expect(Object.keys(CONTEXT_PRESENTATION_DEFINITIONS)).toEqual(COMPOSER_CONTEXT_KINDS);
     for (const kind of COMPOSER_CONTEXT_KINDS) {
