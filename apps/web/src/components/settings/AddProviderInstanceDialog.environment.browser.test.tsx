@@ -6,7 +6,7 @@ import {
 } from "@t3tools/contracts";
 import type { Atom } from "effect/reactivity";
 import { userEvent } from "vite-plus/test/browser";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import { act, render } from "../../../test/render";
 
@@ -181,6 +181,8 @@ async function prepareCodexInstance() {
 }
 
 function setup() {
+  appAtomRegistry.set(server.providers, []);
+  server.refreshProviders.mockReset();
   actions.canManageProviders = true;
   actions.toast.mockReset();
   actions.onOpenChange.mockReset();
@@ -190,18 +192,8 @@ function setup() {
 }
 
 describe("AddProviderInstanceDialog environment routing", () => {
-  beforeEach(() => {
-    appAtomRegistry.set(server.providers, []);
-    server.refreshProviders.mockReset();
-    actions.canManageProviders = true;
-    actions.toast.mockReset();
-    actions.onOpenChange.mockReset();
-    settingsHooks.read.mockReset().mockReturnValue({ providerInstances: {} });
-    settingsHooks.mutate.mockReset().mockResolvedValue({ _tag: "Success", value: {} });
-    settingsHooks.useMutation.mockReset().mockReturnValue(settingsHooks.mutate);
-  });
-
   it("creates a provider with its default identity without typing", async () => {
+    setup();
     await using _screen = await render(dialog());
     const grok = [...document.querySelectorAll('[role="radio"]')].find((radio) =>
       radio.textContent?.includes("Grok"),
@@ -318,6 +310,7 @@ describe("AddProviderInstanceDialog environment routing", () => {
   });
 
   it("keeps the dialog open when the atomic upsert fails", async () => {
+    setup();
     settingsHooks.mutate.mockResolvedValueOnce({ _tag: "Failure", cause: new Error("Conflict") });
     await using _screen = await render(dialog());
     await click("Use Kilo Code");
@@ -331,6 +324,7 @@ describe("AddProviderInstanceDialog environment routing", () => {
   });
 
   it("adds an instance with the selected environment's provider grant alone", async () => {
+    setup();
     await prepareCodexInstance();
     await click("Add instance");
 
@@ -358,6 +352,7 @@ describe("AddProviderInstanceDialog environment routing", () => {
   });
 
   it("continues a created CLI-sign-in provider to its sign-in step", async () => {
+    setup();
     await prepareCodexInstance();
     await click("Add instance");
     await act(async () =>
@@ -385,7 +380,7 @@ describe("AddProviderInstanceDialog environment routing", () => {
     await using screen = await prepareCodexInstance();
     const save = button("Add instance");
     actions.canManageProviders = false;
-    // The rendered button is still enabled; the click must recheck the live grant.
+    // Click before React renders the revoked grant.
     await act(async () => save.click());
 
     expect(settingsHooks.mutate).not.toHaveBeenCalled();
@@ -396,6 +391,7 @@ describe("AddProviderInstanceDialog environment routing", () => {
   });
 
   it("keeps a denied draft available when the provider grant arrives", async () => {
+    setup();
     actions.canManageProviders = false;
     await using screen = await prepareCodexInstance();
     expect(button("Add instance").disabled).toBe(true);

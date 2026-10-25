@@ -36,6 +36,7 @@ import { ShellCommandBlock } from "./ShellCommandBlock";
 import { parseJsonDocument, ToolJsonTree } from "./ToolJsonTree";
 import { ToolPreviewCard } from "./ToolPreviewCard";
 import { WebToolDetail } from "./WebToolDetail";
+import type { TurnItemSource } from "./timelineRowContext";
 
 interface V2ItemInspectorProps {
   readonly projectedItem: OrchestrationV2ProjectedTurnItem;
@@ -49,7 +50,7 @@ interface V2ItemInspectorProps {
   /** Hover previews and expanded command rows opt in; other expanded rows stay plain. */
   readonly highlightSyntax?: boolean | undefined;
   readonly onOpenThread: (threadId: ThreadId) => void;
-  readonly onOpenTurnDiff: (runId: RunId, filePath?: string) => void;
+  readonly onOpenTurnDiff?: ((runId: RunId, filePath?: string) => void) | undefined;
   readonly onRollbackCheckpoint?: (input: {
     readonly checkpointId: string;
     readonly scopeId: string;
@@ -63,6 +64,7 @@ interface V2ItemInspectorProps {
   /** The hover card header already shows Open thread. */
   readonly hideOpenThread?: boolean | undefined;
   readonly previewFooter?: ReactNode;
+  readonly source?: TurnItemSource | undefined;
 }
 
 const monoClassName =
@@ -100,6 +102,7 @@ function StructuredValue({
 function useFetchedTurnItem(
   projectedItem: OrchestrationV2ProjectedTurnItem,
   environmentId: EnvironmentId,
+  source: TurnItemSource | undefined,
   skip = false,
 ) {
   const wireItem = projectedItem.item;
@@ -113,6 +116,7 @@ function useFetchedTurnItem(
           revision: turnItemDetailRevision(wireItem),
         }
       : null,
+    source?.detail,
   );
   const fetchedItem = detail.data?.item;
   const item = fetchedItem?.type === wireItem.type ? fetchedItem : wireItem;
@@ -214,8 +218,9 @@ export function FetchedToolOutput(props: {
   readonly projectedItem: OrchestrationV2ProjectedTurnItem;
   readonly environmentId: EnvironmentId;
   readonly onImageExpand?: ((preview: ExpandedImagePreview) => void) | undefined;
+  readonly source?: TurnItemSource | undefined;
 }) {
-  const { output } = useFetchedTurnItem(props.projectedItem, props.environmentId);
+  const { output } = useFetchedTurnItem(props.projectedItem, props.environmentId, props.source);
   return (
     <div className={cn("mt-1.5 space-y-1.5", monoClassName)}>
       <ToolOutput {...output} onImageExpand={props.onImageExpand} />
@@ -291,10 +296,16 @@ function FileChangePreview(props: {
 
 export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspectorProps) {
   // Command rows stream their output, including the final output, from the server.
+  const environmentStreamsOutput = useCommandOutputStreaming(props.environmentId);
   const streamsOutput =
-    useCommandOutputStreaming(props.environmentId) &&
+    (props.source !== undefined || environmentStreamsOutput) &&
     props.projectedItem.item.type === "command_execution";
-  const fetched = useFetchedTurnItem(props.projectedItem, props.environmentId, streamsOutput);
+  const fetched = useFetchedTurnItem(
+    props.projectedItem,
+    props.environmentId,
+    props.source,
+    streamsOutput,
+  );
   const item = fetched.item;
   const outputState = fetched.output;
   const preview = (() => resolveToolPreview(item))();
@@ -332,6 +343,7 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
                 environmentId={props.environmentId}
                 threadId={props.projectedItem.sourceThreadId}
                 itemId={props.projectedItem.sourceItemId}
+                source={props.source?.commandOutput}
               />
             ) : undefined
           }
@@ -361,8 +373,12 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
                 </span>
               ) : null}
             </div>
-            {!props.hidePreviewActions && item.runId !== null ? (
-              <PreviewCornerAction onClick={() => props.onOpenTurnDiff(item.runId!, item.fileName)}>
+            {!props.hidePreviewActions &&
+            item.runId !== null &&
+            props.onOpenTurnDiff !== undefined ? (
+              <PreviewCornerAction
+                onClick={() => props.onOpenTurnDiff?.(item.runId!, item.fileName)}
+              >
                 Open diff
               </PreviewCornerAction>
             ) : null}
@@ -462,7 +478,15 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
 
       {item.type === "approval_request" ? <StructuredValue value={item.prompt} /> : null}
       {item.type === "user_input_request" ? (
-        <StructuredValue value={item.questions.map((question) => question.question).join("\n\n")} />
+        <StructuredValue
+          value={item.questions
+            .map((question) =>
+              [question.question, ...question.options.map((option) => `• ${option.label}`)].join(
+                "\n",
+              ),
+            )
+            .join("\n\n")}
+        />
       ) : null}
       {item.type === "notification" ? <StructuredValue value={item.detail} /> : null}
       {item.type === "system_notice" ? <StructuredValue value={item.message} /> : null}

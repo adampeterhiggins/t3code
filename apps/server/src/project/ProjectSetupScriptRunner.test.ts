@@ -1,12 +1,20 @@
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, describe, expect, it, vi } from "@effect/vitest";
-import { type Project, ProjectId, type TerminalEvent } from "@t3tools/contracts";
+import {
+  type Project,
+  ProjectId,
+  type TerminalEvent,
+  type TerminalSessionSnapshot,
+} from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import * as Queue from "effect/Queue";
+import { TestClock } from "effect/testing";
 
 import * as ServerSettings from "../serverSettings.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
@@ -98,6 +106,7 @@ describe("ProjectSetupScriptRunner", () => {
         projectId: "project-1",
         worktreePath: "/repo/worktrees/a",
       });
+      yield* TestClock.adjust("3 seconds");
       expect(result).toMatchObject({ status: "started", scriptId: "default-setup" });
       expect(open).toHaveBeenCalledWith({
         threadId: "thread-1",
@@ -150,6 +159,7 @@ describe("ProjectSetupScriptRunner", () => {
         projectId: "project-1",
         worktreePath: "/repo/worktrees/a",
       });
+      yield* TestClock.adjust("3 seconds");
 
       expect(result).toEqual({ status: "no-script" });
       expect(open).not.toHaveBeenCalled();
@@ -190,6 +200,7 @@ describe("ProjectSetupScriptRunner", () => {
           projectId: "project-1",
           worktreePath: "/repo/worktrees/a",
         });
+        yield* TestClock.adjust("3 seconds");
         expect(result).toMatchObject({
           status: "started",
           scriptId: "conductor-setup",
@@ -222,6 +233,7 @@ describe("ProjectSetupScriptRunner", () => {
           worktreePath: "/repo/worktrees/a",
           trigger: "settle",
         });
+        yield* TestClock.adjust("3 seconds");
         expect(result).toEqual({ status: "no-script" });
         expect(prepareWorktree).not.toHaveBeenCalled();
         expect(open).not.toHaveBeenCalled();
@@ -251,6 +263,7 @@ describe("ProjectSetupScriptRunner", () => {
           projectId: "project-1",
           worktreePath: "/repo/worktrees/a",
         });
+        yield* TestClock.adjust("3 seconds");
         expect(result).toMatchObject({ status: "started", scriptId: "setup" });
         expect(open).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -317,6 +330,7 @@ describe("ProjectSetupScriptRunner", () => {
           projectCwd: "/repo/project",
           worktreePath: "/repo/worktrees/a",
         });
+        yield* TestClock.adjust("3 seconds");
 
         expect(result).toEqual({
           status: "started",
@@ -371,11 +385,11 @@ describe("ProjectSetupScriptRunner", () => {
       const write = vi.fn((input: { data: string }) =>
         Effect.sync(() => void writes.push(input.data)),
       );
-      let listener: ((event: TerminalEvent) => Effect.Effect<void>) | null = null;
+      const listeners = new Set<(event: TerminalEvent) => Effect.Effect<void>>();
       const subscribe = vi.fn((next: (event: TerminalEvent) => Effect.Effect<void>) => {
-        listener = next;
+        listeners.add(next);
         return Effect.succeed(() => {
-          listener = null;
+          listeners.delete(next);
         });
       });
       const closeIdle = vi.fn(() => Effect.void);
@@ -390,9 +404,12 @@ describe("ProjectSetupScriptRunner", () => {
       ]);
       const emit = (data: string) =>
         Effect.suspend(() =>
-          listener
-            ? listener({ threadId: "thread-1", terminalId: "setup-setup", type: "output", data })
-            : Effect.void,
+          Effect.forEach(
+            [...listeners],
+            (listener) =>
+              listener({ threadId: "thread-1", terminalId: "setup-setup", type: "output", data }),
+            { discard: true },
+          ),
         );
 
       return Effect.gen(function* () {
@@ -406,12 +423,13 @@ describe("ProjectSetupScriptRunner", () => {
             onOutputLine: (line) => Effect.sync(() => void seen.push(line)),
           },
         });
+        yield* TestClock.adjust("3 seconds");
         expect(result.status).toBe("started");
         if (result.status !== "started") return;
         expect(result.completion).toBeDefined();
 
         // The subscription is attached before the command is written.
-        expect(subscribe).toHaveBeenCalledTimes(1);
+        expect(subscribe).toHaveBeenCalledTimes(2);
         expect(writes).toHaveLength(1);
         // The block closes on its own line so a trailing comment in the
         // command cannot swallow the sentinel, and the sentinel carries a
@@ -445,7 +463,7 @@ describe("ProjectSetupScriptRunner", () => {
           `__T3_SETUP_DONE___${"0".repeat(32)}:0`,
         ]);
         // The subscription is torn down once the sentinel arrives.
-        expect(listener).toBeNull();
+        expect(listeners.size).toBe(0);
         // A failed run keeps its shell open for a look.
         expect(closeIdle).not.toHaveBeenCalled();
       }).pipe(
@@ -476,11 +494,11 @@ describe("ProjectSetupScriptRunner", () => {
     const write = vi.fn((input: { data: string }) =>
       Effect.sync(() => void (written = input.data)),
     );
-    let listener: ((event: TerminalEvent) => Effect.Effect<void>) | null = null;
+    const listeners = new Set<(event: TerminalEvent) => Effect.Effect<void>>();
     const subscribe = vi.fn((next: (event: TerminalEvent) => Effect.Effect<void>) => {
-      listener = next;
+      listeners.add(next);
       return Effect.succeed(() => {
-        listener = null;
+        listeners.delete(next);
       });
     });
     const closeIdle = vi.fn(() => Effect.void);
@@ -502,16 +520,22 @@ describe("ProjectSetupScriptRunner", () => {
         worktreePath: "/repo/worktrees/a",
         observeCompletion: {},
       });
+      yield* TestClock.adjust("3 seconds");
       if (result.status !== "started" || !result.completion) {
         return yield* Effect.die("expected an observed setup run");
       }
       const sentinel = /__T3_SETUP_DONE___[0-9a-f]{32}:/.exec(written)?.[0];
-      yield* listener!({
-        threadId: "thread-1",
-        terminalId: "setup-setup",
-        type: "output",
-        data: `${sentinel}0\r\n$ `,
-      });
+      yield* Effect.forEach(
+        [...listeners],
+        (listener) =>
+          listener({
+            threadId: "thread-1",
+            terminalId: "setup-setup",
+            type: "output",
+            data: `${sentinel}0\r\n$ `,
+          }),
+        { discard: true },
+      );
 
       expect((yield* result.completion).exitCode).toBe(0);
       expect(closeIdle).toHaveBeenCalledWith({ threadId: "thread-1", terminalId: "setup-setup" });
@@ -557,16 +581,19 @@ describe("ProjectSetupScriptRunner", () => {
 
     return Effect.gen(function* () {
       const runner = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
-      const result = yield* runner
-        .runForThread({
-          threadId: "thread-1",
-          projectCwd: "/repo/project",
-          worktreePath: "/repo/worktrees/a",
-          observeCompletion: {},
-        })
-        .pipe(Effect.result);
-      expect(result._tag).toBe("Failure");
-      expect(unsubscribe).toHaveBeenCalledTimes(1);
+      const result = yield* runner.runForThread({
+        threadId: "thread-1",
+        projectCwd: "/repo/project",
+        worktreePath: "/repo/worktrees/a",
+        observeCompletion: {},
+      });
+      yield* TestClock.adjust("3 seconds");
+      expect(result.status).toBe("started");
+      if (result.status !== "started" || !result.completion) {
+        return yield* Effect.die("expected an observed setup run");
+      }
+      expect((yield* result.completion).exitCode).toBeNull();
+      expect(unsubscribe).toHaveBeenCalledTimes(2);
     }).pipe(Effect.provide(testLayer(project, { open, write, subscribe })));
   });
 
@@ -617,6 +644,7 @@ describe("ProjectSetupScriptRunner", () => {
         worktreePath: "/repo/worktrees/a",
         observeCompletion: {},
       });
+      yield* TestClock.adjust("3 seconds");
       expect(writes).toHaveLength(1);
       expect(writes[0]).toMatch(expected);
     }).pipe(
@@ -694,12 +722,13 @@ it.effect("resolves setup scripts through the standalone project service", () =>
   const closeIdle = vi.fn(
     (_input: Parameters<TerminalManager.TerminalManager["Service"]["closeIdle"]>[0]) => Effect.void,
   );
-  const listeners: Array<Parameters<TerminalManager.TerminalManager["Service"]["subscribe"]>[0]> =
-    [];
+  const listeners = new Set<
+    Parameters<TerminalManager.TerminalManager["Service"]["subscribe"]>[0]
+  >();
   const subscribe: TerminalManager.TerminalManager["Service"]["subscribe"] = (listener) =>
     Effect.sync(() => {
-      listeners.push(listener);
-      return () => undefined;
+      listeners.add(listener);
+      return () => listeners.delete(listener);
     });
   const projectId = ProjectId.make("project:setup-runner-v2");
   const project = {
@@ -751,6 +780,7 @@ it.effect("resolves setup scripts through the standalone project service", () =>
       projectId,
       worktreePath: "/repo-worktree",
     });
+    yield* TestClock.adjust("3 seconds");
     assert.deepEqual(result, {
       status: "started",
       async: true,
@@ -781,9 +811,11 @@ it.effect("resolves setup scripts through the standalone project service", () =>
           }),
       },
     });
+    yield* TestClock.adjust("3 seconds");
     assert.equal(observed.status, "started");
     assert.match(write.mock.calls[1]?.[0].data ?? "", /^ \S/);
-    const listener = listeners[0]!;
+    const listener = (event: TerminalEvent) =>
+      Effect.forEach([...listeners], (next) => next(event), { discard: true });
     yield* listener({
       type: "output",
       threadId: "thread-1",
@@ -799,6 +831,7 @@ it.effect("resolves setup scripts through the standalone project service", () =>
       worktreePath: "/repo-worktree",
       trigger: "settle",
     });
+    yield* TestClock.adjust("3 seconds");
     const settleTerminalId = settle.status === "started" ? settle.terminalId : "";
     assert.match(settleTerminalId, /^settle-clean-/);
     assert.equal(write.mock.calls.at(-1)?.[0].data, " cargo clean\r");
@@ -810,11 +843,13 @@ it.effect("resolves setup scripts through the standalone project service", () =>
       trigger: "settle",
       observeCompletion: {},
     });
+    yield* TestClock.adjust("3 seconds");
     const observedTerminalId = observedSettle.status === "started" ? observedSettle.terminalId : "";
     assert.notEqual(observedTerminalId, settleTerminalId);
     assert.match(write.mock.calls.at(-1)?.[0].data ?? "", /^ \S/);
     const token = /__T3_SETUP_DONE___(\w+):/.exec(write.mock.calls.at(-1)?.[0].data ?? "")?.[1];
-    const settleListener = listeners.at(-1)!;
+    const settleListener = (event: TerminalEvent) =>
+      Effect.forEach([...listeners], (next) => next(event), { discard: true });
     const completion = yield* Effect.forkChild(
       observedSettle.status === "started" && observedSettle.completion
         ? observedSettle.completion
@@ -826,7 +861,6 @@ it.effect("resolves setup scripts through the standalone project service", () =>
       terminalId: observedTerminalId,
       data: `\r\n__T3_SETUP_DONE___${token}:0\r\n`,
     });
-    yield* Effect.yieldNow;
     assert.equal(closeIdle.mock.calls.length, 0);
     yield* settleListener({
       type: "output",
@@ -840,4 +874,158 @@ it.effect("resolves setup scripts through the standalone project service", () =>
       terminalId: observedTerminalId,
     });
   }).pipe(Effect.provide(layer));
+});
+
+const threadId = "thread-1";
+const terminalId = "setup-setup";
+const event = { threadId, terminalId, sequence: 1, createdAt: "2026-01-01T00:00:00.000Z" };
+
+const openSnapshot = (history: string): TerminalSessionSnapshot => ({
+  threadId,
+  terminalId,
+  cwd: "/repo/.t3/worktrees/feature",
+  worktreePath: null,
+  status: "running",
+  pid: 123,
+  history,
+  exitCode: null,
+  exitSignal: null,
+  label: "zsh",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+});
+
+const makeHarness = Effect.fn(function* (options: {
+  readonly history?: string;
+  readonly opening?: Deferred.Deferred<void>;
+}) {
+  const listeners = new Set<(event: TerminalEvent) => Effect.Effect<void>>();
+  const writes = yield* Queue.unbounded<string>();
+  const outputLines = yield* Queue.unbounded<string>();
+  const terminals = Layer.mock(TerminalManager.TerminalManager)({
+    open: () =>
+      (options.opening
+        ? Deferred.succeed(options.opening, undefined).pipe(Effect.andThen(Effect.never))
+        : Effect.void
+      ).pipe(Effect.as(openSnapshot(options.history ?? ""))),
+    subscribe: (listener) =>
+      Effect.sync(() => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      }),
+    write: (input) => Queue.offer(writes, input.data).pipe(Effect.asVoid),
+    closeIdle: () => Effect.void,
+  });
+  const runner = yield* ProjectSetupScriptRunner.make.pipe(
+    Effect.provide(
+      Layer.mergeAll(
+        terminals,
+        Layer.mock(ProjectService.ProjectService)({}),
+        ServerSettings.layerTest(),
+        ConductorWorkspace.layerNoop,
+        NodeCrypto.layer,
+      ),
+    ),
+    Effect.provideService(HostProcess.Platform, "darwin"),
+    Effect.provideService(HostProcess.Environment, { SHELL: "/bin/zsh" }),
+  );
+  const start = runner.runForThread({
+    threadId,
+    worktreePath: "/repo/.t3/worktrees/feature",
+    observeCompletion: { onOutputLine: (line) => Queue.offer(outputLines, line) },
+    project: {
+      id: ProjectId.make("project-1"),
+      workspaceRoot: "/repo",
+      scripts: [
+        {
+          id: "setup",
+          name: "Setup",
+          command: "vp i",
+          icon: "configure",
+          runOnWorktreeCreate: true,
+        },
+      ],
+    },
+  });
+  const emit = (terminalEvent: TerminalEvent) =>
+    Effect.forEach([...listeners], (listener) => listener(terminalEvent), { discard: true });
+  return { start, listeners, writes, outputLines, emit };
+});
+
+const setup = Effect.fn(function* (options: { readonly history?: string } = {}) {
+  const harness = yield* makeHarness(options);
+  const result = yield* harness.start;
+  const completion = result.status === "started" ? result.completion : undefined;
+  if (!completion) return yield* Effect.die("setup did not start an observed run");
+  return { ...harness, result, completion };
+});
+
+describe("ProjectSetupScriptRunner", () => {
+  it.effect("shows a startup prompt and types only once the line editor starts", () =>
+    Effect.gen(function* () {
+      const { result, writes, outputLines, emit } = yield* setup();
+      expect(result).toMatchObject({ status: "started", terminalId });
+
+      yield* emit({ ...event, type: "output", data: "Missing Node.\r\nInstall it? [y/N]: " });
+      yield* emit({ ...event, type: "activity", hasRunningSubprocess: true, label: "fnm" });
+      yield* TestClock.adjust("1 minute");
+      expect(yield* Queue.size(writes)).toBe(0);
+      expect(yield* Queue.takeAll(outputLines)).toEqual(["Missing Node.", "Install it? [y/N]:"]);
+
+      yield* emit({ ...event, type: "activity", hasRunningSubprocess: false, label: "zsh" });
+      yield* emit({ ...event, type: "output", data: "\r\n% \x1b[?2004h" });
+      expect(yield* Queue.take(writes)).toMatch(/^ \( vp i\r\);/);
+    }),
+  );
+
+  it.effect("types into a quiet shell that has no line editor", () =>
+    Effect.gen(function* () {
+      const { writes } = yield* setup();
+      yield* TestClock.adjust("3 seconds");
+      expect(yield* Queue.take(writes)).toMatch(/^ \( vp i\r\);/);
+    }),
+  );
+
+  it.effect("ignores line editor state restored from an earlier shell", () =>
+    Effect.gen(function* () {
+      const { writes, emit } = yield* setup({ history: "old run\r\n% \x1b[?2004h" });
+      yield* emit({ ...event, type: "activity", hasRunningSubprocess: true, label: "fnm" });
+      yield* TestClock.adjust("1 minute");
+      expect(yield* Queue.size(writes)).toBe(0);
+    }),
+  );
+
+  it.effect("forgets a busy startup child when the shell restarts", () =>
+    Effect.gen(function* () {
+      const { writes, emit } = yield* setup();
+      yield* emit({ ...event, type: "activity", hasRunningSubprocess: true, label: "fnm" });
+      yield* TestClock.adjust("1 minute");
+      expect(yield* Queue.size(writes)).toBe(0);
+      yield* emit({ ...event, type: "restarted", snapshot: openSnapshot("") });
+      // The restart lands inside a quiet window, so the next full window decides.
+      yield* TestClock.adjust("6 seconds");
+      expect(yield* Queue.take(writes)).toMatch(/^ \( vp i\r\);/);
+    }),
+  );
+
+  it.effect("drops its terminal listeners when cancelled while the terminal opens", () =>
+    Effect.gen(function* () {
+      const opening = yield* Deferred.make<void>();
+      const { start, listeners } = yield* makeHarness({ opening });
+      const fiber = yield* Effect.forkChild(start);
+      yield* Deferred.await(opening);
+      expect(listeners.size).toBe(2);
+      yield* Fiber.interrupt(fiber);
+      expect(listeners.size).toBe(0);
+    }),
+  );
+
+  it.effect("does not type into a shell that exits during startup", () =>
+    Effect.gen(function* () {
+      const { completion, writes, emit } = yield* setup();
+      yield* emit({ ...event, type: "exited", exitCode: 1, exitSignal: null });
+      expect(yield* completion).toMatchObject({ exitCode: null });
+      yield* TestClock.adjust("1 minute");
+      expect(yield* Queue.size(writes)).toBe(0);
+    }),
+  );
 });

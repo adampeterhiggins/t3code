@@ -51,6 +51,7 @@ import {
   useEnvironmentModelPreferences,
   useToggleEnvironmentModelFavorite,
 } from "~/hooks/useSettings";
+import { announce } from "~/lib/announce";
 import { cn } from "~/lib/utils";
 import { getVirtualizedScrollFadeClassName } from "../ui/scroll-area";
 import { TooltipProvider } from "../ui/tooltip";
@@ -187,8 +188,62 @@ function ModelListSeparator() {
   return <div className="h-0.5" />;
 }
 
-// Owns the list's measured height and scroll fades, which change on every scroll and
-// resize without touching the picker's model lists.
+function ModelPickerProviderNotices({
+  setupEntries,
+  updateRequiredNotices,
+  onRequestClose,
+  onOpenProviderSetup,
+}: {
+  setupEntries: ReadonlyArray<ProviderInstanceEntry>;
+  updateRequiredNotices: ReadonlyArray<{ instanceId: ProviderInstanceId; notice: string }>;
+  onRequestClose: (() => void) | undefined;
+  onOpenProviderSetup: ((instanceId: ProviderInstanceId) => void) | undefined;
+}) {
+  const navigate = useNavigate();
+  return (
+    <>
+      {setupEntries.length > 0 ? (
+        <div className="max-h-44 shrink-0 overflow-y-auto border-t border-border/70 p-2">
+          {setupEntries.map((entry) => (
+            <div key={entry.instanceId} className="px-1 py-1.5 text-xs leading-snug">
+              <p className="line-clamp-3 text-muted-foreground">
+                {getProviderStatusMessage(entry.snapshot)}
+              </p>
+              <InlineButton
+                className="mt-1"
+                onClick={() => {
+                  onRequestClose?.();
+                  onOpenProviderSetup?.(entry.instanceId);
+                }}
+              >
+                {setupEntries.length > 1 ? `Set up ${entry.displayName}` : "Open provider setup"}
+              </InlineButton>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <ComboboxEmpty className="empty:h-0">No models found</ComboboxEmpty>
+      )}
+      {updateRequiredNotices.map(({ instanceId, notice }) => (
+        <p
+          key={instanceId}
+          className="shrink-0 border-t border-border/70 px-3 py-2 text-xs leading-snug text-muted-foreground"
+        >
+          {notice}{" "}
+          <InlineButton
+            onClick={() => {
+              onRequestClose?.();
+              void navigate({ to: "/settings/providers" });
+            }}
+          >
+            Provider settings
+          </InlineButton>
+        </p>
+      ))}
+    </>
+  );
+}
+
 function ModelPickerList({
   listRef,
   itemKeys,
@@ -216,9 +271,8 @@ function ModelPickerList({
     setShowBottomScrollFade(maxScrollOffset - scrollElement.scrollTop > 1);
   };
 
-  // Keyed by content: a new disabled-reason closure rebuilds an identical key array.
+  // Disabled-reason closures rebuild identical key arrays; compare contents.
   const itemListKey = JSON.stringify(itemKeys);
-  // A new list starts from the top until the measurement below lands.
   const [fadesResetFor, setFadesResetFor] = useState(itemListKey);
   if (fadesResetFor !== itemListKey) {
     setFadesResetFor(itemListKey);
@@ -271,6 +325,19 @@ function ModelPickerList({
       </ComboboxListVirtualized>
     </div>
   );
+}
+
+// Capture gives picker shortcuts priority over the composer.
+function WindowKeyDownListener({ onKeyDown }: { onKeyDown: (event: KeyboardEvent) => void }) {
+  const handleKeyDown = useEffectEvent(onKeyDown);
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) => handleKeyDown(event);
+    window.addEventListener("keydown", listener, true);
+    return () => {
+      window.removeEventListener("keydown", listener, true);
+    };
+  }, []);
+  return null;
 }
 
 export const ModelPickerContent = memo(function ModelPickerContent(props: {
@@ -401,7 +468,6 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   );
   const serverKeybindings = useAtomValue(primaryServerKeybindingsAtom);
   const keybindings = providedKeybindings ?? serverKeybindings;
-  const navigate = useNavigate();
   const [searchHeight, setSearchHeight] = useState(0);
   const toggleFavorite = useToggleEnvironmentModelFavorite(props.environmentId);
 
@@ -695,11 +761,11 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     fork = false,
   ) => {
     if (getModelDisabledReason?.(instanceId, modelSlug)) {
-      return;
+      return null;
     }
     const entry = entryByInstanceId.get(instanceId);
     if (!entry) {
-      return;
+      return null;
     }
     const resolvedInstanceId =
       resolveInstanceForModelSelection({
@@ -713,11 +779,11 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
           : {}),
       }) ?? instanceId;
     if (getModelDisabledReason?.(resolvedInstanceId, modelSlug)) {
-      return;
+      return null;
     }
     const options = modelOptionsByInstance.get(resolvedInstanceId);
     if (!options) {
-      return;
+      return null;
     }
     const resolvedEntry = entryByInstanceId.get(resolvedInstanceId) ?? entry;
     const resolvedModel = resolveSelectableModel(resolvedEntry.driverKind, modelSlug, options);
@@ -733,13 +799,15 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
         })
       ) {
         // Only the row's fork button opens these, so a stray click never forks.
-        return;
+        return null;
       } else if (additive && onToggleModel) {
         onToggleModel(resolvedInstanceId, resolvedModel);
       } else {
         onInstanceModelChange(resolvedInstanceId, resolvedModel);
       }
+      return resolvedModel;
     }
+    return null;
   };
 
   const modelJumpCommandByKey = (() => {
@@ -826,67 +894,58 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     selectedDriverKind,
   }))();
 
-  useEffect(() => {
-    const onWindowKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.defaultPrevented || event.repeat || isCommandPaletteOpen()) {
-        return;
-      }
+  const onWindowKeyDown = (event: globalThis.KeyboardEvent) => {
+    if (event.defaultPrevented || event.repeat || isCommandPaletteOpen()) {
+      return;
+    }
 
-      const command = resolveShortcutCommand(event, keybindings, {
-        platform: navigator.platform,
-        context: modelJumpShortcutContext,
-      });
-      if (command === "modelPicker.previousProvider" || command === "modelPicker.nextProvider") {
-        event.preventDefault();
-        event.stopPropagation();
-        const next = adjacentModelPickerProvider({
-          entries: sidebarInstanceEntries,
-          selectedDriverKind,
-          direction: command === "modelPicker.nextProvider" ? 1 : -1,
-          disabledDriverKinds: lockedDisabledDriverKinds,
-          selectableUnavailableDriverKinds,
-        });
-        setSearchQuery("");
-        handleSelectDriver(next);
-        return;
-      }
-      const jumpIndex = modelPickerJumpIndexFromCommand(command ?? "");
-      if (jumpIndex === null) {
-        return;
-      }
+    const command = resolveShortcutCommand(event, keybindings, {
+      platform: navigator.platform,
+      context: modelJumpShortcutContext,
+    });
+    if (command === "modelPicker.previousProvider" || command === "modelPicker.nextProvider") {
       event.preventDefault();
       event.stopPropagation();
+      const next = adjacentModelPickerProvider({
+        entries: sidebarInstanceEntries,
+        selectedDriverKind,
+        direction: command === "modelPicker.nextProvider" ? 1 : -1,
+        disabledDriverKinds: lockedDisabledDriverKinds,
+        selectableUnavailableDriverKinds,
+      });
+      setSearchQuery("");
+      handleSelectDriver(next);
+      announce(next === "favorites" ? "Favorites" : providerBrandLabel(next), "model-picker");
+      return;
+    }
+    const jumpIndex = modelPickerJumpIndexFromCommand(command ?? "");
+    if (jumpIndex === null) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
 
-      const targetModelKey = modelJumpModelKeys[jumpIndex];
-      if (!targetModelKey) {
-        return;
-      }
-      const model = parseModelPickerModelKey(targetModelKey);
-      if (!model) {
-        return;
-      }
-      handleModelSelect(model.slug, model.instanceId);
-    };
-
-    window.addEventListener("keydown", onWindowKeyDown, true);
-
-    return () => {
-      window.removeEventListener("keydown", onWindowKeyDown, true);
-    };
-  }, [
-    handleModelSelect,
-    handleSelectDriver,
-    keybindings,
-    lockedDisabledDriverKinds,
-    modelJumpModelKeys,
-    modelJumpShortcutContext,
-    selectableUnavailableDriverKinds,
-    selectedDriverKind,
-    sidebarInstanceEntries,
-  ]);
+    const targetModelKey = modelJumpModelKeys[jumpIndex];
+    if (!targetModelKey) {
+      return;
+    }
+    const model = parseModelPickerModelKey(targetModelKey);
+    if (!model) {
+      return;
+    }
+    const selectedSlug = handleModelSelect(model.slug, model.instanceId);
+    if (selectedSlug === null) return;
+    const name = flatModels.find(
+      (item) =>
+        item.slug === selectedSlug &&
+        item.driverKind === entryByInstanceId.get(model.instanceId)?.driverKind,
+    )?.name;
+    announce(`Model: ${name ?? selectedSlug}`, "model-picker");
+  };
 
   return (
     <TooltipProvider delay={0}>
+      <WindowKeyDownListener onKeyDown={onWindowKeyDown} />
       <div
         ref={pickerContentRef}
         className="relative flex max-h-86.5 w-screen max-w-90 flex-row overflow-hidden"
@@ -1104,46 +1163,12 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                 );
               }}
             />
-            {providerSetupEntries.length > 0 ? (
-              <div className="max-h-44 shrink-0 overflow-y-auto border-t border-border/70 p-2">
-                {providerSetupEntries.map((entry) => (
-                  <div key={entry.instanceId} className="px-1 py-1.5 text-xs leading-snug">
-                    <p className="line-clamp-3 text-muted-foreground">
-                      {getProviderStatusMessage(entry.snapshot)}
-                    </p>
-                    <InlineButton
-                      className="mt-1"
-                      onClick={() => {
-                        props.onRequestClose?.();
-                        props.onOpenProviderSetup?.(entry.instanceId);
-                      }}
-                    >
-                      {providerSetupEntries.length > 1
-                        ? `Set up ${entry.displayName}`
-                        : "Open provider setup"}
-                    </InlineButton>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <ComboboxEmpty className="empty:h-0">No models found</ComboboxEmpty>
-            )}
-            {updateRequiredNotices.map(({ instanceId, notice }) => (
-              <p
-                key={instanceId}
-                className="shrink-0 border-t border-border/70 px-3 py-2 text-xs leading-snug text-muted-foreground"
-              >
-                {notice}{" "}
-                <InlineButton
-                  onClick={() => {
-                    props.onRequestClose?.();
-                    void navigate({ to: "/settings/providers" });
-                  }}
-                >
-                  Provider settings
-                </InlineButton>
-              </p>
-            ))}
+            <ModelPickerProviderNotices
+              setupEntries={providerSetupEntries}
+              updateRequiredNotices={updateRequiredNotices}
+              onRequestClose={props.onRequestClose}
+              onOpenProviderSetup={props.onOpenProviderSetup}
+            />
           </div>
         </Combobox>
       </div>

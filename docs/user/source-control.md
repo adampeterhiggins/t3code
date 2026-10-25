@@ -340,8 +340,8 @@ Use **Link pull request** in the command palette or **Linked pull requests** pan
 pull request link in the conversation. The picker lists the project's pull requests with the
 thread's branch first; check as many as you want, or paste a URL for another repository, then
 press **Link**. Unchecking a linked pull request there unlinks it. Creating a pull request from Git
-actions links it automatically.
-Agents can link their pull requests with the `link_pull_request` tool.
+actions links it automatically, as does an agent creating one with `gh pr create` or
+`glab mr create`. Agents can link other pull requests with the `link_pull_request` tool.
 
 Use **Link this PR** in a branch-detected badge's tooltip to keep it with the thread. From a review
 on the Pull Requests page, **Link to thread** lets you search for an active thread. The review header

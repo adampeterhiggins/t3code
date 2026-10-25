@@ -18,6 +18,7 @@ import { useState, type ReactNode } from "react";
 import { ActivityIndicator, Alert, FlatList, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { openSettings } from "../features/settings/settings-navigation";
 import { useThreadShells } from "../state/entities";
 import { linearEnvironment } from "../state/linear";
 import { useDebouncedValue } from "../state/queries";
@@ -113,10 +114,7 @@ export function useLinearIssuePicker(target: LinearIssuePickerTarget | null): {
     if (!target) return;
     // Connecting is a settings task; the picker only picks.
     if (connection.data && connection.data.phase !== "connected") {
-      navigation.navigate("SettingsSheet", {
-        screen: "SettingsContent",
-        params: { screen: "SettingsLinear" },
-      });
+      openSettings(navigation, "SettingsLinear");
       return;
     }
     setOpened(

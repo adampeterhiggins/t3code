@@ -194,14 +194,7 @@ export interface ResolvedComposerObjectLink {
   readonly commit: () => void;
 }
 
-/**
- * Turns a link into the chip its attach picker would have made: the issue or pull request is
- * fetched and snapshotted the same way.
- * - `skipped`: it was never tried (its integration is turned off, or a pull request on a host no
- *   project here is checked out from), so the link stays a plain link.
- * - `unreadable`: it was tried and could not be read (not connected, `gh` signed out, not found,
- *   a comment or lines the host did not return), so the caller shows that it failed.
- */
+/** Skipped links stay plain; attempted but unreadable links become failed chips. */
 export function useResolveComposerObjectLink(input: {
   threadRef: ScopedThreadRef;
   draftTarget: ComposerThreadTarget;

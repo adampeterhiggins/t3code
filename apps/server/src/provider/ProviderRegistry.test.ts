@@ -677,8 +677,6 @@ it.layer(
         message: "Checking ACP authentication, models, and commands in the background...",
         models: [{ slug: "default", name: "Default", isCustom: false, capabilities: null }],
       } satisfies ServerProvider;
-      // A saved sign-in confirmation marks the readiness snapshot authenticated
-      // before discovery has run.
       const confirmedCheckingProvider = {
         ...checkingProvider,
         auth: { status: "authenticated" },
@@ -1455,7 +1453,6 @@ it.layer(
           slashCommands: [COMPACT_SLASH_COMMAND],
           skills: [],
         } as const satisfies ServerProvider;
-        // Codex's account check failed; its skill scan did not.
         const unhealthyProvider = {
           ...healthyProvider,
           status: "error",
@@ -1526,8 +1523,6 @@ it.layer(
           yield* registry.refreshWorkspaceSnapshot({ instanceId, cwd: "/workspace" });
           assert.deepStrictEqual((yield* workspaceOf)?.slashCommands, [COMPACT_SLASH_COMMAND]);
 
-          // An expired scan runs while the account check fails: the skills are
-          // current, but commands that ride on the health check are unknown.
           yield* TestClock.adjust(PROVIDER_WORKSPACE_SNAPSHOT_TTL_MS);
           yield* Ref.set(scanResult, { ...unhealthyProvider, skills: laterSkills });
           yield* registry.refreshWorkspaceSnapshot({ instanceId, cwd: "/workspace" });
@@ -1539,14 +1534,10 @@ it.layer(
           assert.strictEqual(provider?.status, "error");
           assert.strictEqual(provider?.message, unhealthyProvider.message);
 
-          // A pending entry is rescanned on the next request; an empty scan
-          // removes the skills.
           yield* Ref.set(scanResult, { ...unhealthyProvider, skills: [] });
           yield* registry.refreshWorkspaceSnapshot({ instanceId, cwd: "/workspace" });
           assert.deepStrictEqual((yield* workspaceOf)?.skills, []);
 
-          // A driver that discovers its own commands reports them even while
-          // health is in error.
           const discoveredCommand = { name: "review", description: "Review changes" };
           yield* Ref.set(scanResult, {
             ...unhealthyProvider,
@@ -1558,7 +1549,6 @@ it.layer(
           assert.deepStrictEqual(discovered?.slashCommands, [discoveredCommand]);
           assert.strictEqual(discovered?.slashCommandsPending, undefined);
 
-          // Once health recovers, the next scan restores the full entry.
           yield* TestClock.adjust(PROVIDER_WORKSPACE_SNAPSHOT_TTL_MS);
           yield* Ref.set(scanResult, { ...healthyProvider, skills: laterSkills });
           yield* registry.refreshWorkspaceSnapshot({ instanceId, cwd: "/workspace" });
@@ -2468,8 +2458,6 @@ it.layer(
   describe("checkClaudeProviderStatus", () => {
     it.effect("reports a logged-out CLI as unauthenticated", () =>
       Effect.gen(function* () {
-        // The capability probe resolves for a logged-out CLI, so `tokenSource:
-        // "none"` is the only thing separating it from an authenticated one.
         const status = yield* checkClaudeProviderStatus(
           defaultClaudeSettings,
           claudeCapabilities({
@@ -2568,8 +2556,6 @@ it.layer(
 
     it.effect("keeps an API key install authenticated when it reports no token source", () =>
       Effect.gen(function* () {
-        // `ANTHROPIC_API_KEY` never populates `tokenSource`, so reading that
-        // field alone would log the install out.
         const status = yield* checkClaudeProviderStatus(
           defaultClaudeSettings,
           claudeCapabilities({
@@ -2593,10 +2579,6 @@ it.layer(
 
     it.effect("keeps a CLI that says nothing about its account authenticated", () =>
       Effect.gen(function* () {
-        // Profile-authenticated installs report no token source at all, and a
-        // CLI too old to send an account payload reports nothing whatsoever.
-        // Only `tokenSource: "none"` disproves authentication; saying nothing
-        // is not the same as saying no.
         const status = yield* checkClaudeProviderStatus(
           defaultClaudeSettings,
           claudeCapabilities(),

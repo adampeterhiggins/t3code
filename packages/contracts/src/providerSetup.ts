@@ -14,19 +14,7 @@ export const ProviderSetupInput = Schema.Struct({
 });
 export type ProviderSetupInput = typeof ProviderSetupInput.Type;
 
-/**
- * How a provider authentication method produces credentials.
- *
- *   - `sign-in-flow`    — runs the provider's own interactive login
- *     (browser OAuth, device code, or a CLI prompt that accepts a pasted
- *     response). The flow may publish an authorization URL and/or request
- *     pasted input while it runs.
- *   - `saved-credentials` — re-detect credentials the provider CLI already
- *     holds on this environment (keychain entries, CLI credential files).
- *     No input required; succeeds or fails after a probe.
- *   - `paste-credential` — the user pastes a key/token which the server
- *     stores (sensitive environment variable or provider credential file).
- */
+/** Sign-in flows may request URLs or pasted input; saved credentials only probe, pasted credentials are stored. */
 export const ProviderAuthMethodKind = Schema.Literals([
   "sign-in-flow",
   "saved-credentials",
@@ -176,8 +164,7 @@ export const ProviderAuthState = Schema.Struct({
   inputPrompt: Schema.optional(TrimmedNonEmptyString),
   /** `setup.authMethods` id the current (or last) flow ran. */
   methodId: Schema.optional(TrimmedNonEmptyString),
-  // Newer servers may add method types, interactions, or owners; older
-  // clients drop what they cannot decode instead of rejecting the state.
+  // Drop unknown auth methods rather than rejecting the entire state.
   methods: Schema.optionalKey(
     ForwardCompatibleArray(ProviderAuthMethod).check(Schema.isMaxLength(32)),
   ),

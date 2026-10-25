@@ -15,6 +15,7 @@ const refreshProviders = vi.hoisted(() => vi.fn());
 vi.mock("react-native", () => ({ Alert: { alert: vi.fn() } }));
 
 vi.mock("../../state/queries", () => ({
+  useThreadSearch: () => ({ threads: [], isPending: false }),
   useComposerPathSearch: () => ({ entries: [], isPending: false }),
   useComposerPullRequestSearch: () => ({ entries: [], isPending: false, error: null }),
 }));

@@ -1,3 +1,4 @@
+import { openSettings } from "../settings/settings-navigation";
 import { useAtomValue } from "@effect/atom-react";
 import {
   automationRunBlocker,
@@ -86,12 +87,8 @@ function StartFromAutomationSheet(
   ) => {
     startScheduledTaskEditor(editor);
     props.onClose();
-    navigation.navigate("SettingsSheet", {
-      screen: "SettingsContent",
-      params: prefilled
-        ? { screen: "SettingsScheduledTaskNew", params: { prefilled: true } }
-        : { screen: "SettingsScheduledTaskEdit" },
-    });
+    if (prefilled) openSettings(navigation, "SettingsScheduledTaskNew", { prefilled: true });
+    else openSettings(navigation, "SettingsScheduledTaskEdit");
   };
 
   const newFromDraft = () => {

@@ -1,3 +1,4 @@
+import type { TurnItemSource } from "./timelineRowContext";
 import { ThreadId } from "@t3tools/contracts";
 import { claudeSkillInvocation } from "@t3tools/shared/toolActivity";
 import { turnItemNeedsDetailFetch } from "@t3tools/client-runtime/work-log/item-detail";
@@ -42,6 +43,7 @@ export type ToolCallContext = Pick<
   activeThreadEnvironmentId: ComponentProps<typeof V2ItemInspector>["environmentId"];
   markdownCwd: string | undefined;
   timestampFormat: TimestampFormat;
+  turnItemSource?: TurnItemSource | undefined;
 };
 
 export function workEntryRawCommand(
@@ -160,6 +162,7 @@ function WorkEntryDetailBody(
         hidePreviewActions={ctx.hidePreviewActions}
         hideOpenThread={ctx.hideOpenThread}
         previewFooter={ctx.previewFooter}
+        source={ctx.turnItemSource}
       />
     );
   }
@@ -184,6 +187,7 @@ function WorkEntryDetailBody(
           projectedItem={workEntry.projectedItem}
           environmentId={ctx.activeThreadEnvironmentId}
           onImageExpand={ctx.onImageExpand}
+          source={ctx.turnItemSource}
         />
       ) : null}
     </>
@@ -259,10 +263,10 @@ function ToolCallPreviewContent(
       : null;
   const headerAction = heading.command
     ? null
-    : item?.type === "file_change" && item.runId !== null
+    : item?.type === "file_change" && item.runId !== null && props.onOpenTurnDiff !== undefined
       ? {
           label: "Open diff",
-          onClick: () => props.onOpenTurnDiff(item.runId!, item.fileName),
+          onClick: () => props.onOpenTurnDiff?.(item.runId!, item.fileName),
         }
       : item?.type === "fork"
         ? {

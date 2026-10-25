@@ -79,11 +79,7 @@ const mcpResourceMetadataUrl = (request: HttpServerRequest.HttpServerRequest) =>
     Option.map((url) => `${url.origin}/.well-known/oauth-protected-resource/mcp`),
   );
 
-/**
- * Agents T3 Code launched carry a registry token and must never be sent into an
- * OAuth flow when it dies: they cannot open a browser, and a sign-in would mint
- * a credential that outlives their session.
- */
+/** Launched agents cannot open OAuth browsers; OAuth would mint credentials outliving their session. */
 const unauthorized = (input: {
   readonly request: HttpServerRequest.HttpServerRequest;
   readonly presentedToken: boolean;
@@ -190,13 +186,7 @@ const layerMcpAuthMiddleware = HttpRouter.middleware<{
   provides: McpInvocationContext.McpInvocationContext;
 }>()(makeMcpAuthMiddleware).layer;
 
-/**
- * Claude Code moves an MCP result above its output limit to a file and hands
- * the agent a notice instead, so a snapshot that carries the full accessibility
- * tree and page text loses its locators too. Claude Code also shows the model
- * `structuredContent` in place of the text blocks when a result has both, so
- * both carry the same bounded snapshot.
- */
+/** Claude Code spills oversized results to files, losing locators; bound both text and its preferred structuredContent. */
 export const MAX_SNAPSHOT_TEXT_BYTES = 20_000;
 const MAX_SNAPSHOT_VISIBLE_TEXT_CHARS = 8_000;
 const MAX_SNAPSHOT_ELEMENT_NAME_CHARS = 200;
@@ -281,8 +271,7 @@ const boundSnapshotMetadata = (metadata: SnapshotMetadata) => {
     actionTimeline: tail(metadata.actionTimeline, "action timeline entries"),
   };
 
-  // Per-field caps do not sum below the ceiling: three log arrays of 40 capped
-  // entries alone can pass 60 KB, and the caps count characters, not bytes.
+  // Per-field character caps can still exceed the total byte ceiling.
   const shedOrder = [
     "actionTimeline",
     "networkEntries",
@@ -331,7 +320,6 @@ const boundSnapshotMetadata = (metadata: SnapshotMetadata) => {
     } else {
       const keep = Math.floor(lists[key].length / 2);
       dropped[key] += lists[key].length - keep;
-      // slice(-0) keeps everything, so spell out the empty case.
       lists[key] =
         keep === 0
           ? []
@@ -366,7 +354,6 @@ const boundSnapshotMetadata = (metadata: SnapshotMetadata) => {
 const decodeAsAdvertised = <Tools extends Record<string, Tool.Any>>(
   toolkit: Toolkit.Toolkit<Tools>,
 ): Toolkit.Toolkit<Tools> =>
-  // The clones keep each tool's id, name and decoded parameter type, so handlers still match.
   Toolkit.make(
     ...Object.values(toolkit.tools).map((tool) =>
       tool.setParameters(Schema.toCodecJson(tool.parametersSchema)),
@@ -388,8 +375,7 @@ const previewSnapshotFailure = <E>(cause: Cause.Cause<E>) => {
     typeof firstFailure._tag === "string"
       ? firstFailure._tag
       : "PreviewSnapshotError";
-  // Preview errors build their message on the server, never from page output,
-  // and it tells the agent what to do next, such as falling back to a shell browser.
+  // Preview errors contain server-authored recovery guidance, never page output.
   const message = isPreviewAutomationError(firstFailure) ? firstFailure.message : undefined;
   const result = new McpSchema.CallToolResult({
     isError: true,
@@ -553,11 +539,7 @@ interface ImageToolResult {
   readonly [key: string]: unknown;
 }
 
-/**
- * Failures surface only their tag unless the tool describes them: the remote
- * message may carry renderer or device output the agent should not see, and the
- * tag is what it can act on.
- */
+/** Expose only undescribed failures' tags; remote messages may contain renderer or device output. */
 const imageToolFailure =
   <E>(toolName: string, operation: string, failureText: string | ((error: E) => string)) =>
   (cause: Cause.Cause<E>) => {
@@ -788,15 +770,7 @@ const handoffTargetIds = (
   return typeof threadId === "string" ? [threadId] : [];
 };
 
-/**
- * Runs a tool registration against a server that records an anonymous
- * `mcp.tool.invoked` event for every handoff call and every failed call of
- * other tools: the tool, the calling agent's provider, the outcome with its
- * failure code, and the duration. A handoff tool also
- * reports the caller's model, origin, and delegation depth, the settings the
- * agent chose, and the provider, model, and modes of each thread that received
- * the work. Ids, prompts, and free text are never recorded.
- */
+/** Tool analytics must never include IDs, prompts or free text. */
 const withToolAnalytics =
   /* Request instrumentation already owns the span; keep this helper in that context. */
   Effect.fnUntraced(function* <A, E, R>(registration: Effect.Effect<A, E, R>) {

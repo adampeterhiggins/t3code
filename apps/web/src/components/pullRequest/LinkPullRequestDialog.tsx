@@ -42,11 +42,7 @@ import { Kbd, KbdGroup } from "../ui/kbd";
 import { PULL_REQUEST_STATE_PRESENTATION, PullRequestGlyph } from "./pullRequestIcons";
 import type { EnvironmentPullRequestEntry } from "./pullRequestList.logic";
 
-/**
- * Which thread has the link dialog open, set by whichever entry point asked (command palette,
- * pull-requests surface, detail panel) and rendered once by the chat view so the dialog outlives
- * a palette that closes the moment its command runs.
- */
+// Host in chat to survive command palette dismissal.
 const linkPullRequestDialogThreadAtom = Atom.make<ScopedThreadRef | null>(null).pipe(
   Atom.keepAlive,
   Atom.withLabel("pull-requests:link-dialog-thread"),
