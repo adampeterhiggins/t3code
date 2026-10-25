@@ -3,7 +3,11 @@ import { LinkedObjectLinkPreview } from "./LinkedObjectLinkPreview";
 import { GoogleIcon, GoogleSourceIcon } from "../Icons";
 import { useAtomValue } from "@effect/atom-react";
 import { googleFileContextRecord } from "@t3tools/client-runtime/state/google";
-import type { ScopedThreadRef, GoogleFileSummary } from "@t3tools/contracts";
+import {
+  parseGoogleFileLink,
+  type GoogleFileSummary,
+  type ScopedThreadRef,
+} from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
 import { useState } from "react";
@@ -32,6 +36,14 @@ import {
   CommandList,
 } from "../ui/command";
 import { useComposerAttachRedirect } from "./composerAttachRedirect";
+import {
+  DEFAULT_GOOGLE_FILE_PICKER_VIEWS,
+  filterGoogleFiles,
+  googleFileTimeLabel,
+  googleFilterFacets,
+  type GoogleFilePickerSource,
+} from "./googleFilePicker.logic";
+import { GoogleFilePickerFilterBar } from "./GoogleFilePickerFilters";
 type GoogleFilePickerMode = "attach" | "link";
 /** The thread the picker acts on, and whether picking attaches the page or links it. */
 const pickerThread = Atom.make<{
@@ -103,7 +115,11 @@ function GoogleFilePickerDialog({
   const attachPage = useAttachGoogleFile();
   const redirect = useComposerAttachRedirect();
   const linkPage = useLinkGoogleFile();
-  const [source, setSource] = useState<"drive" | "calendar">("drive");
+  const [source, setSource] = useState<GoogleFilePickerSource>("drive");
+  const [views, setViews] = useState(DEFAULT_GOOGLE_FILE_PICKER_VIEWS);
+  const view = views[source];
+  // Date filters and the closest-to-now sort count from when the picker opened.
+  const [openedAt] = useState(() => Date.now());
   const [query, setQuery] = useState("");
   const [attaching, setAttaching] = useState(false);
   const settled = useDebouncedValue(query.trim(), 400);
@@ -121,7 +137,10 @@ function GoogleFilePickerDialog({
         })
       : null,
   );
-  const files = result.data?.files ?? [];
+  const loaded = result.data?.files;
+  const pasted = parseGoogleFileLink(settled) !== null;
+  const files = filterGoogleFiles(loaded ?? [], view, openedAt, pasted);
+  const facets = googleFilterFacets(loaded ?? [], view, openedAt, pasted);
   const status =
     connection.error ??
     result.error ??
@@ -130,7 +149,9 @@ function GoogleFilePickerDialog({
       : result.isPending || settled !== query.trim()
         ? "Searching Google…"
         : files.length === 0
-          ? "No matching files or events. Search by title or paste a Google link."
+          ? view !== DEFAULT_GOOGLE_FILE_PICKER_VIEWS[source] && (loaded?.length ?? 0) > 0
+            ? "Nothing matches these filters."
+            : "No matching files or events. Search by title or paste a Google link."
           : null);
   if (!googleEnabled) return null;
   return (
@@ -159,19 +180,30 @@ function GoogleFilePickerDialog({
                   ? "Attaching…"
                   : "Attach document"
             }
+            inputAccessory={
+              <>
+                <SourceTabs
+                  className="flex gap-1 px-3 py-2"
+                  options={[
+                    { id: "drive", label: "Drive" },
+                    { id: "calendar", label: "Calendar" },
+                  ]}
+                  activeId={source}
+                  onSelect={setSource}
+                />
+                <GoogleFilePickerFilterBar
+                  {...facets}
+                  source={source}
+                  loading={loaded === undefined && result.error === null}
+                  view={view}
+                  onChange={(next) => setViews((current) => ({ ...current, [source]: next }))}
+                />
+              </>
+            }
             mode="none"
             value={query}
             onValueChange={setQuery}
           >
-            <SourceTabs
-              className="flex gap-1 px-3 py-2"
-              options={[
-                { id: "drive", label: "Drive" },
-                { id: "calendar", label: "Calendar" },
-              ]}
-              activeId={source}
-              onSelect={setSource}
-            />
             {status ? (
               <div className="py-10 text-center text-muted-foreground text-sm">{status}</div>
             ) : (
@@ -206,7 +238,17 @@ function GoogleFilePickerDialog({
                           environmentId={threadRef.environmentId}
                           threadRef={threadRef}
                           objectLink={{ kind: "google-file", fileId: page.id, url: page.url }}
-                          link={<span className="min-w-0 flex-1 truncate">{page.title}</span>}
+                          link={
+                            <span className="flex min-w-0 flex-1 items-center gap-2">
+                              <span className="min-w-0 flex-1 truncate text-sm">{page.title}</span>
+                              <span className="w-40 shrink-0 truncate text-muted-foreground text-xs">
+                                {page.owner}
+                              </span>
+                              <span className="w-28 shrink-0 text-end text-muted-foreground/70 text-xs tabular-nums">
+                                {googleFileTimeLabel(page, openedAt)}
+                              </span>
+                            </span>
+                          }
                         />
                       </CommandItem>
                     )}

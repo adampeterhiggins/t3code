@@ -27,6 +27,7 @@ function harness(
     modifiedTime: "2026-10-01T00:00:00.000Z",
     description: "Shared source",
     size: "42",
+    owners: [{ displayName: "Ada" }],
     mimeType:
       options.mimeType ??
       (options.sheet
@@ -95,6 +96,7 @@ function harness(
           ? { date: "2026-10-26" }
           : { dateTime: "2026-10-26T10:00:00Z", timeZone: "Europe/London" },
         end: { dateTime: "2026-10-26T11:00:00Z" },
+        organizer: { email: "priya@example.com", displayName: "Priya" },
         attendees: [{ email: "priya@example.com", responseStatus: "accepted" }],
         location: "Meeting room",
       };
@@ -135,6 +137,7 @@ it.effect("searches Docs and Sheets, escaping Drive queries and recognizing past
     const api = yield* GoogleApi.GoogleApi;
     const result = yield* api.searchFiles({ query: "owner's launch" });
     assert.equal(result.files[0]?.fileType, "doc");
+    assert.equal(result.files[0]?.owner, "Ada");
     assert.equal(result.hasMore, true);
     assert.include(new URL(h.urls[0]!).searchParams.get("q"), "owner\\'s launch");
     yield* api.searchFiles({
@@ -225,6 +228,8 @@ it.effect("searches Calendar and reads event details with native citations", () 
     const result = yield* api.searchFiles({ query: "Launch", source: "calendar" });
     const event = result.files[0]!;
     assert.strictEqual(event.fileType, "event");
+    assert.strictEqual(event.owner, "Priya");
+    assert.strictEqual(event.startsAt, "2026-10-26T10:00:00Z");
     const context = yield* api.getFile({ id: event.url });
     assert.ok(context.markdown.includes("priya@example.com"));
     assert.ok(context.markdown.includes("Europe/London"));

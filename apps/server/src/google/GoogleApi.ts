@@ -26,6 +26,9 @@ const File = Schema.Struct({
   modifiedTime: Schema.String,
   description: Schema.optional(Schema.String),
   size: Schema.optional(Schema.String),
+  owners: Schema.optional(
+    Schema.Array(Schema.Struct({ displayName: Schema.optional(Schema.String) })),
+  ),
 });
 const Search = Schema.Struct({
   files: Schema.Array(File),
@@ -70,7 +73,12 @@ const CalendarEvent = Schema.Struct({
   location: Schema.optional(Schema.String),
   start: Schema.optional(EventTime),
   end: Schema.optional(EventTime),
-  organizer: Schema.optional(Schema.Struct({ email: Schema.optional(Schema.String) })),
+  organizer: Schema.optional(
+    Schema.Struct({
+      email: Schema.optional(Schema.String),
+      displayName: Schema.optional(Schema.String),
+    }),
+  ),
   attendees: Schema.optional(
     Schema.Array(
       Schema.Struct({
@@ -89,7 +97,7 @@ const CalendarEvent = Schema.Struct({
     ),
   ),
 });
-const fields = "id,name,mimeType,modifiedTime,description,size";
+const fields = "id,name,mimeType,modifiedTime,description,size,owners(displayName)";
 const summary = (file: typeof File.Type): GoogleFileSummary => {
   const fileType =
     file.mimeType === "application/vnd.google-apps.spreadsheet"
@@ -101,11 +109,13 @@ const summary = (file: typeof File.Type): GoogleFileSummary => {
           : file.mimeType === "application/vnd.google-apps.folder"
             ? "folder"
             : "drive";
+  const owner = file.owners?.[0]?.displayName;
   return {
     id: file.id,
     title: file.name,
     updatedAt: file.modifiedTime,
     fileType,
+    ...(owner ? { owner } : {}),
     url:
       fileType === "doc" || fileType === "sheet" || fileType === "slides"
         ? `https://docs.google.com/${fileType === "doc" ? "document" : fileType === "sheet" ? "spreadsheets" : "presentation"}/d/${file.id}/edit`
@@ -120,12 +130,16 @@ const eventSummary = (event: typeof CalendarEvent.Type, calendarId: string): Goo
     .replaceAll("/", "_")
     .replace(/=+$/, "");
   const url = `https://calendar.google.com/calendar/event?eid=${eid}`;
+  const owner = event.organizer?.displayName || event.organizer?.email;
+  const startsAt = event.start?.dateTime || event.start?.date;
   return {
     id: url,
     title: event.summary ?? "Untitled event",
     url,
     updatedAt: event.updated,
     fileType: "event",
+    ...(owner ? { owner } : {}),
+    ...(startsAt ? { startsAt } : {}),
   };
 };
 export class GoogleApi extends Context.Service<

@@ -51,6 +51,10 @@ export const GoogleFileSummary = Schema.Struct({
   url: Schema.String,
   updatedAt: IsoDateTime,
   fileType: Schema.Literals(["doc", "sheet", "drive", "folder", "slides", "event"]),
+  /** The Drive file's owner, or the event's organizer. */
+  owner: Schema.optional(Schema.String),
+  /** When an event starts: a date-time, or a date for all-day events. */
+  startsAt: Schema.optional(Schema.String),
 });
 export type GoogleFileSummary = typeof GoogleFileSummary.Type;
 export const GoogleSearchFilesInput = Schema.Struct({
