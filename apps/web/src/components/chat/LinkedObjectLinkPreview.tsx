@@ -34,6 +34,7 @@ import { slackEnvironment } from "~/state/slack";
 import { ContextPreviewBody } from "../contextPreviewRegistry";
 import type { LinkedObjectContextRecord } from "../linkedObjectPresentation";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
+import { Skeleton } from "../ui/skeleton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useCursorAnchor } from "./CursorPreviewCard";
 
@@ -281,11 +282,21 @@ export function LinkedObjectLinkPreview(props: {
         />
         <TooltipPopup side="top">{url}</TooltipPopup>
       </Tooltip>
-      {record === null ? null : (
+      {/* A failed read falls back to the URL tooltip instead. */}
+      {failed && record === null ? null : (
         <PreviewCardPopup {...cursorAnchor.popupProps} className="w-96 max-w-[calc(100vw-2rem)]">
           <div className="px-3 py-2">
-            {/* The chip's own preview, so the link reads exactly as its chip would. */}
-            <ContextPreviewBody kind={record.kind} preview={{ record, onOpenLink: openLink }} />
+            {record === null ? (
+              <div role="status" aria-label="Loading preview" className="flex flex-col gap-2 py-1">
+                <Skeleton className="h-4 w-2/3" />
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-5/6" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
+            ) : (
+              // The chip's own preview, so the link reads exactly as its chip would.
+              <ContextPreviewBody kind={record.kind} preview={{ record, onOpenLink: openLink }} />
+            )}
           </div>
         </PreviewCardPopup>
       )}
