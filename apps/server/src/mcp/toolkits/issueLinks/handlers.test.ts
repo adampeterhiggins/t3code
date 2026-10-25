@@ -93,7 +93,30 @@ const makeHarness = (settings: Parameters<typeof ServerSettings.layerTest>[0] = 
     }),
     ServerSettings.layerTest(settings),
     Layer.mock(GoogleApi.GoogleApi)({
-      searchFiles: () => Effect.succeed({ files: [], hasMore: false }),
+      searchFiles: (input) =>
+        Effect.sync(() => {
+          integrationSearches.push(`google:${input.calendarIds?.join(",") ?? "ticked"}`);
+          return { files: [], hasMore: false };
+        }),
+      listCalendars: Effect.succeed({
+        calendars: [
+          { id: "me@example.com", name: "Me", primary: true, selected: true },
+          {
+            id: "room@resource.calendar.google.com",
+            name: "Room 4",
+            primary: false,
+            selected: false,
+          },
+        ],
+      }),
+      searchPeople: ({ query }) =>
+        Effect.sync(() => {
+          integrationSearches.push(`people:${query}`);
+          return {
+            directoryAvailable: true,
+            people: [{ name: "Priya Shah", email: "priya@example.com" }],
+          };
+        }),
     }),
     Layer.mock(GoogleThreadLinks.GoogleThreadLinks)({ forThread: () => Effect.succeed(undefined) }),
     Layer.mock(SlackApi.SlackApi)({
@@ -440,6 +463,23 @@ describe("issue link toolkit handlers", () => {
       yield* harness.call("search_slack_messages", { query: "in:#eng deploy" });
       yield* harness.call("search_notion_pages", { query: "" });
       expect(harness.integrationSearches).toEqual(["slack:in:#eng deploy", "notion:"]);
+    }),
+  );
+
+  it.effect("finds a colleague and searches their calendar alongside a room's", () =>
+    Effect.gen(function* () {
+      const harness = makeHarness();
+      const { calendars } = yield* harness.call("list_google_calendars", {});
+      const { people } = yield* harness.call("search_google_people", { query: " Priya " });
+      yield* harness.call("search_google_files", {
+        query: "",
+        source: "calendar",
+        calendarIds: [people[0]!.email, calendars[1]!.id],
+      });
+      expect(harness.integrationSearches).toEqual([
+        "people:Priya",
+        "google:priya@example.com,room@resource.calendar.google.com",
+      ]);
     }),
   );
 

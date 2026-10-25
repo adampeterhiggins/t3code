@@ -19,6 +19,9 @@ import {
   GoogleError,
   NotionSearchPagesResult,
   GoogleSearchFilesResult,
+  GoogleListCalendarsResult,
+  GoogleSearchPeopleResult,
+  GOOGLE_CALENDAR_SEARCH_LIMIT,
   NotionThreadLink,
   GoogleThreadLink,
   IsoDateTime,
@@ -458,14 +461,24 @@ const SearchNotionPagesTool = Tool.make("search_notion_pages", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, true);
 const SearchGoogleFilesTool = Tool.make("search_google_files", {
-  description: `Search Google Drive files or Calendar events through the connected Google account. Calendar searches default to the past 30 days and next year across the calendars ticked in Google Calendar; supply calendarId (a colleague's calendar id is their email) and timeMin/timeMax to target another calendar or date window. Returns page titles and urls; pass a url to read_context_link for the page's contents. Works without a Google MCP server. Fails when Google is disconnected or turned off.`,
+  description: `Search Google Drive files or Calendar events through the connected Google account. Calendar searches default to the past 30 days and next year across the calendars ticked in Google Calendar; supply calendarIds (from list_google_calendars, or a colleague's email from search_google_people) and timeMin/timeMax to target other calendars or a date window. Returns page titles and urls; pass a url to read_context_link for the page's contents. Works without a Google MCP server. Fails when Google is disconnected or turned off.`,
   parameters: Schema.Struct({
     query: Schema.String.check(Schema.isMaxLength(256)).annotate({
       description:
         "Title text or a Google link. Empty lists recent Drive files or events in the date window.",
     }),
     source: Schema.optional(Schema.Literals(["drive", "calendar", "all"])),
-    calendarId: Schema.optional(Schema.String.check(Schema.isMaxLength(512))),
+    calendarId: Schema.optional(Schema.String.check(Schema.isMaxLength(512))).annotate({
+      description: "One calendar to search. Prefer calendarIds.",
+    }),
+    calendarIds: Schema.optional(
+      Schema.Array(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512))).check(
+        Schema.isMaxLength(GOOGLE_CALENDAR_SEARCH_LIMIT),
+      ),
+    ).annotate({
+      description:
+        "Calendars to search in place of the ticked ones. A colleague's calendar id is their email; calendars not shared with this account are skipped.",
+    }),
     timeMin: Schema.optional(IsoDateTime),
     timeMax: Schema.optional(IsoDateTime),
   }),
@@ -474,6 +487,35 @@ const SearchGoogleFilesTool = Tool.make("search_google_files", {
   dependencies,
 })
   .annotate(Tool.Title, "Search Google files")
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, true);
+
+const ListGoogleCalendarsTool = Tool.make("list_google_calendars", {
+  description: `List the calendars the connected Google account can read: its own, subscribed colleagues' and rooms', with names and whether each is ticked in Google Calendar (search_google_files searches the ticked ones by default). Pass ids to search_google_files as calendarIds. Fails when Google is disconnected or turned off.`,
+  parameters: Schema.Struct({}),
+  success: GoogleListCalendarsResult,
+  failure: IssueLinkToolError,
+  dependencies,
+})
+  .annotate(Tool.Title, "List Google calendars")
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, true);
+const SearchGooglePeopleTool = Tool.make("search_google_people", {
+  description: `Find colleagues by name or email in the connected Google account's Workspace directory. Each email is that person's calendar id for search_google_files calendarIds. directoryAvailable is false when the connection predates directory access; the user must reconnect Google in Settings > Integrations. Fails when Google is disconnected or turned off.`,
+  parameters: Schema.Struct({
+    query: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)).annotate({
+      description: "A name or email to look up.",
+    }),
+  }),
+  success: GoogleSearchPeopleResult,
+  failure: IssueLinkToolError,
+  dependencies,
+})
+  .annotate(Tool.Title, "Search Google people")
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true)
@@ -496,4 +538,6 @@ export const IssueLinksToolkit = Toolkit.make(
   SearchSlackMessagesTool,
   SearchNotionPagesTool,
   SearchGoogleFilesTool,
+  ListGoogleCalendarsTool,
+  SearchGooglePeopleTool,
 );

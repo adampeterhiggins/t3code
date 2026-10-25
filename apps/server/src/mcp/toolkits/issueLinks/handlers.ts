@@ -364,6 +364,18 @@ const make = Effect.gen(function* () {
         Effect.andThen(googleApi.searchFiles(input)),
       ),
     ),
+    list_google_calendars: McpToolAccess.reads(() =>
+      requireIntegrationRead.pipe(
+        Effect.andThen(requireIntegrationOn("enableGoogleIntegration", "Google")),
+        Effect.andThen(googleApi.listCalendars),
+      ),
+    ),
+    search_google_people: McpToolAccess.reads((input) =>
+      requireIntegrationRead.pipe(
+        Effect.andThen(requireIntegrationOn("enableGoogleIntegration", "Google")),
+        Effect.andThen(googleApi.searchPeople({ query: input.query.trim() })),
+      ),
+    ),
   } satisfies McpToolAccess.Handlers<typeof IssueLinksToolkit.tools>;
 });
 

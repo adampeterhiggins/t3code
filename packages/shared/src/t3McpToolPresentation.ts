@@ -147,7 +147,12 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   search_linear_issues: tool(["Search", "Searching", "Searched", "Linear issues"], "search-issues"),
   search_slack_messages: tool(["Search", "Searching", "Searched", "Slack"], "search-messages"),
   search_google_files: tool(
-    ["Search", "Searching", "Searched", "Google documents"],
+    ["Search", "Searching", "Searched", "Google Drive and Calendar"],
+    "search-pages",
+  ),
+  list_google_calendars: tool(["List", "Listing", "Listed", "Google calendars"], "search-pages"),
+  search_google_people: tool(
+    ["Search", "Searching", "Searched", "the Google directory"],
     "search-pages",
   ),
   search_notion_pages: tool(["Search", "Searching", "Searched", "Notion pages"], "search-pages"),
