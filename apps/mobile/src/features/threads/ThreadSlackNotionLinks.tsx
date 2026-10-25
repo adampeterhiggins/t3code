@@ -2,6 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { discordLinkForThread } from "@t3tools/client-runtime/state/discord";
 import { granolaLinkForThread } from "@t3tools/client-runtime/state/granola";
 import { notionLinkForThread } from "@t3tools/client-runtime/state/notion";
+import { googleLinkForThread } from "@t3tools/client-runtime/state/google";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { slackLinkForThread } from "@t3tools/client-runtime/state/slack";
 import type { EnvironmentId, ThreadId, ThreadLinkKind } from "@t3tools/contracts";
@@ -11,11 +12,13 @@ import { Menu } from "../../components/ui/Menu";
 import { useDiscordMessagePicker } from "../../components/DiscordMessagePickerSheet";
 import { useGranolaNotePicker } from "../../components/GranolaNotePickerSheet";
 import { useNotionPagePicker } from "../../components/NotionPagePickerSheet";
+import { useGoogleFilePicker } from "../../components/GoogleFilePickerSheet";
 import { useSlackMessagePicker } from "../../components/SlackMessagePickerSheet";
 import { discordEnvironment } from "../../state/discord";
 import { tryOpenExternalUrl, type ExternalUrlTarget } from "../../lib/openExternalUrl";
 import { granolaEnvironment } from "../../state/granola";
 import { notionEnvironment } from "../../state/notion";
+import { googleEnvironment } from "../../state/google";
 import { useEnvironmentQuery } from "../../state/query";
 import { slackEnvironment } from "../../state/slack";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -27,6 +30,7 @@ const UNLINK_ACTION = "link:unlink";
 export const LINK_SLACK_ACTION = "tab:link-slack";
 export const LINK_DISCORD_ACTION = "tab:link-discord";
 export const LINK_NOTION_ACTION = "tab:link-notion";
+export const LINK_GOOGLE_ACTION = "tab:link-google";
 export const LINK_GRANOLA_ACTION = "tab:link-granola";
 
 /**
@@ -44,24 +48,31 @@ export function useThreadSlackNotionLinks(environmentId: EnvironmentId, threadId
   const notionLinks = useEnvironmentQuery(
     notionEnvironment.threadLinks({ environmentId, input: {} }),
   ).data;
+  const googleLinks = useEnvironmentQuery(
+    googleEnvironment.threadLinks({ environmentId, input: {} }),
+  ).data;
   const granolaLinks = useEnvironmentQuery(
     granolaEnvironment.threadLinks({ environmentId, input: {} }),
   ).data;
   const canEditSlack = useAtomValue(slackEnvironment.linkThread.permissionAtom(environmentId));
   const canEditDiscord = useAtomValue(discordEnvironment.linkThread.permissionAtom(environmentId));
   const canEditNotion = useAtomValue(notionEnvironment.linkThread.permissionAtom(environmentId));
+  const canEditGoogle = useAtomValue(googleEnvironment.linkThread.permissionAtom(environmentId));
   const canEditGranola = useAtomValue(granolaEnvironment.linkThread.permissionAtom(environmentId));
   const slackPicker = useSlackMessagePicker({ mode: "link", environmentId, threadId });
   const discordPicker = useDiscordMessagePicker({ mode: "link", environmentId, threadId });
   const notionPicker = useNotionPagePicker({ mode: "link", environmentId, threadId });
+  const googlePicker = useGoogleFilePicker({ mode: "link", environmentId, threadId });
   const granolaPicker = useGranolaNotePicker({ mode: "link", environmentId, threadId });
   const slackLink = slackLinkForThread(slackLinks, threadId);
   const discordLink = discordLinkForThread(discordLinks, threadId);
   const notionLink = notionLinkForThread(notionLinks, threadId);
+  const googleLink = googleLinkForThread(googleLinks, threadId);
   const granolaLink = granolaLinkForThread(granolaLinks, threadId);
   const openSlackPicker = canEditSlack && slackLinks != null ? slackPicker.open : undefined;
   const openDiscordPicker = canEditDiscord && discordLinks != null ? discordPicker.open : undefined;
   const openNotionPicker = canEditNotion && notionLinks != null ? notionPicker.open : undefined;
+  const openGooglePicker = canEditGoogle && googleLinks != null ? googlePicker.open : undefined;
   const openGranolaPicker = canEditGranola && granolaLinks != null ? granolaPicker.open : undefined;
   return {
     environmentId,
@@ -69,15 +80,18 @@ export function useThreadSlackNotionLinks(environmentId: EnvironmentId, threadId
     slackLink,
     discordLink,
     notionLink,
+    googleLink,
     granolaLink,
     canEditSlack,
     canEditDiscord,
     canEditNotion,
+    canEditGoogle,
     canEditGranola,
     /** Opens the Slack link picker; undefined when linking is unavailable. */
     openSlackPicker,
     openDiscordPicker,
     openNotionPicker,
+    openGooglePicker,
     openGranolaPicker,
     /** Tab-menu items for links the group does not have yet; the chips change existing ones. */
     menuActions: [
@@ -90,6 +104,9 @@ export function useThreadSlackNotionLinks(environmentId: EnvironmentId, threadId
       ...(notionLink === null && openNotionPicker
         ? [{ id: LINK_NOTION_ACTION, title: "Link Notion page", image: "link" }]
         : []),
+      ...(googleLink === null && openGooglePicker
+        ? [{ id: LINK_GOOGLE_ACTION, title: "Link Google file or event", image: "link" }]
+        : []),
       ...(granolaLink === null && openGranolaPicker
         ? [{ id: LINK_GRANOLA_ACTION, title: "Link Granola note", image: "link" }]
         : []),
@@ -99,6 +116,7 @@ export function useThreadSlackNotionLinks(environmentId: EnvironmentId, threadId
         {slackPicker.sheet}
         {discordPicker.sheet}
         {notionPicker.sheet}
+        {googlePicker.sheet}
         {granolaPicker.sheet}
       </>
     ),
@@ -112,6 +130,7 @@ export function handleSlackNotionMenuAction(links: ThreadSlackNotionLinks, id: s
   if (id === LINK_SLACK_ACTION) links.openSlackPicker?.();
   else if (id === LINK_DISCORD_ACTION) links.openDiscordPicker?.();
   else if (id === LINK_NOTION_ACTION) links.openNotionPicker?.();
+  else if (id === LINK_GOOGLE_ACTION) links.openGooglePicker?.();
   else if (id === LINK_GRANOLA_ACTION) links.openGranolaPicker?.();
   else return false;
   return true;
@@ -119,7 +138,8 @@ export function handleSlackNotionMenuAction(links: ThreadSlackNotionLinks, id: s
 
 /** The linked Slack thread, Discord thread, Notion page, and Granola note as chips to open, change, or unlink them. */
 export function ThreadSlackNotionLinkChips(props: { readonly links: ThreadSlackNotionLinks }) {
-  const { environmentId, threadId, slackLink, discordLink, notionLink, granolaLink } = props.links;
+  const { environmentId, threadId, slackLink, discordLink, notionLink, googleLink, granolaLink } =
+    props.links;
   const unlinkSlack = useAtomCommand(slackEnvironment.unlinkThread, {
     label: "slack thread unlink",
     reportFailure: false,
@@ -132,12 +152,21 @@ export function ThreadSlackNotionLinkChips(props: { readonly links: ThreadSlackN
     label: "notion thread unlink",
     reportFailure: false,
   });
+  const unlinkGoogle = useAtomCommand(googleEnvironment.unlinkThread, {
+    label: "google thread unlink",
+    reportFailure: false,
+  });
   const unlinkGranola = useAtomCommand(granolaEnvironment.unlinkThread, {
     label: "granola thread unlink",
     reportFailure: false,
   });
   const unlink = async (
-    command: typeof unlinkSlack | typeof unlinkDiscord | typeof unlinkNotion | typeof unlinkGranola,
+    command:
+      | typeof unlinkSlack
+      | typeof unlinkDiscord
+      | typeof unlinkNotion
+      | typeof unlinkGoogle
+      | typeof unlinkGranola,
     title: string,
   ) => {
     const result = await command({ environmentId, input: { threadId } });
@@ -207,6 +236,26 @@ export function ThreadSlackNotionLinkChips(props: { readonly links: ThreadSlackN
           onUnlink={
             props.links.canEditNotion
               ? () => void unlink(unlinkNotion, "Could not unlink page")
+              : undefined
+          }
+        />
+      ) : null}
+      {googleLink ? (
+        <LinkChip
+          environmentId={environmentId}
+          threadId={threadId}
+          kind="google"
+          label={googleLink.title}
+          description={`Linked Google file or event: ${googleLink.title}`}
+          url={googleLink.url}
+          target="google"
+          openTitle="Open in Google"
+          changeTitle="Change page…"
+          unlinkTitle="Unlink page"
+          onChange={props.links.openGooglePicker}
+          onUnlink={
+            props.links.canEditGoogle
+              ? () => void unlink(unlinkGoogle, "Could not unlink page")
               : undefined
           }
         />

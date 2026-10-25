@@ -334,3 +334,14 @@ it("recognizes Granola note links in pasted prose", () => {
     parseComposerObjectLink("http://notes.granola.ai/d/abd3f11c-1ff0-4e2c-ad7d-078d1ffcf27f"),
   ).toBeNull();
 });
+
+it("parses Google document and sheet citations through all link intake paths", () => {
+  for (const url of [
+    "https://docs.google.com/document/d/doc_1/edit#heading=h.pricing",
+    "https://docs.google.com/spreadsheets/d/sheet_1/edit#gid=42&range=B4:D6",
+  ]) {
+    expect(parseComposerObjectLink(url)).toMatchObject({ kind: "google-file", url });
+    expect(findComposerObjectLinks(`Read ${url}.`)).toHaveLength(1);
+    expect(findPastedComposerObjectLinks(url, url, 0)).toHaveLength(1);
+  }
+});

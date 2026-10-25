@@ -21,6 +21,7 @@ import { useComposerGitHubIssueItems } from "./useComposerGitHubIssueItems";
 import { useComposerGranolaItems } from "./useComposerGranolaItems";
 import { useComposerLinearIssueItems } from "./useComposerLinearIssueItems";
 import { useComposerNotionItems } from "./useComposerNotionItems";
+import { useComposerGoogleItems } from "./useComposerGoogleItems";
 import { useComposerPullRequestItems } from "./useComposerPullRequestItems";
 import { useComposerReferenceSources } from "./useComposerReferenceSources";
 import { useComposerRepositoryItems } from "./useComposerRepositoryItems";
@@ -37,6 +38,7 @@ const REFERENCE_MENU_TABS: ReadonlyArray<{
   { id: "slack-messages", label: "Slack" },
   { id: "discord-messages", label: "Discord" },
   { id: "notion-pages", label: "Notion" },
+  { id: "google-files", label: "Google" },
   { id: "granola-notes", label: "Granola" },
   { id: "repositories", label: "Repositories" },
 ];
@@ -75,6 +77,7 @@ export function useComposerReferenceMenu(input: {
     REFERENCE_MENU_TABS.flatMap((tab) =>
       (tab.id === "linear-issues" && !sources.linear) ||
       (tab.id === "notion-pages" && !sources.notion) ||
+      (tab.id === "google-files" && !sources.google) ||
       (tab.id === "granola-notes" && !sources.granola) ||
       (tab.id === "slack-messages" && !sources.slack) ||
       (tab.id === "discord-messages" && !sources.discord) ||
@@ -109,6 +112,11 @@ export function useComposerReferenceMenu(input: {
   const notionMenu = useComposerNotionItems(environmentId, {
     enabled: available.has("notion-pages"),
     active: tab === "notion-pages",
+    query,
+  });
+  const googleMenu = useComposerGoogleItems(environmentId, {
+    enabled: available.has("google-files"),
+    active: tab === "google-files",
     query,
   });
   const granolaMenu = useComposerGranolaItems(environmentId, {
@@ -152,6 +160,7 @@ export function useComposerReferenceMenu(input: {
           "linear-issues": linearIssueMenu.preloaded,
           "github-issues": githubIssueMenu.preloaded,
           "notion-pages": notionMenu.preloaded,
+          "google-files": googleMenu.preloaded,
           "granola-notes": granolaMenu.preloaded,
           checkouts: checkoutMenu.preloaded,
         },
@@ -180,6 +189,12 @@ export function useComposerReferenceMenu(input: {
           items: notionMenu.items,
           isPending: notionMenu.isPending,
           emptyState: notionMenu.error ?? "No Notion pages found. Try searching by title.",
+        };
+      case "google-files":
+        return {
+          items: googleMenu.items,
+          isPending: googleMenu.isPending,
+          emptyState: googleMenu.error ?? "No Google files found. Try searching by title.",
         };
       case "granola-notes":
         return {

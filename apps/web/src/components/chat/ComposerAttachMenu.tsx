@@ -6,7 +6,15 @@ import {
   MessageSquareIcon,
   PaperclipIcon,
 } from "lucide-react";
-import { GitHubIcon, GranolaIcon, DiscordIcon, LinearIcon, NotionIcon, SlackIcon } from "../Icons";
+import {
+  GitHubIcon,
+  GranolaIcon,
+  DiscordIcon,
+  LinearIcon,
+  NotionIcon,
+  GoogleIcon,
+  SlackIcon,
+} from "../Icons";
 import { memo } from "react";
 import { useEnvironmentSettings } from "~/hooks/useSettings";
 
@@ -21,6 +29,7 @@ import { openPullRequestAttachPicker } from "./PullRequestAttachPicker";
 import { openCheckoutAttachPicker } from "./CheckoutAttachPicker";
 import { openRepositoryAttachPicker } from "./RepositoryAttachPicker";
 import { openNotionPagePicker } from "./NotionPagePicker";
+import { openGoogleFilePicker } from "./GoogleFilePicker";
 import { openDiscordMessagePicker } from "./DiscordMessagePicker";
 import { openSlackMessagePicker } from "./SlackMessagePicker";
 import { openThreadAttachPicker } from "./ThreadAttachPicker";
@@ -30,6 +39,7 @@ export type ComposerAttachPicker =
   | "thread"
   | "linear-issue"
   | "notion-page"
+  | "google-file"
   | "granola-note"
   | "slack-message"
   | "discord-message"
@@ -49,6 +59,8 @@ export function openComposerAttachPicker(
       return openLinearIssuePicker(threadRef);
     case "notion-page":
       return openNotionPagePicker(threadRef);
+    case "google-file":
+      return openGoogleFilePicker(threadRef);
     case "granola-note":
       return openGranolaNotePicker(threadRef);
     case "slack-message":
@@ -93,6 +105,10 @@ export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
     props.environmentId,
     (s) => s.enableNotionIntegration,
   );
+  const googleEnabled = useEnvironmentSettings(
+    props.environmentId,
+    (s) => s.enableGoogleIntegration,
+  );
   const granolaEnabled = useEnvironmentSettings(
     props.environmentId,
     (s) => s.enableGranolaIntegration,
@@ -121,6 +137,12 @@ export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
           <MenuItem onClick={() => props.onPick("notion-page")}>
             <NotionIcon />
             Notion page
+          </MenuItem>
+        ) : null}
+        {googleEnabled ? (
+          <MenuItem onClick={() => props.onPick("google-file")}>
+            <GoogleIcon />
+            Google
           </MenuItem>
         ) : null}
         {granolaEnabled ? (

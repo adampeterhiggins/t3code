@@ -1,3 +1,4 @@
+import { parseGoogleFileLink } from "@t3tools/contracts";
 import type { ComposerContextRecord, EnvironmentId, ThreadId } from "@t3tools/contracts";
 import {
   composerChipSizeSuffix,
@@ -19,7 +20,15 @@ export function enrichedContextLinkPresentation(
   records?: ReadonlyArray<ComposerContextRecord>,
 ): { accent?: string; icon: ContextChipIconRef; label?: string } | undefined {
   const reference = parseComposerContextHref(href);
-  if (!reference) return undefined;
+  if (!reference) {
+    const google = parseGoogleFileLink(href);
+    if (!google) return undefined;
+    const presentation = contextChipPresentation("google-file", { fileType: google.fileType });
+    return {
+      ...(presentation.accent ? { accent: presentation.accent } : {}),
+      icon: contextChipIcon(presentation, ""),
+    };
+  }
   const record = records?.find((candidate) => candidate.contextId === reference.contextId);
   const presentation =
     records && !record

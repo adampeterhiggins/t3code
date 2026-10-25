@@ -10,7 +10,9 @@ import * as GranolaThreadLinks from "../../../granola/GranolaThreadLinks.ts";
 import * as LinearApi from "../../../linear/LinearApi.ts";
 import * as LinearThreadLinks from "../../../linear/LinearThreadLinks.ts";
 import * as NotionThreadLinks from "../../../notion/NotionThreadLinks.ts";
+import * as GoogleThreadLinks from "../../../google/GoogleThreadLinks.ts";
 import * as NotionApi from "../../../notion/NotionApi.ts";
+import * as GoogleApi from "../../../google/GoogleApi.ts";
 import * as ServerSettings from "../../../serverSettings.ts";
 import * as SlackApi from "../../../slack/SlackApi.ts";
 import * as SlackThreadLinks from "../../../slack/SlackThreadLinks.ts";
@@ -46,10 +48,12 @@ const make = Effect.gen(function* () {
   const slack = yield* SlackThreadLinks.SlackThreadLinks;
   const discord = yield* DiscordThreadLinks.DiscordThreadLinks;
   const notion = yield* NotionThreadLinks.NotionThreadLinks;
+  const google = yield* GoogleThreadLinks.GoogleThreadLinks;
   const granola = yield* GranolaThreadLinks.GranolaThreadLinks;
   const contextLinks = yield* McpContextLinks.McpContextLinks;
   const slackApi = yield* SlackApi.SlackApi;
   const notionApi = yield* NotionApi.NotionApi;
+  const googleApi = yield* GoogleApi.GoogleApi;
   const settings = yield* ServerSettings.ServerSettingsService;
   const watches = yield* ThreadLinkWatches.ThreadLinkWatches;
 
@@ -59,6 +63,7 @@ const make = Effect.gen(function* () {
       | "enableSlackIntegration"
       | "enableDiscordIntegration"
       | "enableNotionIntegration"
+      | "enableGoogleIntegration"
       | "enableGranolaIntegration",
     name: string,
   ) =>
@@ -101,7 +106,7 @@ const make = Effect.gen(function* () {
     const links: Record<
       ThreadLinkKind,
       { readonly forThread: (id: ThreadId) => Effect.Effect<{ readonly url: string } | undefined> }
-    > = { linear, github, slack, discord, notion, granola };
+    > = { linear, github, slack, discord, notion, google, granola };
     return links[kind]
       .forThread(threadId)
       .pipe(Effect.map((link): string | null => link?.url ?? null));
@@ -175,6 +180,17 @@ const make = Effect.gen(function* () {
           replacedUrl: replaced(before, linked),
         };
       }
+      case "google-file": {
+        yield* requireIntegrationOn("enableGoogleIntegration", "Google");
+        const before = yield* linkedUrl(threadId, "google");
+        const linked = yield* google.link({ threadId, fileId: link.url });
+        return {
+          kind: "google" as const,
+          url: linked.url,
+          title: linked.title,
+          replacedUrl: replaced(before, linked),
+        };
+      }
       case "granola-note": {
         yield* requireIntegrationOn("enableGranolaIntegration", "Granola");
         const before = yield* linkedUrl(threadId, "granola");
@@ -189,7 +205,7 @@ const make = Effect.gen(function* () {
       default:
         return yield* new OrchestratorMcpFailure({
           code: "invalid_request",
-          message: `Cannot link ${url}. Use a Slack or Discord message, Notion page, Granola note, Linear issue, or GitHub issue link; for pull requests use link_pull_request.`,
+          message: `Cannot link ${url}. Use a Slack or Discord message, Notion page, Google file or event, Granola note, Linear issue, or GitHub issue link; for pull requests use link_pull_request.`,
         });
     }
   });
@@ -214,6 +230,9 @@ const make = Effect.gen(function* () {
         break;
       case "notion":
         yield* notion.unlink({ threadId });
+        break;
+      case "google":
+        yield* google.unlink({ threadId });
         break;
       case "granola":
         yield* granola.unlink({ threadId });
@@ -262,6 +281,7 @@ const make = Effect.gen(function* () {
           slack: (yield* slack.forThread(threadId)) ?? null,
           discord: (yield* discord.forThread(threadId)) ?? null,
           notion: (yield* notion.forThread(threadId)) ?? null,
+          google: (yield* google.forThread(threadId)) ?? null,
           granola: (yield* granola.forThread(threadId)) ?? null,
           watches: yield* watches.forThread(threadId),
         };
@@ -336,6 +356,24 @@ const make = Effect.gen(function* () {
       requireIntegrationRead.pipe(
         Effect.andThen(requireIntegrationOn("enableNotionIntegration", "Notion")),
         Effect.andThen(notionApi.searchPages({ query: input.query })),
+      ),
+    ),
+    search_google_files: McpToolAccess.reads((input) =>
+      requireIntegrationRead.pipe(
+        Effect.andThen(requireIntegrationOn("enableGoogleIntegration", "Google")),
+        Effect.andThen(googleApi.searchFiles(input)),
+      ),
+    ),
+    list_google_calendars: McpToolAccess.reads(() =>
+      requireIntegrationRead.pipe(
+        Effect.andThen(requireIntegrationOn("enableGoogleIntegration", "Google")),
+        Effect.andThen(googleApi.listCalendars),
+      ),
+    ),
+    search_google_people: McpToolAccess.reads((input) =>
+      requireIntegrationRead.pipe(
+        Effect.andThen(requireIntegrationOn("enableGoogleIntegration", "Google")),
+        Effect.andThen(googleApi.searchPeople({ query: input.query.trim() })),
       ),
     ),
   } satisfies McpToolAccess.Handlers<typeof IssueLinksToolkit.tools>;

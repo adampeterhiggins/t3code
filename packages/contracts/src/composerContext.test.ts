@@ -154,6 +154,16 @@ const knownRecords: Record<(typeof COMPOSER_CONTEXT_KINDS)[number], Record<strin
     url: "https://notion.so/aabbcc",
     markdown: "# Design\nDetails",
   },
+  "google-file": {
+    ...base,
+    kind: "google-file",
+    fileType: "doc",
+    label: "Design",
+    fileId: "aabbcc",
+    title: "Design",
+    url: "https://google.so/aabbcc",
+    markdown: "# Design\nDetails",
+  },
   "granola-note": {
     ...base,
     kind: "granola-note",

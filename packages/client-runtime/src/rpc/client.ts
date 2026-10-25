@@ -75,9 +75,11 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof WS_METHODS.linearSubscribeState
   | typeof WS_METHODS.linearSubscribeThreadLinks
   | typeof WS_METHODS.notionSubscribeState
+  | typeof WS_METHODS.googleSubscribeState
   | typeof WS_METHODS.granolaSubscribeState
   | typeof WS_METHODS.granolaSubscribeThreadLinks
   | typeof WS_METHODS.notionSubscribeThreadLinks
+  | typeof WS_METHODS.googleSubscribeThreadLinks
   | typeof WS_METHODS.slackSubscribeState
   | typeof WS_METHODS.slackSubscribeThreadLinks
   | typeof WS_METHODS.discordSubscribeState

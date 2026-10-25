@@ -42,6 +42,7 @@ const CONTEXT_CHIP_PRESENTATIONS = {
   "linear-issue": { accent: "#617de6", icon: "ticket" },
   "linear-object": { accent: "#617de6", icon: "ticket" },
   "github-issue": { accent: "#009f6e", icon: "circle-dot" },
+  "google-file": { accent: "#4585dc", icon: "google-doc" },
   "github-ref": { accent: "#7f8793", icon: "tag" },
   "slack-thread": { accent: "#c6589c", icon: "hash" },
   "discord-thread": { accent: "#5865F2", icon: "messages-square" },
@@ -133,12 +134,19 @@ export function contextChipPresentation(
     readonly sectionId?: string;
     readonly state?: string;
     readonly refType?: string;
+    readonly fileType?: string;
     readonly pullRequest?: {
       readonly state?: string;
       readonly isDraft?: boolean;
     };
   },
 ): ContextChipPresentation {
+  if (kind === "google-file" && record?.fileType === "event")
+    return { accent: "#4585dc", icon: "google-calendar" };
+  if (kind === "google-file" && record?.fileType !== "doc" && record?.fileType !== "sheet")
+    return { accent: "#7f8793", icon: "google-drive" };
+  if (kind === "google-file" && record?.fileType === "sheet")
+    return { accent: "#319e63", icon: "google-sheet" };
   const presentationKind =
     kind === "file" &&
     videoMimeType({

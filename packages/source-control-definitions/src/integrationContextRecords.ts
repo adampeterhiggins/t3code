@@ -15,7 +15,9 @@ import type {
   ModelContextOption,
   ModelContextRecord,
   NotionPageContext,
+  GoogleFileContext,
   NotionPageContextRecord,
+  GoogleFileContextRecord,
   PromptLinkContextRecord,
   ProviderInstanceId,
   RepositoryContextRecord,
@@ -178,6 +180,29 @@ export function notionPageContextRecord(page: NotionPageContext): NotionPageCont
     contextId: `notion-page_${page.id}` as ComposerContextId,
     label: sanitizeComposerContextLabel(page.title, "notion-page"),
     pageId: page.id,
+    title: page.title.slice(0, 2048),
+    url: page.url.slice(0, 2048),
+    markdown: page.markdown,
+  };
+}
+
+export function googleFileContextRecord(page: GoogleFileContext): GoogleFileContextRecord {
+  return {
+    version: 1,
+    kind: "google-file",
+    contextId: `google-file_${page.id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80)}_${Array.from(
+      page.url,
+    )
+      .reduce((hash, char) => Math.imul(hash ^ char.charCodeAt(0), 16777619) >>> 0, 2166136261)
+      .toString(16)}` as ComposerContextId,
+    label: sanitizeComposerContextLabel(
+      `${page.title}${page.location ? ` · ${page.location}` : ""}`,
+      "google-file",
+    ),
+    fileType: page.fileType,
+    ...(page.location ? { location: page.location } : {}),
+    ...(page.grid ? { grid: page.grid } : {}),
+    fileId: page.id,
     title: page.title.slice(0, 2048),
     url: page.url.slice(0, 2048),
     markdown: page.markdown,

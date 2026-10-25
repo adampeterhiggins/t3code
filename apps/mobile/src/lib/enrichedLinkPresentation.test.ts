@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { ComposerContextId, EnvironmentId, ThreadId } from "@t3tools/contracts";
 import {
+  enrichedContextLinkPresentation,
   enrichedLinkVariantPattern,
   enrichedSkillLinkRegex,
   enrichedThreadLinkPresentation,
@@ -95,4 +96,19 @@ describe("Enriched link presentation", () => {
     ]);
     expect(threadChipTargets(here, "No links here.")).toEqual([]);
   });
+});
+
+it("renders native Google citations with document and spreadsheet chip identities", () => {
+  const doc = enrichedContextLinkPresentation(
+    "https://docs.google.com/document/d/doc_1/edit#heading=h.pricing",
+  );
+  const sheet = enrichedContextLinkPresentation(
+    "https://docs.google.com/spreadsheets/d/sheet_1/edit#gid=42&range=B4:D6",
+  );
+  expect(doc?.icon).toEqual({ kind: "chip", name: "google-doc" });
+  expect(sheet?.icon).toEqual({ kind: "chip", name: "google-sheet" });
+  expect(doc?.accent).not.toBe(sheet?.accent);
+  expect(
+    enrichedContextLinkPresentation("https://docs.google.com.evil.test/document/d/id"),
+  ).toBeUndefined();
 });

@@ -10,6 +10,7 @@ import type {
   LinearIssueContextRecord,
   LinearObjectContextRecord,
   NotionPageContextRecord,
+  GoogleFileContextRecord,
   PreviewAnnotationPayload,
   PromptLinkContextRecord,
   RepositoryContextRecord,
@@ -100,6 +101,7 @@ export interface ComposerSkillChipRecord {
 
 export type ComposerDraftContextRecord =
   | { kind: "notion-page"; record: NotionPageContextRecord }
+  | { kind: "google-file"; record: GoogleFileContextRecord }
   | { kind: "granola-note"; record: GranolaNoteContextRecord }
   | { kind: "terminal"; record: TerminalContextDraft }
   | { kind: "review-comment"; record: ReviewCommentContext }
@@ -240,6 +242,8 @@ function issueDraftContextRecord(record: IssueContextRecord): ComposerDraftConte
   switch (record.kind) {
     case "notion-page":
       return { kind: "notion-page", record };
+    case "google-file":
+      return { kind: "google-file", record };
     case "granola-note":
       return { kind: "granola-note", record };
     case "linear-issue":
@@ -549,6 +553,7 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
     "slack-thread": linkedObjectHandler("slack-thread"),
     "discord-thread": linkedObjectHandler("discord-thread"),
     "notion-page": linkedObjectHandler("notion-page"),
+    "google-file": linkedObjectHandler("google-file"),
     "granola-note": linkedObjectHandler("granola-note"),
     thread: {
       chip: (entry, { actions }) => {

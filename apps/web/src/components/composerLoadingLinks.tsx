@@ -13,7 +13,15 @@ import { createRoot, type Root } from "react-dom/client";
 
 import { ContextChip, type ContextChipKind, ContextChipLabel } from "./ContextChip";
 import { GitHubRefIcon } from "./gitHubRefPresentation";
-import { DiscordIcon, GitHubIcon, GranolaIcon, LinearIcon, NotionIcon, SlackIcon } from "./Icons";
+import {
+  DiscordIcon,
+  GitHubIcon,
+  GoogleSourceIcon,
+  GranolaIcon,
+  LinearIcon,
+  NotionIcon,
+  SlackIcon,
+} from "./Icons";
 import { PullRequestGlyph } from "./pullRequest/pullRequestIcons";
 
 function loadingLinkChipKind(link: ComposerObjectLink): ContextChipKind {
@@ -48,6 +56,8 @@ function loadingLinkIcon(link: ComposerObjectLink) {
       return <FolderGit2Icon />;
     case "notion-page":
       return <NotionIcon />;
+    case "google-file":
+      return <GoogleSourceIcon url={link.url} />;
     case "granola-note":
       return <GranolaIcon />;
     case "prompt-link":

@@ -1,3 +1,5 @@
+import { GoogleSourceIcon } from "./Icons";
+import { GoogleFileDetails } from "./GoogleFileDetails";
 import type {
   DiscordThreadContextRecord,
   GitHubIssueContextRecord,
@@ -6,6 +8,7 @@ import type {
   LinearIssueContextRecord,
   LinearObjectContextRecord,
   NotionPageContextRecord,
+  GoogleFileContextRecord,
   PromptLinkContextRecord,
   RepositoryContextRecord,
   SlackThreadContextRecord,
@@ -42,6 +45,7 @@ export type LinkedObjectContextRecord =
   | GitHubRefContextRecord
   | RepositoryContextRecord
   | NotionPageContextRecord
+  | GoogleFileContextRecord
   | GranolaNoteContextRecord
   | PromptLinkContextRecord
   | SlackThreadContextRecord
@@ -56,6 +60,7 @@ export const LINKED_OBJECT_CONTEXT_KINDS = [
   "github-ref",
   "repository",
   "notion-page",
+  "google-file",
   "granola-note",
   "prompt-link",
   "slack-thread",
@@ -87,6 +92,8 @@ export function linkedObjectIcon(record: LinkedObjectContextRecord) {
       return <FolderGit2Icon />;
     case "notion-page":
       return <NotionIcon />;
+    case "google-file":
+      return <GoogleSourceIcon fileType={record.fileType} />;
     case "granola-note":
       return <GranolaIcon />;
     case "prompt-link":
@@ -113,6 +120,18 @@ export function linkedObjectKindLabel(record: LinkedObjectContextRecord): string
       return "Repository";
     case "notion-page":
       return "Notion page";
+    case "google-file":
+      return record.fileType === "event"
+        ? "Google Calendar event"
+        : record.fileType === "sheet"
+          ? "Google Sheet"
+          : record.fileType === "doc"
+            ? "Google Doc"
+            : record.fileType === "folder"
+              ? "Google Drive folder"
+              : record.fileType === "slides"
+                ? "Google Slides"
+                : "Google Drive file";
     case "granola-note":
       return "Granola note";
     case "prompt-link":
@@ -152,6 +171,8 @@ export function LinkedObjectDetails(props: {
       return <RepositoryDetails record={record} onOpenLink={onOpenLink} />;
     case "notion-page":
       return <NotionPageDetails record={record} onOpenLink={onOpenLink} />;
+    case "google-file":
+      return <GoogleFileDetails record={record} onOpenLink={onOpenLink} />;
     case "granola-note":
       return <GranolaNoteDetails record={record} onOpenLink={onOpenLink} />;
     case "prompt-link":

@@ -22,6 +22,24 @@ import {
   NotionUnlinkThreadInput,
 } from "./notion.ts";
 import {
+  GoogleError,
+  GoogleConnectionState,
+  GoogleCompleteLoginInput,
+  GoogleStartLoginInput,
+  GoogleCancelLoginInput,
+  GoogleSearchFilesInput,
+  GoogleSearchFilesResult,
+  GoogleListCalendarsResult,
+  GoogleSearchPeopleInput,
+  GoogleSearchPeopleResult,
+  GoogleGetFileInput,
+  GoogleFileContext,
+  GoogleLinkThreadInput,
+  GoogleThreadLink,
+  GoogleThreadLinks,
+  GoogleUnlinkThreadInput,
+} from "./google.ts";
+import {
   GranolaCancelLoginInput,
   GranolaConnectionState,
   GranolaError,
@@ -750,6 +768,18 @@ export const WS_METHODS = {
   notionSubscribeThreadLinks: "notion.subscribeThreadLinks",
   notionLinkThread: "notion.linkThread",
   notionUnlinkThread: "notion.unlinkThread",
+  googleSubscribeState: "google.subscribeState",
+  googleStartLogin: "google.startLogin",
+  googleCompleteLogin: "google.completeLogin",
+  googleCancelLogin: "google.cancelLogin",
+  googleDisconnect: "google.disconnect",
+  googleSearchFiles: "google.searchFiles",
+  googleListCalendars: "google.listCalendars",
+  googleSearchPeople: "google.searchPeople",
+  googleGetFile: "google.getFile",
+  googleSubscribeThreadLinks: "google.subscribeThreadLinks",
+  googleLinkThread: "google.linkThread",
+  googleUnlinkThread: "google.unlinkThread",
   granolaSubscribeState: "granola.subscribeState",
   granolaStartLogin: "granola.startLogin",
   granolaCancelLogin: "granola.cancelLogin",
@@ -1160,6 +1190,70 @@ const WsNotionUnlinkThreadRpc = Rpc.make(WS_METHODS.notionUnlinkThread, {
   payload: NotionUnlinkThreadInput,
   success: Schema.Struct({}),
   error: NotionRpcError,
+});
+
+const GoogleRpcError = Schema.Union([GoogleError, EnvironmentAuthorizationError]);
+const WsGoogleSubscribeStateRpc = Rpc.make(WS_METHODS.googleSubscribeState, {
+  payload: Schema.Struct({}),
+  success: GoogleConnectionState,
+  error: GoogleRpcError,
+  stream: true,
+});
+const WsGoogleStartLoginRpc = Rpc.make(WS_METHODS.googleStartLogin, {
+  payload: GoogleStartLoginInput,
+  success: GoogleConnectionState,
+  error: GoogleRpcError,
+});
+const WsGoogleCompleteLoginRpc = Rpc.make(WS_METHODS.googleCompleteLogin, {
+  payload: GoogleCompleteLoginInput,
+  success: GoogleConnectionState,
+  error: GoogleRpcError,
+});
+const WsGoogleCancelLoginRpc = Rpc.make(WS_METHODS.googleCancelLogin, {
+  payload: GoogleCancelLoginInput,
+  success: GoogleConnectionState,
+  error: GoogleRpcError,
+});
+const WsGoogleDisconnectRpc = Rpc.make(WS_METHODS.googleDisconnect, {
+  payload: Schema.Struct({}),
+  success: GoogleConnectionState,
+  error: GoogleRpcError,
+});
+const WsGoogleSearchFilesRpc = Rpc.make(WS_METHODS.googleSearchFiles, {
+  payload: GoogleSearchFilesInput,
+  success: GoogleSearchFilesResult,
+  error: GoogleRpcError,
+});
+const WsGoogleListCalendarsRpc = Rpc.make(WS_METHODS.googleListCalendars, {
+  payload: Schema.Struct({}),
+  success: GoogleListCalendarsResult,
+  error: GoogleRpcError,
+});
+const WsGoogleSearchPeopleRpc = Rpc.make(WS_METHODS.googleSearchPeople, {
+  payload: GoogleSearchPeopleInput,
+  success: GoogleSearchPeopleResult,
+  error: GoogleRpcError,
+});
+const WsGoogleGetFileRpc = Rpc.make(WS_METHODS.googleGetFile, {
+  payload: GoogleGetFileInput,
+  success: GoogleFileContext,
+  error: GoogleRpcError,
+});
+const WsGoogleSubscribeThreadLinksRpc = Rpc.make(WS_METHODS.googleSubscribeThreadLinks, {
+  payload: Schema.Struct({}),
+  success: GoogleThreadLinks,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+const WsGoogleLinkThreadRpc = Rpc.make(WS_METHODS.googleLinkThread, {
+  payload: GoogleLinkThreadInput,
+  success: GoogleThreadLink,
+  error: GoogleRpcError,
+});
+const WsGoogleUnlinkThreadRpc = Rpc.make(WS_METHODS.googleUnlinkThread, {
+  payload: GoogleUnlinkThreadInput,
+  success: Schema.Struct({}),
+  error: GoogleRpcError,
 });
 
 const GranolaRpcError = Schema.Union([GranolaError, EnvironmentAuthorizationError]);
@@ -2779,15 +2873,27 @@ export const WsRpcGroup = RpcGroup.make(
   WsLinearLinkThreadRpc,
   WsLinearUnlinkThreadRpc,
   WsNotionSubscribeStateRpc,
+  WsGoogleSubscribeStateRpc,
   WsNotionStartLoginRpc,
+  WsGoogleStartLoginRpc,
   WsNotionCompleteLoginRpc,
+  WsGoogleCompleteLoginRpc,
   WsNotionCancelLoginRpc,
+  WsGoogleCancelLoginRpc,
   WsNotionDisconnectRpc,
+  WsGoogleDisconnectRpc,
   WsNotionSearchPagesRpc,
+  WsGoogleSearchFilesRpc,
+  WsGoogleListCalendarsRpc,
+  WsGoogleSearchPeopleRpc,
   WsNotionGetPageRpc,
+  WsGoogleGetFileRpc,
   WsNotionSubscribeThreadLinksRpc,
+  WsGoogleSubscribeThreadLinksRpc,
   WsNotionLinkThreadRpc,
+  WsGoogleLinkThreadRpc,
   WsNotionUnlinkThreadRpc,
+  WsGoogleUnlinkThreadRpc,
   WsGranolaSubscribeStateRpc,
   WsGranolaStartLoginRpc,
   WsGranolaCancelLoginRpc,

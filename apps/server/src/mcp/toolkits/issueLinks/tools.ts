@@ -16,8 +16,15 @@ import {
   GranolaThreadLink,
   McpCapabilityUnavailableError,
   NotionError,
+  GoogleError,
   NotionSearchPagesResult,
+  GoogleSearchFilesResult,
+  GoogleListCalendarsResult,
+  GoogleSearchPeopleResult,
+  GOOGLE_CALENDAR_SEARCH_LIMIT,
   NotionThreadLink,
+  GoogleThreadLink,
+  IsoDateTime,
   OrchestratorMcpFailure,
   SlackError,
   SlackSearchMessagesResult,
@@ -42,7 +49,9 @@ import * as GranolaThreadLinks from "../../../granola/GranolaThreadLinks.ts";
 import * as LinearApi from "../../../linear/LinearApi.ts";
 import * as LinearThreadLinks from "../../../linear/LinearThreadLinks.ts";
 import * as NotionThreadLinks from "../../../notion/NotionThreadLinks.ts";
+import * as GoogleThreadLinks from "../../../google/GoogleThreadLinks.ts";
 import * as NotionApi from "../../../notion/NotionApi.ts";
+import * as GoogleApi from "../../../google/GoogleApi.ts";
 import * as ServerSettings from "../../../serverSettings.ts";
 import * as SlackApi from "../../../slack/SlackApi.ts";
 import * as SlackThreadLinks from "../../../slack/SlackThreadLinks.ts";
@@ -57,10 +66,12 @@ const dependencies = [
   SlackThreadLinks.SlackThreadLinks,
   DiscordThreadLinks.DiscordThreadLinks,
   NotionThreadLinks.NotionThreadLinks,
+  GoogleThreadLinks.GoogleThreadLinks,
   GranolaThreadLinks.GranolaThreadLinks,
   LinearApi.LinearApi,
   SlackApi.SlackApi,
   NotionApi.NotionApi,
+  GoogleApi.GoogleApi,
   ServerSettings.ServerSettingsService,
   McpContextLinks.McpContextLinks,
   ThreadLinkWatches.ThreadLinkWatches,
@@ -109,6 +120,7 @@ export const IssueLinkToolError = Schema.Union([
   GranolaThreadLink,
   McpCapabilityUnavailableError,
   NotionThreadLink,
+  GoogleThreadLink,
   IssueLinkThreadRequiredError,
   IssueLinkThreadNotFoundError,
   NoLinkedLinearIssueError,
@@ -116,6 +128,7 @@ export const IssueLinkToolError = Schema.Union([
   GitHubIssueError,
   SlackError,
   NotionError,
+  GoogleError,
   DiscordError,
   GranolaError,
   ThreadLinkWatchError,
@@ -151,6 +164,7 @@ export const ListThreadLinksResult = Schema.Struct({
   slack: Schema.NullOr(SlackThreadLink),
   discord: Schema.NullOr(DiscordThreadLink),
   notion: Schema.NullOr(NotionThreadLink),
+  google: Schema.NullOr(GoogleThreadLink),
   granola: Schema.NullOr(GranolaThreadLink),
   watches: Schema.Array(ThreadLinkWatch).annotate({
     description: "The links this thread watches with watch_thread_link.",
@@ -174,7 +188,8 @@ export const UnwatchThreadLinkResult = Schema.Struct({
 export type UnwatchThreadLinkResult = typeof UnwatchThreadLinkResult.Type;
 
 const linkKindParameter = ThreadLinkKind.annotate({
-  description: "Which of the thread's links: linear, github, slack, discord, notion, or granola.",
+  description:
+    "Which of the thread's links: linear, github, slack, discord, notion, google, or granola.",
 });
 
 export const ReadContextLinkResult = Schema.Struct({
@@ -251,7 +266,7 @@ const UnlinkGitHubIssueTool = Tool.make("unlink_github_issue", {
   .annotate(Tool.OpenWorld, false);
 
 const ListThreadLinksTool = Tool.make("list_thread_links", {
-  description: `Read what a thread is linked to (omit threadId for this thread): at most one Linear issue, GitHub issue, Slack thread, Discord thread, Notion page, and Granola note, null where none is linked. Returns each link's identity; pass its url to read_context_link for the contents. For pull requests use list_thread_pull_requests.`,
+  description: `Read what a thread is linked to (omit threadId for this thread): at most one Linear issue, GitHub issue, Slack thread, Discord thread, Notion page, Google file or event, and Granola note, null where none is linked. Returns each link's identity; pass its url to read_context_link for the contents. For pull requests use list_thread_pull_requests.`,
   parameters: Schema.Struct({
     threadId: Schema.optional(
       ThreadId.annotate({ description: "Thread to read. Omit for this thread." }),
@@ -268,7 +283,7 @@ const ListThreadLinksTool = Tool.make("list_thread_links", {
   .annotate(Tool.OpenWorld, false);
 
 const LinkThreadLinkTool = Tool.make("link_thread_link", {
-  description: `Link a Slack or Discord message's thread, Notion page, Granola note, Linear issue, or GitHub issue to a thread by its web link, so T3 Code shows it beside the thread and watch_thread_link can watch it. A thread (with its chat tabs) holds at most one link of each kind; linking another replaces it. Uses T3 Code's own connections, so the integration must be connected and turned on. For pull requests use link_pull_request.`,
+  description: `Link a Slack or Discord message's thread, Notion page, Google Drive file, folder or Calendar event, Granola note, Linear issue, or GitHub issue to a thread by its web link, so T3 Code shows it beside the thread and watch_thread_link can watch it. A thread (with its chat tabs) holds at most one link of each kind; linking another replaces it. Uses T3 Code's own connections, so the integration must be connected and turned on. For pull requests use link_pull_request.`,
   parameters: Schema.Struct({
     threadId: threadIdParameter,
     url: TrimmedNonEmptyString.check(Schema.isMaxLength(4_096)).annotate({
@@ -300,7 +315,7 @@ const UnlinkThreadLinkTool = Tool.make("unlink_thread_link", {
   .annotate(Tool.OpenWorld, false);
 
 const WatchThreadLinkTool = Tool.make("watch_thread_link", {
-  description: `Wait on one of the thread's links without polling: T3 Code reads it on a schedule (Slack and Discord every minute, Linear and GitHub every two, Notion and Granola every five) and wakes this thread with what changed: new or edited messages, an issue's status, assignee, or content, or an edited page or note. Changes that land while the thread is running arrive as one wake after it finishes. Watching starts from what the link shows now. It ends when the link is unlinked or replaced, the thread is archived, an issue closes, or after ${THREAD_LINK_WATCH_WAKE_LIMIT} wakes. Link the object first (link_thread_link). Watching the same link again keeps the current watch.`,
+  description: `Wait on one of the thread's links without polling: T3 Code reads it on a schedule (Slack and Discord every minute, Linear and GitHub every two, Notion, Google and Granola every five) and wakes this thread with what changed: new or edited messages, an issue's status, assignee, or content, or an edited page or note. Changes that land while the thread is running arrive as one wake after it finishes. Watching starts from what the link shows now. It ends when the link is unlinked or replaced, the thread is archived, an issue closes, or after ${THREAD_LINK_WATCH_WAKE_LIMIT} wakes. Link the object first (link_thread_link). Watching the same link again keeps the current watch.`,
   parameters: Schema.Struct({ threadId: threadIdParameter, kind: linkKindParameter }),
   success: ThreadLinkWatch,
   failure: IssueLinkToolError,
@@ -327,7 +342,7 @@ const UnwatchThreadLinkTool = Tool.make("unwatch_thread_link", {
   .annotate(Tool.OpenWorld, false);
 
 const ReadContextLinkTool = Tool.make("read_context_link", {
-  description: `Read a Slack or Discord message (with its thread), Notion page, Granola note, Linear issue, project, document, or initiative, GitHub issue, or GitHub release, tag, branch, or commit link through T3 Code's own connections, and return the same text a user attaching it to a message would send. Works without a separate MCP server for that service. Fails when the integration is disconnected or turned off, or cannot see the object. To give the link to another thread, use contextLinks on t3_thread_send instead.`,
+  description: `Read a Slack or Discord message (with its thread), Notion page, Google Drive file, folder or Calendar event, Granola note, Linear issue, project, document, or initiative, GitHub issue, or GitHub release, tag, branch, or commit link through T3 Code's own connections, and return the same text a user attaching it to a message would send. Works without a separate MCP server for that service. Fails when the integration is disconnected or turned off, or cannot see the object. To give the link to another thread, use contextLinks on t3_thread_send instead.`,
   parameters: Schema.Struct({
     url: TrimmedNonEmptyString.check(Schema.isMaxLength(4_096)).annotate({
       description: "The object's web link, as a user would paste it.",
@@ -445,6 +460,66 @@ const SearchNotionPagesTool = Tool.make("search_notion_pages", {
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, true);
+const SearchGoogleFilesTool = Tool.make("search_google_files", {
+  description: `Search Google Drive files or Calendar events through the connected Google account. Calendar searches default to the past 30 days and next year across the calendars ticked in Google Calendar; supply calendarIds (from list_google_calendars, or a colleague's email from search_google_people) and timeMin/timeMax to target other calendars or a date window. Returns page titles and urls; pass a url to read_context_link for the page's contents. Works without a Google MCP server. Fails when Google is disconnected or turned off.`,
+  parameters: Schema.Struct({
+    query: Schema.String.check(Schema.isMaxLength(256)).annotate({
+      description:
+        "Title text or a Google link. Empty lists recent Drive files or events in the date window.",
+    }),
+    source: Schema.optional(Schema.Literals(["drive", "calendar", "all"])),
+    calendarId: Schema.optional(Schema.String.check(Schema.isMaxLength(512))).annotate({
+      description: "One calendar to search. Prefer calendarIds.",
+    }),
+    calendarIds: Schema.optional(
+      Schema.Array(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512))).check(
+        Schema.isMaxLength(GOOGLE_CALENDAR_SEARCH_LIMIT),
+      ),
+    ).annotate({
+      description:
+        "Calendars to search in place of the ticked ones. A colleague's calendar id is their email; calendars not shared with this account are skipped.",
+    }),
+    timeMin: Schema.optional(IsoDateTime),
+    timeMax: Schema.optional(IsoDateTime),
+  }),
+  success: GoogleSearchFilesResult,
+  failure: IssueLinkToolError,
+  dependencies,
+})
+  .annotate(Tool.Title, "Search Google files")
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, true);
+
+const ListGoogleCalendarsTool = Tool.make("list_google_calendars", {
+  description: `List the calendars the connected Google account can read: its own, subscribed colleagues' and rooms', with names and whether each is ticked in Google Calendar (search_google_files searches the ticked ones by default). Pass ids to search_google_files as calendarIds. Fails when Google is disconnected or turned off.`,
+  parameters: Schema.Struct({}),
+  success: GoogleListCalendarsResult,
+  failure: IssueLinkToolError,
+  dependencies,
+})
+  .annotate(Tool.Title, "List Google calendars")
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, true);
+const SearchGooglePeopleTool = Tool.make("search_google_people", {
+  description: `Find colleagues by name or email in the connected Google account's Workspace directory. Each email is that person's calendar id for search_google_files calendarIds. directoryAvailable is false when the connection predates directory access; the user must reconnect Google in Settings > Integrations. Fails when Google is disconnected or turned off.`,
+  parameters: Schema.Struct({
+    query: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)).annotate({
+      description: "A name or email to look up.",
+    }),
+  }),
+  success: GoogleSearchPeopleResult,
+  failure: IssueLinkToolError,
+  dependencies,
+})
+  .annotate(Tool.Title, "Search Google people")
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, true);
 
 export const IssueLinksToolkit = Toolkit.make(
   LinkLinearIssueTool,
@@ -462,4 +537,7 @@ export const IssueLinksToolkit = Toolkit.make(
   ListLinearFilterOptionsTool,
   SearchSlackMessagesTool,
   SearchNotionPagesTool,
+  SearchGoogleFilesTool,
+  ListGoogleCalendarsTool,
+  SearchGooglePeopleTool,
 );

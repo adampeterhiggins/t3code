@@ -106,6 +106,7 @@ import { GitHubIssuePickerHost } from "../chat/GitHubIssuePicker";
 import { GranolaNotePickerHost } from "../chat/GranolaNotePicker";
 import { LinearIssuePickerHost } from "../chat/LinearIssuePicker";
 import { NotionPagePickerHost } from "../chat/NotionPagePicker";
+import { GoogleFilePickerHost } from "../chat/GoogleFilePicker";
 import { PullRequestAttachPickerHost } from "../chat/PullRequestAttachPicker";
 import { RepositoryAttachPickerHost } from "../chat/RepositoryAttachPicker";
 import { SlackMessagePickerHost } from "../chat/SlackMessagePicker";
@@ -121,7 +122,15 @@ import { ComposerImageThumbnail } from "../chat/ComposerImageThumbnail";
 import { ComposerSurface } from "../chat/ComposerSurface";
 import { DraftProjectName } from "../chat/DraftProjectName";
 import { StartFromPickerDialog } from "../chat/StartFromPicker";
-import { DiscordIcon, GitHubIcon, GranolaIcon, LinearIcon, NotionIcon, SlackIcon } from "../Icons";
+import {
+  DiscordIcon,
+  GitHubIcon,
+  GranolaIcon,
+  LinearIcon,
+  NotionIcon,
+  GoogleIcon,
+  SlackIcon,
+} from "../Icons";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { ProviderAccountPicker } from "../chat/ProviderAccountPicker";
 import {
@@ -189,6 +198,7 @@ const ATTACHMENT_ICONS = {
   thread: MessageSquareIcon,
   "linear-issue": LinearIcon,
   "notion-page": NotionIcon,
+  "google-file": GoogleIcon,
   "granola-note": GranolaIcon,
   "slack-message": SlackIcon,
   "discord-message": DiscordIcon,
@@ -979,6 +989,7 @@ export function QuickMessagePanel() {
           <ThreadAttachPickerHost />
           <LinearIssuePickerHost />
           <NotionPagePickerHost />
+          <GoogleFilePickerHost />
           <GranolaNotePickerHost />
           <SlackMessagePickerHost />
           <DiscordMessagePickerHost />

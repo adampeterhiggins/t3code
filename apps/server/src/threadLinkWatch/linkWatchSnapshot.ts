@@ -8,6 +8,7 @@ import type {
   GranolaNoteContext,
   LinearIssueContext,
   NotionPageContext,
+  GoogleFileContext,
   OrchestrationV2Notification,
   SlackThreadContext,
   ThreadLinkKind,
@@ -125,6 +126,13 @@ export const notionSnapshot = (context: NotionPageContext): LinkSnapshot => ({
   messages: null,
   closed: false,
 });
+export const googleSnapshot = (context: GoogleFileContext): LinkSnapshot => ({
+  title: context.title,
+  fields: { Title: context.title },
+  bodyHash: hash(`${context.revision ?? context.updatedAt}\n${context.markdown}`),
+  messages: null,
+  closed: false,
+});
 
 export const granolaSnapshot = (context: GranolaNoteContext): LinkSnapshot => ({
   title: context.title,
@@ -181,6 +189,7 @@ export const THREAD_LINK_KIND_LABELS: Record<ThreadLinkKind, string> = {
   slack: "Slack thread",
   discord: "Discord thread",
   notion: "Notion page",
+  google: "Google page",
   granola: "Granola note",
 };
 

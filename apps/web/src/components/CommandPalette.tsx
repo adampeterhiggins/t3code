@@ -50,12 +50,14 @@ import { isGitHubProject } from "@t3tools/client-runtime/state/github-issues";
 import { openGitHubIssuePicker } from "./chat/GitHubIssuePicker";
 import { useThreadGitHubIssueLink, useUnlinkGitHubIssue } from "./chat/GitHubIssueThreadLink";
 import { openNotionPagePicker } from "./chat/NotionPagePicker";
+import { openGoogleFilePicker } from "./chat/GoogleFilePicker";
 import { openGranolaNotePicker } from "./chat/GranolaNotePicker";
 import { openSlackMessagePicker } from "./chat/SlackMessagePicker";
 import { openDiscordMessagePicker } from "./chat/DiscordMessagePicker";
 import { openLinearIssuePicker } from "./chat/LinearIssuePicker";
 import { useThreadLinearLink, useUnlinkLinearIssue } from "./chat/LinearThreadLink";
 import { useThreadNotionLink, useUnlinkNotionPage } from "./chat/NotionThreadLink";
+import { useThreadGoogleLink, useUnlinkGoogleFile } from "./chat/GoogleThreadLink";
 import { useThreadGranolaLink, useUnlinkGranolaNote } from "./chat/GranolaThreadLink";
 import { useThreadSlackLink, useUnlinkSlackThread } from "./chat/SlackThreadLink";
 import { useThreadDiscordLink, useUnlinkDiscordThread } from "./chat/DiscordThreadLink";
@@ -133,6 +135,7 @@ import { serverEnvironment } from "../state/server";
 import { githubIssueEnvironment } from "../state/githubIssues";
 import { linearEnvironment } from "../state/linear";
 import { notionEnvironment } from "../state/notion";
+import { googleEnvironment } from "../state/google";
 import { granolaEnvironment } from "../state/granola";
 import { slackEnvironment } from "../state/slack";
 import { discordEnvironment } from "../state/discord";
@@ -259,7 +262,15 @@ import {
   scrollCommandPaletteRowIntoView,
 } from "./CommandPaletteResults";
 import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
-import { DiscordIcon, GitHubIcon, GranolaIcon, LinearIcon, NotionIcon, SlackIcon } from "./Icons";
+import {
+  DiscordIcon,
+  GitHubIcon,
+  GranolaIcon,
+  LinearIcon,
+  NotionIcon,
+  GoogleIcon,
+  SlackIcon,
+} from "./Icons";
 import { openImportConversationDialog } from "./ImportConversationDialog";
 import {
   ATTENTION_REASON_PRESENTATION,
@@ -662,9 +673,14 @@ function OpenCommandPaletteDialog(props: {
     discordEnvironment.linkThread.permissionAtom(activeLinkThreadRef?.environmentId ?? null),
   );
   const activeNotionLink = useThreadNotionLink(activeLinkThreadRef);
+  const activeGoogleLink = useThreadGoogleLink(activeLinkThreadRef);
   const unlinkNotionPage = useUnlinkNotionPage();
+  const unlinkGoogleFile = useUnlinkGoogleFile();
   const canLinkNotion = useAtomValue(
     notionEnvironment.linkThread.permissionAtom(activeLinkThreadRef?.environmentId ?? null),
+  );
+  const canLinkGoogle = useAtomValue(
+    googleEnvironment.linkThread.permissionAtom(activeLinkThreadRef?.environmentId ?? null),
   );
   const activeGranolaLink = useThreadGranolaLink(activeLinkThreadRef);
   const unlinkGranolaNote = useUnlinkGranolaNote();
@@ -1697,6 +1713,18 @@ function OpenCommandPaletteDialog(props: {
         },
       });
     }
+    if (composerSettings?.enableGoogleIntegration !== false) {
+      actionItems.push({
+        kind: "action",
+        value: "action:attach-google-file",
+        searchTerms: ["google", "page", "document", "attach", "context"],
+        title: "Attach Google page",
+        icon: <GoogleIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openGoogleFilePicker(composerThreadRef);
+        },
+      });
+    }
     if (composerSettings?.enableGranolaIntegration !== false) {
       actionItems.push({
         kind: "action",
@@ -1870,6 +1898,20 @@ function OpenCommandPaletteDialog(props: {
         },
       });
     }
+    if (canLinkGoogle && composerSettings?.enableGoogleIntegration === true) {
+      actionItems.push({
+        kind: "action",
+        value: "action:link-google-file",
+        searchTerms: ["google", "page", "document", "link"],
+        title: activeGoogleLink
+          ? `Change linked Google page (${activeGoogleLink.title})`
+          : "Link Google page",
+        icon: <GoogleIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openGoogleFilePicker(composerThreadRef, "link");
+        },
+      });
+    }
     if (canLinkNotion && activeNotionLink) {
       actionItems.push({
         kind: "action",
@@ -1879,6 +1921,18 @@ function OpenCommandPaletteDialog(props: {
         icon: <NotionIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
           await unlinkNotionPage(composerThreadRef);
+        },
+      });
+    }
+    if (canLinkGoogle && activeGoogleLink) {
+      actionItems.push({
+        kind: "action",
+        value: "action:unlink-google-file",
+        searchTerms: ["google", "page", "document", "unlink", "remove"],
+        title: `Unlink Google page ${activeGoogleLink.title}`,
+        icon: <GoogleIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          await unlinkGoogleFile(composerThreadRef);
         },
       });
     }

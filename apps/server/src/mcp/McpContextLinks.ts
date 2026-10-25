@@ -8,6 +8,7 @@ import {
   LinearGetIssueInput,
   LinearGetObjectInput,
   NotionGetPageInput,
+  GoogleGetFileInput,
   type OrchestrationMessageContext,
   OrchestratorMcpFailure,
   SlackGetThreadInput,
@@ -26,6 +27,7 @@ import {
   linearIssueContextRecord,
   linearObjectContextRecord,
   notionPageContextRecord,
+  googleFileContextRecord,
   promptLinkContextRecord,
   repositoryContextRecord,
   slackThreadContextRecord,
@@ -40,6 +42,7 @@ import * as GitHubIssues from "../githubIssues/GitHubIssues.ts";
 import * as GranolaApi from "../granola/GranolaApi.ts";
 import * as LinearApi from "../linear/LinearApi.ts";
 import * as NotionApi from "../notion/NotionApi.ts";
+import * as GoogleApi from "../google/GoogleApi.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as SlackApi from "../slack/SlackApi.ts";
 
@@ -72,6 +75,7 @@ const decodeLinearGetObjectInput = Schema.decodeUnknownEffect(LinearGetObjectInp
 const decodeGitHubGetIssueInput = Schema.decodeUnknownEffect(GitHubGetIssueInput);
 const decodeGitHubGetRefInput = Schema.decodeUnknownEffect(GitHubGetRefInput);
 const decodeNotionGetPageInput = Schema.decodeUnknownEffect(NotionGetPageInput);
+const decodeGoogleGetFileInput = Schema.decodeUnknownEffect(GoogleGetFileInput);
 const decodeGranolaGetNoteInput = Schema.decodeUnknownEffect(GranolaGetNoteInput);
 const decodeSlackGetThreadInput = Schema.decodeUnknownEffect(SlackGetThreadInput);
 const decodeDiscordGetThreadInput = Schema.decodeUnknownEffect(DiscordGetThreadInput);
@@ -85,11 +89,12 @@ const unreadable = (verb: Verb, url: string) => (error: { readonly message: stri
   invalid(`Could not ${verb} ${url}: ${error.message}`);
 
 const UNRECOGNIZED_LINK =
-  "Use a Slack or Discord message, Notion page, Granola note, Linear issue, project, document, or initiative, GitHub issue, GitHub repository, GitHub release, tag, branch, or commit, or T3 Code prompt link.";
+  "Use a Slack or Discord message, Notion page, Google Drive file, folder or Calendar event, Granola note, Linear issue, project, document, or initiative, GitHub issue, GitHub repository, GitHub release, tag, branch, or commit, or T3 Code prompt link.";
 
 export const make = Effect.gen(function* () {
   const linear = yield* LinearApi.LinearApi;
   const notion = yield* NotionApi.NotionApi;
+  const google = yield* GoogleApi.GoogleApi;
   const granola = yield* GranolaApi.GranolaApi;
   const slack = yield* SlackApi.SlackApi;
   const discord = yield* DiscordApi.DiscordApi;
@@ -101,6 +106,7 @@ export const make = Effect.gen(function* () {
       | "enableSlackIntegration"
       | "enableDiscordIntegration"
       | "enableNotionIntegration"
+      | "enableGoogleIntegration"
       | "enableGranolaIntegration",
   ) =>
     settings.getSettings.pipe(
@@ -169,6 +175,28 @@ export const make = Effect.gen(function* () {
               ),
             );
           return notionPageContextRecord(page);
+        });
+      case "google-file":
+        return Effect.gen(function* () {
+          if (!(yield* integrationEnabled("enableGoogleIntegration")))
+            return yield* invalid(
+              `Could not ${verb} ${url}: the Google integration is turned off in Settings → Integrations.`,
+            );
+          const input = yield* decodeGoogleGetFileInput({
+            id: link.url,
+          }).pipe(Effect.mapError(malformed(url)));
+          const page = yield* google
+            .getFile(input)
+            .pipe(
+              Effect.mapError((error) =>
+                error.reason === "not-found"
+                  ? invalid(
+                      `Could not ${verb} ${url}: The Google account connected in Settings → Integrations cannot read this document. Check its access and that the Drive, Docs and Sheets APIs are enabled.`,
+                    )
+                  : unreadable(verb, url)(error),
+              ),
+            );
+          return googleFileContextRecord(page);
         });
       case "granola-note":
         return Effect.gen(function* () {
@@ -283,6 +311,7 @@ export const layer: Layer.Layer<
   never,
   | LinearApi.LinearApi
   | NotionApi.NotionApi
+  | GoogleApi.GoogleApi
   | GranolaApi.GranolaApi
   | SlackApi.SlackApi
   | DiscordApi.DiscordApi

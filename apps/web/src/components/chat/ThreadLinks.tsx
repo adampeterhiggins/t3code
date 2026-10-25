@@ -11,8 +11,17 @@ import { githubIssueEnvironment } from "~/state/githubIssues";
 import { granolaEnvironment } from "~/state/granola";
 import { linearEnvironment } from "~/state/linear";
 import { notionEnvironment } from "~/state/notion";
+import { googleEnvironment } from "~/state/google";
 import { slackEnvironment } from "~/state/slack";
-import { DiscordIcon, GitHubIcon, GranolaIcon, LinearIcon, NotionIcon, SlackIcon } from "../Icons";
+import {
+  DiscordIcon,
+  GitHubIcon,
+  GranolaIcon,
+  LinearIcon,
+  NotionIcon,
+  GoogleIcon,
+  SlackIcon,
+} from "../Icons";
 import { Button } from "../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { openDiscordMessagePicker } from "./DiscordMessagePicker";
@@ -24,7 +33,9 @@ import { GranolaThreadLinkRow, useThreadGranolaLink } from "./GranolaThreadLink"
 import { openLinearIssuePicker } from "./LinearIssuePicker";
 import { LinearThreadLinkRow, useThreadLinearLink } from "./LinearThreadLink";
 import { openNotionPagePicker } from "./NotionPagePicker";
+import { openGoogleFilePicker } from "./GoogleFilePicker";
 import { NotionThreadLinkRow, useThreadNotionLink } from "./NotionThreadLink";
+import { GoogleThreadLinkRow, useThreadGoogleLink } from "./GoogleThreadLink";
 import { openSlackMessagePicker } from "./SlackMessagePicker";
 import { SlackThreadLinkRow, useThreadSlackLink } from "./SlackThreadLink";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
@@ -38,11 +49,13 @@ export function ThreadLinks(props: { threadRef: ScopedThreadRef; projectId: Proj
   const slack = useThreadSlackLink(threadRef);
   const discord = useThreadDiscordLink(threadRef);
   const notion = useThreadNotionLink(threadRef);
+  const google = useThreadGoogleLink(threadRef);
   const granola = useThreadGranolaLink(threadRef);
   const project = useProject({ environmentId, projectId: props.projectId });
   const slackEnabled = useEnvironmentSettings(environmentId, (s) => s.enableSlackIntegration);
   const discordEnabled = useEnvironmentSettings(environmentId, (s) => s.enableDiscordIntegration);
   const notionEnabled = useEnvironmentSettings(environmentId, (s) => s.enableNotionIntegration);
+  const googleEnabled = useEnvironmentSettings(environmentId, (s) => s.enableGoogleIntegration);
   const granolaEnabled = useEnvironmentSettings(environmentId, (s) => s.enableGranolaIntegration);
   const canLinkLinear = useAtomValue(linearEnvironment.linkThread.permissionAtom(environmentId));
   const canLinkGitHub = useAtomValue(
@@ -51,6 +64,7 @@ export function ThreadLinks(props: { threadRef: ScopedThreadRef; projectId: Proj
   const canLinkSlack = useAtomValue(slackEnvironment.linkThread.permissionAtom(environmentId));
   const canLinkDiscord = useAtomValue(discordEnvironment.linkThread.permissionAtom(environmentId));
   const canLinkNotion = useAtomValue(notionEnvironment.linkThread.permissionAtom(environmentId));
+  const canLinkGoogle = useAtomValue(googleEnvironment.linkThread.permissionAtom(environmentId));
   const canLinkGranola = useAtomValue(granolaEnvironment.linkThread.permissionAtom(environmentId));
 
   // A group holds one link of each kind, so only kinds without one are offered; a linked row's
@@ -96,6 +110,14 @@ export function ThreadLinks(props: { threadRef: ScopedThreadRef; projectId: Proj
       open: () => openNotionPagePicker(threadRef, "link"),
     });
   }
+  if (!google && canLinkGoogle && googleEnabled) {
+    addOptions.push({
+      key: "google",
+      icon: <GoogleIcon />,
+      label: "Google page…",
+      open: () => openGoogleFilePicker(threadRef, "link"),
+    });
+  }
   if (!granola && canLinkGranola && granolaEnabled) {
     addOptions.push({
       key: "granola",
@@ -105,7 +127,7 @@ export function ThreadLinks(props: { threadRef: ScopedThreadRef; projectId: Proj
     });
   }
 
-  const hasLinks = Boolean(linear || github || slack || discord || notion || granola);
+  const hasLinks = Boolean(linear || github || slack || discord || notion || google || granola);
   if (!hasLinks && addOptions.length === 0) return null;
 
   return (
@@ -141,6 +163,7 @@ export function ThreadLinks(props: { threadRef: ScopedThreadRef; projectId: Proj
           {slack ? <SlackThreadLinkRow threadRef={threadRef} link={slack} /> : null}
           {discord ? <DiscordThreadLinkRow threadRef={threadRef} link={discord} /> : null}
           {notion ? <NotionThreadLinkRow threadRef={threadRef} link={notion} /> : null}
+          {google ? <GoogleThreadLinkRow threadRef={threadRef} link={google} /> : null}
           {granola ? <GranolaThreadLinkRow threadRef={threadRef} link={granola} /> : null}
         </ul>
       ) : null}

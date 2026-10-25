@@ -1,3 +1,4 @@
+import { parseGoogleFileLink, type GoogleFileSummary } from "@t3tools/contracts";
 import React, { type SVGProps, useId } from "react";
 import { cn } from "~/lib/utils";
 import { INTEGRATION_ICONS } from "@t3tools/shared/brandMarks";
@@ -550,3 +551,82 @@ export const NotionIcon: Icon = (props) => (
     <path d={INTEGRATION_ICONS.notion.path} />
   </svg>
 );
+
+function GoogleDocIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox={INTEGRATION_ICONS.googleDocs.viewBox}
+      fill="currentColor"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d={INTEGRATION_ICONS.googleDocs.path} />
+    </svg>
+  );
+}
+function GoogleSheetIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      data-google-sheet=""
+      viewBox={INTEGRATION_ICONS.googleSheets.viewBox}
+      fill="currentColor"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d={INTEGRATION_ICONS.googleSheets.path} />
+    </svg>
+  );
+}
+function GoogleDriveIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox={INTEGRATION_ICONS.googleDrive.viewBox}
+      fill="currentColor"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d={INTEGRATION_ICONS.googleDrive.path} />
+    </svg>
+  );
+}
+export function GoogleIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox={INTEGRATION_ICONS.google.viewBox}
+      fill="currentColor"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d={INTEGRATION_ICONS.google.path} />
+    </svg>
+  );
+}
+function GoogleCalendarIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      data-google-calendar=""
+      viewBox={INTEGRATION_ICONS.googleCalendar.viewBox}
+      fill="currentColor"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d={INTEGRATION_ICONS.googleCalendar.path} />
+    </svg>
+  );
+}
+export function GoogleSourceIcon({
+  fileType,
+  url,
+  ...props
+}: React.SVGProps<SVGSVGElement> & { fileType?: GoogleFileSummary["fileType"]; url?: string }) {
+  const kind = fileType ?? (url ? parseGoogleFileLink(url)?.fileType : undefined);
+  const Icon =
+    kind === "event"
+      ? GoogleCalendarIcon
+      : kind === "sheet"
+        ? GoogleSheetIcon
+        : kind === "doc"
+          ? GoogleDocIcon
+          : GoogleDriveIcon;
+  return <Icon {...props} />;
+}

@@ -2241,6 +2241,14 @@ A thread's chat-tab group can also be linked to one Notion page, from the thread
 
 Code: [NotionAuth](../apps/server/src/notion/NotionAuth.ts), [NotionApi](../apps/server/src/notion/NotionApi.ts), [NotionPagePicker](../apps/web/src/components/chat/NotionPagePicker.tsx), [NotionThreadLinks](../apps/server/src/notion/NotionThreadLinks.ts), [NotionThreadLink](../apps/web/src/components/chat/NotionThreadLink.tsx), and [NotionPagePickerSheet](../apps/mobile/src/components/NotionPagePickerSheet.tsx). User guide: [Notion](./user/notion.md).
 
+## Google Drive and Calendar
+
+An environment-owned, read-only Google connection supports Drive files and folders, Docs, Sheets, Slides and Calendar events alongside the other integrations. Web and desktop offer Google sign-in in Settings, pasted-link conversion, a Google tab in the `#` menu, a paperclip picker with Drive and Calendar tabs, and command-palette actions. Mobile can attach files and events through the environment's connection and search Google from `#`. Source links retain document tabs and headings or spreadsheet tabs and ranges; inline citations preview those locations, with touch previews on mobile. Attached messages keep bounded snapshots.
+
+Text files and Slides include bounded text; binary files include metadata and comments. Calendar events include times, attendees, location and status. A chat-tab group can link a Google source and watch its content, comments, folder listing or event changes every five minutes through the existing thread-link watcher. Open, change, unlink, watch and stop-watching actions are available across clients. Agents use the same read, link and watch services through MCP, including `search_google_files`, `list_google_calendars`, `search_google_people` and `read_context_link`.
+
+Code: [GoogleApi](../apps/server/src/google/GoogleApi.ts), [GoogleAuth](../apps/server/src/google/GoogleAuth.ts), [GoogleFilePicker](../apps/web/src/components/chat/GoogleFilePicker.tsx), [GoogleThreadLink](../apps/web/src/components/chat/GoogleThreadLink.tsx), [GoogleFilePickerSheet](../apps/mobile/src/components/GoogleFilePickerSheet.tsx). User guide: [Google Drive and Calendar](./user/google.md).
+
 ## Granola meeting notes
 
 **Settings > Integrations > Granola** on web and desktop connects a Granola account to the

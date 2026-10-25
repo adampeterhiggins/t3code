@@ -2,11 +2,13 @@ import {
   DiscordSnowflake,
   discordBotInviteUrl,
   NOTION_REDIRECT_URI,
+  GOOGLE_REDIRECT_URI,
   WS_METHODS,
   type DiscordConnectionState,
   type GranolaConnectionState,
   type LinearConnectionState,
   type NotionConnectionState,
+  type GoogleConnectionState,
   type ServerSettings,
   type SlackConnectionState,
 } from "@t3tools/contracts";
@@ -34,7 +36,7 @@ import {
 const SESSION_LABEL = "t3 integration cli";
 const isDiscordSnowflake = Schema.is(DiscordSnowflake);
 
-export const LOGIN_INTEGRATIONS = ["linear", "slack", "notion", "granola"] as const;
+export const LOGIN_INTEGRATIONS = ["linear", "slack", "notion", "google", "granola"] as const;
 export type LoginIntegration = (typeof LOGIN_INTEGRATIONS)[number];
 export type IntegrationName = LoginIntegration | "discord";
 
@@ -42,6 +44,7 @@ const TITLES: Readonly<Record<IntegrationName, string>> = {
   linear: "Linear",
   slack: "Slack",
   notion: "Notion",
+  google: "Google",
   granola: "Granola",
   discord: "Discord",
 };
@@ -98,6 +101,11 @@ export const fromNotion = (state: NotionConnectionState): IntegrationState => ({
   flowId: state.flowId,
   url: state.authorizationUrl,
 });
+const fromGoogle = (state: GoogleConnectionState): IntegrationState => ({
+  ...base("google", state, state.account?.email ?? null),
+  flowId: state.flowId,
+  url: state.authorizationUrl,
+});
 
 export const fromGranola = (state: GranolaConnectionState): IntegrationState => ({
   ...base(
@@ -124,6 +132,7 @@ export const integrationEnabled = (
     | "enableSlackIntegration"
     | "enableDiscordIntegration"
     | "enableNotionIntegration"
+    | "enableGoogleIntegration"
     | "enableGranolaIntegration"
   >,
 ): boolean => {
@@ -134,6 +143,8 @@ export const integrationEnabled = (
       return settings.enableSlackIntegration;
     case "notion":
       return settings.enableNotionIntegration;
+    case "google":
+      return settings.enableGoogleIntegration;
     case "granola":
       return settings.enableGranolaIntegration;
     case "discord":
@@ -289,6 +300,26 @@ const loginClients = (client: LiveRpcClient): Record<LoginIntegration, Integrati
     cancel: (flowId) => client[WS_METHODS.notionCancelLogin]({ flowId }),
     disconnect: client[WS_METHODS.notionDisconnect]({}),
   }),
+  google: makeIntegrationClient({
+    name: "google",
+    normalize: fromGoogle,
+    changes: client[WS_METHODS.googleSubscribeState]({}),
+    start: (input) =>
+      client[WS_METHODS.googleStartLogin](
+        Option.isSome(input.clientId) && Option.isSome(input.clientSecret)
+          ? {
+              credentials: {
+                clientId: input.clientId.value,
+                clientSecret: input.clientSecret.value,
+              },
+            }
+          : {},
+      ),
+    complete: (flowId, callbackUrl) =>
+      client[WS_METHODS.googleCompleteLogin]({ flowId, callbackUrl }),
+    cancel: (flowId) => client[WS_METHODS.googleCancelLogin]({ flowId }),
+    disconnect: client[WS_METHODS.googleDisconnect]({}),
+  }),
   granola: makeIntegrationClient({
     name: "granola",
     normalize: fromGranola,
@@ -348,34 +379,39 @@ const openInBrowser = Effect.fn("cli.integration.openInBrowser")(
 const resolveLoginInput = Effect.fn("cli.integration.resolveLoginInput")(function* (
   name: LoginIntegration,
   current: IntegrationState,
-  notionState: NotionConnectionState | null,
+  oauthState: NotionConnectionState | GoogleConnectionState | null,
   flags: { readonly clientId: Option.Option<string>; readonly clientSecret: Option.Option<string> },
 ) {
-  if (Option.isSome(flags.clientId) && name !== "slack" && name !== "notion") {
-    return yield* new LiveUsageError({ detail: "--client-id applies to slack and notion only." });
+  if (Option.isSome(flags.clientId) && name !== "slack" && name !== "notion" && name !== "google") {
+    return yield* new LiveUsageError({
+      detail: "--client-id applies to slack, notion and google only.",
+    });
   }
-  if (Option.isSome(flags.clientSecret) && name !== "notion") {
-    return yield* new LiveUsageError({ detail: "--client-secret applies to notion only." });
+  if (Option.isSome(flags.clientSecret) && name !== "notion" && name !== "google") {
+    return yield* new LiveUsageError({
+      detail: "--client-secret applies to notion and google only.",
+    });
   }
   if (current.phase === "connected") {
     return yield* new LiveUsageError({
       detail: `${TITLES[name]} is already connected (${current.account ?? "unknown account"}). Run t3 integration logout ${name} first.`,
     });
   }
-  if (name !== "notion" || notionState === null) {
+  if ((name !== "notion" && name !== "google") || oauthState === null) {
     return { clientId: flags.clientId, clientSecret: Option.none<string>() };
   }
-  const redirectUri = notionState.redirectUri ?? NOTION_REDIRECT_URI;
+  const redirectUri =
+    oauthState.redirectUri ?? (name === "google" ? GOOGLE_REDIRECT_URI : NOTION_REDIRECT_URI);
   if (Option.isNone(flags.clientSecret)) {
     const reusable =
-      notionState.configured &&
+      oauthState.configured &&
       Option.match(flags.clientId, {
         onNone: () => true,
-        onSome: (clientId) => clientId === notionState.clientId,
+        onSome: (clientId) => clientId === oauthState.clientId,
       });
     if (!reusable) {
       return yield* new LiveUsageError({
-        detail: `Notion needs a public integration's client ID and secret (redirect URI ${redirectUri}). Pass --client-id <id> --client-secret - and paste the secret on stdin.`,
+        detail: `${TITLES[name]} needs an OAuth client ID and secret (redirect URI ${redirectUri}). Pass --client-id <id> --client-secret - and paste the secret on stdin.`,
       });
     }
     return { clientId: Option.none<string>(), clientSecret: Option.none<string>() };
@@ -385,7 +421,7 @@ const resolveLoginInput = Effect.fn("cli.integration.resolveLoginInput")(functio
   }
   const clientSecret = yield* readSecretFlag(
     flags.clientSecret.value,
-    "Paste the Notion client secret, then press Enter:",
+    `Paste the ${TITLES[name]} client secret, then press Enter:`,
   );
   return { clientId: flags.clientId, clientSecret: Option.some(clientSecret) };
 });
@@ -431,9 +467,14 @@ const login = Effect.fn("cli.integration.login")(function* (
 ) {
   const integration = loginClients(client)[name];
   const title = TITLES[name];
-  const notionState = name === "notion" ? yield* currentNotionState(client) : null;
-  const current = notionState === null ? yield* integration.current : fromNotion(notionState);
-  const input = yield* resolveLoginInput(name, current, notionState, flags);
+  const oauthState =
+    name === "notion"
+      ? yield* currentNotionState(client)
+      : name === "google"
+        ? yield* firstState(client[WS_METHODS.googleSubscribeState]({}), "google")
+        : null;
+  const current = yield* integration.current;
+  const input = yield* resolveLoginInput(name, current, oauthState, flags);
   const started = yield* integration.start(input);
   if (started.phase !== "waiting" || started.flowId === null || started.url === null) {
     return yield* new LiveRpcFailedError({
@@ -522,14 +563,12 @@ const integrationLoginCommand = Command.make("login", {
   integration: integrationArgument,
   clientId: Flag.String("client-id").pipe(
     Flag.withDescription(
-      "Slack: your Slack app's client ID. Notion: your public integration's client ID. Defaults to the one last used.",
+      "Slack: your Slack app's client ID. Notion/Google: your OAuth client ID. Defaults to the one last used.",
     ),
     Flag.optional,
   ),
   clientSecret: Flag.String("client-secret").pipe(
-    Flag.withDescription(
-      "Notion only: the integration's client secret, or - to read it from stdin.",
-    ),
+    Flag.withDescription("Notion/Google: the OAuth client secret, or - to read it from stdin."),
     Flag.optional,
   ),
   noWait: Flag.Boolean("no-wait").pipe(
@@ -655,7 +694,7 @@ const discordCommand = Command.make("discord").pipe(
 
 export const integrationCommand = Command.make("integration").pipe(
   Command.withDescription(
-    "Connect, check, and disconnect Linear, Slack, Notion, Granola, and Discord on the running server.",
+    "Connect, check, and disconnect Linear, Slack, Notion, Google, Granola, and Discord on the running server.",
   ),
   Command.withSubcommands([
     integrationStatusCommand,

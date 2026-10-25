@@ -1,3 +1,4 @@
+import { useGoogleLinkPreview } from "./useGoogleLinkPreview";
 import { Button } from "../../components/ui/Button";
 import * as Dialog from "../../components/ui/Dialog";
 import { useOpenPullRequest } from "../../native/useOpenPullRequest";
@@ -1874,6 +1875,7 @@ type UserMessageContentProps = {
 };
 
 function UserMessageContent(props: UserMessageContentProps) {
+  const googlePreview = useGoogleLinkPreview(props.environmentId);
   const [selected, setSelected] = useState<{ contextId: string; label: string } | null>(null);
   const navigation = useNavigation();
   const openLinkedThread = useOpenLinkedThread();
@@ -1890,7 +1892,10 @@ function UserMessageContent(props: UserMessageContentProps) {
   });
   const onLinkPress = (href: string) => {
     const reference = parseComposerContextHref(href);
-    if (!reference) return props.linkHandlers.onLinkPress?.(href);
+    if (!reference) {
+      if (googlePreview.open(href)) return;
+      return props.linkHandlers.onLinkPress?.(href);
+    }
     const record = props.context?.records.find(
       (record) => record.contextId === reference.contextId,
     );
@@ -1974,6 +1979,7 @@ function UserMessageContent(props: UserMessageContentProps) {
             ),
         }}
       />
+      {googlePreview.sheet}
       {selected ? (
         <ComposerContextSheet
           label={selected.label}
@@ -2219,6 +2225,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     expandedTurnIds: new Set(),
   });
   const { copiedRowId, expandedWorkGroups, expandedWorkRows, expandedTurnIds } = interactionState;
+  const googlePreview = useGoogleLinkPreview(props.environmentId);
   const [expandedFile, setExpandedFile] = useState<FilePreviewSource | null>(null);
   const [expandedVideo, setExpandedVideo] = useState<VideoPreviewSource | null>(null);
   const markdownLinkRequest = useRef<AbortController | null>(null);
@@ -2295,6 +2302,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     );
   };
   const onMarkdownLinkPress = (href: string, imageEmbed = false) => {
+    if (!imageEmbed && googlePreview.open(href)) return;
     markdownLinkRequest.current?.abort();
     const request = new AbortController();
     markdownLinkRequest.current = request;
@@ -3280,6 +3288,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
             />
           </View>
         ) : null}
+        {googlePreview.sheet}
         <VideoPreviewModal source={expandedVideo} onRequestClose={() => setExpandedVideo(null)} />
         <FilePreviewModal source={expandedFile} onRequestClose={() => setExpandedFile(null)} />
       </View>

@@ -9,8 +9,11 @@ import * as LinearApi from "./linear/LinearApi.ts";
 import * as LinearAuth from "./linear/LinearAuth.ts";
 import * as LinearThreadLinks from "./linear/LinearThreadLinks.ts";
 import * as NotionApi from "./notion/NotionApi.ts";
+import * as GoogleApi from "./google/GoogleApi.ts";
 import * as NotionAuth from "./notion/NotionAuth.ts";
+import * as GoogleAuth from "./google/GoogleAuth.ts";
 import * as NotionThreadLinks from "./notion/NotionThreadLinks.ts";
+import * as GoogleThreadLinks from "./google/GoogleThreadLinks.ts";
 import * as SlackApi from "./slack/SlackApi.ts";
 import * as SlackAuth from "./slack/SlackAuth.ts";
 import * as SlackThreadLinks from "./slack/SlackThreadLinks.ts";
@@ -427,8 +430,11 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
     streamChanges: Stream.make([]),
   }),
   Layer.mock(NotionThreadLinks.NotionThreadLinks)({}),
+  Layer.mock(GoogleThreadLinks.GoogleThreadLinks)({}),
   Layer.mock(NotionAuth.NotionAuth)({}),
+  Layer.mock(GoogleAuth.GoogleAuth)({}),
   Layer.mock(NotionApi.NotionApi)({}),
+  Layer.mock(GoogleApi.GoogleApi)({}),
   Layer.mock(LinearThreadLinks.LinearThreadLinks)({}),
   Layer.mock(LinearAuth.LinearAuth)({}),
   Layer.mock(LinearApi.LinearApi)({}),

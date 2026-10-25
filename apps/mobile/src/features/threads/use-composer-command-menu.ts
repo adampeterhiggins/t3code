@@ -1,3 +1,8 @@
+import { googleFileContextRecord } from "@t3tools/client-runtime/state/google";
+import { googleEnvironment } from "../../state/google";
+import { useEnvironmentQuery } from "../../state/query";
+import { useEnvironmentServerConfig } from "../../state/entities";
+import { useDebouncedValue } from "../../state/queries";
 import * as Option from "effect/Option";
 import { useEnvironmentThread } from "../../state/threads";
 import * as Dialog from "../../components/ui/Dialog";
@@ -466,29 +471,47 @@ export function useComposerCommandMenu({
     query: trigger?.kind === "pull-request" ? trigger.query : null,
   });
 
+  const googleEnabled =
+    useEnvironmentServerConfig(environmentId)?.settings.enableGoogleIntegration === true;
+  const googleQuery = useDebouncedValue(trigger?.kind === "pull-request" ? trigger.query : "", 400);
+  const googleSearch = useEnvironmentQuery(
+    environmentId && googleEnabled && trigger?.kind === "pull-request"
+      ? googleEnvironment.files({ environmentId, input: { query: googleQuery, source: "all" } })
+      : null,
+  );
+  const getGoogleFile = useAtomCommand(googleEnvironment.getFile);
   const items = ((): ComposerCommandItem[] => {
     if (!trigger) return [];
 
     if (trigger.kind === "pull-request") {
-      return pullRequestSearch.entries.map((entry) => ({
-        id: `pr:${entry.url}`,
-        type: "pull-request",
-        pullRequest: {
-          number: entry.number,
-          title: entry.title,
-          url: entry.url,
-          headBranch: entry.headBranch,
-          baseBranch: entry.baseBranch,
-          state: entry.state,
-          isDraft: entry.isDraft,
-        },
-        label: `#${entry.number}`,
-        description: `${entry.isDraft ? "Draft" : entry.state} · ${
-          entry.repository.toLowerCase() === pullRequestRepository?.toLowerCase()
-            ? ""
-            : `${entry.repository} · `
-        }${entry.title}`,
-      }));
+      return [
+        ...pullRequestSearch.entries.map((entry): ComposerCommandItem => ({
+          id: `pr:${entry.url}`,
+          type: "pull-request",
+          pullRequest: {
+            number: entry.number,
+            title: entry.title,
+            url: entry.url,
+            headBranch: entry.headBranch,
+            baseBranch: entry.baseBranch,
+            state: entry.state,
+            isDraft: entry.isDraft,
+          },
+          label: `#${entry.number}`,
+          description: `${entry.isDraft ? "Draft" : entry.state} · ${
+            entry.repository.toLowerCase() === pullRequestRepository?.toLowerCase()
+              ? ""
+              : `${entry.repository} · `
+          }${entry.title}`,
+        })),
+        ...(googleSearch.data?.files ?? []).map((file): ComposerCommandItem => ({
+          id: `google:${file.url}`,
+          type: "google-file",
+          url: file.url,
+          label: file.title,
+          description: file.fileType === "event" ? "Google Calendar" : "Google Drive",
+        })),
+      ];
     }
 
     if (trigger.kind === "slash-command") {
@@ -667,6 +690,14 @@ export function useComposerCommandMenu({
       }
       setSelection({ start: result.cursor, end: result.cursor });
     };
+    if (item.type === "google-file") {
+      if (!environmentId || !ownerKey) return;
+      void getGoogleFile({ environmentId, input: { id: item.url } }).then((result) => {
+        if (result._tag === "Success" && getComposerDraftSnapshot(ownerKey).text === draftMessage)
+          insertReference(googleFileContextRecord(result.value));
+      });
+      return;
+    }
     if (item.type === "thread") {
       if (!ownerKey || trigger.kind !== "path") return;
       const shell = threadShells.find(
@@ -760,13 +791,15 @@ export function useComposerCommandMenu({
     pathTab,
     isLoading:
       trigger?.kind === "pull-request"
-        ? pullRequestSearch.isPending
+        ? pullRequestSearch.isPending || googleSearch.isPending
         : (pathTab === null || pathTab.active === "files") && pathSearch.isPending,
     error:
       trigger?.kind === "pull-request"
-        ? pullRequestProjectId === null || pullRequestRepository === null
-          ? "Pull requests are unavailable for this project."
-          : pullRequestSearch.error
+        ? googleEnabled
+          ? googleSearch.error
+          : pullRequestProjectId === null || pullRequestRepository === null
+            ? "Pull requests are unavailable for this project."
+            : pullRequestSearch.error
         : null,
     onSelect,
   };
