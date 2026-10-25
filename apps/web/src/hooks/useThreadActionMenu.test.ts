@@ -154,6 +154,7 @@ vi.mock("./useSettings", () => ({
     }),
 }));
 vi.mock("./useThreadActions", () => ({
+  readThreadSubscriptionLimitGuard: () => null,
   useThreadActions: () =>
     Object.fromEntries(
       [
@@ -189,6 +190,7 @@ const createMenu = () =>
     projectCwd: "/project",
     tabsSupported: false,
     onStartRename: () => recordEffect("rename"),
+    canShareWithGuest: false,
   });
 
 beforeEach(() => {

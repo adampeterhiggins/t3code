@@ -8,7 +8,7 @@ export const CursorSettings = makeProviderSettingsSchema(
       Schema.withDecodingDefault(Effect.succeed(false)),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
-    // The SDK runs the agent. This stays so a saved CLI path is not dropped on rewrite.
+    // Preserve V1 CLI fields when V2's SDK rewrites shared settings.
     binaryPath: Schema.optionalKey(TrimmedString).pipe(
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),

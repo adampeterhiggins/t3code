@@ -2,15 +2,7 @@ import * as Schema from "effect/Schema";
 
 import { TrimmedNonEmptyString } from "./baseSchemas.ts";
 
-/**
- * Input for the `t3_worktree_handoff` MCP tool.
- *
- * Moves the calling agent thread into a git worktree: a new one, or an
- * existing checkout of `branch` named by `path`. The thread may already be in
- * another worktree. Changing the thread's workspace detaches the live provider
- * session, so the current turn ends shortly after the handoff is recorded;
- * the conversation continues inside the worktree on the thread's next run.
- */
+/** Handoff to a new or existing worktree detaches the provider; the conversation resumes there next run. */
 export const WorktreeMcpHandoffInput = Schema.Struct({
   branch: TrimmedNonEmptyString.annotate({
     description:

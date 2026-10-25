@@ -20,16 +20,7 @@ export const AssistantCitationSegment = Schema.Struct({
 });
 export type AssistantCitationSegment = typeof AssistantCitationSegment.Type;
 
-/**
- * A quote of rendered assistant text with an optional user comment.
- * Positions are UTF-16 offsets, not Markdown offsets. `markdown` is the same
- * selection as Markdown, kept only when it differs from `text`, so previews and
- * agents see its formatting; `text` stays the source of truth for locating it.
- *
- * With `segments` it quotes a stretch of the transcript instead: messages and
- * tool calls in timeline order, rendered into `text` and `markdown`. `messageId`
- * is then the first segment's id and the offsets cover the whole rendering.
- */
+/** Positions are UTF-16 offsets, not Markdown offsets. */
 export const AssistantCitation = Schema.Struct({
   version: Schema.Literal(1),
   environmentId: EnvironmentId.check(Schema.isMaxLength(512)),

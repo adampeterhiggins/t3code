@@ -138,8 +138,7 @@ function RecoveryActions({
       action === "resume" ? "Could not change auto-resume" : "Could not snooze thread",
     );
   }
-  // Failures go to a toast: the actions column is auto-sized, so inline error
-  // text would widen it and crush the title.
+  // Inline errors would widen the actions column and crush the title.
   return (
     <>
       {onResumeNow ? (

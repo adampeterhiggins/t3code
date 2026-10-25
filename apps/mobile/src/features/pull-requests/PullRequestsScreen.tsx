@@ -6,7 +6,7 @@ import {
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { LegendList, type LegendListRef } from "@legendapp/list/react-native";
 import { useNavigation } from "@react-navigation/native";
-import { use, useEffect, useRef, useState } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
 import { useAtomValue } from "@effect/atom-react";
 import {
   Keyboard,
@@ -16,7 +16,7 @@ import {
   View,
   type ScrollViewProps,
 } from "react-native";
-import { ScrollViewMarker } from "react-native-screens";
+import { NativeScrollViewMarker as ScrollViewMarker } from "../../native/NativeScrollViewMarker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText as Text } from "../../components/ui/AppText";
@@ -43,7 +43,7 @@ import {
 } from "./pullRequestList";
 import { useDebouncedValue } from "../../state/queries";
 import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
-import { useAndroidWorkspaceSelection } from "../workspace/useAndroidWorkspaceSelection";
+import { useSelectWorkspaceDetail } from "../workspace/useSelectWorkspaceDetail";
 
 function PullRequestScrollView(props: ScrollViewProps) {
   return (
@@ -104,20 +104,22 @@ export function PullRequestsScreen(
   const environmentId = environments.some((item) => item.environmentId === selectedEnvironmentId)
     ? selectedEnvironmentId
     : null;
-  const selectAndroidWorkspace = useAndroidWorkspaceSelection();
-  const selectPullRequest = (item: EnvironmentPullRequestListEntry) => {
-    Keyboard.dismiss();
-    const params = {
-      environmentId: String(item.environmentId),
-      projectId: String(item.projectId),
-      repository: item.repository,
-      number: item.number,
-      host: item.host,
-      initialSummary: item,
-    };
-    if (Platform.OS === "android") selectAndroidWorkspace({ name: "PullRequest", params });
-    else navigation.navigate("PullRequest", params);
-  };
+  const selectDetail = useSelectWorkspaceDetail();
+  const selectPullRequest = useCallback(
+    (item: EnvironmentPullRequestListEntry) => {
+      Keyboard.dismiss();
+      const params = {
+        environmentId: String(item.environmentId),
+        projectId: String(item.projectId),
+        repository: item.repository,
+        number: item.number,
+        host: item.host,
+        initialSummary: item,
+      };
+      selectDetail({ name: "PullRequest", params });
+    },
+    [selectDetail],
+  );
   const allProjects = useProjects();
   const savedControls = listControls.controlsFor(environmentId);
   const controls = (() => withoutScratchProjectScope(savedControls, allProjects))();

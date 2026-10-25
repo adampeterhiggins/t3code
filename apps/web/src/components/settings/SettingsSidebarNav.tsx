@@ -10,6 +10,7 @@ import {
 import {
   ActivityIcon,
   ArchiveIcon,
+  FlaskConicalIcon,
   BlocksIcon,
   BotIcon,
   BuildingIcon,
@@ -89,6 +90,7 @@ const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/storage": HardDriveIcon,
   "/settings/connections": Link2Icon,
   "/settings/diagnostics": ActivityIcon,
+  "/settings/beta": FlaskConicalIcon,
   "/settings/archived": ArchiveIcon,
 };
 

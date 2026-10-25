@@ -117,7 +117,7 @@ const run = <A, E>(
             threadId === parentThreadId
               ? parentProjection
               : ({
-                  thread: { id: threadId, title: "Child" },
+                  thread: { id: threadId, title: "Child", modelSelection },
                   runs: [],
                 } as unknown as OrchestrationV2ThreadProjection),
           ),

@@ -2,10 +2,8 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { type EnvironmentId, ProjectId } from "@t3tools/contracts";
 
-import {
-  findProjectOnChangeRequestHost,
-  resolvePullRequestPreviewTarget,
-} from "./openPullRequestLink";
+import { findProjectOnChangeRequestHost } from "@t3tools/client-runtime/change-request-links";
+import { resolvePullRequestPreviewTarget } from "./openPullRequestLink";
 
 describe("findProjectOnChangeRequestHost", () => {
   const project = (id: string, identity: Record<string, unknown>) =>

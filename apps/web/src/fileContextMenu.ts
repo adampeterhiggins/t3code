@@ -4,7 +4,6 @@ import {
   type EditorId,
   type EnvironmentId,
 } from "@t3tools/contracts";
-import { useCallback, useMemo } from "react";
 
 import { resolveDiffPathForWorkspace } from "./diffFileActions";
 import {

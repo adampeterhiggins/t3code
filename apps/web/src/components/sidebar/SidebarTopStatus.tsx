@@ -6,6 +6,7 @@ import {
   CircleDotDashedIcon,
   MessageCircleQuestionIcon,
   ShieldQuestionIcon,
+  UserRoundIcon,
 } from "lucide-react";
 
 import type { resolveSidebarThreadStatus } from "../Sidebar.logic";
@@ -13,7 +14,16 @@ import type { resolveSidebarThreadStatus } from "../Sidebar.logic";
 export type SidebarTopStatus = {
   label: string;
   /** Null for calm statuses that carry only a label. */
-  icon: "waiting" | "working" | "approval" | "input" | "failed" | "woke" | "done" | null;
+  icon:
+    | "waiting"
+    | "working"
+    | "approval"
+    | "input"
+    | "request"
+    | "failed"
+    | "woke"
+    | "done"
+    | null;
   className: string;
 };
 
@@ -42,6 +52,8 @@ export function resolveSidebarTopStatus(
         icon: "input",
         className: "text-indigo-600 dark:text-indigo-300",
       };
+    case "request":
+      return { label: "Request", icon: "request", className: "text-guest-foreground" };
     case "limited":
       return { label: "Limited", icon: "failed", className: "text-warning" };
     case "failed":
@@ -60,6 +72,8 @@ export function SidebarTopStatusIcon(props: { icon: SidebarTopStatus["icon"]; cl
       return <CircleDotDashedIcon aria-hidden className={props.className} />;
     case "input":
       return <MessageCircleQuestionIcon aria-hidden className={props.className} />;
+    case "request":
+      return <UserRoundIcon aria-hidden className={props.className} />;
     case "approval":
       return <ShieldQuestionIcon aria-hidden className={props.className} />;
     case "failed":

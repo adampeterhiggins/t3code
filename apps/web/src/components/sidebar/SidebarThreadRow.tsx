@@ -859,7 +859,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 "truncate",
                 shouldRecede
                   ? "text-secondary-label"
-                  : isUnread || isWoke || status === "input"
+                  : isUnread || isWoke || status === "input" || status === "request"
                     ? "text-foreground"
                     : status === "failed"
                       ? "text-foreground/95"
@@ -869,7 +869,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 "truncate group-focus-within/sidebar-row:text-foreground group-hover/sidebar-row:text-foreground",
                 shouldRecede
                   ? "text-secondary-label/70"
-                  : props.isActive || isWoke || status === "input"
+                  : props.isActive || isWoke || status === "input" || status === "request"
                     ? "text-foreground"
                     : isUnread
                       ? "text-muted-foreground"
@@ -1318,9 +1318,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                                     )}
                                   >
                                     <AlarmClockIcon aria-hidden className="size-4 shrink-0" />
-                                    <span role={props.isRouteThread ? undefined : "status"}>
-                                      {headerStatus.label}
-                                    </span>
+                                    <span>{headerStatus.label}</span>
                                   </button>
                                 }
                               />
@@ -1337,12 +1335,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                                 icon={headerStatus.icon}
                                 className="size-4 shrink-0"
                               />
-                              {/* The label alone is the live region: a role="status"
-                  wrapper around the ticking duration would make
-                  screen readers announce every second. */}
-                              <span role={props.isRouteThread ? undefined : "status"}>
-                                {headerStatus.label}
-                              </span>
+                              <span>{headerStatus.label}</span>
                               {status === "working" ? (
                                 <span aria-hidden>
                                   <WorkingDuration startedAt={resolveWorkingStartedAt(thread)} />
@@ -1368,11 +1361,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                       {showHoverActions || onNewTab || showUnpinnedPinAction ? (
                         <span
                           className={cn(
-                            // focus-visible, not focus-within: a mouse click leaves
-                            // the Settle button focused, and a plain focus-within
-                            // would keep the controls pinned over the status label
-                            // once the pointer moves away (e.g. after a failed
-                            // settle) instead of cross-fading back.
+                            // Mouse clicks leave Settle focused; only keyboard focus should hold the controls open.
                             "pointer-events-none absolute inset-y-0 right-0 flex items-stretch opacity-0 transition-opacity has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:static has-[:focus-visible]:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:static group-any-hover/sidebar-row:opacity-100",
                             snoozeMenuOpen && "pointer-events-auto static opacity-100",
                           )}

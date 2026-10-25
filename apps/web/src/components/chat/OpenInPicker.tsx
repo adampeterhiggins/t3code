@@ -32,6 +32,7 @@ import {
   MenuSubPopup,
   MenuTrigger,
 } from "../ui/menu";
+import { announce } from "~/lib/announce";
 import type { Icon } from "../Icons";
 import { resolveEditorIconOptions, resolveCustomEditorIcon } from "../editorIcons";
 import { cn } from "~/lib/utils";
@@ -149,12 +150,12 @@ export const OpenInPicker = memo(function OpenInPicker({
   const preferredUnavailable =
     remote.mode === "remote-unavailable" && !preferredEditor?.startsWith("custom:");
 
-  const openInEditor = (editorId: EditorId | null) => {
-    if (!openInCwd) return;
+  const openInEditor = async (editorId: EditorId | null): Promise<boolean> => {
+    if (!openInCwd) return false;
     const editor = editorId ?? preferredEditor;
-    if (!editor) return;
+    if (!editor) return false;
     const custom = editor.startsWith("custom:");
-    if (remote.mode === "remote-unavailable" && !custom) return;
+    if (remote.mode === "remote-unavailable" && !custom) return false;
     if (remote.mode === "remote-links" && !custom) {
       const url = buildRemoteOpenUrl({
         editor,
@@ -162,17 +163,16 @@ export const OpenInPicker = memo(function OpenInPicker({
         absolutePath: openInCwd,
         isFile: openInCwdIsFile,
       });
-      if (url === undefined) return;
+      if (url === undefined) return false;
       // Only record hint-seen/preferred when the shell actually accepted
       // the URL (an older desktop build can refuse the editor scheme).
-      void openRemoteEditorUrl(url).then((opened) => {
-        if (!opened) return;
-        markRemoteHintSeen();
-        setPreferredEditor(editor);
-      });
-      return;
+      const opened = await openRemoteEditorUrl(url);
+      if (!opened) return false;
+      markRemoteHintSeen();
+      setPreferredEditor(editor);
+      return true;
     }
-    if (!readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)) return;
+    if (!readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)) return false;
     const result = openInEditorMutation({
       environmentId,
       input: {
@@ -182,7 +182,7 @@ export const OpenInPicker = memo(function OpenInPicker({
       },
     });
     setPreferredEditor(editor);
-    return result;
+    return (await result)._tag === "Success";
   };
 
   const openFavoriteEditorShortcutLabel = (() =>
@@ -201,7 +201,11 @@ export const OpenInPicker = memo(function OpenInPicker({
         return;
 
       e.preventDefault();
-      void openInEditor(preferredEditor);
+      const label =
+        options.find((option) => option.value === preferredEditor)?.label ?? preferredEditor;
+      void openInEditor(preferredEditor).then((opened) => {
+        if (opened) announce(`Opened in ${label}`);
+      });
     };
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
@@ -212,6 +216,7 @@ export const OpenInPicker = memo(function OpenInPicker({
     keybindings,
     openInCwd,
     openInEditor,
+    options,
     preferredEditor,
     remote.mode,
   ]);

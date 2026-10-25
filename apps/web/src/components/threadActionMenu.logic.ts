@@ -36,6 +36,7 @@ export type ThreadActionMenuId =
   | "regenerate-title"
   | "mark-unread"
   | "restart-session"
+  | "share-guest"
   | "copy"
   | "copy-path"
   | "copy-branch"
@@ -130,7 +131,7 @@ export interface ThreadActionMenuState {
   readonly moveTargets?: ReadonlyArray<{ readonly id: string; readonly label: string }> | null;
   readonly canSnoozeNow: boolean;
   readonly isRegeneratingTitle: boolean;
-  /** Archive rejects a thread with an attached provider, so disable it here rather than let the action fail. */
+  /** Archive rejects attached providers, so disable it while running. */
   readonly isRunning: boolean;
   readonly supports: {
     readonly settlement: boolean;
@@ -151,6 +152,8 @@ export interface ThreadActionMenuState {
     readonly notion: boolean;
     readonly granola: boolean;
   };
+  /** Guest links need their own grant, so the caller checks it instead of `canOperate`. */
+  readonly canShareWithGuest?: boolean;
 }
 
 /** Local navigation, read markers, and copying remain available to read-only clients. */
@@ -162,6 +165,7 @@ export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean
     "open-in-split",
     "close-split",
     "export-transcript",
+    "share-guest",
     "copy",
     "copy-path",
     "copy-branch",
@@ -281,6 +285,9 @@ export function buildThreadActionMenuItems(
     { id: "mark-unread", label: "Mark unread", icon: "mail-open" },
     ...(state.canRestartSession
       ? [{ id: "restart-session" as const, label: "Restart agent session", icon: "rotate-ccw" }]
+      : []),
+    ...(state.canShareWithGuest
+      ? [{ id: "share-guest" as const, label: "Share with guest", icon: "user-plus" }]
       : []),
     ...(state.projectFilter
       ? [
