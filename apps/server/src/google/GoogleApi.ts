@@ -144,6 +144,7 @@ const eventSummary = (event: typeof CalendarEvent.Type, calendarId: string): Goo
   const url = `https://calendar.google.com/calendar/event?eid=${eid}`;
   const owner = event.organizer?.displayName || event.organizer?.email;
   const startsAt = event.start?.dateTime || event.start?.date;
+  const endsAt = event.end?.dateTime || event.end?.date;
   return {
     id: url,
     title: event.summary ?? "Untitled event",
@@ -152,6 +153,7 @@ const eventSummary = (event: typeof CalendarEvent.Type, calendarId: string): Goo
     fileType: "event",
     ...(owner ? { owner } : {}),
     ...(startsAt ? { startsAt } : {}),
+    ...(endsAt ? { endsAt } : {}),
   };
 };
 export class GoogleApi extends Context.Service<
@@ -320,7 +322,12 @@ const make = Effect.gen(function* () {
         }),
       { concurrency: 3 },
     );
-    const files = pages.flatMap((page) => page.files);
+    // Each calendar is in start order; merge them so the cut keeps the earliest events overall.
+    const start = (file: GoogleFileSummary) =>
+      Date.parse(
+        file.startsAt?.length === 10 ? `${file.startsAt}T00:00:00Z` : (file.startsAt ?? ""),
+      ) || 0;
+    const files = pages.flatMap((page) => page.files).toSorted((a, b) => start(a) - start(b));
     return {
       files: files.slice(0, 30),
       hasMore:

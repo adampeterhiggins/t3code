@@ -55,6 +55,8 @@ export const GoogleFileSummary = Schema.Struct({
   owner: Schema.optional(Schema.String),
   /** When an event starts: a date-time, or a date for all-day events. */
   startsAt: Schema.optional(Schema.String),
+  /** When an event ends, in the same form as `startsAt`. */
+  endsAt: Schema.optional(Schema.String),
 });
 export type GoogleFileSummary = typeof GoogleFileSummary.Type;
 export const GoogleSearchFilesInput = Schema.Struct({

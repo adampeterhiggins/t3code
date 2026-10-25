@@ -261,6 +261,7 @@ it.effect("searches Calendar and reads event details with native citations", () 
     assert.strictEqual(event.fileType, "event");
     assert.strictEqual(event.owner, "Priya");
     assert.strictEqual(event.startsAt, "2026-10-26T10:00:00Z");
+    assert.strictEqual(event.endsAt, "2026-10-26T11:00:00Z");
     const context = yield* api.getFile({ id: event.url });
     assert.ok(context.markdown.includes("priya@example.com"));
     assert.ok(context.markdown.includes("Europe/London"));

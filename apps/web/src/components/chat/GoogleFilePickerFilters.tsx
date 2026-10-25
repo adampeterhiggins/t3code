@@ -31,23 +31,16 @@ type Range = GoogleFilePickerView["range"];
 type Sort = GoogleFilePickerView["sort"];
 
 const RANGE_LABELS = {
-  drive: {
-    all: "Any time",
-    week: "Modified in the last 7 days",
-    month: "Modified in the last 30 days",
-  },
-  calendar: { all: "Any time", upcoming: "Upcoming", past: "Past" },
-} as const satisfies Record<GoogleFilePickerSource, Partial<Record<Range, string>>>;
+  all: "Any time",
+  week: "Modified in the last 7 days",
+  month: "Modified in the last 30 days",
+} as const satisfies Record<Range, string>;
 
 const SORT_LABELS = {
-  drive: { newest: "Recently modified", oldest: "Least recently modified", title: "Title A–Z" },
-  calendar: {
-    nearest: "Closest to now",
-    newest: "Latest first",
-    oldest: "Earliest first",
-    title: "Title A–Z",
-  },
-} as const satisfies Record<GoogleFilePickerSource, Partial<Record<Sort, string>>>;
+  newest: "Recently modified",
+  oldest: "Least recently modified",
+  title: "Title A–Z",
+} as const satisfies Record<Sort, string>;
 
 function toggle<T extends string>(values: ReadonlyArray<T>, value: T, checked: boolean) {
   return checked
@@ -105,8 +98,8 @@ function Checklist(props: {
 }
 
 /**
- * Type, owner (organizer for events), and date filters with a sort, over the files or events the
- * picker loaded. Each applied selection shows as a pill on its own row below, with an × to drop it.
+ * Type, owner, and date filters with a sort over Drive files; just the organizer over Calendar
+ * events, whose dates the week strip picks. Each applied selection shows as a pill on its own row below, with an × to drop it.
  */
 export function GoogleFilePickerFilterBar(props: {
   source: GoogleFilePickerSource;
@@ -120,8 +113,6 @@ export function GoogleFilePickerFilterBar(props: {
 }) {
   const { view, source } = props;
   const defaults = DEFAULT_GOOGLE_FILE_PICKER_VIEWS[source];
-  const rangeLabels: Partial<Record<Range, string>> = RANGE_LABELS[source];
-  const sortLabels: Partial<Record<Sort, string>> = SORT_LABELS[source];
   const ownerNoun = source === "calendar" ? "organizers" : "owners";
   const [menuOpen, setMenuOpen] = useState(false);
   const pickOnly = (next: GoogleFilePickerView) => {
@@ -169,28 +160,30 @@ export function GoogleFilePickerFilterBar(props: {
                 />
               </MenuSubPopup>
             </MenuSub>
-            <MenuSub>
-              <MenuSubTrigger>Date</MenuSubTrigger>
-              <MenuSubPopup>
-                <MenuRadioGroup
-                  value={view.range}
-                  onValueChange={(range: Range) => props.onChange({ ...view, range })}
-                >
-                  {(Object.keys(rangeLabels) as Range[]).map((range) => (
-                    <MenuRadioItem key={range} value={range}>
-                      <span className="flex w-full min-w-0 items-center gap-2">
-                        <span className="min-w-0 flex-1 truncate">{rangeLabels[range]}</span>
-                        {props.loading ? null : (
-                          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                            {props.ranges[range] ?? 0}
-                          </span>
-                        )}
-                      </span>
-                    </MenuRadioItem>
-                  ))}
-                </MenuRadioGroup>
-              </MenuSubPopup>
-            </MenuSub>
+            {source === "drive" ? (
+              <MenuSub>
+                <MenuSubTrigger>Date</MenuSubTrigger>
+                <MenuSubPopup>
+                  <MenuRadioGroup
+                    value={view.range}
+                    onValueChange={(range: Range) => props.onChange({ ...view, range })}
+                  >
+                    {(Object.keys(RANGE_LABELS) as Range[]).map((range) => (
+                      <MenuRadioItem key={range} value={range}>
+                        <span className="flex w-full min-w-0 items-center gap-2">
+                          <span className="min-w-0 flex-1 truncate">{RANGE_LABELS[range]}</span>
+                          {props.loading ? null : (
+                            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                              {props.ranges[range] ?? 0}
+                            </span>
+                          )}
+                        </span>
+                      </MenuRadioItem>
+                    ))}
+                  </MenuRadioGroup>
+                </MenuSubPopup>
+              </MenuSub>
+            ) : null}
           </MenuPopup>
         </Menu>
         <div className="flex-1" />
@@ -204,24 +197,26 @@ export function GoogleFilePickerFilterBar(props: {
             Reset
           </Button>
         ) : null}
-        <Menu>
-          <MenuTrigger render={<Button type="button" size="xs" variant="ghost" />}>
-            <ArrowDownUpIcon />
-            {sortLabels[view.sort]}
-          </MenuTrigger>
-          <MenuPopup align="end">
-            <MenuRadioGroup
-              value={view.sort}
-              onValueChange={(sort: Sort) => props.onChange({ ...view, sort })}
-            >
-              {(Object.keys(sortLabels) as Sort[]).map((sort) => (
-                <MenuRadioItem key={sort} value={sort}>
-                  {sortLabels[sort]}
-                </MenuRadioItem>
-              ))}
-            </MenuRadioGroup>
-          </MenuPopup>
-        </Menu>
+        {source === "drive" ? (
+          <Menu>
+            <MenuTrigger render={<Button type="button" size="xs" variant="ghost" />}>
+              <ArrowDownUpIcon />
+              {SORT_LABELS[view.sort]}
+            </MenuTrigger>
+            <MenuPopup align="end">
+              <MenuRadioGroup
+                value={view.sort}
+                onValueChange={(sort: Sort) => props.onChange({ ...view, sort })}
+              >
+                {(Object.keys(SORT_LABELS) as Sort[]).map((sort) => (
+                  <MenuRadioItem key={sort} value={sort}>
+                    {SORT_LABELS[sort]}
+                  </MenuRadioItem>
+                ))}
+              </MenuRadioGroup>
+            </MenuPopup>
+          </Menu>
+        ) : null}
       </div>
       {filtered ? (
         <div className="flex flex-wrap items-center gap-1">
@@ -248,7 +243,7 @@ export function GoogleFilePickerFilterBar(props: {
           {rangeFiltered ? (
             <FilterPill
               icon={<CalendarIcon />}
-              label={rangeLabels[view.range] ?? ""}
+              label={RANGE_LABELS[view.range]}
               onRemove={() => props.onChange({ ...view, range: defaults.range })}
             />
           ) : null}

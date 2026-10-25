@@ -13,15 +13,14 @@ export interface GoogleFilePickerView {
   readonly types: ReadonlyArray<GoogleFileType>;
   /** Files owned, or events organized, by any of these people. */
   readonly owners: ReadonlyArray<string>;
-  /** Drive: modified within the last week or month. Calendar: before or after now. */
-  readonly range: "all" | "week" | "month" | "upcoming" | "past";
-  /** `nearest` puts the events closest to now first, whichever side of it they fall. */
-  readonly sort: "nearest" | "newest" | "oldest" | "title";
+  /** Drive files modified within the last week or month. The calendar picks dates instead. */
+  readonly range: "all" | "week" | "month";
+  readonly sort: "newest" | "oldest" | "title";
 }
 
 export const DEFAULT_GOOGLE_FILE_PICKER_VIEWS = {
   drive: { types: [], owners: [], range: "all", sort: "newest" },
-  calendar: { types: [], owners: [], range: "all", sort: "nearest" },
+  calendar: { types: [], owners: [], range: "all", sort: "oldest" },
 } as const satisfies Record<GoogleFilePickerSource, GoogleFilePickerView>;
 
 export const GOOGLE_FILE_TYPE_LABELS = {
@@ -35,10 +34,20 @@ export const GOOGLE_FILE_TYPE_LABELS = {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** An all-day event's date-only time is a local calendar date, not a UTC instant. */
+function parseGoogleTime(iso: string | undefined): Date | null {
+  if (!iso) return null;
+  const date = DATE_ONLY.test(iso) ? new Date(`${iso}T00:00:00`) : new Date(iso);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 /** When a file was last modified, or when an event starts. */
 export function googleFileTime(file: GoogleFileSummary): number {
-  const time = Date.parse(file.fileType === "event" ? (file.startsAt ?? "") : file.updatedAt);
-  return Number.isNaN(time) ? 0 : time;
+  return (
+    parseGoogleTime(file.fileType === "event" ? file.startsAt : file.updatedAt)?.getTime() ?? 0
+  );
 }
 
 function inRange(file: GoogleFileSummary, range: GoogleFilePickerView["range"], now: number) {
@@ -50,10 +59,6 @@ function inRange(file: GoogleFileSummary, range: GoogleFilePickerView["range"], 
       return time >= now - 7 * DAY_MS;
     case "month":
       return time >= now - 30 * DAY_MS;
-    case "upcoming":
-      return time >= now;
-    case "past":
-      return time < now;
   }
 }
 
@@ -73,9 +78,7 @@ function googleDimensions(view: GoogleFilePickerView, now: number, pasted: boole
     },
     range: {
       values: (file: GoogleFileSummary) =>
-        (["all", "week", "month", "upcoming", "past"] as const).filter(
-          (range) => pasted || inRange(file, range, now),
-        ),
+        (["all", "week", "month"] as const).filter((range) => pasted || inRange(file, range, now)),
       selected: [view.range],
       matches: (file: GoogleFileSummary) => pasted || inRange(file, view.range, now),
     },
@@ -91,10 +94,6 @@ export function filterGoogleFiles(
 ): GoogleFileSummary[] {
   const shown = applyFilterDimensions(files, googleDimensions(view, now, pasted));
   switch (view.sort) {
-    case "nearest":
-      return shown.toSorted(
-        (a, b) => Math.abs(googleFileTime(a) - now) - Math.abs(googleFileTime(b) - now),
-      );
     case "newest":
       return shown.toSorted((a, b) => googleFileTime(b) - googleFileTime(a));
     case "oldest":
@@ -133,20 +132,94 @@ export function googleFilterFacets(
   };
 }
 
-/**
- * `23 Oct` for a file's last edit, `26 Oct, 10:00` for an event's start, and the year too when
- * it is not this one. An all-day event's date-only start is a calendar date, not a UTC instant.
- */
+/** `23 Oct` for a file's last edit, with the year too when it is not this one. */
 export function googleFileTimeLabel(file: GoogleFileSummary, now: number): string {
-  const iso = file.fileType === "event" ? file.startsAt : file.updatedAt;
-  if (!iso) return "";
-  const allDay = /^\d{4}-\d{2}-\d{2}$/.test(iso);
-  const date = allDay ? new Date(`${iso}T00:00:00`) : new Date(iso);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleString(undefined, {
+  const date = parseGoogleTime(file.updatedAt);
+  if (date === null) return "";
+  return date.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
     ...(date.getFullYear() === new Date(now).getFullYear() ? {} : { year: "numeric" }),
-    ...(file.fileType === "event" && !allDay ? { hour: "numeric", minute: "2-digit" } : {}),
   });
+}
+
+/** `2026-10-25`: a local calendar day, the key the calendar strip and agenda share. */
+export function localDayKey(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+export function dayFromKey(day: string): Date {
+  return new Date(`${day}T00:00:00`);
+}
+
+export function addDays(date: Date, days: number): Date {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+/** Local midnight on the Monday of the week holding `date`. */
+export function startOfWeek(date: Date): Date {
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  return addDays(start, -((start.getDay() + 6) % 7));
+}
+
+/** The local day an event starts on. Multi-day events are listed on their first day. */
+export function eventDayKey(event: GoogleFileSummary): string | null {
+  const start = parseGoogleTime(event.startsAt);
+  return start === null ? null : localDayKey(start);
+}
+
+function isAllDay(event: GoogleFileSummary) {
+  return event.startsAt !== undefined && DATE_ONLY.test(event.startsAt);
+}
+
+/** Events by the day they start, days in order, all-day events first and then by start. */
+export function groupEventsByDay(
+  events: ReadonlyArray<GoogleFileSummary>,
+): Array<{ readonly day: string; readonly events: GoogleFileSummary[] }> {
+  const days = new Map<string, GoogleFileSummary[]>();
+  for (const event of events) {
+    const day = eventDayKey(event);
+    if (day === null) continue;
+    days.set(day, [...(days.get(day) ?? []), event]);
+  }
+  return [...days]
+    .toSorted(([a], [b]) => a.localeCompare(b))
+    .map(([day, dayEvents]) => ({
+      day,
+      events: dayEvents.toSorted(
+        (a, b) =>
+          Number(isAllDay(b)) - Number(isAllDay(a)) || googleFileTime(a) - googleFileTime(b),
+      ),
+    }));
+}
+
+/** `All day` or `10:00 – 11:00`, in local time. */
+export function eventTimeLabel(event: GoogleFileSummary): string {
+  if (isAllDay(event)) return "All day";
+  const time = (date: Date | null) =>
+    date?.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) ?? "";
+  const start = time(parseGoogleTime(event.startsAt));
+  const end = time(parseGoogleTime(event.endsAt));
+  return end ? `${start} – ${end}` : start;
+}
+
+/** `Today · Sun 25 Oct`, `Tomorrow · …`, or `Mon 27 Oct`, with the year when not this one. */
+export function dayHeading(day: string, now: number): string {
+  const date = dayFromKey(day);
+  const today = new Date(now);
+  const label = date.toLocaleDateString(undefined, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    ...(date.getFullYear() === today.getFullYear() ? {} : { year: "numeric" }),
+  });
+  const relative = {
+    [localDayKey(today)]: "Today",
+    [localDayKey(addDays(today, 1))]: "Tomorrow",
+    [localDayKey(addDays(today, -1))]: "Yesterday",
+  }[day];
+  return relative ? `${relative} · ${label}` : label;
 }

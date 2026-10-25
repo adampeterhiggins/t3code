@@ -5,6 +5,9 @@ import {
   DEFAULT_GOOGLE_FILE_PICKER_VIEWS,
   filterGoogleFiles,
   googleFilterFacets,
+  groupEventsByDay,
+  localDayKey,
+  startOfWeek,
   type GoogleFilePickerView,
 } from "./googleFilePicker.logic";
 
@@ -39,12 +42,6 @@ const drive = [
   file("budget", "sheet", 12, "Grace"),
   file("deck", "slides", 40, "Ada"),
 ];
-const events = [
-  event("offsite", 20, "Ada"),
-  event("standup", -1, "Grace"),
-  event("retro", 3, "Ada"),
-];
-
 describe("filterGoogleFiles", () => {
   it("narrows Drive files by type, owner, and how recently they changed", () => {
     const view = DEFAULT_GOOGLE_FILE_PICKER_VIEWS.drive;
@@ -54,15 +51,6 @@ describe("filterGoogleFiles", () => {
     expect(ids({ types: ["sheet", "slides"] })).toEqual(["budget", "deck"]);
     expect(ids({ owners: ["Ada"] })).toEqual(["plan", "deck"]);
     expect(ids({ range: "month" })).toEqual(["plan", "budget"]);
-  });
-
-  it("orders events by their start, closest to now first by default", () => {
-    const view = DEFAULT_GOOGLE_FILE_PICKER_VIEWS.calendar;
-    const ids = (next: Partial<GoogleFilePickerView>) =>
-      filterGoogleFiles(events, { ...view, ...next }, now).map((f) => f.id);
-    expect(ids({})).toEqual(["standup", "retro", "offsite"]);
-    expect(ids({ range: "upcoming", sort: "oldest" })).toEqual(["retro", "offsite"]);
-    expect(ids({ range: "past" })).toEqual(["standup"]);
   });
 
   it("shows a pasted link's file however old it is", () => {
@@ -91,5 +79,33 @@ describe("googleFilterFacets", () => {
       ["Grace", 1],
     ]);
     expect(facets.ranges.week).toBe(1);
+  });
+});
+
+describe("groupEventsByDay", () => {
+  // Local times, so the days hold in any time zone the tests run in.
+  const at = (day: number, hour: number) => new Date(2026, 9, day, hour).toISOString();
+  const timed = (id: string, day: number, hour: number): GoogleFileSummary => ({
+    ...event(id, 0, "Ada"),
+    startsAt: at(day, hour),
+    endsAt: at(day, hour + 1),
+  });
+
+  it("lists each day in order, all-day events first and then by start", () => {
+    const groups = groupEventsByDay([
+      timed("review", 27, 15),
+      timed("standup", 26, 9),
+      { ...event("holiday", 0, "Ada"), startsAt: "2026-10-27" },
+      timed("kickoff", 27, 10),
+    ]);
+    expect(groups.map((g) => [g.day, g.events.map((e) => e.id)])).toEqual([
+      ["2026-10-26", ["standup"]],
+      ["2026-10-27", ["holiday", "kickoff", "review"]],
+    ]);
+  });
+
+  it("starts weeks on the local Monday", () => {
+    expect(localDayKey(startOfWeek(new Date(2026, 9, 25, 23)))).toBe("2026-10-19");
+    expect(localDayKey(startOfWeek(new Date(2026, 9, 26, 0)))).toBe("2026-10-26");
   });
 });
