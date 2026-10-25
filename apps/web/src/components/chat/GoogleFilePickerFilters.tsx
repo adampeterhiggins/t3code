@@ -210,7 +210,6 @@ export function GoogleFilePickerFilterBar(props: {
   const defaultIds = defaultCalendarIds(props.calendars ?? []);
   const shownCalendarIds = props.calendarIds ?? defaultIds;
   const calendarsFiltered = source === "calendar" && props.calendarIds !== null;
-  const calendarName = (id: string) => props.calendars?.find((c) => c.id === id)?.name ?? id;
   const filtered =
     view.types.length > 0 || view.owners.length > 0 || rangeFiltered || calendarsFiltered;
   return (
@@ -296,9 +295,6 @@ export function GoogleFilePickerFilterBar(props: {
             ) : null}
           </MenuPopup>
         </Menu>
-        {source === "calendar" && !calendarsFiltered ? (
-          <span className="truncate text-muted-foreground text-xs">Showing your calendars</span>
-        ) : null}
         <div className="flex-1" />
         {filtered || view.sort !== defaults.sort ? (
           <Button
@@ -334,19 +330,33 @@ export function GoogleFilePickerFilterBar(props: {
           </Menu>
         ) : null}
       </div>
-      {filtered ? (
+      {filtered || (source === "calendar" && shownCalendarIds.length > 0) ? (
         <div className="flex flex-wrap items-center gap-1">
-          {calendarsFiltered ? (
-            <FilterPill
-              icon={<CalendarIcon />}
-              label={
-                shownCalendarIds.length === 1
-                  ? calendarName(shownCalendarIds[0]!)
-                  : `${shownCalendarIds.length} calendars`
-              }
-              onRemove={() => props.onCalendarIdsChange(null)}
-            />
-          ) : null}
+          {source === "calendar"
+            ? shownCalendarIds.map((id) => {
+                const calendar = props.calendars?.find((c) => c.id === id);
+                const label = calendar ? calendarLabel(calendar) : id;
+                return (
+                  <FilterPill
+                    key={`calendar:${id}`}
+                    icon={<CalendarIcon />}
+                    label={label}
+                    // The last calendar stays: a search over none would show nothing.
+                    {...(shownCalendarIds.length > 1
+                      ? {
+                          onRemove: () => {
+                            const rest = shownCalendarIds.filter((entry) => entry !== id);
+                            const isDefault =
+                              rest.length === defaultIds.length &&
+                              rest.every((entry) => defaultIds.includes(entry));
+                            props.onCalendarIdsChange(isDefault ? null : rest);
+                          },
+                        }
+                      : {})}
+                  />
+                );
+              })
+            : null}
           {view.types.map((type) => (
             <FilterPill
               key={`type:${type}`}
