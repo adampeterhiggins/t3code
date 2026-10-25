@@ -1,5 +1,6 @@
+import { SourceTabs } from "./SourceTabs";
 import { LinkedObjectLinkPreview } from "./LinkedObjectLinkPreview";
-import { GoogleDriveIcon, GoogleDocIcon, GoogleSheetIcon } from "../Icons";
+import { GoogleIcon, GoogleSourceIcon } from "../Icons";
 import { useAtomValue } from "@effect/atom-react";
 import { googleFileContextRecord } from "@t3tools/client-runtime/state/google";
 import type { ScopedThreadRef, GoogleFileSummary } from "@t3tools/contracts";
@@ -72,7 +73,7 @@ function useLinkGoogleFile() {
         const failure = squashAtomCommandFailure(result);
         toastManager.add({
           type: "error",
-          title: "Could not link the Google document",
+          title: "Could not link the Google file or event",
           description: failure instanceof Error ? failure.message : undefined,
         });
       }
@@ -102,6 +103,7 @@ function GoogleFilePickerDialog({
   const attachPage = useAttachGoogleFile();
   const redirect = useComposerAttachRedirect();
   const linkPage = useLinkGoogleFile();
+  const [source, setSource] = useState<"drive" | "calendar">("drive");
   const [query, setQuery] = useState("");
   const [attaching, setAttaching] = useState(false);
   const settled = useDebouncedValue(query.trim(), 400);
@@ -115,7 +117,7 @@ function GoogleFilePickerDialog({
     connected
       ? googleEnvironment.files({
           environmentId: threadRef.environmentId,
-          input: { query: settled },
+          input: { query: settled, source },
         })
       : null,
   );
@@ -128,7 +130,7 @@ function GoogleFilePickerDialog({
       : result.isPending || settled !== query.trim()
         ? "Searching Google…"
         : files.length === 0
-          ? "No Docs or Sheets found. Search by title or paste a document link."
+          ? "No matching files or events. Search by title or paste a Google link."
           : null);
   if (!googleEnabled) return null;
   return (
@@ -139,14 +141,14 @@ function GoogleFilePickerDialog({
       }}
     >
       <CommandDialogPopup
-        aria-label={mode === "link" ? "Link Google document" : "Attach Google document"}
+        aria-label={mode === "link" ? "Link Google file or event" : "Attach Google file or event"}
         className="overflow-hidden"
       >
         {connected || connection.data === null ? (
           <CommandPaletteContent
             inputProps={{
-              placeholder: "Search Google Docs and Sheets or paste a document link",
-              startAddon: <GoogleDriveIcon />,
+              placeholder: "Search Google Drive files and Calendar events or paste a document link",
+              startAddon: <GoogleIcon />,
             }}
             footerActionLabel={
               mode === "link"
@@ -161,6 +163,15 @@ function GoogleFilePickerDialog({
             value={query}
             onValueChange={setQuery}
           >
+            <SourceTabs
+              className="flex gap-1 px-3 py-2"
+              options={[
+                { id: "drive", label: "Drive" },
+                { id: "calendar", label: "Calendar" },
+              ]}
+              activeId={source}
+              onSelect={setSource}
+            />
             {status ? (
               <div className="py-10 text-center text-muted-foreground text-sm">{status}</div>
             ) : (
@@ -187,7 +198,7 @@ function GoogleFilePickerDialog({
                           if (picked._tag === "Success" && picked.value) closePicker();
                         }}
                       >
-                        {page.fileType === "sheet" ? <GoogleSheetIcon /> : <GoogleDocIcon />}
+                        {<GoogleSourceIcon fileType={page.fileType} />}
                         <LinkedObjectLinkPreview
                           environmentId={threadRef.environmentId}
                           threadRef={threadRef}
@@ -210,8 +221,8 @@ function GoogleFilePickerDialog({
           <div className="flex flex-col items-center gap-3 px-6 py-10 text-center text-sm">
             <p className="text-muted-foreground">
               {mode === "link"
-                ? "Connect Google to link a document through your connected account."
-                : "Connect Google to attach documents through your connected account."}
+                ? "Connect Google to link a Drive file or Calendar event."
+                : "Connect Google to attach Drive files and Calendar events."}
             </p>
             <Button
               size="sm"

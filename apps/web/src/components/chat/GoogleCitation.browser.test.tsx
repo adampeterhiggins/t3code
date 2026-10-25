@@ -59,3 +59,30 @@ it("previews the cited spreadsheet cells from a native range link", async () => 
     .element(page.getByRole("link", { name: "Open in Google Sheets" }))
     .toHaveAttribute("href", url);
 });
+
+it("previews a Calendar citation with the event time and attendees", async () => {
+  const url = `https://calendar.google.com/calendar/event?eid=${btoa("review team@example.com")}`;
+  source.value = {
+    id: url,
+    title: "Launch review",
+    fileType: "event",
+    url,
+    updatedAt: "2026-10-25T10:00:00.000Z",
+    markdown: "Start: 2026-10-26 10:00 Europe/London\n\nAttendees: priya@example.com",
+  };
+  const link = parseComposerObjectLink(url);
+  if (!isPreviewableObjectLink(link)) throw new Error("Expected a Calendar link");
+  await using screen = await render(
+    <LinkedObjectLinkPreview
+      environmentId={EnvironmentId.make("test")}
+      threadRef={null}
+      objectLink={link}
+      link={<a href={url}>Launch review</a>}
+    />,
+  );
+  await userEvent.hover(screen.getByRole("link", { name: "Launch review" }));
+  await expect.element(page.getByText("Start: 2026-10-26 10:00 Europe/London")).toBeVisible();
+  await expect
+    .element(page.getByRole("link", { name: "Open in Google Calendar" }))
+    .toHaveAttribute("href", url);
+});

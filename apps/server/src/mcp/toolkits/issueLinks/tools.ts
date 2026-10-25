@@ -21,6 +21,7 @@ import {
   GoogleSearchFilesResult,
   NotionThreadLink,
   GoogleThreadLink,
+  IsoDateTime,
   OrchestratorMcpFailure,
   SlackError,
   SlackSearchMessagesResult,
@@ -262,7 +263,7 @@ const UnlinkGitHubIssueTool = Tool.make("unlink_github_issue", {
   .annotate(Tool.OpenWorld, false);
 
 const ListThreadLinksTool = Tool.make("list_thread_links", {
-  description: `Read what a thread is linked to (omit threadId for this thread): at most one Linear issue, GitHub issue, Slack thread, Discord thread, Notion page, Google document, and Granola note, null where none is linked. Returns each link's identity; pass its url to read_context_link for the contents. For pull requests use list_thread_pull_requests.`,
+  description: `Read what a thread is linked to (omit threadId for this thread): at most one Linear issue, GitHub issue, Slack thread, Discord thread, Notion page, Google file or event, and Granola note, null where none is linked. Returns each link's identity; pass its url to read_context_link for the contents. For pull requests use list_thread_pull_requests.`,
   parameters: Schema.Struct({
     threadId: Schema.optional(
       ThreadId.annotate({ description: "Thread to read. Omit for this thread." }),
@@ -279,7 +280,7 @@ const ListThreadLinksTool = Tool.make("list_thread_links", {
   .annotate(Tool.OpenWorld, false);
 
 const LinkThreadLinkTool = Tool.make("link_thread_link", {
-  description: `Link a Slack or Discord message's thread, Notion page, Google Doc or Sheet, Granola note, Linear issue, or GitHub issue to a thread by its web link, so T3 Code shows it beside the thread and watch_thread_link can watch it. A thread (with its chat tabs) holds at most one link of each kind; linking another replaces it. Uses T3 Code's own connections, so the integration must be connected and turned on. For pull requests use link_pull_request.`,
+  description: `Link a Slack or Discord message's thread, Notion page, Google Drive file, folder or Calendar event, Granola note, Linear issue, or GitHub issue to a thread by its web link, so T3 Code shows it beside the thread and watch_thread_link can watch it. A thread (with its chat tabs) holds at most one link of each kind; linking another replaces it. Uses T3 Code's own connections, so the integration must be connected and turned on. For pull requests use link_pull_request.`,
   parameters: Schema.Struct({
     threadId: threadIdParameter,
     url: TrimmedNonEmptyString.check(Schema.isMaxLength(4_096)).annotate({
@@ -338,7 +339,7 @@ const UnwatchThreadLinkTool = Tool.make("unwatch_thread_link", {
   .annotate(Tool.OpenWorld, false);
 
 const ReadContextLinkTool = Tool.make("read_context_link", {
-  description: `Read a Slack or Discord message (with its thread), Notion page, Google Doc or Sheet, Granola note, Linear issue, project, document, or initiative, GitHub issue, or GitHub release, tag, branch, or commit link through T3 Code's own connections, and return the same text a user attaching it to a message would send. Works without a separate MCP server for that service. Fails when the integration is disconnected or turned off, or cannot see the object. To give the link to another thread, use contextLinks on t3_thread_send instead.`,
+  description: `Read a Slack or Discord message (with its thread), Notion page, Google Drive file, folder or Calendar event, Granola note, Linear issue, project, document, or initiative, GitHub issue, or GitHub release, tag, branch, or commit link through T3 Code's own connections, and return the same text a user attaching it to a message would send. Works without a separate MCP server for that service. Fails when the integration is disconnected or turned off, or cannot see the object. To give the link to another thread, use contextLinks on t3_thread_send instead.`,
   parameters: Schema.Struct({
     url: TrimmedNonEmptyString.check(Schema.isMaxLength(4_096)).annotate({
       description: "The object's web link, as a user would paste it.",
@@ -457,11 +458,16 @@ const SearchNotionPagesTool = Tool.make("search_notion_pages", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, true);
 const SearchGoogleFilesTool = Tool.make("search_google_files", {
-  description: `Search Google Docs and Sheets by title through the connected Google account. Returns page titles and urls; pass a url to read_context_link for the page's contents. Works without a Google MCP server. Fails when Google is disconnected or turned off.`,
+  description: `Search Google Drive files or Calendar events through the connected Google account. Calendar searches default to the past 30 days and next year across up to 10 calendars; supply calendarId and timeMin/timeMax to target another calendar or date window. Returns page titles and urls; pass a url to read_context_link for the page's contents. Works without a Google MCP server. Fails when Google is disconnected or turned off.`,
   parameters: Schema.Struct({
     query: Schema.String.check(Schema.isMaxLength(256)).annotate({
-      description: "Title text or a Google link. Empty lists recently edited files.",
+      description:
+        "Title text or a Google link. Empty lists recent Drive files or events in the date window.",
     }),
+    source: Schema.optional(Schema.Literals(["drive", "calendar", "all"])),
+    calendarId: Schema.optional(Schema.String.check(Schema.isMaxLength(512))),
+    timeMin: Schema.optional(IsoDateTime),
+    timeMax: Schema.optional(IsoDateTime),
   }),
   success: GoogleSearchFilesResult,
   failure: IssueLinkToolError,

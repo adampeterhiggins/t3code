@@ -22,7 +22,16 @@ export function GoogleFileDetails({
           onClick={(event) => onOpenLink(event, record.url)}
           className="shrink-0 underline-offset-2 hover:text-foreground hover:underline"
         >
-          Open in Google {record.fileType === "sheet" ? "Sheets" : "Docs"}
+          Open in Google{" "}
+          {record.fileType === "event"
+            ? "Calendar"
+            : record.fileType === "sheet"
+              ? "Sheets"
+              : record.fileType === "doc"
+                ? "Docs"
+                : record.fileType === "slides"
+                  ? "Slides"
+                  : "Drive"}
         </a>
       </div>
       {record.grid ? (

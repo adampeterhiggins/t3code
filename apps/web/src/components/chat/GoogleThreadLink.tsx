@@ -8,7 +8,7 @@ import { useEnvironmentSettings } from "~/hooks/useSettings";
 import { googleEnvironment } from "~/state/google";
 import { useEnvironmentQuery } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
-import { GoogleDocIcon, GoogleSheetIcon } from "../Icons";
+import { GoogleSourceIcon } from "../Icons";
 import { MenuItem, MenuSeparator } from "../ui/menu";
 import { ThreadLinkRow } from "./ThreadLinkRow";
 import { openGoogleFilePicker } from "./GoogleFilePicker";
@@ -20,7 +20,7 @@ function useGoogleThreadLinks(environmentId: EnvironmentId | null) {
   ).data;
 }
 
-/** The Google document linked to the thread's tab group, if any. */
+/** The Google file or event linked to the thread's tab group, if any. */
 export function useThreadGoogleLink(threadRef: ScopedThreadRef | null) {
   const links = useGoogleThreadLinks(threadRef?.environmentId ?? null);
   return threadRef === null ? null : googleLinkForThread(links, threadRef.threadId);
@@ -35,7 +35,7 @@ export function useUnlinkGoogleFile() {
     });
 }
 
-/** The thread details row for the thread's linked Google document, showing its title when linked. */
+/** The thread details row for the thread's linked Google file or event, showing its title when linked. */
 export function GoogleThreadLinkRow(props: { threadRef: ScopedThreadRef; link: GoogleThreadLink }) {
   const { threadRef, link } = props;
   const googleEnabled = useEnvironmentSettings(
@@ -52,15 +52,9 @@ export function GoogleThreadLinkRow(props: { threadRef: ScopedThreadRef; link: G
     <ThreadLinkRow
       watchKind="google"
       linkUrl={link.url}
-      icon={
-        link.fileType === "sheet" ? (
-          <GoogleSheetIcon className="size-4 shrink-0" />
-        ) : (
-          <GoogleDocIcon className="size-4 shrink-0" />
-        )
-      }
+      icon={<GoogleSourceIcon fileType={link.fileType} className="size-4 shrink-0" />}
       label={link.title}
-      accessibleLabel={`Linked Google document: ${link.title}`}
+      accessibleLabel={`Linked Google file or event: ${link.title}`}
       threadRef={threadRef}
       url={link.url}
     >

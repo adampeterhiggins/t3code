@@ -1,3 +1,4 @@
+import { INTEGRATION_ICONS } from "../../../packages/shared/src/brandMarks.ts";
 import * as NodeFS from "node:fs";
 import * as NodeModule from "node:module";
 import * as NodePath from "node:path";
@@ -92,26 +93,20 @@ for (const name of lucideIcons) {
   await renderIcon(name, await lucideSvg(name));
 }
 await renderIcon("skill", skillSvg);
-const integrationIcons = NodeFS.readFileSync(
-  NodePath.join(repositoryRoot, "apps/web/src/components/Icons.tsx"),
-  "utf8",
-);
-const googleIcons = [
-  ["google-doc", "GoogleDocIcon"],
-  ["google-sheet", "GoogleSheetIcon"],
+const googleBrands = [
+  ["google-doc", "googleDocs"],
+  ["google-sheet", "googleSheets"],
+  ["google-drive", "googleDrive"],
+  ["google-calendar", "googleCalendar"],
 ];
-for (const [token, component] of googleIcons) {
-  const start = integrationIcons.indexOf(`export function ${component}`);
-  const body = integrationIcons.slice(start, integrationIcons.indexOf("\n}", start));
-  const path = body.match(/d="([^"]+)"/)?.[1];
-  if (!path) throw new Error(`Could not read ${component} from the web icons`);
+for (const [token, brand] of googleBrands) {
+  const icon = INTEGRATION_ICONS[brand];
   await renderIcon(
     token,
-    `<svg viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="${path}"/></svg>`,
+    `<svg viewBox="${icon.viewBox}" fill="currentColor"><path d="${icon.path}"/></svg>`,
   );
 }
-
-const tokens = [...lucideIcons, "skill", ...googleIcons.map(([token]) => token)].sort();
+const tokens = [...googleBrands.map(([token]) => token), ...lucideIcons, "skill"].sort();
 const generatedSource = `import type { ImageSourcePropType } from "react-native";\n\nexport const CONTEXT_CHIP_ICON_SOURCES = {\n${tokens
   .map(
     (token) =>

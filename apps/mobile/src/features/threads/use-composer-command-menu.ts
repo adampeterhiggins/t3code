@@ -476,7 +476,7 @@ export function useComposerCommandMenu({
   const googleQuery = useDebouncedValue(trigger?.kind === "pull-request" ? trigger.query : "", 400);
   const googleSearch = useEnvironmentQuery(
     environmentId && googleEnabled && trigger?.kind === "pull-request"
-      ? googleEnvironment.files({ environmentId, input: { query: googleQuery } })
+      ? googleEnvironment.files({ environmentId, input: { query: googleQuery, source: "all" } })
       : null,
   );
   const getGoogleFile = useAtomCommand(googleEnvironment.getFile);
@@ -509,7 +509,7 @@ export function useComposerCommandMenu({
           type: "google-file",
           url: file.url,
           label: file.title,
-          description: file.fileType === "sheet" ? "Google Sheets" : "Google Docs",
+          description: file.fileType === "event" ? "Google Calendar" : "Google Drive",
         })),
       ];
     }

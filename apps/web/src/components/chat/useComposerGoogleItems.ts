@@ -23,7 +23,8 @@ export function useComposerGoogleItems(
   environmentId: EnvironmentId,
   input: { readonly enabled: boolean; readonly active: boolean; readonly query: string },
 ) {
-  const atomFor = (query: string) => googleEnvironment.files({ environmentId, input: { query } });
+  const atomFor = (query: string) =>
+    googleEnvironment.files({ environmentId, input: { query, source: "all" } });
   return useComposerReferenceSearch({
     ...input,
     debounceMs: GOOGLE_SEARCH_DEBOUNCE_MS,

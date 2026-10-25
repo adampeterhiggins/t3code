@@ -268,7 +268,7 @@ import {
   GranolaIcon,
   LinearIcon,
   NotionIcon,
-  GoogleDriveIcon,
+  GoogleIcon,
   SlackIcon,
 } from "./Icons";
 import { openImportConversationDialog } from "./ImportConversationDialog";
@@ -1719,7 +1719,7 @@ function OpenCommandPaletteDialog(props: {
         value: "action:attach-google-file",
         searchTerms: ["google", "page", "document", "attach", "context"],
         title: "Attach Google page",
-        icon: <GoogleDriveIcon className={ITEM_ICON_CLASS} />,
+        icon: <GoogleIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
           openGoogleFilePicker(composerThreadRef);
         },
@@ -1906,7 +1906,7 @@ function OpenCommandPaletteDialog(props: {
         title: activeGoogleLink
           ? `Change linked Google page (${activeGoogleLink.title})`
           : "Link Google page",
-        icon: <GoogleDriveIcon className={ITEM_ICON_CLASS} />,
+        icon: <GoogleIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
           openGoogleFilePicker(composerThreadRef, "link");
         },
@@ -1930,7 +1930,7 @@ function OpenCommandPaletteDialog(props: {
         value: "action:unlink-google-file",
         searchTerms: ["google", "page", "document", "unlink", "remove"],
         title: `Unlink Google page ${activeGoogleLink.title}`,
-        icon: <GoogleDriveIcon className={ITEM_ICON_CLASS} />,
+        icon: <GoogleIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
           await unlinkGoogleFile(composerThreadRef);
         },

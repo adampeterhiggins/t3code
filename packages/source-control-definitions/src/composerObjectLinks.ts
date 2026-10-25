@@ -335,7 +335,7 @@ export function objectLinkLabel(url: string): string | null {
 
 const OBJECT_LINK_NOUNS: Record<ComposerObjectLink["kind"], string> = {
   "notion-page": "Notion page",
-  "google-file": "Google document",
+  "google-file": "Google file or event",
   "granola-note": "Granola note",
   "linear-issue": "Linear issue",
   "linear-object": "Linear project, document, or initiative",

@@ -190,7 +190,9 @@ export function googleFileContextRecord(page: GoogleFileContext): GoogleFileCont
   return {
     version: 1,
     kind: "google-file",
-    contextId: `google-file_${page.id.slice(0, 80)}_${Array.from(page.url)
+    contextId: `google-file_${page.id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80)}_${Array.from(
+      page.url,
+    )
       .reduce((hash, char) => Math.imul(hash ^ char.charCodeAt(0), 16777619) >>> 0, 2166136261)
       .toString(16)}` as ComposerContextId,
     label: sanitizeComposerContextLabel(

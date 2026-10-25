@@ -2241,13 +2241,13 @@ A thread's chat-tab group can also be linked to one Notion page, from the thread
 
 Code: [NotionAuth](../apps/server/src/notion/NotionAuth.ts), [NotionApi](../apps/server/src/notion/NotionApi.ts), [NotionPagePicker](../apps/web/src/components/chat/NotionPagePicker.tsx), [NotionThreadLinks](../apps/server/src/notion/NotionThreadLinks.ts), [NotionThreadLink](../apps/web/src/components/chat/NotionThreadLink.tsx), and [NotionPagePickerSheet](../apps/mobile/src/components/NotionPagePickerSheet.tsx). User guide: [Notion](./user/notion.md).
 
-## Google Docs and Sheets
+## Google Drive and Calendar
 
-An environment-owned, read-only Google connection supports native Docs and Sheets alongside the other integrations. Web and desktop offer Google sign-in in Settings, pasted-link conversion, a Google tab in the `#` menu, a paperclip picker, and command-palette actions. Mobile can attach documents through the environment's connection and search Google from `#`. Source links retain document tabs and headings or spreadsheet tabs and ranges; inline citations preview those locations, with touch previews on mobile. Attached messages keep bounded snapshots.
+An environment-owned, read-only Google connection supports Drive files and folders, Docs, Sheets, Slides and Calendar events alongside the other integrations. Web and desktop offer Google sign-in in Settings, pasted-link conversion, a Google tab in the `#` menu, a paperclip picker with Drive and Calendar tabs, and command-palette actions. Mobile can attach files and events through the environment's connection and search Google from `#`. Source links retain document tabs and headings or spreadsheet tabs and ranges; inline citations preview those locations, with touch previews on mobile. Attached messages keep bounded snapshots.
 
-A chat-tab group can link a Google document and watch its content and comments every five minutes through the existing thread-link watcher. Open, change, unlink, watch and stop-watching actions are available across clients. Agents use the same read, link and watch services through MCP, including `search_google_files` and `read_context_link`.
+Text files and Slides include bounded text; binary files include metadata and comments. Calendar events include times, attendees, location and status. A chat-tab group can link a Google source and watch its content, comments, folder listing or event changes every five minutes through the existing thread-link watcher. Open, change, unlink, watch and stop-watching actions are available across clients. Agents use the same read, link and watch services through MCP, including `search_google_files` and `read_context_link`.
 
-Code: [GoogleApi](../apps/server/src/google/GoogleApi.ts), [GoogleAuth](../apps/server/src/google/GoogleAuth.ts), [GoogleFilePicker](../apps/web/src/components/chat/GoogleFilePicker.tsx), [GoogleThreadLink](../apps/web/src/components/chat/GoogleThreadLink.tsx), [GoogleFilePickerSheet](../apps/mobile/src/components/GoogleFilePickerSheet.tsx). User guide: [Google Docs and Sheets](./user/google.md).
+Code: [GoogleApi](../apps/server/src/google/GoogleApi.ts), [GoogleAuth](../apps/server/src/google/GoogleAuth.ts), [GoogleFilePicker](../apps/web/src/components/chat/GoogleFilePicker.tsx), [GoogleThreadLink](../apps/web/src/components/chat/GoogleThreadLink.tsx), [GoogleFilePickerSheet](../apps/mobile/src/components/GoogleFilePickerSheet.tsx). User guide: [Google Drive and Calendar](./user/google.md).
 
 ## Granola meeting notes
 

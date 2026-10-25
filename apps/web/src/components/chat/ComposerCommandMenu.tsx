@@ -1,5 +1,5 @@
 import { LinkedObjectLinkPreview } from "./LinkedObjectLinkPreview";
-import { GoogleDocIcon, GoogleSheetIcon } from "../Icons";
+import { GoogleSourceIcon } from "../Icons";
 import { formatProviderSkillDisplayName } from "@t3tools/shared/inlineSkills";
 import type { ComposerPathSearchTarget } from "@t3tools/client-runtime/state/threads";
 import {
@@ -533,11 +533,11 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
         <NotionIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
       ) : null}
       {props.item.type === "google-file" ? (
-        props.item.fileId.includes("/spreadsheets/") ? (
-          <GoogleSheetIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
-        ) : (
-          <GoogleDocIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
-        )
+        <GoogleSourceIcon
+          url={props.item.fileId}
+          aria-hidden="true"
+          className="size-4 shrink-0 text-secondary-label"
+        />
       ) : null}
       {props.item.type === "granola-note" ? (
         <GranolaIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />

@@ -480,10 +480,10 @@ export type NotionPageContextRecord = typeof NotionPageContextRecord.Type;
 export const GoogleFileContextRecord = Schema.Struct({
   ...recordBase,
   kind: Schema.Literal("google-file"),
-  fileType: Schema.Literals(["doc", "sheet"]),
+  fileType: Schema.Literals(["doc", "sheet", "drive", "folder", "slides", "event"]),
   location: Schema.optional(Schema.String),
   grid: Schema.optional(Schema.Array(Schema.Array(Schema.String))),
-  fileId: TrimmedNonEmptyString.check(Schema.isMaxLength(128)),
+  fileId: TrimmedNonEmptyString.check(Schema.isMaxLength(2048)),
   title: ShortString,
   url: ShortString,
   markdown: BoundedString(GOOGLE_FILE_MARKDOWN_MAX_CHARS),

@@ -1,5 +1,5 @@
 import { ContextChip, ContextChipLabel } from "../ContextChip";
-import { GoogleDocIcon, GoogleSheetIcon } from "../Icons";
+import { GoogleSourceIcon } from "../Icons";
 import type { PreviewCard as PreviewCardPrimitive } from "@base-ui/react/preview-card";
 import { repositoryContextRecord } from "@t3tools/client-runtime/context-repositories";
 import {
@@ -249,7 +249,7 @@ export function LinkedObjectLinkPreview(props: {
   const link =
     props.objectLink.kind === "google-file" && props.link.type === "a" ? (
       <ContextChip kind="google-file" render={props.link}>
-        {props.objectLink.url.includes("/spreadsheets/") ? <GoogleSheetIcon /> : <GoogleDocIcon />}
+        {<GoogleSourceIcon url={props.objectLink.url} />}
         <ContextChipLabel>
           {props.sourceLabel ??
             (props.link as ReactElement<{ children?: ReactNode }>).props.children}

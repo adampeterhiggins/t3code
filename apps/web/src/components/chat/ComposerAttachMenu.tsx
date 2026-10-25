@@ -12,7 +12,7 @@ import {
   DiscordIcon,
   LinearIcon,
   NotionIcon,
-  GoogleDriveIcon,
+  GoogleIcon,
   SlackIcon,
 } from "../Icons";
 import { memo } from "react";
@@ -141,8 +141,8 @@ export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
         ) : null}
         {googleEnabled ? (
           <MenuItem onClick={() => props.onPick("google-file")}>
-            <GoogleDriveIcon />
-            Google Docs & Sheets
+            <GoogleIcon />
+            Google Drive & Calendar
           </MenuItem>
         ) : null}
         {granolaEnabled ? (

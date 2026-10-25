@@ -860,7 +860,7 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "google",
-    title: "Google Docs & Sheets",
+    title: "Google Drive & Calendar",
     to: "/settings/integrations",
     searchTerms: [
       "google files documents connect account sign in oauth client id client secret attach context enable disable integration pasted links setup prompts",

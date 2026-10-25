@@ -205,7 +205,7 @@ const make = Effect.gen(function* () {
       default:
         return yield* new OrchestratorMcpFailure({
           code: "invalid_request",
-          message: `Cannot link ${url}. Use a Slack or Discord message, Notion page, Google document, Granola note, Linear issue, or GitHub issue link; for pull requests use link_pull_request.`,
+          message: `Cannot link ${url}. Use a Slack or Discord message, Notion page, Google file or event, Granola note, Linear issue, or GitHub issue link; for pull requests use link_pull_request.`,
         });
     }
   });
@@ -361,7 +361,7 @@ const make = Effect.gen(function* () {
     search_google_files: McpToolAccess.reads((input) =>
       requireIntegrationRead.pipe(
         Effect.andThen(requireIntegrationOn("enableGoogleIntegration", "Google")),
-        Effect.andThen(googleApi.searchFiles({ query: input.query })),
+        Effect.andThen(googleApi.searchFiles(input)),
       ),
     ),
   } satisfies McpToolAccess.Handlers<typeof IssueLinksToolkit.tools>;

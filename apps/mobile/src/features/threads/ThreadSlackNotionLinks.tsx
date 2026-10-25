@@ -105,7 +105,7 @@ export function useThreadSlackNotionLinks(environmentId: EnvironmentId, threadId
         ? [{ id: LINK_NOTION_ACTION, title: "Link Notion page", image: "link" }]
         : []),
       ...(googleLink === null && openGooglePicker
-        ? [{ id: LINK_GOOGLE_ACTION, title: "Link Google page", image: "link" }]
+        ? [{ id: LINK_GOOGLE_ACTION, title: "Link Google file or event", image: "link" }]
         : []),
       ...(granolaLink === null && openGranolaPicker
         ? [{ id: LINK_GRANOLA_ACTION, title: "Link Granola note", image: "link" }]
@@ -246,7 +246,7 @@ export function ThreadSlackNotionLinkChips(props: { readonly links: ThreadSlackN
           threadId={threadId}
           kind="google"
           label={googleLink.title}
-          description={`Linked Google page: ${googleLink.title}`}
+          description={`Linked Google file or event: ${googleLink.title}`}
           url={googleLink.url}
           target="google"
           openTitle="Open in Google"

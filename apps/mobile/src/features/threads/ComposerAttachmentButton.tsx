@@ -14,7 +14,11 @@ const GITHUB_ISSUE_ACTION: MenuAction = {
   image: "smallcircle.filled.circle",
 };
 const NOTION_ACTION: MenuAction = { id: "notion", title: "Notion page", image: "doc.text" };
-const GOOGLE_ACTION: MenuAction = { id: "google", title: "Google page", image: "doc.text" };
+const GOOGLE_ACTION: MenuAction = {
+  id: "google",
+  title: "Google file or event",
+  image: "doc.text",
+};
 const GRANOLA_ACTION: MenuAction = { id: "granola", title: "Granola note", image: "waveform" };
 const SLACK_ACTION: MenuAction = { id: "slack", title: "Slack message", image: "number" };
 const DISCORD_ACTION: MenuAction = {

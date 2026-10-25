@@ -128,7 +128,7 @@ import {
   GranolaIcon,
   LinearIcon,
   NotionIcon,
-  GoogleDriveIcon,
+  GoogleIcon,
   SlackIcon,
 } from "../Icons";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
@@ -198,7 +198,7 @@ const ATTACHMENT_ICONS = {
   thread: MessageSquareIcon,
   "linear-issue": LinearIcon,
   "notion-page": NotionIcon,
-  "google-file": GoogleDriveIcon,
+  "google-file": GoogleIcon,
   "granola-note": GranolaIcon,
   "slack-message": SlackIcon,
   "discord-message": DiscordIcon,

@@ -30,7 +30,7 @@ import {
   GranolaIcon,
   LinearIcon,
   NotionIcon,
-  GoogleDriveIcon,
+  GoogleIcon,
   SlackIcon,
 } from "../Icons";
 import { FileTagChipContent } from "./FileTagChip";
@@ -56,7 +56,7 @@ const CHIP_ICONS: Partial<Record<ContextChipKind, ReactNode>> = {
   "slack-thread": <SlackIcon />,
   "discord-thread": <DiscordIcon />,
   "notion-page": <NotionIcon />,
-  "google-file": <GoogleDriveIcon />,
+  "google-file": <GoogleIcon />,
   "granola-note": <GranolaIcon />,
   repository: <FolderGit2Icon />,
   checkout: <FolderIcon />,

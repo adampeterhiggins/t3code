@@ -19,7 +19,7 @@ import { GoogleApi } from "./GoogleApi.ts";
 interface LinkRow {
   readonly groupId: string;
   readonly fileId: string;
-  readonly fileType: "doc" | "sheet";
+  readonly fileType: GoogleThreadLink["fileType"];
   readonly title: string;
   readonly url: string;
   readonly linkedAt: string;

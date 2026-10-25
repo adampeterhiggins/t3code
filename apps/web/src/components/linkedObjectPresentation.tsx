@@ -1,4 +1,4 @@
-import { GoogleDocIcon, GoogleSheetIcon } from "./Icons";
+import { GoogleSourceIcon } from "./Icons";
 import { GoogleFileDetails } from "./GoogleFileDetails";
 import type {
   DiscordThreadContextRecord,
@@ -93,7 +93,7 @@ export function linkedObjectIcon(record: LinkedObjectContextRecord) {
     case "notion-page":
       return <NotionIcon />;
     case "google-file":
-      return record.fileType === "sheet" ? <GoogleSheetIcon /> : <GoogleDocIcon />;
+      return <GoogleSourceIcon fileType={record.fileType} />;
     case "granola-note":
       return <GranolaIcon />;
     case "prompt-link":
@@ -121,7 +121,17 @@ export function linkedObjectKindLabel(record: LinkedObjectContextRecord): string
     case "notion-page":
       return "Notion page";
     case "google-file":
-      return record.fileType === "sheet" ? "Google Sheet" : "Google Doc";
+      return record.fileType === "event"
+        ? "Google Calendar event"
+        : record.fileType === "sheet"
+          ? "Google Sheet"
+          : record.fileType === "doc"
+            ? "Google Doc"
+            : record.fileType === "folder"
+              ? "Google Drive folder"
+              : record.fileType === "slides"
+                ? "Google Slides"
+                : "Google Drive file";
     case "granola-note":
       return "Granola note";
     case "prompt-link":

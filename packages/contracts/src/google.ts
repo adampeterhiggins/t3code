@@ -50,11 +50,15 @@ export const GoogleFileSummary = Schema.Struct({
   title: Schema.String,
   url: Schema.String,
   updatedAt: IsoDateTime,
-  fileType: Schema.Literals(["doc", "sheet"]),
+  fileType: Schema.Literals(["doc", "sheet", "drive", "folder", "slides", "event"]),
 });
 export type GoogleFileSummary = typeof GoogleFileSummary.Type;
 export const GoogleSearchFilesInput = Schema.Struct({
   query: Schema.String.check(Schema.isMaxLength(2048)),
+  source: Schema.optional(Schema.Literals(["all", "drive", "calendar"])),
+  calendarId: Schema.optional(TrimmedNonEmptyString.check(Schema.isMaxLength(512))),
+  timeMin: Schema.optional(IsoDateTime),
+  timeMax: Schema.optional(IsoDateTime),
 });
 export type GoogleSearchFilesInput = typeof GoogleSearchFilesInput.Type;
 export const GoogleSearchFilesResult = Schema.Struct({
@@ -83,7 +87,7 @@ export const GoogleThreadLink = Schema.Struct({
   groupId: ThreadId,
   threadIds: Schema.Array(ThreadId),
   fileId: Schema.String,
-  fileType: Schema.Literals(["doc", "sheet"]),
+  fileType: Schema.Literals(["doc", "sheet", "drive", "folder", "slides", "event"]),
   title: Schema.String,
   url: Schema.String,
   linkedAt: IsoDateTime,
@@ -122,7 +126,9 @@ export class GoogleError extends Schema.TaggedError<GoogleError>()("GoogleError"
 
 export interface GoogleFileLocation {
   readonly fileId: string;
-  readonly fileType: "doc" | "sheet";
+  readonly fileType: "doc" | "sheet" | "drive" | "folder" | "slides" | "event";
+  readonly calendarId?: string;
+  readonly eventId?: string;
   readonly tab?: string;
   readonly heading?: string;
   readonly gid?: string;
@@ -135,15 +141,37 @@ export function parseGoogleFileLink(value: string): GoogleFileLocation | null {
     const url = new URL(value);
     if (
       url.protocol !== "https:" ||
-      url.hostname !== "docs.google.com" ||
+      !["docs.google.com", "drive.google.com", "calendar.google.com"].includes(url.hostname) ||
       url.username ||
       url.password ||
       url.port
     )
       return null;
-    const match = /^\/(document|spreadsheets)\/(?:u\/\d+\/)?d\/([\w-]+)(?:\/|$)/.exec(url.pathname);
+    if (url.hostname === "calendar.google.com") {
+      const encoded = url.searchParams.getAll("eid");
+      if (encoded.length > 1) return null;
+      const eid = encoded[0] ?? /\/eventedit\/([\w=-]+)/.exec(url.pathname)?.[1];
+      if (!eid || !/^[\w=-]+$/.test(eid)) return null;
+      const decoded = atob(eid.replaceAll("-", "+").replaceAll("_", "/"));
+      const parts = /^([\w-]+) ([^\s]+)$/.exec(decoded);
+      if (!parts) return null;
+      return { fileId: value, fileType: "event", eventId: parts[1]!, calendarId: parts[2]! };
+    }
+    if (url.hostname === "drive.google.com") {
+      const folder = /\/folders\/([\w-]+)/.exec(url.pathname)?.[1];
+      const ids = url.searchParams.getAll("id");
+      if (ids.length > 1) return null;
+      const fileId = folder ?? /\/file\/d\/([\w-]+)/.exec(url.pathname)?.[1] ?? ids[0];
+      return fileId && /^[\w-]+$/.test(fileId)
+        ? { fileId, fileType: folder ? "folder" : "drive" }
+        : null;
+    }
+    const match = /^\/(document|spreadsheets|presentation)\/(?:u\/\d+\/)?d\/([\w-]+)(?:\/|$)/.exec(
+      url.pathname,
+    );
     if (!match) return null;
-    const fileType = match[1] === "document" ? "doc" : "sheet";
+    const fileType =
+      match[1] === "document" ? "doc" : match[1] === "presentation" ? "slides" : "sheet";
     const fragment = new URLSearchParams(url.hash.slice(1));
     const result: GoogleFileLocation = { fileId: match[2]!, fileType };
     const selectors: Record<string, string> = {};

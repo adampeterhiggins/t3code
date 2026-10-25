@@ -141,6 +141,10 @@ export function contextChipPresentation(
     };
   },
 ): ContextChipPresentation {
+  if (kind === "google-file" && record?.fileType === "event")
+    return { accent: "#4585dc", icon: "google-calendar" };
+  if (kind === "google-file" && record?.fileType !== "doc" && record?.fileType !== "sheet")
+    return { accent: "#7f8793", icon: "google-drive" };
   if (kind === "google-file" && record?.fileType === "sheet")
     return { accent: "#319e63", icon: "google-sheet" };
   const presentationKind =

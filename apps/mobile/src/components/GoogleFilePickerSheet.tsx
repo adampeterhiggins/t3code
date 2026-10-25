@@ -55,7 +55,7 @@ type OpenedGoogleFilePicker =
   | { readonly mode: "link"; readonly environmentId: EnvironmentId; readonly threadId: ThreadId };
 
 /**
- * A Google document picker. The owner renders `sheet` somewhere that outlives composer focus:
+ * A Google file or event picker. The owner renders `sheet` somewhere that outlives composer focus:
  * opening the sheet blurs the editor, which can unmount a focus-dependent toolbar.
  */
 export function useGoogleFilePicker(target: GoogleFilePickerTarget | null): {
@@ -88,7 +88,7 @@ export function useGoogleFilePicker(target: GoogleFilePickerTarget | null): {
 }
 
 /**
- * Attaches a Google document at the caret the composer had when the sheet opened, or links it to the
+ * Attaches a Google file or event at the caret the composer had when the sheet opened, or links it to the
  * thread's tab group. Mobile has no Google settings, so an unconnected environment points at
  * desktop or web.
  */
@@ -99,7 +99,7 @@ function GoogleFilePickerSheet(props: OpenedGoogleFilePicker & { readonly onClos
   const phase = connection.data?.phase;
   return (
     <PickerSheet
-      title={props.mode === "link" ? "Link Google document" : "Google document"}
+      title={props.mode === "link" ? "Link Google file or event" : "Google file or event"}
       onClose={props.onClose}
     >
       {phase === "connected" ? (
@@ -141,7 +141,7 @@ function GoogleFileSearch(props: OpenedGoogleFilePicker & { readonly onClose: ()
     });
     if (result._tag === "Failure") {
       Alert.alert(
-        "Could not link Google document",
+        "Could not link Google file or event",
         googleErrorMessage(squashAtomCommandFailure(result), "Try again."),
       );
       return;
@@ -163,7 +163,7 @@ function GoogleFileSearch(props: OpenedGoogleFilePicker & { readonly onClose: ()
       });
       if (fetched._tag === "Failure") {
         Alert.alert(
-          "Could not attach Google document",
+          "Could not attach Google file or event",
           googleErrorMessage(squashAtomCommandFailure(fetched), "Try again."),
         );
         return;
@@ -217,7 +217,7 @@ function GoogleFileSearch(props: OpenedGoogleFilePicker & { readonly onClose: ()
             <ActivityIndicator />
           ) : (
             <Text className="text-center text-foreground-muted">
-              Search by document title or paste a Google link.
+              Search files and events by title or paste a Google link.
             </Text>
           )}
         </View>
@@ -238,7 +238,7 @@ function GoogleFileResults(props: {
   const result = useAtomValue(
     googleEnvironment.files({
       environmentId: props.environmentId,
-      input: { query: props.query },
+      input: { query: props.query, source: "all" },
     }),
   );
   const files = Option.getOrNull(AsyncResult.value(result))?.files ?? [];

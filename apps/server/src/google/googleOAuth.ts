@@ -22,7 +22,8 @@ export function buildGoogleAuthorizeUrl(input: {
     client_id: input.clientId,
     redirect_uri: input.redirectUri ?? GOOGLE_REDIRECT_URI,
     response_type: "code",
-    scope: "https://www.googleapis.com/auth/drive.readonly",
+    scope:
+      "https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/calendar.readonly",
     access_type: "offline",
     prompt: "consent",
     state: input.state,

@@ -7,6 +7,9 @@ import {
   type GoogleFileSummary,
   type GoogleSearchFilesInput,
 } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
+import * as Clock from "effect/Clock";
+import * as Stream from "effect/Stream";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -21,6 +24,8 @@ const File = Schema.Struct({
   name: Schema.String,
   mimeType: Schema.String,
   modifiedTime: Schema.String,
+  description: Schema.optional(Schema.String),
+  size: Schema.optional(Schema.String),
 });
 const Search = Schema.Struct({
   files: Schema.Array(File),
@@ -51,14 +56,78 @@ const Comments = Schema.Struct({
   ),
   nextPageToken: Schema.optional(Schema.String),
 });
-const fields = "id,name,mimeType,modifiedTime";
-const summary = (file: typeof File.Type): GoogleFileSummary => ({
-  id: file.id,
-  title: file.name,
-  updatedAt: file.modifiedTime,
-  fileType: file.mimeType === "application/vnd.google-apps.spreadsheet" ? "sheet" : "doc",
-  url: `https://docs.google.com/${file.mimeType === "application/vnd.google-apps.spreadsheet" ? "spreadsheets" : "document"}/d/${file.id}/edit`,
+const EventTime = Schema.Struct({
+  dateTime: Schema.optional(Schema.String),
+  date: Schema.optional(Schema.String),
+  timeZone: Schema.optional(Schema.String),
 });
+const CalendarEvent = Schema.Struct({
+  id: Schema.String,
+  summary: Schema.optional(Schema.String),
+  updated: Schema.String,
+  status: Schema.optional(Schema.String),
+  description: Schema.optional(Schema.String),
+  location: Schema.optional(Schema.String),
+  start: Schema.optional(EventTime),
+  end: Schema.optional(EventTime),
+  organizer: Schema.optional(Schema.Struct({ email: Schema.optional(Schema.String) })),
+  attendees: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        email: Schema.optional(Schema.String),
+        responseStatus: Schema.optional(Schema.String),
+      }),
+    ),
+  ),
+  hangoutLink: Schema.optional(Schema.String),
+  attachments: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        title: Schema.optional(Schema.String),
+        fileUrl: Schema.optional(Schema.String),
+      }),
+    ),
+  ),
+});
+const fields = "id,name,mimeType,modifiedTime,description,size";
+const summary = (file: typeof File.Type): GoogleFileSummary => {
+  const fileType =
+    file.mimeType === "application/vnd.google-apps.spreadsheet"
+      ? "sheet"
+      : file.mimeType === "application/vnd.google-apps.document"
+        ? "doc"
+        : file.mimeType === "application/vnd.google-apps.presentation"
+          ? "slides"
+          : file.mimeType === "application/vnd.google-apps.folder"
+            ? "folder"
+            : "drive";
+  return {
+    id: file.id,
+    title: file.name,
+    updatedAt: file.modifiedTime,
+    fileType,
+    url:
+      fileType === "doc" || fileType === "sheet" || fileType === "slides"
+        ? `https://docs.google.com/${fileType === "doc" ? "document" : fileType === "sheet" ? "spreadsheets" : "presentation"}/d/${file.id}/edit`
+        : fileType === "folder"
+          ? `https://drive.google.com/drive/folders/${file.id}`
+          : `https://drive.google.com/file/d/${file.id}/view`,
+  };
+};
+const eventSummary = (event: typeof CalendarEvent.Type, calendarId: string): GoogleFileSummary => {
+  const eid = btoa(`${event.id} ${calendarId}`)
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replace(/=+$/, "");
+  const url = `https://calendar.google.com/calendar/event?eid=${eid}`;
+  return {
+    id: url,
+    title: event.summary ?? "Untitled event",
+    url,
+    updatedAt: event.updated,
+    fileType: "event",
+  };
+};
 export class GoogleApi extends Context.Service<
   GoogleApi,
   {
@@ -75,10 +144,7 @@ export class GoogleApi extends Context.Service<
 const make = Effect.gen(function* () {
   const auth = yield* GoogleAuth.GoogleAuth;
   const client = yield* HttpClient.HttpClient;
-  const request = Effect.fn("google.api.request")(function* <S extends Schema.Top>(
-    url: string,
-    schema: S,
-  ) {
+  const requestResponse = Effect.fn("google.api.request")(function* (url: string) {
     const execute = (token: string) =>
       HttpClientRequest.get(url).pipe(
         HttpClientRequest.bearerToken(token),
@@ -106,19 +172,134 @@ const make = Effect.gen(function* () {
       return yield* new GoogleError({
         reason: "not-found",
         detail:
-          "Google cannot read this document. Check this account's access and that the Drive, Docs and Sheets APIs are enabled.",
+          "Google cannot read this document. Check this account's access, enable the relevant Google API, and reconnect Google if Calendar permission was added.",
       });
     if (response.status < 200 || response.status >= 300)
       return yield* new GoogleError({
         reason: "api",
         detail: `Google returned HTTP ${response.status}.`,
       });
+    return response;
+  });
+  const request = Effect.fn("google.api.decode")(function* <S extends Schema.Top>(
+    url: string,
+    schema: S,
+  ) {
+    const response = yield* requestResponse(url);
     return yield* response.json.pipe(
       Effect.flatMap(Schema.decodeUnknownEffect(schema)),
       Effect.mapError(
         () => new GoogleError({ reason: "api", detail: "Google returned an unreadable response." }),
       ),
     );
+  });
+  const readText = Effect.fn("google.api.read_text")(function* (url: string) {
+    const response = yield* requestResponse(url);
+    return yield* response.stream.pipe(
+      Stream.decodeText(),
+      Stream.mapAccum(
+        () => 0,
+        (length, text): readonly [number, ReadonlyArray<{ length: number; text: string }>] => [
+          length + text.length,
+          [{ length: length + text.length, text }],
+        ],
+      ),
+      Stream.takeUntil((chunk) => chunk.length > GOOGLE_FILE_MARKDOWN_MAX_CHARS),
+      Stream.map((chunk) => chunk.text),
+      Stream.mkString,
+      Effect.map((text) => text.slice(0, GOOGLE_FILE_MARKDOWN_MAX_CHARS + 1)),
+      Effect.mapError(
+        () => new GoogleError({ reason: "api", detail: "Could not read this Drive file." }),
+      ),
+    );
+  });
+  const readEvent = Effect.fn("google.calendar.get_event")(function* (url: string) {
+    const location = parseGoogleFileLink(url);
+    if (!location?.eventId || !location.calendarId)
+      return yield* new GoogleError({
+        reason: "not-found",
+        detail: "Use a Google Calendar event link.",
+      });
+    const event = yield* request(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(location.calendarId)}/events/${encodeURIComponent(location.eventId)}`,
+      CalendarEvent,
+    );
+    const when = (time: typeof EventTime.Type | undefined) =>
+      time
+        ? `${time.dateTime ?? time.date ?? ""}${time.timeZone ? ` (${time.timeZone})` : ""}`
+        : "";
+    const markdown = [
+      `# ${event.summary ?? "Untitled event"}`,
+      `Status: ${event.status ?? "confirmed"}`,
+      `Start: ${when(event.start)}`,
+      `End: ${when(event.end)}`,
+      `Calendar: ${location.calendarId}`,
+      `Location: ${event.location ?? ""}`,
+      `Organizer: ${event.organizer?.email ?? ""}`,
+      `Attendees:\n${(event.attendees ?? []).map((a) => `- ${a.email ?? "Guest"}: ${a.responseStatus ?? "unknown"}`).join("\n")}`,
+      event.description ?? "",
+      event.hangoutLink ? `Meeting: ${event.hangoutLink}` : "",
+      ...(event.attachments ?? []).map((a) => `${a.title ?? "Attachment"}: ${a.fileUrl ?? ""}`),
+    ]
+      .join("\n\n")
+      .slice(0, GOOGLE_FILE_MARKDOWN_MAX_CHARS);
+    return { ...eventSummary(event, location.calendarId), url, markdown, revision: event.updated };
+  });
+  const searchEvents = Effect.fn("google.calendar.search")(function* (
+    input: GoogleSearchFilesInput,
+  ) {
+    const calendars = input.calendarId
+      ? { items: [{ id: input.calendarId }], nextPageToken: undefined }
+      : yield* request(
+          "https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=10&minAccessRole=reader",
+          Schema.Struct({
+            items: Schema.Array(Schema.Struct({ id: Schema.String })),
+            nextPageToken: Schema.optional(Schema.String),
+          }),
+        );
+    const now = yield* Clock.currentTimeMillis;
+    const timeMin = input.timeMin ?? DateTime.formatIso(DateTime.makeUnsafe(now - 30 * 86400000));
+    const timeMax = input.timeMax ?? DateTime.formatIso(DateTime.makeUnsafe(now + 365 * 86400000));
+    if (
+      DateTime.toEpochMillis(DateTime.makeUnsafe(timeMin)) >=
+      DateTime.toEpochMillis(DateTime.makeUnsafe(timeMax))
+    )
+      return yield* new GoogleError({
+        reason: "api",
+        detail: "Calendar search needs timeMin before timeMax.",
+      });
+    const pages = yield* Effect.forEach(
+      calendars.items,
+      (calendar) =>
+        Effect.gen(function* () {
+          const params = new URLSearchParams({
+            maxResults: "30",
+            singleEvents: "true",
+            orderBy: "startTime",
+            timeMin,
+            timeMax,
+            ...(input.query.trim() ? { q: input.query.trim() } : {}),
+          });
+          const result = yield* request(
+            `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendar.id)}/events?${params}`,
+            Schema.Struct({
+              items: Schema.Array(CalendarEvent),
+              nextPageToken: Schema.optional(Schema.String),
+            }),
+          );
+          return {
+            files: result.items.map((event) => eventSummary(event, calendar.id)),
+            hasMore: Boolean(result.nextPageToken),
+          };
+        }),
+      { concurrency: 3 },
+    );
+    const files = pages.flatMap((page) => page.files);
+    return {
+      files: files.slice(0, 30),
+      hasMore:
+        files.length > 30 || Boolean(calendars.nextPageToken) || pages.some((p) => p.hasMore),
+    };
   });
   const resolve = (input: GoogleGetFileInput) => {
     const location = parseGoogleFileLink(input.id);
@@ -128,7 +309,8 @@ const make = Effect.gen(function* () {
       : Effect.fail(
           new GoogleError({
             reason: "not-found",
-            detail: "Use a Google Docs or Sheets link or file ID.",
+            detail:
+              "Use a Google Drive, Docs, Sheets, Slides or Calendar link, or a Drive file ID.",
           }),
         );
   };
@@ -137,23 +319,20 @@ const make = Effect.gen(function* () {
       `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?fields=${fields}&supportsAllDrives=true`,
       File,
     );
-    if (
-      !["application/vnd.google-apps.document", "application/vnd.google-apps.spreadsheet"].includes(
-        file.mimeType,
-      )
-    )
-      return yield* new GoogleError({
-        reason: "not-found",
-        detail: "Choose a native Google Doc or Sheet.",
-      });
-    return summary(file);
+    return {
+      ...summary(file),
+      mimeType: file.mimeType,
+      description: file.description,
+      size: file.size,
+    };
   });
   const getFileSummary = Effect.fn("google.get_file_summary")(function* (
     input: GoogleGetFileInput,
   ) {
+    if (parseGoogleFileLink(input.id)?.fileType === "event") return yield* readEvent(input.id);
     const { id, location } = yield* resolve(input);
     const file = yield* metadata(id);
-    if (location && location.fileType !== file.fileType)
+    if (location && location.fileType !== "drive" && location.fileType !== file.fileType)
       return yield* new GoogleError({
         reason: "not-found",
         detail: "The Google link does not match the document type.",
@@ -161,9 +340,10 @@ const make = Effect.gen(function* () {
     return { ...file, ...(location ? { url: input.id } : {}) };
   });
   const getFile = Effect.fn("google.get_file")(function* (input: GoogleGetFileInput) {
+    if (parseGoogleFileLink(input.id)?.fileType === "event") return yield* readEvent(input.id);
     const { id, location: selector } = yield* resolve(input);
     const file = yield* metadata(id);
-    if (selector && selector.fileType !== file.fileType)
+    if (selector && selector.fileType !== "drive" && selector.fileType !== file.fileType)
       return yield* new GoogleError({
         reason: "not-found",
         detail: "The Google link does not match the document type.",
@@ -188,7 +368,7 @@ const make = Effect.gen(function* () {
       label = location.heading
         ? (text.match(/^#+ \[([^\]]+)\]/)?.[1] ?? location.heading)
         : undefined;
-    } else {
+    } else if (file.fileType === "sheet") {
       const data = yield* request(
         `https://sheets.googleapis.com/v4/spreadsheets/${id}?fields=sheets.properties`,
         Spreadsheet,
@@ -231,10 +411,39 @@ const make = Effect.gen(function* () {
           ? ""
           : "\n\n[Preview includes at most 10 tabs, 100 rows and 26 columns per tab. Read a specific range for other cells.]");
     }
+    if (file.fileType === "folder") {
+      const params = new URLSearchParams({
+        q: `trashed = false and '${id}' in parents`,
+        fields: `files(${fields}),nextPageToken`,
+        pageSize: "100",
+        supportsAllDrives: "true",
+        includeItemsFromAllDrives: "true",
+        orderBy: "name",
+      });
+      const children = yield* request(
+        `https://www.googleapis.com/drive/v3/files?${params}`,
+        Search,
+      );
+      markdown = `# ${file.title}\n\n${children.files.map((child) => `- [${child.name}](${summary(child).url}) · ${child.mimeType} · ${child.modifiedTime}`).join("\n")}${children.nextPageToken ? "\n[Additional folder entries omitted.]" : ""}`;
+    } else if (file.fileType === "slides") {
+      markdown = yield* readText(
+        `https://www.googleapis.com/drive/v3/files/${id}/export?mimeType=text%2Fplain`,
+      );
+    } else if (file.fileType === "drive") {
+      markdown = `# ${file.title}\n\nType: ${file.mimeType}\nSize: ${file.size ?? "unknown"} bytes\n\n${file.description ?? ""}\n\n`;
+      if (
+        file.mimeType.startsWith("text/") ||
+        ["application/json", "application/xml", "application/javascript"].includes(file.mimeType)
+      )
+        markdown += yield* readText(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`);
+      else
+        markdown +=
+          "[Binary file: metadata and comments only. Open the Drive link to view its contents.]";
+    }
     const comments: string[] = [];
     const commentVersions: string[] = [];
     let pageToken: string | undefined;
-    for (let page = 0; page < 5; page++) {
+    for (let page = 0; file.fileType !== "folder" && page < 5; page++) {
       const params = new URLSearchParams({
         fields:
           "comments(content,modifiedTime,author(displayName),replies(content,modifiedTime)),nextPageToken",
@@ -274,9 +483,10 @@ const make = Effect.gen(function* () {
   const searchFiles = Effect.fn("google.search_files")(function* (input: GoogleSearchFilesInput) {
     if (parseGoogleFileLink(input.query.trim()))
       return { files: [yield* getFileSummary({ id: input.query.trim() })], hasMore: false };
+    if (input.source === "calendar") return yield* searchEvents(input);
     const term = input.query.trim().replaceAll("\\", "\\\\").replaceAll("'", "\\'");
     const params = new URLSearchParams({
-      q: `trashed = false and (mimeType = 'application/vnd.google-apps.document' or mimeType = 'application/vnd.google-apps.spreadsheet')${term ? ` and name contains '${term}'` : ""}`,
+      q: `trashed = false${term ? ` and name contains '${term}'` : ""}`,
       fields: `files(${fields}),nextPageToken`,
       pageSize: "30",
       orderBy: "modifiedTime desc",
@@ -284,7 +494,19 @@ const make = Effect.gen(function* () {
       supportsAllDrives: "true",
     });
     const result = yield* request(`https://www.googleapis.com/drive/v3/files?${params}`, Search);
-    return { files: result.files.map(summary), hasMore: Boolean(result.nextPageToken) };
+    const calendar =
+      input.source === "all" ? yield* searchEvents(input) : { files: [], hasMore: false };
+    const drive = result.files.map(summary);
+    const files = Array.from({ length: Math.max(drive.length, calendar.files.length) }, (_, i) => [
+      drive[i],
+      calendar.files[i],
+    ])
+      .flat()
+      .filter((file): file is GoogleFileSummary => file !== undefined);
+    return {
+      files: files.slice(0, 60),
+      hasMore: Boolean(result.nextPageToken) || calendar.hasMore,
+    };
   });
   return GoogleApi.of({ getFile, getFileSummary, searchFiles });
 });

@@ -19,7 +19,7 @@ import {
   GranolaIcon,
   LinearIcon,
   NotionIcon,
-  GoogleDriveIcon,
+  GoogleIcon,
   SlackIcon,
 } from "../Icons";
 import { Button } from "../ui/button";
@@ -113,7 +113,7 @@ export function ThreadLinks(props: { threadRef: ScopedThreadRef; projectId: Proj
   if (!google && canLinkGoogle && googleEnabled) {
     addOptions.push({
       key: "google",
-      icon: <GoogleDriveIcon />,
+      icon: <GoogleIcon />,
       label: "Google page…",
       open: () => openGoogleFilePicker(threadRef, "link"),
     });

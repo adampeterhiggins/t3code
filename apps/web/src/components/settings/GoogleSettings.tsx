@@ -1,5 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
-import { GoogleDriveIcon } from "../Icons";
+import { GoogleIcon } from "../Icons";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -43,7 +43,7 @@ export function GoogleSettingsSection() {
   );
   const environmentId = environment?.environmentId ?? null;
   return (
-    <SettingsSection {...searchableSetting("google")} icon={<GoogleDriveIcon className="size-4" />}>
+    <SettingsSection {...searchableSetting("google")} icon={<GoogleIcon className="size-4" />}>
       {environmentId === null ? (
         <SettingsRow
           title="Google account"
@@ -70,7 +70,7 @@ function GoogleIntegrationRows(props: {
     <>
       <SettingsRow
         title="Enable Google integration"
-        description="Attach Google Docs and Sheets. Turn off to keep pasted Google links as links without setup prompts. Your connected account is kept."
+        description="Attach Google Drive files and Calendar events. Turn off to keep pasted Google links as links without setup prompts. Your connected account is kept."
         control={
           <Switch
             aria-label="Enable Google integration"
@@ -94,7 +94,7 @@ function describeConnection(state: GoogleConnectionState | null): string {
     case "failed":
       return state.message ?? "Google sign-in failed.";
     case "disconnected":
-      return "Attach Google Docs and Sheets to messages as context for the agent.";
+      return "Attach Google Drive files and Calendar events to messages as context for the agent.";
   }
 }
 
@@ -279,9 +279,9 @@ function GoogleConnectionRows({
             }}
           >
             <p className="max-w-2xl text-xs leading-relaxed text-muted-foreground">
-              Create a Google Cloud OAuth client for a Web application and enable the Drive, Docs
-              and Sheets APIs. Register this redirect URI, then add its client ID and secret. The
-              secret stays on {environmentLabel}.{" "}
+              Create a Google Cloud OAuth client for a Web application and enable the Drive, Docs,
+              Sheets and Calendar APIs. Register this redirect URI, then add its client ID and
+              secret. The secret stays on {environmentLabel}.{" "}
               <InlineButton
                 render={
                   <a
