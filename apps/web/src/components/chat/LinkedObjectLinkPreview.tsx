@@ -18,7 +18,7 @@ import {
   promptLinkContextRecord,
   slackThreadContextRecord,
 } from "@t3tools/source-control-definitions/integrationContextRecords";
-import { useRef, useState, type ReactElement, type ReactNode } from "react";
+import { useRef, useState, type ComponentProps, type ReactElement, type ReactNode } from "react";
 
 import { useLinkClickHandler } from "~/browser/useOpenLink";
 import { useEnvironmentSettings } from "~/hooks/useSettings";
@@ -215,6 +215,21 @@ export function LinkedObjectPreviewBody(props: {
   return <ContextPreviewBody kind={record.kind} preview={{ record, onOpenLink: openLink }} />;
 }
 
+function googleFileChip(
+  link: ReactElement<ComponentProps<"a">>,
+  url: string,
+  sourceLabel: ReactNode,
+) {
+  // The render element's props win over the chip's, so its children would replace the label.
+  const { children, ...linkProps } = link.props;
+  return (
+    <ContextChip kind="google-file" render={<a {...linkProps} />}>
+      <GoogleSourceIcon url={url} />
+      <ContextChipLabel>{sourceLabel ?? children}</ContextChipLabel>
+    </ContextChip>
+  );
+}
+
 /**
  * A link in message text to something a chip could hold: an issue, a Slack or Discord message, a
  * Notion page, a Granola note, a GitHub release or commit, a repository, or a prompt link.
@@ -248,17 +263,13 @@ export function LinkedObjectLinkPreview(props: {
     );
   }
   const link =
-    props.objectLink.kind === "google-file" && props.link.type === "a" ? (
-      <ContextChip kind="google-file" render={props.link}>
-        {<GoogleSourceIcon url={props.objectLink.url} />}
-        <ContextChipLabel>
-          {props.sourceLabel ??
-            (props.link as ReactElement<{ children?: ReactNode }>).props.children}
-        </ContextChipLabel>
-      </ContextChip>
-    ) : (
-      props.link
-    );
+    props.objectLink.kind === "google-file" && props.link.type === "a"
+      ? googleFileChip(
+          props.link as ReactElement<ComponentProps<"a">>,
+          props.objectLink.url,
+          props.sourceLabel,
+        )
+      : props.link;
   return (
     <PreviewCard
       open={open}
