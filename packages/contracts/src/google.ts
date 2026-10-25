@@ -59,10 +59,21 @@ export const GoogleFileSummary = Schema.Struct({
   endsAt: Schema.optional(Schema.String),
 });
 export type GoogleFileSummary = typeof GoogleFileSummary.Type;
+/** How many calendars one search reads at most. */
+export const GOOGLE_CALENDAR_SEARCH_LIMIT = 20;
 export const GoogleSearchFilesInput = Schema.Struct({
   query: Schema.String.check(Schema.isMaxLength(2048)),
   source: Schema.optional(Schema.Literals(["all", "drive", "calendar"])),
   calendarId: Schema.optional(TrimmedNonEmptyString.check(Schema.isMaxLength(512))),
+  /**
+   * The calendars to search, in place of the ones ticked in Google Calendar. A colleague's
+   * calendar id is their email address.
+   */
+  calendarIds: Schema.optional(
+    Schema.Array(TrimmedNonEmptyString.check(Schema.isMaxLength(512))).check(
+      Schema.isMaxLength(GOOGLE_CALENDAR_SEARCH_LIMIT),
+    ),
+  ),
   timeMin: Schema.optional(IsoDateTime),
   timeMax: Schema.optional(IsoDateTime),
 });
@@ -71,6 +82,18 @@ export const GoogleSearchFilesResult = Schema.Struct({
   files: Schema.Array(GoogleFileSummary),
   hasMore: Schema.Boolean,
 });
+/** A calendar the account can read, and whether it is ticked in Google Calendar. */
+export const GoogleCalendarSummary = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  primary: Schema.Boolean,
+  selected: Schema.Boolean,
+});
+export type GoogleCalendarSummary = typeof GoogleCalendarSummary.Type;
+export const GoogleListCalendarsResult = Schema.Struct({
+  calendars: Schema.Array(GoogleCalendarSummary),
+});
+export type GoogleListCalendarsResult = typeof GoogleListCalendarsResult.Type;
 export const GoogleGetFileInput = Schema.Struct({
   id: TrimmedNonEmptyString.check(Schema.isMaxLength(2048)),
 });

@@ -181,6 +181,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.googleDisconnect]: AuthOrchestrationOperateScope,
   [WS_METHODS.notionSearchPages]: AuthOrchestrationReadScope,
   [WS_METHODS.googleSearchFiles]: AuthOrchestrationReadScope,
+  [WS_METHODS.googleListCalendars]: AuthOrchestrationReadScope,
   [WS_METHODS.notionGetPage]: AuthOrchestrationReadScope,
   [WS_METHODS.googleGetFile]: AuthOrchestrationReadScope,
   [WS_METHODS.notionSubscribeThreadLinks]: AuthOrchestrationReadScope,

@@ -29,6 +29,7 @@ import {
   GoogleCancelLoginInput,
   GoogleSearchFilesInput,
   GoogleSearchFilesResult,
+  GoogleListCalendarsResult,
   GoogleGetFileInput,
   GoogleFileContext,
   GoogleLinkThreadInput,
@@ -771,6 +772,7 @@ export const WS_METHODS = {
   googleCancelLogin: "google.cancelLogin",
   googleDisconnect: "google.disconnect",
   googleSearchFiles: "google.searchFiles",
+  googleListCalendars: "google.listCalendars",
   googleGetFile: "google.getFile",
   googleSubscribeThreadLinks: "google.subscribeThreadLinks",
   googleLinkThread: "google.linkThread",
@@ -1217,6 +1219,11 @@ const WsGoogleDisconnectRpc = Rpc.make(WS_METHODS.googleDisconnect, {
 const WsGoogleSearchFilesRpc = Rpc.make(WS_METHODS.googleSearchFiles, {
   payload: GoogleSearchFilesInput,
   success: GoogleSearchFilesResult,
+  error: GoogleRpcError,
+});
+const WsGoogleListCalendarsRpc = Rpc.make(WS_METHODS.googleListCalendars, {
+  payload: Schema.Struct({}),
+  success: GoogleListCalendarsResult,
   error: GoogleRpcError,
 });
 const WsGoogleGetFileRpc = Rpc.make(WS_METHODS.googleGetFile, {
@@ -2869,6 +2876,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsGoogleDisconnectRpc,
   WsNotionSearchPagesRpc,
   WsGoogleSearchFilesRpc,
+  WsGoogleListCalendarsRpc,
   WsNotionGetPageRpc,
   WsGoogleGetFileRpc,
   WsNotionSubscribeThreadLinksRpc,

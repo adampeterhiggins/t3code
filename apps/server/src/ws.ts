@@ -2872,6 +2872,7 @@ export const layerWsRpc = (
         [WS_METHODS.googleCancelLogin]: (input) => googleAuth.cancelLogin(input),
         [WS_METHODS.googleDisconnect]: (_input) => googleAuth.disconnect,
         [WS_METHODS.googleSearchFiles]: (input) => googleApi.searchFiles(input),
+        [WS_METHODS.googleListCalendars]: (_input) => googleApi.listCalendars,
         [WS_METHODS.googleGetFile]: (input) => googleApi.getFile(input),
         [WS_METHODS.googleSubscribeThreadLinks]: (_input) => googleThreadLinks.links,
         [WS_METHODS.googleLinkThread]: (input) => googleThreadLinks.link(input),

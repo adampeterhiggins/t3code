@@ -3,6 +3,8 @@ import {
   GOOGLE_FILE_MARKDOWN_MAX_CHARS,
   parseGoogleFileLink,
   type GoogleGetFileInput,
+  GOOGLE_CALENDAR_SEARCH_LIMIT,
+  type GoogleListCalendarsResult,
   type GoogleFileContext,
   type GoogleFileSummary,
   type GoogleSearchFilesInput,
@@ -164,6 +166,7 @@ export class GoogleApi extends Context.Service<
     readonly searchFiles: (
       input: GoogleSearchFilesInput,
     ) => Effect.Effect<{ files: GoogleFileSummary[]; hasMore: boolean }, GoogleError>;
+    readonly listCalendars: Effect.Effect<GoogleListCalendarsResult, GoogleError>;
     readonly getFile: (input: GoogleGetFileInput) => Effect.Effect<GoogleFileContext, GoogleError>;
     readonly getFileSummary: (
       input: GoogleGetFileInput,
@@ -275,27 +278,43 @@ const make = Effect.gen(function* () {
       .slice(0, GOOGLE_FILE_MARKDOWN_MAX_CHARS);
     return { ...eventSummary(event, location.calendarId), url, markdown, revision: event.updated };
   });
+  const listCalendars = Effect.fn("google.calendar.list")(function* () {
+    const list = yield* request(
+      "https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=250&minAccessRole=reader",
+      Schema.Struct({
+        items: Schema.Array(
+          Schema.Struct({
+            id: Schema.String,
+            summary: Schema.optional(Schema.String),
+            summaryOverride: Schema.optional(Schema.String),
+            primary: Schema.optional(Schema.Boolean),
+            selected: Schema.optional(Schema.Boolean),
+          }),
+        ),
+      }),
+    );
+    return {
+      calendars: list.items.map((calendar) => ({
+        id: calendar.id,
+        name: calendar.summaryOverride ?? calendar.summary ?? calendar.id,
+        primary: calendar.primary ?? false,
+        selected: calendar.selected ?? false,
+      })),
+    };
+  });
   const searchEvents = Effect.fn("google.calendar.search")(function* (
     input: GoogleSearchFilesInput,
   ) {
-    // Only the calendars ticked in Google Calendar: subscribed room and colleague calendars hold
-    // everyone's bookings and would crowd out the user's own events.
-    const calendars = input.calendarId
-      ? [{ id: input.calendarId }]
-      : (yield* request(
-          "https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=250&minAccessRole=reader",
-          Schema.Struct({
-            items: Schema.Array(
-              Schema.Struct({
-                id: Schema.String,
-                primary: Schema.optional(Schema.Boolean),
-                selected: Schema.optional(Schema.Boolean),
-              }),
-            ),
-          }),
-        )).items
-          .filter((calendar) => calendar.primary || calendar.selected)
-          .slice(0, 10);
+    // By default only the calendars ticked in Google Calendar: subscribed room and colleague
+    // calendars hold everyone's bookings and would crowd out the user's own events.
+    const calendarIds = input.calendarId
+      ? [input.calendarId]
+      : (
+          input.calendarIds ??
+          (yield* listCalendars()).calendars
+            .filter((calendar) => calendar.primary || calendar.selected)
+            .map((calendar) => calendar.id)
+        ).slice(0, GOOGLE_CALENDAR_SEARCH_LIMIT);
     const now = yield* Clock.currentTimeMillis;
     const timeMin = input.timeMin ?? DateTime.formatIso(DateTime.makeUnsafe(now - 30 * 86400000));
     const timeMax = input.timeMax ?? DateTime.formatIso(DateTime.makeUnsafe(now + 365 * 86400000));
@@ -308,8 +327,8 @@ const make = Effect.gen(function* () {
         detail: "Calendar search needs timeMin before timeMax.",
       });
     const pages = yield* Effect.forEach(
-      calendars,
-      (calendar) =>
+      calendarIds,
+      (calendarId) =>
         Effect.gen(function* () {
           const params = new URLSearchParams({
             maxResults: String(EVENT_LIMIT),
@@ -320,14 +339,22 @@ const make = Effect.gen(function* () {
             ...(input.query.trim() ? { q: input.query.trim() } : {}),
           });
           const result = yield* request(
-            `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendar.id)}/events?${params}`,
+            `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params}`,
             Schema.Struct({
               items: Schema.Array(CalendarEvent),
               nextPageToken: Schema.optional(Schema.String),
             }),
+          ).pipe(
+            // A colleague's calendar the user picked may not be shared with them; show the rest.
+            Effect.catchTags({
+              GoogleError: (error) =>
+                input.calendarIds && error.reason === "not-found"
+                  ? Effect.succeed({ items: [], nextPageToken: undefined })
+                  : Effect.fail(error),
+            }),
           );
           return {
-            files: result.items.map((event) => eventSummary(event, calendar.id)),
+            files: result.items.map((event) => eventSummary(event, calendarId)),
             hasMore: Boolean(result.nextPageToken),
           };
         }),
@@ -566,6 +593,6 @@ const make = Effect.gen(function* () {
       hasMore: Boolean(result.nextPageToken) || calendar.hasMore,
     };
   });
-  return GoogleApi.of({ getFile, getFileSummary, searchFiles });
+  return GoogleApi.of({ getFile, getFileSummary, listCalendars: listCalendars(), searchFiles });
 });
 export const layer = Layer.effect(GoogleApi, make);

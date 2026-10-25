@@ -39,6 +39,12 @@ export function createGoogleEnvironmentAtoms<R, E>(
       tag: WS_METHODS.googleSearchFiles,
       staleTimeMs: 30_000,
     }),
+    // The calendars a search can read, for the picker's calendar filter.
+    calendars: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:google:calendars",
+      tag: WS_METHODS.googleListCalendars,
+      staleTimeMs: 5 * 60_000,
+    }),
     getFile: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:google:get-file",
       tag: WS_METHODS.googleGetFile,

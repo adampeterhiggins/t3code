@@ -458,7 +458,7 @@ const SearchNotionPagesTool = Tool.make("search_notion_pages", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, true);
 const SearchGoogleFilesTool = Tool.make("search_google_files", {
-  description: `Search Google Drive files or Calendar events through the connected Google account. Calendar searches default to the past 30 days and next year across up to 10 calendars; supply calendarId and timeMin/timeMax to target another calendar or date window. Returns page titles and urls; pass a url to read_context_link for the page's contents. Works without a Google MCP server. Fails when Google is disconnected or turned off.`,
+  description: `Search Google Drive files or Calendar events through the connected Google account. Calendar searches default to the past 30 days and next year across the calendars ticked in Google Calendar; supply calendarId (a colleague's calendar id is their email) and timeMin/timeMax to target another calendar or date window. Returns page titles and urls; pass a url to read_context_link for the page's contents. Works without a Google MCP server. Fails when Google is disconnected or turned off.`,
   parameters: Schema.Struct({
     query: Schema.String.check(Schema.isMaxLength(256)).annotate({
       description:

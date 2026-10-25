@@ -100,8 +100,8 @@ function harness(
       if (url.pathname.endsWith("/calendarList"))
         body = {
           items: [
-            { id: "team@example.com", selected: true },
-            { id: "room@resource.calendar.google.com" },
+            { id: "team@example.com", summary: "Team", selected: true },
+            { id: "room@resource.calendar.google.com", summary: "Room 4" },
           ],
         };
       const event = {
@@ -123,7 +123,9 @@ function harness(
       if (url.searchParams.get("alt") === "media" || url.pathname.endsWith("/export"))
         return HttpClientResponse.fromWeb(request, new Response("A plain text source"));
       const status =
-        options.missing || (options.commentsForbidden && url.pathname.endsWith("/comments"))
+        options.missing ||
+        (options.commentsForbidden && url.pathname.endsWith("/comments")) ||
+        url.pathname.includes("nobody%40example.com")
           ? 403
           : options.reject && request.headers.authorization === "Bearer old"
             ? 401
@@ -278,6 +280,32 @@ it.effect("searches Calendar and reads event details with native citations", () 
   }).pipe(Effect.provide(h.layer));
 });
 
+it.effect(
+  "lists every readable calendar, and searches the ones picked over the ticked ones",
+  () => {
+    const h = harness();
+    return Effect.gen(function* () {
+      const api = yield* GoogleApi.GoogleApi;
+      const { calendars } = yield* api.listCalendars;
+      assert.deepEqual(
+        calendars.map((c) => [c.name, c.selected]),
+        [
+          ["Team", true],
+          ["Room 4", false],
+        ],
+      );
+      // A colleague's calendar that is not shared is skipped rather than failing the search.
+      const result = yield* api.searchFiles({
+        query: "",
+        source: "calendar",
+        calendarIds: ["room@resource.calendar.google.com", "nobody@example.com"],
+      });
+      assert.equal(result.files.length, 1);
+      assert.ok(h.urls.some((url) => url.includes("/calendars/room%40resource")));
+      assert.notOk(h.urls.some((url) => url.includes("/calendars/team%40example.com/events")));
+    }).pipe(Effect.provide(h.layer));
+  },
+);
 it.effect("keeps binary Drive files as metadata and comments without downloading bytes", () => {
   const h = harness({ mimeType: "application/pdf" });
   return Effect.gen(function* () {

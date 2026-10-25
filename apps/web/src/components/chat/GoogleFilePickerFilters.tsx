@@ -1,4 +1,5 @@
 import { ArrowDownUpIcon, CalendarIcon, FileIcon, ListFilterIcon, UserIcon } from "lucide-react";
+import type { GoogleCalendarSummary } from "@t3tools/contracts";
 import { useState } from "react";
 
 import { FilterPill } from "../FilterPill";
@@ -13,6 +14,8 @@ import {
   MenuRadioGroup,
   MenuRadioItem,
   MenuSearch,
+  MenuSearchInput,
+  MenuSeparator,
   MenuSub,
   MenuSubPopup,
   MenuSubTrigger,
@@ -97,9 +100,88 @@ function Checklist(props: {
   );
 }
 
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** The calendars a search reads by default: the ones ticked in Google Calendar. */
+export function defaultCalendarIds(calendars: ReadonlyArray<GoogleCalendarSummary>): string[] {
+  return calendars.filter((c) => c.primary || c.selected).map((c) => c.id);
+}
+
+function calendarLabel(calendar: GoogleCalendarSummary) {
+  return calendar.primary ? `${calendar.name} (you)` : calendar.name;
+}
+
+/**
+ * Every calendar the account can read, ticked ones first, and a search that also takes a
+ * colleague's email to read a calendar the user has not subscribed to.
+ */
+function CalendarChecklist(props: {
+  calendars: ReadonlyArray<GoogleCalendarSummary> | null;
+  selected: ReadonlyArray<string>;
+  onChange: (selected: ReadonlyArray<string>) => void;
+}) {
+  const [value, setValue] = useState("");
+  if (props.calendars === null) return <MenuLoadingItem>Loading calendars…</MenuLoadingItem>;
+  const known = new Set(props.calendars.map((c) => c.id));
+  // Colleagues added by email are not in the account's calendar list.
+  const entries = [
+    ...props.calendars,
+    ...props.selected
+      .filter((id) => !known.has(id))
+      .map((id) => ({ id, name: id, primary: false, selected: false })),
+  ].toSorted(
+    (a, b) =>
+      Number(b.primary) - Number(a.primary) ||
+      Number(b.selected) - Number(a.selected) ||
+      a.name.localeCompare(b.name),
+  );
+  const query = value.trim().toLowerCase();
+  const matches = query
+    ? entries.filter((c) => `${c.name} ${c.id}`.toLowerCase().includes(query))
+    : entries;
+  const addable = EMAIL.test(query) && !entries.some((c) => c.id.toLowerCase() === query);
+  return (
+    <>
+      <MenuSearchInput
+        autoFocus
+        value={value}
+        placeholder="Search calendars or add an email"
+        aria-label="Search calendars or add an email"
+        onChange={(event) => setValue(event.currentTarget.value)}
+      />
+      {matches.map((calendar) => (
+        <MenuCheckboxItem
+          key={calendar.id}
+          checked={props.selected.includes(calendar.id)}
+          onCheckedChange={(checked) =>
+            props.onChange(toggle(props.selected, calendar.id, checked))
+          }
+        >
+          <span className="min-w-0 flex-1 truncate">{calendarLabel(calendar)}</span>
+        </MenuCheckboxItem>
+      ))}
+      {addable ? (
+        <>
+          {matches.length > 0 ? <MenuSeparator /> : null}
+          <MenuItem
+            onClick={() => {
+              props.onChange([...props.selected, query]);
+              setValue("");
+            }}
+          >
+            Show {query}&apos;s calendar
+          </MenuItem>
+        </>
+      ) : matches.length === 0 ? (
+        <MenuItem disabled>No calendars match. Type an email to add one.</MenuItem>
+      ) : null}
+    </>
+  );
+}
+
 /**
  * Type, owner, and date filters with a sort over Drive files; just the organizer over Calendar
- * events, whose dates the week strip picks. Each applied selection shows as a pill on its own row below, with an × to drop it.
+ * events, whose dates the week strip picks, with the calendars to read them from. Each applied selection shows as a pill on its own row below, with an × to drop it.
  */
 export function GoogleFilePickerFilterBar(props: {
   source: GoogleFilePickerSource;
@@ -110,6 +192,11 @@ export function GoogleFilePickerFilterBar(props: {
   loading: boolean;
   view: GoogleFilePickerView;
   onChange: (view: GoogleFilePickerView) => void;
+  /** The account's calendars, or null while they load. Calendar tab only. */
+  calendars: ReadonlyArray<GoogleCalendarSummary> | null;
+  /** The calendars picked in place of the ticked ones, or null for those. */
+  calendarIds: ReadonlyArray<string> | null;
+  onCalendarIdsChange: (calendarIds: ReadonlyArray<string> | null) => void;
 }) {
   const { view, source } = props;
   const defaults = DEFAULT_GOOGLE_FILE_PICKER_VIEWS[source];
@@ -120,7 +207,12 @@ export function GoogleFilePickerFilterBar(props: {
     setMenuOpen(false);
   };
   const rangeFiltered = view.range !== defaults.range;
-  const filtered = view.types.length > 0 || view.owners.length > 0 || rangeFiltered;
+  const defaultIds = defaultCalendarIds(props.calendars ?? []);
+  const shownCalendarIds = props.calendarIds ?? defaultIds;
+  const calendarsFiltered = source === "calendar" && props.calendarIds !== null;
+  const calendarName = (id: string) => props.calendars?.find((c) => c.id === id)?.name ?? id;
+  const filtered =
+    view.types.length > 0 || view.owners.length > 0 || rangeFiltered || calendarsFiltered;
   return (
     <div className="flex flex-col gap-1.5 px-3 pb-2">
       <div className="flex items-center gap-1.5">
@@ -130,6 +222,24 @@ export function GoogleFilePickerFilterBar(props: {
             Filter
           </MenuTrigger>
           <MenuPopup align="start">
+            {source === "calendar" ? (
+              <MenuSub>
+                <MenuSubTrigger>Calendars</MenuSubTrigger>
+                <MenuSubPopup>
+                  <CalendarChecklist
+                    calendars={props.calendars}
+                    selected={shownCalendarIds}
+                    onChange={(ids) => {
+                      const same =
+                        ids.length === defaultIds.length &&
+                        ids.every((id) => defaultIds.includes(id));
+                      // No calendars would show nothing; fall back to the ticked ones.
+                      props.onCalendarIdsChange(same || ids.length === 0 ? null : ids);
+                    }}
+                  />
+                </MenuSubPopup>
+              </MenuSub>
+            ) : null}
             {source === "drive" ? (
               <MenuSub>
                 <MenuSubTrigger>Type</MenuSubTrigger>
@@ -186,13 +296,19 @@ export function GoogleFilePickerFilterBar(props: {
             ) : null}
           </MenuPopup>
         </Menu>
+        {source === "calendar" && !calendarsFiltered ? (
+          <span className="truncate text-muted-foreground text-xs">Showing your calendars</span>
+        ) : null}
         <div className="flex-1" />
         {filtered || view.sort !== defaults.sort ? (
           <Button
             type="button"
             size="xs"
             variant="ghost-muted"
-            onClick={() => props.onChange(defaults)}
+            onClick={() => {
+              props.onChange(defaults);
+              props.onCalendarIdsChange(null);
+            }}
           >
             Reset
           </Button>
@@ -220,6 +336,17 @@ export function GoogleFilePickerFilterBar(props: {
       </div>
       {filtered ? (
         <div className="flex flex-wrap items-center gap-1">
+          {calendarsFiltered ? (
+            <FilterPill
+              icon={<CalendarIcon />}
+              label={
+                shownCalendarIds.length === 1
+                  ? calendarName(shownCalendarIds[0]!)
+                  : `${shownCalendarIds.length} calendars`
+              }
+              onRemove={() => props.onCalendarIdsChange(null)}
+            />
+          ) : null}
           {view.types.map((type) => (
             <FilterPill
               key={`type:${type}`}

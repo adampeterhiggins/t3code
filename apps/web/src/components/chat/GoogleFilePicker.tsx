@@ -133,6 +133,8 @@ function GoogleFilePickerDialog({
   const today = localDayKey(new Date(openedAt));
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(openedAt)));
   const [selectedDay, setSelectedDay] = useState<string | null>(today);
+  // Null reads the calendars ticked in Google Calendar.
+  const [calendarIds, setCalendarIds] = useState<ReadonlyArray<string> | null>(null);
   const [query, setQuery] = useState("");
   const [attaching, setAttaching] = useState(false);
   const settled = useDebouncedValue(query.trim(), 400);
@@ -142,6 +144,11 @@ function GoogleFilePickerDialog({
       : null,
   );
   const connected = connection.data?.phase === "connected";
+  const calendars = useEnvironmentQuery(
+    connected && source === "calendar"
+      ? googleEnvironment.calendars({ environmentId: threadRef.environmentId, input: {} })
+      : null,
+  );
   // With no search, the calendar shows one week at a time, read a week at a time.
   const browsingWeek = source === "calendar" && settled === "";
   const result = useEnvironmentQuery(
@@ -151,6 +158,7 @@ function GoogleFilePickerDialog({
           input: {
             query: settled,
             source,
+            ...(source === "calendar" && calendarIds ? { calendarIds: [...calendarIds] } : {}),
             ...(browsingWeek
               ? {
                   timeMin: weekStart.toISOString(),
@@ -291,6 +299,9 @@ function GoogleFilePickerDialog({
                   loading={loaded === undefined && result.error === null}
                   view={view}
                   onChange={(next) => setViews((current) => ({ ...current, [source]: next }))}
+                  calendars={calendars.data?.calendars ?? null}
+                  calendarIds={calendarIds}
+                  onCalendarIdsChange={setCalendarIds}
                 />
                 {browsingWeek ? (
                   <GoogleCalendarWeekStrip
