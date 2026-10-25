@@ -45,6 +45,12 @@ export function createGoogleEnvironmentAtoms<R, E>(
       tag: WS_METHODS.googleListCalendars,
       staleTimeMs: 5 * 60_000,
     }),
+    // Workspace directory matches, to add a colleague's calendar.
+    people: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:google:people",
+      tag: WS_METHODS.googleSearchPeople,
+      staleTimeMs: 5 * 60_000,
+    }),
     getFile: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:google:get-file",
       tag: WS_METHODS.googleGetFile,

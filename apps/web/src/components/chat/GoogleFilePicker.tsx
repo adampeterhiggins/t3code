@@ -299,6 +299,7 @@ function GoogleFilePickerDialog({
                   loading={loaded === undefined && result.error === null}
                   view={view}
                   onChange={(next) => setViews((current) => ({ ...current, [source]: next }))}
+                  environmentId={threadRef.environmentId}
                   calendars={calendars.data?.calendars ?? null}
                   calendarIds={calendarIds}
                   onCalendarIdsChange={setCalendarIds}

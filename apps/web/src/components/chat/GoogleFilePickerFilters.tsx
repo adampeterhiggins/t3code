@@ -1,6 +1,10 @@
 import { ArrowDownUpIcon, CalendarIcon, FileIcon, ListFilterIcon, UserIcon } from "lucide-react";
-import type { GoogleCalendarSummary } from "@t3tools/contracts";
+import type { EnvironmentId, GoogleCalendarSummary } from "@t3tools/contracts";
 import { useState } from "react";
+
+import { googleEnvironment } from "~/state/google";
+import { useDebouncedValue } from "~/state/queries";
+import { useEnvironmentQuery } from "~/state/query";
 
 import { FilterPill } from "../FilterPill";
 import { Button } from "../ui/button";
@@ -8,6 +12,7 @@ import { MenuChoiceLabel } from "../MenuChoiceLabel";
 import {
   Menu,
   MenuCheckboxItem,
+  MenuGroupLabel,
   MenuItem,
   MenuLoadingItem,
   MenuPopup,
@@ -112,15 +117,23 @@ function calendarLabel(calendar: GoogleCalendarSummary) {
 }
 
 /**
- * Every calendar the account can read, ticked ones first, and a search that also takes a
- * colleague's email to read a calendar the user has not subscribed to.
+ * Every calendar the account can read, ticked ones first, and a search that also finds
+ * colleagues in the Workspace directory, or takes an email, to read a calendar the user has not
+ * subscribed to.
  */
 function CalendarChecklist(props: {
+  environmentId: EnvironmentId;
   calendars: ReadonlyArray<GoogleCalendarSummary> | null;
   selected: ReadonlyArray<string>;
   onChange: (selected: ReadonlyArray<string>) => void;
 }) {
   const [value, setValue] = useState("");
+  const settled = useDebouncedValue(value.trim(), 250);
+  const directory = useEnvironmentQuery(
+    settled.length >= 2
+      ? googleEnvironment.people({ environmentId: props.environmentId, input: { query: settled } })
+      : null,
+  );
   if (props.calendars === null) return <MenuLoadingItem>Loading calendars…</MenuLoadingItem>;
   const known = new Set(props.calendars.map((c) => c.id));
   // Colleagues added by email are not in the account's calendar list.
@@ -139,14 +152,21 @@ function CalendarChecklist(props: {
   const matches = query
     ? entries.filter((c) => `${c.name} ${c.id}`.toLowerCase().includes(query))
     : entries;
-  const addable = EMAIL.test(query) && !entries.some((c) => c.id.toLowerCase() === query);
+  const listed = (email: string) => entries.some((c) => c.id.toLowerCase() === email.toLowerCase());
+  const people = (directory.data?.people ?? []).filter((person) => !listed(person.email));
+  const addable =
+    EMAIL.test(query) && !listed(query) && !people.some((person) => person.email === query);
+  const add = (email: string) => {
+    props.onChange([...props.selected, email]);
+    setValue("");
+  };
   return (
     <>
       <MenuSearchInput
         autoFocus
         value={value}
-        placeholder="Search calendars or add an email"
-        aria-label="Search calendars or add an email"
+        placeholder="Search calendars or people"
+        aria-label="Search calendars or people"
         onChange={(event) => setValue(event.currentTarget.value)}
       />
       {matches.map((calendar) => (
@@ -160,20 +180,33 @@ function CalendarChecklist(props: {
           <span className="min-w-0 flex-1 truncate">{calendarLabel(calendar)}</span>
         </MenuCheckboxItem>
       ))}
-      {addable ? (
+      {settled.length >= 2 ? (
         <>
           {matches.length > 0 ? <MenuSeparator /> : null}
-          <MenuItem
-            onClick={() => {
-              props.onChange([...props.selected, query]);
-              setValue("");
-            }}
-          >
-            Show {query}&apos;s calendar
-          </MenuItem>
+          <MenuGroupLabel>People</MenuGroupLabel>
+          {people.map((person) => (
+            <MenuItem key={person.email} onClick={() => add(person.email)}>
+              <span className="min-w-0 flex-1 truncate">{person.name}</span>
+              <span className="shrink-0 truncate text-muted-foreground text-xs">
+                {person.email}
+              </span>
+            </MenuItem>
+          ))}
+          {addable ? (
+            <MenuItem onClick={() => add(query)}>Show {query}&apos;s calendar</MenuItem>
+          ) : null}
+          {directory.data === null && directory.error === null ? (
+            <MenuLoadingItem>Searching people…</MenuLoadingItem>
+          ) : directory.data?.directoryAvailable === false ? (
+            <MenuItem disabled>Reconnect Google to search your directory</MenuItem>
+          ) : people.length === 0 && !addable ? (
+            <MenuItem disabled>
+              {directory.error ?? "No one matches. Type an email instead."}
+            </MenuItem>
+          ) : null}
         </>
       ) : matches.length === 0 ? (
-        <MenuItem disabled>No calendars match. Type an email to add one.</MenuItem>
+        <MenuItem disabled>Type a name or email to find a colleague</MenuItem>
       ) : null}
     </>
   );
@@ -192,6 +225,7 @@ export function GoogleFilePickerFilterBar(props: {
   loading: boolean;
   view: GoogleFilePickerView;
   onChange: (view: GoogleFilePickerView) => void;
+  environmentId: EnvironmentId;
   /** The account's calendars, or null while they load. Calendar tab only. */
   calendars: ReadonlyArray<GoogleCalendarSummary> | null;
   /** The calendars picked in place of the ticked ones, or null for those. */
@@ -226,6 +260,7 @@ export function GoogleFilePickerFilterBar(props: {
                 <MenuSubTrigger>Calendars</MenuSubTrigger>
                 <MenuSubPopup>
                   <CalendarChecklist
+                    environmentId={props.environmentId}
                     calendars={props.calendars}
                     selected={shownCalendarIds}
                     onChange={(ids) => {

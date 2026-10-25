@@ -280,8 +280,8 @@ function GoogleConnectionRows({
           >
             <p className="max-w-2xl text-xs leading-relaxed text-muted-foreground">
               Create a Google Cloud OAuth client for a Web application and enable the Drive, Docs,
-              Sheets and Calendar APIs. Register this redirect URI, then add its client ID and
-              secret. The secret stays on {environmentLabel}.{" "}
+              Sheets, Calendar and People APIs. Register this redirect URI, then add its client ID
+              and secret. The secret stays on {environmentLabel}.{" "}
               <InlineButton
                 render={
                   <a

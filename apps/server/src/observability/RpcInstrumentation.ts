@@ -43,6 +43,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.notionSearchPages]: "notion",
   [WS_METHODS.googleSearchFiles]: "google",
   [WS_METHODS.googleListCalendars]: "google",
+  [WS_METHODS.googleSearchPeople]: "google",
   [WS_METHODS.notionGetPage]: "notion",
   [WS_METHODS.googleGetFile]: "google",
   [WS_METHODS.notionSubscribeThreadLinks]: "notion",

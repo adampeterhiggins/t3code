@@ -94,6 +94,22 @@ export const GoogleListCalendarsResult = Schema.Struct({
   calendars: Schema.Array(GoogleCalendarSummary),
 });
 export type GoogleListCalendarsResult = typeof GoogleListCalendarsResult.Type;
+export const GoogleSearchPeopleInput = Schema.Struct({
+  query: TrimmedNonEmptyString.check(Schema.isMaxLength(256)),
+});
+export type GoogleSearchPeopleInput = typeof GoogleSearchPeopleInput.Type;
+/** Someone in the account's Workspace directory. Their calendar id is their email. */
+export const GooglePerson = Schema.Struct({
+  name: Schema.String,
+  email: Schema.String,
+});
+export type GooglePerson = typeof GooglePerson.Type;
+export const GoogleSearchPeopleResult = Schema.Struct({
+  people: Schema.Array(GooglePerson),
+  /** False when the connection predates directory access and needs reconnecting. */
+  directoryAvailable: Schema.Boolean,
+});
+export type GoogleSearchPeopleResult = typeof GoogleSearchPeopleResult.Type;
 export const GoogleGetFileInput = Schema.Struct({
   id: TrimmedNonEmptyString.check(Schema.isMaxLength(2048)),
 });

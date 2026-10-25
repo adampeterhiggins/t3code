@@ -5,6 +5,8 @@ import {
   type GoogleGetFileInput,
   GOOGLE_CALENDAR_SEARCH_LIMIT,
   type GoogleListCalendarsResult,
+  type GoogleSearchPeopleInput,
+  type GoogleSearchPeopleResult,
   type GoogleFileContext,
   type GoogleFileSummary,
   type GoogleSearchFilesInput,
@@ -167,6 +169,9 @@ export class GoogleApi extends Context.Service<
       input: GoogleSearchFilesInput,
     ) => Effect.Effect<{ files: GoogleFileSummary[]; hasMore: boolean }, GoogleError>;
     readonly listCalendars: Effect.Effect<GoogleListCalendarsResult, GoogleError>;
+    readonly searchPeople: (
+      input: GoogleSearchPeopleInput,
+    ) => Effect.Effect<GoogleSearchPeopleResult, GoogleError>;
     readonly getFile: (input: GoogleGetFileInput) => Effect.Effect<GoogleFileContext, GoogleError>;
     readonly getFileSummary: (
       input: GoogleGetFileInput,
@@ -300,6 +305,49 @@ const make = Effect.gen(function* () {
         primary: calendar.primary ?? false,
         selected: calendar.selected ?? false,
       })),
+    };
+  });
+  const searchPeople = Effect.fn("google.people.search")(function* (
+    input: GoogleSearchPeopleInput,
+  ) {
+    const params = new URLSearchParams({
+      query: input.query,
+      readMask: "names,emailAddresses",
+      sources: "DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE",
+      pageSize: "10",
+    });
+    const result = yield* request(
+      `https://people.googleapis.com/v1/people:searchDirectoryPeople?${params}`,
+      Schema.Struct({
+        people: Schema.optional(
+          Schema.Array(
+            Schema.Struct({
+              names: Schema.optional(
+                Schema.Array(Schema.Struct({ displayName: Schema.optional(Schema.String) })),
+              ),
+              emailAddresses: Schema.optional(
+                Schema.Array(Schema.Struct({ value: Schema.optional(Schema.String) })),
+              ),
+            }),
+          ),
+        ),
+      }),
+    ).pipe(
+      Effect.map((found) => ({ found, directoryAvailable: true })),
+      // Connections made before directory access, or a Workspace that hides its directory.
+      Effect.catchTags({
+        GoogleError: (error) =>
+          error.reason === "not-found"
+            ? Effect.succeed({ found: { people: [] }, directoryAvailable: false })
+            : Effect.fail(error),
+      }),
+    );
+    return {
+      directoryAvailable: result.directoryAvailable,
+      people: (result.found.people ?? []).flatMap((person) => {
+        const email = person.emailAddresses?.[0]?.value;
+        return email ? [{ name: person.names?.[0]?.displayName ?? email, email }] : [];
+      }),
     };
   });
   const searchEvents = Effect.fn("google.calendar.search")(function* (
@@ -593,6 +641,12 @@ const make = Effect.gen(function* () {
       hasMore: Boolean(result.nextPageToken) || calendar.hasMore,
     };
   });
-  return GoogleApi.of({ getFile, getFileSummary, listCalendars: listCalendars(), searchFiles });
+  return GoogleApi.of({
+    getFile,
+    getFileSummary,
+    listCalendars: listCalendars(),
+    searchFiles,
+    searchPeople,
+  });
 });
 export const layer = Layer.effect(GoogleApi, make);

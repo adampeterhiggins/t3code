@@ -18,6 +18,7 @@ function harness(
     docText?: string;
     commentAt?: string;
     commentsForbidden?: boolean;
+    noDirectory?: boolean;
   } = {},
 ) {
   const urls: string[] = [];
@@ -97,6 +98,16 @@ function harness(
             },
           ],
         };
+      if (url.pathname.endsWith("people:searchDirectoryPeople"))
+        body = {
+          people: [
+            {
+              names: [{ displayName: "Priya Shah" }],
+              emailAddresses: [{ value: "priya@example.com" }],
+            },
+            { names: [{ displayName: "No email" }] },
+          ],
+        };
       if (url.pathname.endsWith("/calendarList"))
         body = {
           items: [
@@ -125,7 +136,8 @@ function harness(
       const status =
         options.missing ||
         (options.commentsForbidden && url.pathname.endsWith("/comments")) ||
-        url.pathname.includes("nobody%40example.com")
+        url.pathname.includes("nobody%40example.com") ||
+        (options.noDirectory && url.hostname === "people.googleapis.com")
           ? 403
           : options.reject && request.headers.authorization === "Bearer old"
             ? 401
@@ -305,6 +317,21 @@ it.effect(
       assert.notOk(h.urls.some((url) => url.includes("/calendars/team%40example.com/events")));
     }).pipe(Effect.provide(h.layer));
   },
+);
+it.effect("finds colleagues in the directory", () =>
+  Effect.gen(function* () {
+    const found = yield* (yield* GoogleApi.GoogleApi).searchPeople({ query: "pri" });
+    assert.deepEqual(found, {
+      directoryAvailable: true,
+      people: [{ name: "Priya Shah", email: "priya@example.com" }],
+    });
+  }).pipe(Effect.provide(harness().layer)),
+);
+it.effect("asks to reconnect when the connection cannot read the directory", () =>
+  Effect.gen(function* () {
+    const hidden = yield* (yield* GoogleApi.GoogleApi).searchPeople({ query: "pri" });
+    assert.deepEqual(hidden, { directoryAvailable: false, people: [] });
+  }).pipe(Effect.provide(harness({ noDirectory: true }).layer)),
 );
 it.effect("keeps binary Drive files as metadata and comments without downloading bytes", () => {
   const h = harness({ mimeType: "application/pdf" });
