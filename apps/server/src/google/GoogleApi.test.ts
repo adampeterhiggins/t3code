@@ -17,6 +17,7 @@ function harness(
     missing?: boolean;
     docText?: string;
     commentAt?: string;
+    commentsForbidden?: boolean;
   } = {},
 ) {
   const urls: string[] = [];
@@ -73,7 +74,18 @@ function harness(
                 ["18", "152"],
               ],
             }
-          : { sheets: [{ properties: { sheetId: 42, title: "Forecast" } }] };
+          : {
+              sheets: [
+                { properties: { sheetId: 7, title: "Chart", sheetType: "OBJECT" } },
+                {
+                  properties: {
+                    sheetId: 42,
+                    title: "Forecast",
+                    gridProperties: { rowCount: 40, columnCount: 6 },
+                  },
+                },
+              ],
+            };
       if (url.pathname.endsWith("/comments"))
         body = {
           comments: [
@@ -104,11 +116,12 @@ function harness(
       if (url.pathname.endsWith("/events/event123")) body = event;
       if (url.searchParams.get("alt") === "media" || url.pathname.endsWith("/export"))
         return HttpClientResponse.fromWeb(request, new Response("A plain text source"));
-      const status = options.missing
-        ? 403
-        : options.reject && request.headers.authorization === "Bearer old"
-          ? 401
-          : 200;
+      const status =
+        options.missing || (options.commentsForbidden && url.pathname.endsWith("/comments"))
+          ? 403
+          : options.reject && request.headers.authorization === "Bearer old"
+            ? 401
+            : 200;
       return HttpClientResponse.fromWeb(
         request,
         new Response(encode(body), { status, headers: { "content-type": "application/json" } }),
@@ -179,6 +192,24 @@ it.effect("reads the selected sheet and cell range, rather than the first sheet"
       .getFile({ id: "https://docs.google.com/spreadsheets/d/file_123/edit#gid=99" })
       .pipe(Effect.flip);
     assert.equal(failure.reason, "not-found");
+  }).pipe(Effect.provide(h.layer));
+});
+it.effect("previews every grid tab within its own bounds, skipping chart tabs", () => {
+  const h = harness({ sheet: true });
+  return Effect.gen(function* () {
+    yield* (yield* GoogleApi.GoogleApi).getFile({ id: "file_123" });
+    const ranges = h.urls
+      .filter((url) => url.includes("/values/"))
+      .map((url) => decodeURIComponent(new URL(url).pathname.split("/values/")[1]!));
+    assert.deepEqual(ranges, ["'Forecast'!A1:F40"]);
+  }).pipe(Effect.provide(h.layer));
+});
+it.effect("previews a file whose comments Drive will not list to this viewer", () => {
+  const h = harness({ commentsForbidden: true });
+  return Effect.gen(function* () {
+    const file = yield* (yield* GoogleApi.GoogleApi).getFile({ id: "file_123" });
+    assert.include(file.markdown, "£18 per seat");
+    assert.notInclude(file.markdown, "## Comments");
   }).pipe(Effect.provide(h.layer));
 });
 it.effect("reports revoked file access without inventing an empty document", () => {

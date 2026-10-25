@@ -36,7 +36,19 @@ const Search = Schema.Struct({
 });
 const Spreadsheet = Schema.Struct({
   sheets: Schema.Array(
-    Schema.Struct({ properties: Schema.Struct({ sheetId: Schema.Number, title: Schema.String }) }),
+    Schema.Struct({
+      properties: Schema.Struct({
+        sheetId: Schema.Number,
+        title: Schema.String,
+        sheetType: Schema.optional(Schema.String),
+        gridProperties: Schema.optional(
+          Schema.Struct({
+            rowCount: Schema.optional(Schema.Number),
+            columnCount: Schema.optional(Schema.Number),
+          }),
+        ),
+      }),
+    }),
   ),
 });
 const Values = Schema.Struct({
@@ -389,7 +401,8 @@ const make = Effect.gen(function* () {
       );
       const tabs = location.gid
         ? data.sheets.filter((s) => String(s.properties.sheetId) === location.gid)
-        : data.sheets.slice(0, 10);
+        : // Chart and object tabs have no cells to read.
+          data.sheets.filter((s) => (s.properties.sheetType ?? "GRID") === "GRID").slice(0, 10);
       if (!tabs.length)
         return yield* new GoogleError({
           reason: "not-found",
@@ -398,7 +411,13 @@ const make = Effect.gen(function* () {
       const sections: string[] = [];
       for (const tab of tabs) {
         const name = tab.properties.title;
-        const range = boundedGoogleRange(location.range ?? "A1:Z100");
+        // Sheets rejects a range past the tab's grid, so the default preview stops at its edge.
+        const size = tab.properties.gridProperties;
+        const columns = Math.max(1, Math.min(26, size?.columnCount ?? 26));
+        const lastRow = Math.max(1, Math.min(100, size?.rowCount ?? 100));
+        const range = boundedGoogleRange(
+          location.range ?? `A1:${String.fromCharCode(64 + columns)}${lastRow}`,
+        );
         if (range === null)
           return yield* new GoogleError({
             reason: "not-found",
@@ -464,10 +483,18 @@ const make = Effect.gen(function* () {
         pageSize: "100",
         ...(pageToken ? { pageToken } : {}),
       });
+      // Drive refuses to list comments on some files a viewer can still read; the file itself
+      // is still worth previewing without them.
       const result = yield* request(
         `https://www.googleapis.com/drive/v3/files/${id}/comments?${params}`,
         Comments,
+      ).pipe(
+        Effect.catchTags({
+          GoogleError: (error) =>
+            error.reason === "not-found" ? Effect.succeed(null) : Effect.fail(error),
+        }),
       );
+      if (result === null) break;
       for (const c of result.comments) {
         commentVersions.push(
           c.modifiedTime,
