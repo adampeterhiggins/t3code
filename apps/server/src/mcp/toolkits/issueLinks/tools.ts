@@ -494,7 +494,6 @@ const SearchGoogleFilesTool = Tool.make("search_google_files", {
 
 const ListGoogleCalendarsTool = Tool.make("list_google_calendars", {
   description: `List the calendars the connected Google account can read: its own, subscribed colleagues' and rooms', with names and whether each is ticked in Google Calendar (search_google_files searches the ticked ones by default). Pass ids to search_google_files as calendarIds. Fails when Google is disconnected or turned off.`,
-  parameters: Schema.Struct({}),
   success: GoogleListCalendarsResult,
   failure: IssueLinkToolError,
   dependencies,
