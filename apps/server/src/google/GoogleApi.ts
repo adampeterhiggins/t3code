@@ -109,6 +109,8 @@ const CalendarEvent = Schema.Struct({
     ),
   ),
 });
+/** Enough for a busy week, which the picker reads one at a time. */
+const EVENT_LIMIT = 100;
 const fields = "id,name,mimeType,modifiedTime,description,size,owners(displayName)";
 const summary = (file: typeof File.Type): GoogleFileSummary => {
   const fileType =
@@ -276,15 +278,24 @@ const make = Effect.gen(function* () {
   const searchEvents = Effect.fn("google.calendar.search")(function* (
     input: GoogleSearchFilesInput,
   ) {
+    // Only the calendars ticked in Google Calendar: subscribed room and colleague calendars hold
+    // everyone's bookings and would crowd out the user's own events.
     const calendars = input.calendarId
-      ? { items: [{ id: input.calendarId }], nextPageToken: undefined }
-      : yield* request(
-          "https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=10&minAccessRole=reader",
+      ? [{ id: input.calendarId }]
+      : (yield* request(
+          "https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=250&minAccessRole=reader",
           Schema.Struct({
-            items: Schema.Array(Schema.Struct({ id: Schema.String })),
-            nextPageToken: Schema.optional(Schema.String),
+            items: Schema.Array(
+              Schema.Struct({
+                id: Schema.String,
+                primary: Schema.optional(Schema.Boolean),
+                selected: Schema.optional(Schema.Boolean),
+              }),
+            ),
           }),
-        );
+        )).items
+          .filter((calendar) => calendar.primary || calendar.selected)
+          .slice(0, 10);
     const now = yield* Clock.currentTimeMillis;
     const timeMin = input.timeMin ?? DateTime.formatIso(DateTime.makeUnsafe(now - 30 * 86400000));
     const timeMax = input.timeMax ?? DateTime.formatIso(DateTime.makeUnsafe(now + 365 * 86400000));
@@ -297,11 +308,11 @@ const make = Effect.gen(function* () {
         detail: "Calendar search needs timeMin before timeMax.",
       });
     const pages = yield* Effect.forEach(
-      calendars.items,
+      calendars,
       (calendar) =>
         Effect.gen(function* () {
           const params = new URLSearchParams({
-            maxResults: "30",
+            maxResults: String(EVENT_LIMIT),
             singleEvents: "true",
             orderBy: "startTime",
             timeMin,
@@ -329,9 +340,8 @@ const make = Effect.gen(function* () {
       ) || 0;
     const files = pages.flatMap((page) => page.files).toSorted((a, b) => start(a) - start(b));
     return {
-      files: files.slice(0, 30),
-      hasMore:
-        files.length > 30 || Boolean(calendars.nextPageToken) || pages.some((p) => p.hasMore),
+      files: files.slice(0, EVENT_LIMIT),
+      hasMore: files.length > EVENT_LIMIT || pages.some((p) => p.hasMore),
     };
   });
   const resolve = (input: GoogleGetFileInput) => {

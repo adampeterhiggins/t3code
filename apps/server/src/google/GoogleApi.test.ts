@@ -97,7 +97,13 @@ function harness(
             },
           ],
         };
-      if (url.pathname.endsWith("/calendarList")) body = { items: [{ id: "team@example.com" }] };
+      if (url.pathname.endsWith("/calendarList"))
+        body = {
+          items: [
+            { id: "team@example.com", selected: true },
+            { id: "room@resource.calendar.google.com" },
+          ],
+        };
       const event = {
         id: "event123",
         summary: "Launch review",
@@ -268,6 +274,7 @@ it.effect("searches Calendar and reads event details with native citations", () 
     assert.ok(context.markdown.includes("Meeting room"));
     assert.strictEqual(context.url, event.url);
     assert.ok(h.urls.some((url) => url.includes("/calendars/team%40example.com/events/event123")));
+    assert.notOk(h.urls.some((url) => url.includes("room%40resource")));
   }).pipe(Effect.provide(h.layer));
 });
 
