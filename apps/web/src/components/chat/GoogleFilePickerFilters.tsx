@@ -12,6 +12,7 @@ import { MenuChoiceLabel } from "../MenuChoiceLabel";
 import {
   Menu,
   MenuCheckboxItem,
+  MenuGroup,
   MenuGroupLabel,
   MenuItem,
   MenuLoadingItem,
@@ -183,27 +184,29 @@ function CalendarChecklist(props: {
       {settled.length >= 2 ? (
         <>
           {matches.length > 0 ? <MenuSeparator /> : null}
-          <MenuGroupLabel>People</MenuGroupLabel>
-          {people.map((person) => (
-            <MenuItem key={person.email} onClick={() => add(person.email)}>
-              <span className="min-w-0 flex-1 truncate">{person.name}</span>
-              <span className="shrink-0 truncate text-muted-foreground text-xs">
-                {person.email}
-              </span>
-            </MenuItem>
-          ))}
-          {addable ? (
-            <MenuItem onClick={() => add(query)}>Show {query}&apos;s calendar</MenuItem>
-          ) : null}
-          {directory.data === null && directory.error === null ? (
-            <MenuLoadingItem>Searching people…</MenuLoadingItem>
-          ) : directory.data?.directoryAvailable === false ? (
-            <MenuItem disabled>Reconnect Google to search your directory</MenuItem>
-          ) : people.length === 0 && !addable ? (
-            <MenuItem disabled>
-              {directory.error ?? "No one matches. Type an email instead."}
-            </MenuItem>
-          ) : null}
+          <MenuGroup>
+            <MenuGroupLabel>People</MenuGroupLabel>
+            {people.map((person) => (
+              <MenuItem key={person.email} onClick={() => add(person.email)}>
+                <span className="min-w-0 flex-1 truncate">{person.name}</span>
+                <span className="shrink-0 truncate text-muted-foreground text-xs">
+                  {person.email}
+                </span>
+              </MenuItem>
+            ))}
+            {addable ? (
+              <MenuItem onClick={() => add(query)}>Show {query}&apos;s calendar</MenuItem>
+            ) : null}
+            {directory.data === null && directory.error === null ? (
+              <MenuLoadingItem>Searching people…</MenuLoadingItem>
+            ) : directory.data?.directoryAvailable === false ? (
+              <MenuItem disabled>Reconnect Google to search your directory</MenuItem>
+            ) : people.length === 0 && !addable ? (
+              <MenuItem disabled>
+                {directory.error ?? "No one matches. Type an email instead."}
+              </MenuItem>
+            ) : null}
+          </MenuGroup>
         </>
       ) : matches.length === 0 ? (
         <MenuItem disabled>Type a name or email to find a colleague</MenuItem>
