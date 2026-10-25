@@ -150,6 +150,23 @@ var x = 1;
     assert.deepStrictEqual(result.inlinedPackages, ["effect", "yaml"]);
     assert.deepStrictEqual(result.inlined, []);
   });
+
+  it("reads the bare path markers newer Rolldown emits", () => {
+    const source = [
+      "// ../../node_modules/.pnpm/effect@4.0.5/node_modules/effect/dist/Clock.js",
+      "var x = 1;",
+      "// ../../node_modules/.pnpm/node-addon-api@7.1.1/node_modules/node-addon-api/index.js",
+      "var y = 2;",
+      "// src/bin.ts",
+      "// a regular comment that mentions node_modules/node-pty/ in passing",
+      "var z = 3;",
+    ].join("\n");
+    const result = findInlinedExternalPackages(source);
+
+    assert.strictEqual(result.regionCount, 3);
+    assert.deepStrictEqual(result.inlinedPackages, ["effect", "node-addon-api"]);
+    assert.deepStrictEqual(result.inlined, ["node-addon-api"]);
+  });
 });
 
 describe("findEsmImportsOfExternalPackages", () => {
