@@ -28,7 +28,7 @@ import * as TestClock from "effect/testing/TestClock";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { McpAttachmentInput } from "./attachment/input.ts";
-import { McpSchema, McpServer } from "effect/ai";
+import { McpSchema, McpServer, Tool } from "effect/ai";
 import { FetchHttpClient } from "effect/http";
 
 import {
@@ -111,27 +111,38 @@ const layerThreadToolkitWith = (
   );
 const layerThreadToolkit = layerThreadToolkitWith(layerThreadMoveServices);
 
+const allToolkits = [
+  ApprovalToolkit,
+  AttachmentToolkit,
+  DeviceToolkit,
+  EnvironmentToolkit,
+  HtmlToolkit,
+  IssueLinksToolkit,
+  MessageDraftsToolkit,
+  OrchestratorToolkit,
+  PreviewToolkit,
+  PreviewControlsToolkit,
+  ProjectToolkit,
+  PullRequestsToolkit,
+  ThreadToolkit,
+  ThreadDeleteToolkit,
+  WorktreeToolkit,
+];
+const allTools = allToolkits.flatMap((toolkit) => Object.values(toolkit.tools));
+
 // All toolkits share one MCP server, so a duplicate name silently shadows a tool.
 it("publishes unique tool names across every toolkit", () => {
-  const names = [
-    ApprovalToolkit,
-    AttachmentToolkit,
-    DeviceToolkit,
-    EnvironmentToolkit,
-    HtmlToolkit,
-    IssueLinksToolkit,
-    MessageDraftsToolkit,
-    OrchestratorToolkit,
-    PreviewToolkit,
-    PreviewControlsToolkit,
-    ProjectToolkit,
-    PullRequestsToolkit,
-    ThreadToolkit,
-    ThreadDeleteToolkit,
-    WorktreeToolkit,
-  ].flatMap((toolkit) => Object.values(toolkit.tools).map((tool) => tool.name));
+  const names = allTools.map((tool) => tool.name);
   expect(names.filter((name, index) => names.indexOf(name) !== index)).toEqual([]);
   expect(names).toEqual(expect.arrayContaining(["link_linear_issue", "t3_draft_create"]));
+});
+
+// McpServer refuses to start unless every tool's input schema has an object root.
+it("gives every tool an object-rooted input schema", () => {
+  const nonObjectTools = allTools
+    .filter((tool) => Tool.getJsonSchema(tool).type !== "object")
+    .map((tool) => tool.name);
+  expect(nonObjectTools).toEqual([]);
 });
 
 const threadId = ThreadId.make("mcp-core-thread");
