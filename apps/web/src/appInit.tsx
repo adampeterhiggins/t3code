@@ -8,6 +8,7 @@ import { retainThreadOverlaysForThread } from "./components/chat/threadOverlayRe
 import { startBackgroundThreadAnnouncements } from "./components/BackgroundThreadAnnouncer";
 import { startSshPasswordPromptQueue } from "./components/desktop/SshPasswordPromptDialog";
 import { startHostFreezeToasts } from "./components/HostFreezeToastCoordinator";
+import { isQuickMessageWindow } from "./components/quickMessage/quickMessageWindow";
 import { startLegacyThreadMigrationToast } from "./components/LegacyThreadMigrationToast";
 import { startPermissionUpdateNotices } from "./components/PermissionUpdateNotice";
 import { startAgentOpenedPreviews } from "./components/preview/agentOpenedPreviews";
@@ -52,10 +53,11 @@ function startClientAppearance(): void {
     if (previous?.redesignEnabled !== settings.redesignEnabled) {
       root.toggleAttribute("data-redesign", settings.redesignEnabled);
     }
-    if (previous?.appearanceContrast !== settings.appearanceContrast) {
+    // The quick message panel gets its contrast from useTheme, and index.css keeps it opaque.
+    if (!isQuickMessageWindow && previous?.appearanceContrast !== settings.appearanceContrast) {
       applyAppearanceContrast(root, settings.appearanceContrast);
     }
-    if (previous?.glassOpacity !== settings.glassOpacity) {
+    if (!isQuickMessageWindow && previous?.glassOpacity !== settings.glassOpacity) {
       root.style.setProperty("--glass-opacity", `${settings.glassOpacity}%`);
       if (settings.glassOpacity === 100) {
         root.style.setProperty("--glass-blur", "0px");
@@ -137,6 +139,7 @@ export function startAppServices(): AppRouter {
   }
 
   startClientAppearance();
+  if (isQuickMessageWindow) return router;
   startDocumentTitle();
   startDefaultThemeAdoption();
   startModelPreferencesMigration();
