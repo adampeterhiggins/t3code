@@ -1,3 +1,9 @@
+import {
+  ComposerIntegrationAttachMenuItems,
+  type ComposerIntegrationPicker,
+  isComposerIntegrationPicker,
+  openComposerIntegrationPicker,
+} from "./composerIntegrationPickers";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import {
   CpuIcon,
@@ -6,44 +12,21 @@ import {
   MessageSquareIcon,
   PaperclipIcon,
 } from "lucide-react";
-import {
-  GitHubIcon,
-  GranolaIcon,
-  DiscordIcon,
-  LinearIcon,
-  NotionIcon,
-  GoogleIcon,
-  SlackIcon,
-} from "../Icons";
 import { memo } from "react";
-import { useEnvironmentSettings } from "~/hooks/useSettings";
 
 import { Button } from "../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { useComposerMenuProps } from "./composerEventScope";
-import { openGitHubIssuePicker } from "./GitHubIssuePicker";
-import { openGranolaNotePicker } from "./GranolaNotePicker";
-import { openLinearIssuePicker } from "./LinearIssuePicker";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { openPullRequestAttachPicker } from "./PullRequestAttachPicker";
 import { openCheckoutAttachPicker } from "./CheckoutAttachPicker";
 import { openRepositoryAttachPicker } from "./RepositoryAttachPicker";
-import { openNotionPagePicker } from "./NotionPagePicker";
-import { openGoogleFilePicker } from "./GoogleFilePicker";
-import { openDiscordMessagePicker } from "./DiscordMessagePicker";
-import { openSlackMessagePicker } from "./SlackMessagePicker";
 import { openThreadAttachPicker } from "./ThreadAttachPicker";
 
 /** Every attach source other than files, each opened as a picker against a thread's draft. */
 export type ComposerAttachPicker =
+  | ComposerIntegrationPicker
   | "thread"
-  | "linear-issue"
-  | "notion-page"
-  | "google-file"
-  | "granola-note"
-  | "slack-message"
-  | "discord-message"
-  | "github-issue"
   | "pull-request"
   | "checkout"
   | "repository";
@@ -52,23 +35,10 @@ export function openComposerAttachPicker(
   picker: ComposerAttachPicker,
   threadRef: ScopedThreadRef,
 ): void {
+  if (isComposerIntegrationPicker(picker)) return openComposerIntegrationPicker(picker, threadRef);
   switch (picker) {
     case "thread":
       return openThreadAttachPicker(threadRef);
-    case "linear-issue":
-      return openLinearIssuePicker(threadRef);
-    case "notion-page":
-      return openNotionPagePicker(threadRef);
-    case "google-file":
-      return openGoogleFilePicker(threadRef);
-    case "granola-note":
-      return openGranolaNotePicker(threadRef);
-    case "slack-message":
-      return openSlackMessagePicker(threadRef);
-    case "discord-message":
-      return openDiscordMessagePicker(threadRef);
-    case "github-issue":
-      return openGitHubIssuePicker(threadRef);
     case "pull-request":
       return openPullRequestAttachPicker(threadRef);
     case "checkout":
@@ -96,23 +66,6 @@ export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
   onPickModel?: (() => void) | undefined;
 }) {
   const composerMenuProps = useComposerMenuProps();
-  const slackEnabled = useEnvironmentSettings(props.environmentId, (s) => s.enableSlackIntegration);
-  const discordEnabled = useEnvironmentSettings(
-    props.environmentId,
-    (s) => s.enableDiscordIntegration,
-  );
-  const notionEnabled = useEnvironmentSettings(
-    props.environmentId,
-    (s) => s.enableNotionIntegration,
-  );
-  const googleEnabled = useEnvironmentSettings(
-    props.environmentId,
-    (s) => s.enableGoogleIntegration,
-  );
-  const granolaEnabled = useEnvironmentSettings(
-    props.environmentId,
-    (s) => s.enableGranolaIntegration,
-  );
   return (
     <Menu>
       <MenuTrigger
@@ -129,46 +82,11 @@ export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
           <MessageSquareIcon />
           Thread
         </MenuItem>
-        <MenuItem onClick={() => props.onPick("linear-issue")}>
-          <LinearIcon />
-          Linear issue
-        </MenuItem>
-        {notionEnabled ? (
-          <MenuItem onClick={() => props.onPick("notion-page")}>
-            <NotionIcon />
-            Notion page
-          </MenuItem>
-        ) : null}
-        {googleEnabled ? (
-          <MenuItem onClick={() => props.onPick("google-file")}>
-            <GoogleIcon />
-            Google
-          </MenuItem>
-        ) : null}
-        {granolaEnabled ? (
-          <MenuItem onClick={() => props.onPick("granola-note")}>
-            <GranolaIcon />
-            Granola note
-          </MenuItem>
-        ) : null}
-        {slackEnabled ? (
-          <MenuItem onClick={() => props.onPick("slack-message")}>
-            <SlackIcon />
-            Slack message
-          </MenuItem>
-        ) : null}
-        {discordEnabled ? (
-          <MenuItem onClick={() => props.onPick("discord-message")}>
-            <DiscordIcon />
-            Discord message
-          </MenuItem>
-        ) : null}
-        {props.githubIssuesAvailable ? (
-          <MenuItem onClick={() => props.onPick("github-issue")}>
-            <GitHubIcon />
-            GitHub issue
-          </MenuItem>
-        ) : null}
+        <ComposerIntegrationAttachMenuItems
+          environmentId={props.environmentId}
+          githubIssuesAvailable={props.githubIssuesAvailable}
+          onPick={props.onPick}
+        />
         {props.pullRequestsAvailable ? (
           <MenuItem onClick={() => props.onPick("pull-request")}>
             <PullRequestGlyph.pullRequest />

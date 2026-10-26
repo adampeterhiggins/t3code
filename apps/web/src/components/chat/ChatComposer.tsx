@@ -1,21 +1,5 @@
+import { useComposerIntegrationReferences } from "./useComposerIntegrationReferences";
 import {
-  findPastedComposerObjectLinks,
-  findTypedComposerObjectLink,
-  type ComposerObjectLink,
-  parseComposerObjectLink,
-} from "@t3tools/source-control-definitions/composerObjectLinks";
-
-import {
-  objectLinkChipDestination,
-  type ObjectLinkDrafts,
-  OBJECT_LINK_TIMEOUT_MS,
-  objectLinkChipEdit,
-  resolveObjectLinkWithin,
-  unreadLinkChip,
-} from "./composerObjectLinkChip";
-
-import {
-  type ComposerThreadTarget,
   type ComposerFileAttachment,
   type ComposerImageAttachment,
   type DraftId,
@@ -27,11 +11,7 @@ import {
   useComposerThreadDraft,
 } from "../../composerDraftStore";
 
-import {
-  type ResolvedComposerObjectLink,
-  useResolveComposerObjectLink,
-} from "./useResolveComposerObjectLink";
-import { unreadLinkContextRecord } from "@t3tools/source-control-definitions/integrationContextRecords";
+import { useComposerObjectLinks, type ComposerUnreadLinkActions } from "./useComposerObjectLinks";
 import { Button } from "../ui/button";
 import { ComposerAttachMenu, openComposerAttachPicker } from "./ComposerAttachMenu";
 import { ComposerModelChipPicker } from "./ComposerModelChipPicker";
@@ -42,7 +22,7 @@ import {
   MessageDraftId,
   ModelContextRecord,
   ThreadTabGroup,
-  UnreadLinkContextRecord,
+  type UnreadLinkContextRecord,
   type KeybindingCommand,
   type AssistantCitation,
   type ChatAttachment as ContractChatAttachment,
@@ -89,7 +69,6 @@ import {
   toKindScopedComposerContextId,
 } from "@t3tools/shared/composerContextReferences";
 import { deriveComposerModelItems } from "./composerModelItems";
-import { discordGetThreadInput, useAttachDiscordMessage } from "./DiscordMessagePicker";
 
 import {
   isComposerReferenceItem as isReferenceMenuItem,
@@ -108,7 +87,6 @@ import { recordComposerReferenceRecents } from "./composerReferenceRecents";
 
 import { resolveComposerSnapshot, type ComposerSnapshot } from "./composerPendingSnapshot";
 
-import { slackGetThreadInput, useAttachSlackMessage } from "./SlackMessagePicker";
 import {
   type ComposerCitationDestinations,
   type ComposerCitationCommentRequest,
@@ -120,12 +98,6 @@ import { type ComposerSendSurface, ComposerPrimaryActions } from "./ComposerPrim
 
 import { useAtomValue } from "@effect/atom-react";
 import { useAttachCheckout, useComposerCheckoutItems } from "./useComposerCheckoutItems";
-
-import { useAttachGitHubIssue } from "./GitHubIssuePicker";
-import { useAttachGranolaNote } from "./GranolaNotePicker";
-import { useAttachLinearIssue } from "./LinearIssuePicker";
-import { useAttachNotionPage } from "./NotionPagePicker";
-import { useAttachGoogleFile } from "./GoogleFilePicker";
 
 import { useCaptureThreadTabContext } from "./ThreadTabs";
 import { useCheckoutContextRecords } from "~/checkoutContextStore";
@@ -909,15 +881,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const uploadsByImageId = useAttachmentUploadStore((state) => state.uploadsByImageId);
   const openPrLink = useOpenPrLink(routeThreadRef);
   const openLink = useLinkClickHandler(routeThreadRef);
-  const resolveComposerObjectLink = useResolveComposerObjectLink({
-    threadRef: routeThreadRef,
-    draftTarget: composerDraftTarget,
-  });
-  // Filled in once prompt replacement exists; unread chips retry and revert through it.
-  const unreadLinkActionsRef = useRef<{
-    retry: (record: UnreadLinkContextRecord) => void;
-    keepAsText: (record: UnreadLinkContextRecord) => void;
-  } | null>(null);
+  const unreadLinkActionsRef = useRef<ComposerUnreadLinkActions | null>(null);
   const [previewFileId, setPreviewFileId] = useState<string | null>(null);
   const previewFile = composerFiles.find((file) => file.id === previewFileId);
   const composerContextActions = {
@@ -1418,13 +1382,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   });
   const selectedReferenceItemIds = new Set(selectedReferenceItems.map((item) => item.id));
   const attachCheckout = useAttachCheckout(selectedProvider);
-  const attachLinearIssue = useAttachLinearIssue();
-  const attachNotionPage = useAttachNotionPage();
-  const attachGoogleFile = useAttachGoogleFile();
-  const attachGranolaNote = useAttachGranolaNote();
-  const attachSlackMessage = useAttachSlackMessage();
-  const attachDiscordMessage = useAttachDiscordMessage();
-  const attachGitHubIssue = useAttachGitHubIssue();
+  const attachIntegrationReference = useComposerIntegrationReferences(routeThreadRef);
   const captureThreadTabContext = useCaptureThreadTabContext(environmentId, activeThreadId);
   const {
     items: composerMenuItemsFromTrigger,
@@ -2215,48 +2173,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     return true;
   };
   const applyPromptReplacementStable = useStableCallback(applyPromptReplacement);
-  useLayoutEffect(() => {
-    const chipToText = (record: Pick<UnreadLinkContextRecord, "contextId" | "url">) => {
-      const occurrence = collectComposerContextReferences(promptRef.current).find(
-        (candidate) => candidate.contextId === record.contextId,
-      );
-      if (occurrence === undefined) return null;
-      const applied = applyPromptReplacement(occurrence.start, occurrence.end, record.url, {
-        expandedCursorAfterReplace: occurrence.start + record.url.length,
-      });
-      return applied ? occurrence.start : null;
-    };
-    unreadLinkActionsRef.current = {
-      retry: (record) => {
-        const link = parseComposerObjectLink(record.url);
-        if (link === null) return;
-        const index = chipToText(record) ?? 0;
-        const retry = () => unreadLinkActionsRef.current?.retry(record);
-        void resolveObjectLinkWithin(
-          resolveComposerObjectLink(link, { retry }),
-          OBJECT_LINK_TIMEOUT_MS,
-        ).then((result) => {
-          if (result === "skipped") return;
-          const resolved =
-            typeof result === "string"
-              ? unreadLinkChip(routeThreadRef.threadId, link, result)
-              : result;
-          const edit = objectLinkChipEdit(promptRef.current, link.url, index, resolved.reference);
-          if (edit === null) return;
-          if (
-            applyPromptReplacement(edit.start, edit.end, edit.text, {
-              expandedCursorAfterReplace: edit.start + edit.text.length,
-            })
-          ) {
-            resolved.commit();
-          }
-        });
-      },
-      keepAsText: (record) => {
-        chipToText(record);
-      },
-    };
-  });
 
   const readComposerSnapshot = (): {
     value: string;
@@ -2339,17 +2255,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         addComposerDraftReviewComment(composerDraftTarget, comment, { appendReference: false });
       }
       for (const item of items) {
-        if (item.type === "linear-issue") void attachLinearIssue(routeThreadRef, item.issueId);
-        if (item.type === "github-issue") void attachGitHubIssue(routeThreadRef, item.url);
-        if (item.type === "notion-page") void attachNotionPage(routeThreadRef, item.pageId);
-        if (item.type === "google-file") void attachGoogleFile(routeThreadRef, item.fileId);
-        if (item.type === "granola-note") void attachGranolaNote(routeThreadRef, item.noteId);
-        if (item.type === "slack-message") {
-          void attachSlackMessage(routeThreadRef, slackGetThreadInput(item.message, "thread"));
-        }
-        if (item.type === "discord-message") {
-          void attachDiscordMessage(routeThreadRef, discordGetThreadInput(item.message, "thread"));
-        }
+        attachIntegrationReference(item);
         if (item.type === "repository") {
           attachRepository(routeThreadRef, {
             nameWithOwner: item.nameWithOwner,
@@ -2974,159 +2880,19 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   };
   const expandMobileComposerStable = useStableCallback(expandMobileComposer);
 
-  // Links already converted or tried, per draft. Typing never retries them, so undoing a chip or
-  // deleting one stays as text. Pasting is explicit and does.
-  const handledObjectLinksRef = useRef(new Map<string, Set<string>>());
-  // Links whose objects are loading, and the draft each was written in, for placeholder chips.
-  const [loadingObjectLinks, setLoadingObjectLinks] = useState<
-    ReadonlyArray<{ readonly url: string; readonly workKey: string }>
-  >([]);
-  const handledObjectLinks = () => {
-    const key = composerDraftTargetKeyRef.current;
-    let handled = handledObjectLinksRef.current.get(key);
-    if (handled === undefined) {
-      handled = new Set();
-      handledObjectLinksRef.current.set(key, handled);
-    }
-    return handled;
-  };
-  // Runs when the object loads, so it reads the composer as it is then, not as it was at paste.
-  const applyResolvedObjectLink = (
-    started: ObjectLinkDrafts & { draftTarget: ComposerThreadTarget },
-    url: string,
-    index: number,
-    resolved: ResolvedComposerObjectLink,
-  ) => {
-    const destination = objectLinkChipDestination(
-      started,
-      composerEditorRef.current === null
-        ? null
-        : { draftKey: composerDraftTargetKeyRef.current, workKey: attachmentTargetKeyRef.current },
-    );
-    if (destination === "drop") return;
-    if (destination === "stored-draft") {
-      const prompt =
-        useComposerDraftStore.getState().getComposerDraft(started.draftTarget)?.prompt ?? "";
-      const edit = objectLinkChipEdit(prompt, url, index, resolved.reference);
-      if (edit === null) return;
-      setComposerDraftPrompt(
-        started.draftTarget,
-        `${prompt.slice(0, edit.start)}${edit.text}${prompt.slice(edit.end)}`,
-      );
-      resolved.commit();
-      return;
-    }
-    const edit = objectLinkChipEdit(promptRef.current, url, index, resolved.reference);
-    if (edit === null) return;
-    // Keep the caret where the user left it, shifted past the chip if it was after the link.
-    const cursor = readComposerSnapshot().expandedCursor;
-    const cursorAfter =
-      cursor <= edit.start
-        ? cursor
-        : cursor >= edit.end
-          ? cursor + edit.text.length - (edit.end - edit.start)
-          : edit.start + edit.text.length;
-    const activeElement = document.activeElement;
-    const applied = applyPromptReplacement(edit.start, edit.end, edit.text, {
-      expandedCursorAfterReplace: cursorAfter,
-      focusEditorAfterReplace:
-        activeElement instanceof Node && composerFormRef.current?.contains(activeElement) === true,
+  const { loadingObjectLinks, convertTypedObjectLink, convertPastedObjectLinks } =
+    useComposerObjectLinks({
+      routeThreadRef,
+      composerDraftTarget,
+      composerDraftTargetKeyRef,
+      attachmentTargetKeyRef,
+      promptRef,
+      composerEditorRef,
+      composerFormRef,
+      unreadLinkActionsRef,
+      readComposerSnapshot,
+      applyPromptReplacement,
     });
-    if (applied) resolved.commit();
-  };
-  const applyResolvedObjectLinkStable = useStableCallback(applyResolvedObjectLink);
-  /** Turns a broken chip back into its link; where the link now starts, or null if there is none. */
-  const unreadLinkChipToText = (record: Pick<UnreadLinkContextRecord, "contextId" | "url">) => {
-    const occurrence = collectComposerContextReferences(promptRef.current).find(
-      (candidate) => candidate.contextId === record.contextId,
-    );
-    if (occurrence === undefined) return null;
-    const applied = applyPromptReplacement(occurrence.start, occurrence.end, record.url, {
-      expandedCursorAfterReplace: occurrence.start + record.url.length,
-    });
-    return applied ? occurrence.start : null;
-  };
-  /** Swaps links to issues, pull requests, and repositories for the chips their attach pickers make. */
-  const convertObjectLinks = (
-    links: ReadonlyArray<{
-      link: ComposerObjectLink;
-      index: number;
-    }>,
-  ) => {
-    const started = {
-      draftTarget: composerDraftTarget,
-      draftKey: composerDraftTargetKeyRef.current,
-      workKey: attachmentTargetKeyRef.current,
-    };
-    const threadId = routeThreadRef.threadId;
-    const handled = handledObjectLinks();
-    for (const { link, index } of links) {
-      handled.add(link.url);
-      const loading = { url: link.url, workKey: started.workKey };
-      setLoadingObjectLinks((current) => [...current, loading]);
-      const retry = () => {
-        if (composerDraftTargetKeyRef.current !== started.draftKey) return;
-        unreadLinkActionsRef.current?.retry(unreadLinkContextRecord(link, "unreadable"));
-      };
-      pendingDraftWork.begin(started.workKey);
-      void resolveObjectLinkWithin(
-        resolveComposerObjectLink(link, { retry }),
-        OBJECT_LINK_TIMEOUT_MS,
-      )
-        .then((result) => {
-          if (result === "skipped") return;
-          // A link that was tried and failed becomes a broken chip, so it reads differently
-          // from a link nobody tried. The agent still receives the link.
-          const resolved =
-            typeof result === "string" ? unreadLinkChip(threadId, link, result) : result;
-          applyResolvedObjectLinkStable(started, link.url, index, resolved);
-        })
-        .finally(() => {
-          pendingDraftWork.end(started.workKey);
-          setLoadingObjectLinks((current) => current.filter((entry) => entry !== loading));
-        });
-    }
-  };
-  useLayoutEffect(() => {
-    unreadLinkActionsRef.current = {
-      // Starts from the link its broken chip holds, or the link itself if it is still text.
-      retry: (record) => {
-        const link = parseComposerObjectLink(record.url);
-        if (link === null) return;
-        convertObjectLinks([{ link, index: unreadLinkChipToText(record) ?? 0 }]);
-      },
-      keepAsText: (record) => {
-        handledObjectLinks().add(record.url);
-        unreadLinkChipToText(record);
-      },
-    };
-  });
-  /** `pasteStart` is where the paste lands, so offsets into the pasted text are offsets from it. */
-  const convertPastedObjectLinks = (
-    pastedText: string,
-    keepAsText: boolean,
-    pasteStart: number,
-  ) => {
-    const links = findPastedComposerObjectLinks(promptRef.current, pastedText, pasteStart);
-    if (links.length === 0) return;
-    if (keepAsText) {
-      for (const { link } of links) handledObjectLinks().add(link.url);
-      return;
-    }
-    convertObjectLinks(links);
-  };
-  // Read by `onPromptChange`, which is declared before the replacement helpers this needs.
-  const convertTypedObjectLink = (
-    previousPrompt: string,
-    nextPrompt: string,
-    expandedCursor: number,
-  ) => {
-    // One typed character, so pastes, chip insertions, and caret moves never count.
-    if (nextPrompt.length !== previousPrompt.length + 1) return;
-    const typed = findTypedComposerObjectLink(nextPrompt, expandedCursor);
-    if (typed === null || handledObjectLinks().has(typed.link.url)) return;
-    convertObjectLinks([typed]);
-  };
   useLayoutEffect(() => {
     convertTypedObjectLinkRef.current = convertTypedObjectLink;
   });
