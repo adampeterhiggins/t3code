@@ -1,4 +1,4 @@
-export const LINEAR_AUTHORIZE_URL = "https://linear.app/oauth/authorize";
+const LINEAR_AUTHORIZE_URL = "https://linear.app/oauth/authorize";
 export const LINEAR_TOKEN_URL = "https://api.linear.app/oauth/token";
 export const LINEAR_REVOKE_URL = "https://api.linear.app/oauth/revoke";
 export const LINEAR_GRAPHQL_URL = "https://api.linear.app/graphql";

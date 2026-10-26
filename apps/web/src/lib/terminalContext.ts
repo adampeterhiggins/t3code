@@ -39,7 +39,6 @@ export function formatTerminalContextReference(context: TerminalContextReference
 }
 
 // CSI sequences (SGR and anything else), OSC sequences ended by BEL or ST, and lone escapes.
-// oxlint-disable-next-line no-control-regex
 const ESCAPE_PATTERN = /\x1b\[([0-9:;?<=>]*)([ -/]*[@-~])|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b./g;
 
 /**
@@ -81,26 +80,6 @@ export function filterTerminalContextsWithText<T extends { text: string }>(
   contexts: ReadonlyArray<T>,
 ): T[] {
   return contexts.filter((context) => hasTerminalContextText(context));
-}
-
-function normalizeTerminalContextSelection(
-  selection: TerminalContextSelection,
-): TerminalContextSelection | null {
-  const text = normalizeTerminalContextText(selection.text);
-  const terminalId = selection.terminalId.trim();
-  const terminalLabel = selection.terminalLabel.trim();
-  if (text.length === 0 || terminalId.length === 0 || terminalLabel.length === 0) {
-    return null;
-  }
-  const lineStart = Math.max(1, Math.floor(selection.lineStart));
-  const lineEnd = Math.max(lineStart, Math.floor(selection.lineEnd));
-  return {
-    terminalId,
-    terminalLabel,
-    lineStart,
-    lineEnd,
-    text,
-  };
 }
 
 function formatTerminalContextRange(selection: { lineStart: number; lineEnd: number }): string {

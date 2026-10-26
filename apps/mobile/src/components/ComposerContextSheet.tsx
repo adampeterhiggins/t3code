@@ -64,6 +64,7 @@ const THREAD_TAB_SUMMARY_ROLE_LABELS = {
   error: "Error",
 } as const satisfies Record<ThreadTabSummaryRole, string>;
 
+/* oxlint-disable react/no-array-index-key -- Captured summaries are immutable text snapshots without entry IDs. */
 function ThreadTabSummaryFields(props: { summary: string }) {
   const chats = (() => parseThreadTabSummary(props.summary))();
   if (chats === null) return <ContextField label="Summary" value={props.summary} />;
@@ -148,6 +149,8 @@ function ThreadTabSummaryFields(props: { summary: string }) {
   });
 }
 
+/* oxlint-enable react/no-array-index-key */
+
 function ContextField(props: { label: string; value: string | null | undefined; code?: boolean }) {
   if (!props.value) return null;
   return (
@@ -228,7 +231,7 @@ export function ComposerContextSheet(props: {
       : undefined;
   if (record && !("payload" in record) && (record.kind === "image" || record.kind === "file")) {
     const mimeType = videoMimeType(record) ?? record.mimeType;
-    const previewKind = filePreviewKind(record);
+    const previewKind = filePreviewKind(record, { richDocuments: false });
     const resource = {
       _tag: "attachment" as const,
       attachmentId: record.attachmentId,
@@ -385,18 +388,23 @@ export function ComposerContextSheet(props: {
                 <ContextField label="Comment" value={record.comment} />
                 <ContextField label="Selection" value={record.targetSummary} />
                 <ContextField label="Requested changes" value={record.styleChanges.join("\n")} />
-                {record.elements?.map((element, index) => (
-                  <View key={`${element.selector ?? element.tagName}:${index}`} className="gap-3">
-                    <ContextField
-                      label="Element"
-                      value={element.componentName ?? element.tagName}
-                    />
-                    <ContextField label="Selector" value={element.selector} code />
-                    <ContextSource source={element.source} />
-                    <ContextField label="HTML" value={element.htmlPreview} code />
-                    <ContextField label="Styles" value={element.styles} code />
-                  </View>
-                ))}
+                {record.elements?.map(
+                  (element, index) => (
+                    /* oxlint-disable react/no-array-index-key -- Captured DOM elements are a fixed snapshot without persistent element IDs. */ <View
+                      key={`${element.selector ?? element.tagName}:${index}`}
+                      className="gap-3"
+                    >
+                      <ContextField
+                        label="Element"
+                        value={element.componentName ?? element.tagName}
+                      />
+                      <ContextField label="Selector" value={element.selector} code />
+                      <ContextSource source={element.source} />
+                      <ContextField label="HTML" value={element.htmlPreview} code />
+                      <ContextField label="Styles" value={element.styles} code />
+                    </View>
+                  ) /* oxlint-enable react/no-array-index-key */,
+                )}
               </>
             ) : null}
             {record.kind === "element" ? (

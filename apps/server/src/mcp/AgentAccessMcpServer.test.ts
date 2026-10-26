@@ -1,3 +1,4 @@
+import * as DocumentText from "../provider/DocumentText.ts";
 import { NodeHttpServer } from "@effect/platform-node";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
@@ -91,6 +92,7 @@ const ThreadMcpLive = toolkitRegistration(
 const RoutesLive = Layer.mergeAll(AgentAccessMcpServer.layer, ThreadMcpLive).pipe(
   Layer.provide(
     Layer.mergeAll(
+      Layer.mock(DocumentText.DocumentText)({}),
       FakeEnvironmentAuth,
       Layer.mock(ServerEnvironment.ServerEnvironment)({
         getEnvironmentId: Effect.succeed(environmentId),

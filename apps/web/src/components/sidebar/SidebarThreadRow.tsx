@@ -19,6 +19,7 @@ import { discardComposerDraft } from "../../lib/discardComposerDraft";
 import { useThreadMessageDrafts } from "../../state/messageDrafts";
 import { requestCustomSnooze } from "../CustomSnoozeDialog";
 import { useSupportsMultiplePullRequests } from "~/hooks/useSupportsMultiplePullRequests";
+import { useDeadlinePassed } from "~/hooks/useDeadline";
 import { resolveThreadCurrentPullRequestLink } from "@t3tools/client-runtime/thread-pull-requests";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -92,6 +93,7 @@ import {
   shouldRecedeSidebarThread,
   resolveWorkingStartedAt,
   useSidebarRowSubscriptionLease,
+  setFileDragActive,
 } from "../Sidebar.logic";
 import { animateSidebarDisclosure } from "../Sidebar.motion";
 import { resolveSnoozePresets, type SnoozePreset } from "../Sidebar.snooze";
@@ -223,6 +225,7 @@ function SnoozeMenuButton(props: {
   timestampFormat: TimestampFormat;
 }) {
   const { open, onOpenChange, onSnooze, timestampFormat } = props;
+  // oxlint-disable-next-line react/purity -- Presets are resolved only while the menu is open, so each opening reads a fresh time.
   const presets = open ? resolveSnoozePresets(new Date(), timestampFormat) : [];
   return (
     <Menu open={open} onOpenChange={onOpenChange}>
@@ -426,6 +429,10 @@ type SidebarThreadRowProps = {
   isActive: boolean;
   // One side of the split view on screen: the routed chat or the one beside it.
   inSplit: boolean;
+  // Set on the active row only; scrolls it into view when a reveal is owed.
+  revealRef?: ((row: HTMLElement, threadKey: string) => void) | undefined;
+  // Unlike isActive, never true for the ancestor standing in for an open
+  // subagent: drafts and PR clicks care about which composer is on screen.
   isRouteThread: boolean;
   // A sibling tab is the open route. The header stays present, but the active
   // pill belongs to that tab row.
@@ -490,6 +497,7 @@ type SidebarThreadRowProps = {
   /** A tab list finished opening or closing, so rows below it have moved. */
   onTabsResized?: (() => void) | undefined;
 };
+
 const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowProps) {
   const {
     isRenaming,
@@ -522,10 +530,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const rowThreadKey = scopedThreadKey(rowThreadRef);
   const threadKey = scopedThreadKey(threadRef);
   const canOperateThread = useEnvironmentScope(thread.environmentId, AuthOrchestrationOperateScope);
-  useEffect(() => {
-    if (!canOperateThread && isRenaming) onCancelRename();
-  }, [canOperateThread, isRenaming, onCancelRename]);
-  const { leaseLiveStatus, rowRef } = useSidebarRowSubscriptionLease(props.isActive);
+  const { leaseLiveStatus, rowRef: leaseRowRef } = useSidebarRowSubscriptionLease(props.isActive);
+  const { revealRef } = props;
+  const rowRef = (row: HTMLElement | null) => {
+    if (row !== null) revealRef?.(row, threadKey);
+    return leaseRowRef(row);
+  };
   const isRegeneratingTitle = thread.titleRegeneration != null;
   const localLastVisitedAt = useUiStateStore((state) => state.threadLastVisitedAtById[threadKey]);
   const lastVisitedAt = resolveThreadLastVisitedAt(thread.lastVisitedAt, localLastVisitedAt);
@@ -629,7 +639,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const [isFileDragOver, setIsFileDragOver] = useState(false);
   const fileDropHandlers = onFileDropThreads
     ? makeWorkspaceFileDropHandlers({
-        setDragActive: setIsFileDragOver,
+        setDragActive: (active) => setFileDragActive(setIsFileDragOver, active),
         addFiles: (files) => {
           onFileDropThreads(threadRef, files);
         },
@@ -728,24 +738,23 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     now: new Date().toISOString(),
   }));
   if (snoozeGateClock.thread !== thread) {
+    // oxlint-disable-next-line react/purity -- Reseeds the snooze gate clock only in the render-phase adjustment that runs when the thread changes.
     setSnoozeGateClock({ thread, now: new Date().toISOString() });
   }
   const snoozeGateNow = snoozeGateClock.now;
   const snoozeGateExpiryMs = hasQueuedTurnStart(thread, { now: snoozeGateNow })
     ? Date.parse(thread.latestUserMessageAt ?? "") + QUEUED_TURN_START_GRACE_MS
     : Number.NaN;
-  useEffect(() => {
-    // A gate still closed past its expiry is held by runtime status, not time,
-    // so no clock tick can open it.
-    if (!Number.isFinite(snoozeGateExpiryMs) || snoozeGateExpiryMs <= Date.parse(snoozeGateNow)) {
-      return;
-    }
-    const id = window.setTimeout(
-      () => setSnoozeGateClock({ thread, now: new Date().toISOString() }),
-      Math.min(Math.max(0, snoozeGateExpiryMs - Date.now()) + 50, 2_147_483_647),
-    );
-    return () => window.clearTimeout(id);
-  }, [snoozeGateExpiryMs, snoozeGateNow, thread]);
+  // A gate still closed past its expiry is held by runtime status, not time,
+  // so no clock tick can open it.
+  const snoozeGateOpensAt =
+    Number.isFinite(snoozeGateExpiryMs) && snoozeGateExpiryMs > Date.parse(snoozeGateNow)
+      ? snoozeGateExpiryMs + 50
+      : null;
+  const snoozeGateOpened = useDeadlinePassed(snoozeGateOpensAt);
+  if (snoozeGateOpened && snoozeGateOpensAt !== null) {
+    setSnoozeGateClock({ thread, now: new Date(snoozeGateOpensAt).toISOString() });
+  }
   const showSnoozeButton =
     canOperateThread && props.snoozeSupported && canSnooze(thread, { now: snoozeGateNow });
   // Closing here, not just masking, keeps the menu from reopening when the button returns.
@@ -1743,6 +1752,14 @@ function latestRunDiff(thread: SidebarThreadSummary): {
   void thread;
   return null;
 }
+
+// Attached only to the highlighted result, so React calls it each time the
+// highlight lands on a different row: a new query, late rows replacing the first
+// result, or arrow keys moving past the scrolled edge.
+const scrollHighlightedResultIntoView = (node: HTMLLIElement | null) => {
+  node?.scrollIntoView({ block: "nearest" });
+};
+
 export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props: {
   isSettled: boolean;
   thread: SidebarThreadSummary;
@@ -1774,20 +1791,19 @@ export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props
   const [isFileDragOver, setIsFileDragOver] = useState(false);
   const onFileDropThreads = props.onFileDropThreads;
   const fileDropHandlers = makeWorkspaceFileDropHandlers({
-    setDragActive: setIsFileDragOver,
+    setDragActive: (active) => setFileDragActive(setIsFileDragOver, active),
     addFiles: (files) => {
       onFileDropThreads(threadRef, files);
     },
     addFolders: () => {},
   });
-  useEffect(() => {
-    if (!isFileDragOver) return;
-    const clearFileDrag = () => setIsFileDragOver(false);
-    window.addEventListener("dragend", clearFileDrag);
-    return () => window.removeEventListener("dragend", clearFileDrag);
-  }, [isFileDragOver]);
   return (
-    <li role="presentation" className="list-none" {...fileDropHandlers}>
+    <li
+      ref={props.isHighlighted ? scrollHighlightedResultIntoView : undefined}
+      role="presentation"
+      className="list-none"
+      {...fileDropHandlers}
+    >
       <ContextPreviewHover
         kind="thread"
         accessibleLabel={`Thread, ${thread.title}`}

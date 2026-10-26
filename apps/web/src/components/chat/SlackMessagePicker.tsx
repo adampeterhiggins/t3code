@@ -119,7 +119,7 @@ export function useAttachSlackMessage() {
 }
 
 /** Links the Slack thread a message belongs to (or starts) to the thread's tab group. */
-export function useLinkSlackThread() {
+function useLinkSlackThread() {
   const linkThread = useAtomCommand(slackEnvironment.linkThread, { reportFailure: false });
   return async (threadRef: ScopedThreadRef, message: SlackMessageSummary): Promise<boolean> => {
     const result = await linkThread({

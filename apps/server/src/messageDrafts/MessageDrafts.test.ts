@@ -1,3 +1,4 @@
+import * as DocumentText from "../provider/DocumentText.ts";
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
@@ -59,6 +60,7 @@ const threadsLayer = Layer.mock(ThreadManagement.ThreadManagementService)({
 });
 
 const testLayer = MessageDrafts.layer.pipe(
+  Layer.provideMerge(DocumentText.layer.pipe(Layer.provideMerge(NodeServices.layer))),
   Layer.provideMerge(threadsLayer),
   Layer.provideMerge(
     Layer.effectDiscard(

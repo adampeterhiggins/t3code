@@ -17,6 +17,25 @@ import {
 const parser = unified().use(remarkParse).use(remarkGfm);
 export type MarkdownNode = Root | RootContent;
 
+interface MarkdownEdit {
+  readonly start: number;
+  readonly end: number;
+  readonly content: string;
+}
+
+function applyMarkdownEdits(markdown: string, edits: MarkdownEdit[]): string {
+  if (edits.length === 0) return markdown;
+  const parts: string[] = [];
+  let offset = 0;
+  // AST traversal emits disjoint edits in source order.
+  for (const edit of edits) {
+    parts.push(markdown.slice(offset, edit.start), edit.content);
+    offset = edit.end;
+  }
+  parts.push(markdown.slice(offset));
+  return parts.join("");
+}
+
 function decodeCodePoint(codePoint: number, entity: string): string {
   if (!Number.isInteger(codePoint) || codePoint < 0 || codePoint > 0x10ffff) {
     return entity;
@@ -450,6 +469,84 @@ function isObjectLinkCandidate(url: string): boolean {
   return objectLinkLabel(url.replace(/[.,;:!?]+$/u, "")) !== null;
 }
 
+// Start only at the beginning of a backtick run to avoid retrying every suffix.
+const INLINE_CODE_SPAN = /(?<!`)`+([^`\r\n]+)`+/g;
+
+export function markdownWithInlineFileLinks(markdown: string, fileLink: RegExp): string {
+  return transformNativeMarkdown(markdown, fileLink, false);
+}
+
+function transformNativeMarkdown(
+  markdown: string,
+  fileLink: RegExp | undefined,
+  tableBreaks: boolean,
+): string {
+  const breakTables = tableBreaks && mayHaveTableUnderText(markdown);
+  let linkFiles = false;
+  if (fileLink) {
+    for (const [, code] of markdown.matchAll(INLINE_CODE_SPAN)) {
+      if (fileLink.test(code!.trim())) {
+        linkFiles = true;
+        break;
+      }
+    }
+  }
+  if (!linkFiles && !breakTables) return markdown;
+  const edits: MarkdownEdit[] = [];
+  const fileEdits: MarkdownEdit[] = [];
+  let rewritesPipe = false;
+  const visit = (node: MarkdownNode) => {
+    if (linkFiles && node.type === "inlineCode") {
+      const start = node.position?.start.offset;
+      const end = node.position?.end.offset;
+      const escaped = node.value.replace(/[\\[\]&]/g, "\\$&");
+      if (
+        start !== undefined &&
+        end !== undefined &&
+        fileLink?.test(node.value) &&
+        !/[<>]/.test(node.value)
+      ) {
+        const edit = {
+          start,
+          end,
+          content: `[${escaped}](<${escaped}>)`,
+        };
+        edits.push(edit);
+        fileEdits.push(edit);
+        if (node.value.includes("|")) rewritesPipe = true;
+      }
+    } else if (node.type !== "link" && node.type !== "linkReference" && "children" in node)
+      node.children.forEach((child, index) => {
+        const previous = node.children[index - 1];
+        const start = child.position?.start;
+        if (
+          breakTables &&
+          child.type === "table" &&
+          previous?.type === "paragraph" &&
+          start?.offset !== undefined &&
+          previous.position?.end.line === start.line - 1
+        ) {
+          let lineStart = start.offset;
+          while (lineStart > 0 && !/[\r\n]/.test(markdown[lineStart - 1]!)) lineStart -= 1;
+          // Replace only the container prefix, leaving cell edits disjoint from the table break.
+          const [, header = "", , ending = "\n", markers = ""] =
+            /^([ \t>]*)([^\r\n]*)(\r\n|\r|\n)([ \t>]*)/.exec(markdown.slice(lineStart)) ?? [];
+          edits.push({
+            start: lineStart,
+            end: lineStart + header.length,
+            content: `${markers.trimEnd()}${ending}${markers}`,
+          });
+        }
+        visit(child);
+      });
+  };
+  visit(parser.parse(markdown));
+  // Rewritten pipes can change table structure, so preserve the original pass ordering.
+  if (breakTables && rewritesPipe)
+    return markdownWithTableBreaks(applyMarkdownEdits(markdown, fileEdits));
+  return applyMarkdownEdits(markdown, edits);
+}
+
 // A delimiter row such as `|---|:--:|`, possibly inside a blockquote or list item.
 function isTableDelimiterRow(line: string): boolean {
   if (!line.includes("-")) return false;
@@ -471,72 +568,71 @@ function mayHaveTableUnderText(markdown: string): boolean {
 
 /** md4c starts tables only at paragraph starts; insert breaks to match GFM. */
 export function markdownWithTableBreaks(markdown: string): string {
-  if (!mayHaveTableUnderText(markdown)) return markdown;
-  const lineStarts: number[] = [];
-  const visit = (node: MarkdownNode) => {
-    if (!("children" in node)) return;
-    node.children.forEach((child, index) => {
-      const previous = node.children[index - 1];
-      const start = child.position?.start;
-      if (
-        child.type === "table" &&
-        previous?.type === "paragraph" &&
-        start?.offset !== undefined &&
-        previous.position?.end.line === start.line - 1
-      )
-        lineStarts.push(
-          Math.max(
-            markdown.lastIndexOf("\n", start.offset - 1),
-            markdown.lastIndexOf("\r", start.offset - 1),
-          ) + 1,
-        );
-      visit(child);
-    });
-  };
-  visit(parser.parse(markdown));
-  for (const lineStart of lineStarts.reverse()) {
-    // Lazy headers can lack container markers; copy the delimiter's markers to the header and blank line.
-    const [, header = "", cells = "", ending = "\n", markers = ""] =
-      /^([ \t>]*)([^\r\n]*)(\r\n|\r|\n)([ \t>]*)/.exec(markdown.slice(lineStart)) ?? [];
-    markdown =
-      markdown.slice(0, lineStart) +
-      `${markers.trimEnd()}${ending}${markers}${cells}` +
-      markdown.slice(lineStart + header.length + cells.length);
-  }
-  return markdown;
+  return transformNativeMarkdown(markdown, undefined, true);
 }
 
 export function parseMarkdownDocument(markdown: string): Root {
   return parser.parse(markdownWithHtml(markdown));
 }
 
-const INLINE_CODE_SPAN = /`+([^`\r\n]+)`+/g;
+export function markdownForNativeRendering(
+  markdown: string,
+  fileLink: RegExp,
+  appearance: "light" | "dark" = "light",
+): string {
+  // HTML wrappers can expose Markdown that wasn't in the first AST, so normalize them first.
+  return transformNativeMarkdown(markdownWithHtml(markdown, appearance), fileLink, true);
+}
 
-export function markdownWithInlineFileLinks(markdown: string, fileLink: RegExp): string {
-  if (![...markdown.matchAll(INLINE_CODE_SPAN)].some(([, code]) => fileLink.test(code!.trim())))
-    return markdown;
+/** Native media slots only cover standalone images; nested file embeds must become links. */
+export function markdownWithFileEmbeds(
+  markdown: string,
+  label: (href: string, standalone: boolean) => string | null,
+): { markdown: string; fileHrefs: ReadonlySet<string> } {
+  const fileHrefs = new Set<string>();
+  if (!markdown.includes("![")) return { markdown, fileHrefs };
+  const root = parser.parse(markdown);
+  const topLevelBlocks = new Set<MarkdownNode>(root.children);
+  const definitions = new Map<string, string>();
+  const collect = (node: MarkdownNode) => {
+    if (node.type === "definition") {
+      const identifier = node.identifier.toUpperCase();
+      if (!definitions.has(identifier)) definitions.set(identifier, node.url);
+    }
+    if ("children" in node) node.children.forEach(collect);
+  };
+  collect(root);
   const edits: Array<{ start: number; end: number; content: string }> = [];
-  const visit = (node: MarkdownNode) => {
-    if (node.type === "inlineCode") {
+  const visit = (node: MarkdownNode, standalone = false, insideLink = false) => {
+    if (node.type === "image" || node.type === "imageReference") {
+      const href =
+        node.type === "image" ? node.url : definitions.get(node.identifier.toUpperCase());
+      const name = href === undefined ? null : label(href, standalone);
       const start = node.position?.start.offset;
       const end = node.position?.end.offset;
-      const escaped = node.value.replace(/[\\[\]&]/g, "\\$&");
-      if (
-        start !== undefined &&
-        end !== undefined &&
-        fileLink.test(node.value) &&
-        !/[<>]/.test(node.value)
-      )
-        edits.push({
-          start,
-          end,
-          content: `[${escaped}](<${escaped}>)`,
-        });
-    } else if (node.type !== "link" && node.type !== "linkReference" && "children" in node)
-      node.children.forEach(visit);
+      if (href !== undefined && name !== null && start !== undefined && end !== undefined) {
+        const text = name.replace(/[\\[\]`*_~|&<>]/g, "\\$&");
+        const url = href.replace(/[\\&]/g, "\\$&").replace(/</g, "%3C").replace(/>/g, "%3E");
+        edits.push({ start, end, content: insideLink ? text : `[${text}](<${url}>)` });
+        fileHrefs.add(href);
+      }
+    }
+    if ("children" in node)
+      node.children.forEach((child) =>
+        visit(
+          child,
+          node.type === "paragraph" && node.children.length === 1 && topLevelBlocks.has(node),
+          insideLink || node.type === "link" || node.type === "linkReference",
+        ),
+      );
   };
-  visit(parser.parse(markdown));
-  for (const edit of edits.reverse())
-    markdown = markdown.slice(0, edit.start) + edit.content + markdown.slice(edit.end);
-  return markdown;
+  visit(root);
+  const parts: string[] = [];
+  let offset = 0;
+  for (const edit of edits) {
+    parts.push(markdown.slice(offset, edit.start), edit.content);
+    offset = edit.end;
+  }
+  parts.push(markdown.slice(offset));
+  return { markdown: parts.join(""), fileHrefs };
 }

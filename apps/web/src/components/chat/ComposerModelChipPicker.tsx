@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import type {
   EnvironmentId,
   ProviderInstanceId,
@@ -28,6 +29,7 @@ export function ComposerModelChipPicker(props: {
   terminalOpen: boolean;
   onPick: (instanceId: ProviderInstanceId, model: string) => void;
 }) {
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const composerMenuProps = useComposerMenuProps();
   if (!props.open) return null;
   return (
@@ -39,9 +41,11 @@ export function ComposerModelChipPicker(props: {
         align="end"
         className="before:hidden"
         padding="none"
+        initialFocus={searchInputRef}
         touchBackdrop
       >
         <ModelPickerContent
+          searchInputRef={searchInputRef}
           environmentId={props.environmentId}
           activeInstanceId={props.activeInstanceId}
           model={props.model}

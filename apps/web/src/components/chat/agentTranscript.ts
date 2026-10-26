@@ -229,7 +229,7 @@ export function deriveAgentTranscriptRows(
   return rows;
 }
 
-export function agentTranscriptKindOf(row: AgentTranscriptRow): AgentTranscriptKind {
+function agentTranscriptKindOf(row: AgentTranscriptRow): AgentTranscriptKind {
   switch (row.kind) {
     case "reasoning":
       return "reasoning";

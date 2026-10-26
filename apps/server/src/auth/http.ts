@@ -28,7 +28,6 @@ import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { identity } from "effect/Function";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Cookies from "effect/http/Cookies";
@@ -46,7 +45,7 @@ import { deriveAuthClientMetadata } from "./utils.ts";
 import { verifyRequestDpopProof } from "./dpop.ts";
 
 /** Subject for tokens minted from Settings → Connections → Agent access. */
-export const AGENT_ACCESS_TOKEN_SUBJECT = "agent-access-token";
+const AGENT_ACCESS_TOKEN_SUBJECT = "agent-access-token";
 
 const CREDENTIAL_RESPONSE_HEADERS = {
   "cache-control": "no-store",

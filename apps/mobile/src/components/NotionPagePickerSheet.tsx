@@ -148,43 +148,43 @@ function NotionPageSearch(props: OpenedNotionPagePicker & { readonly onClose: ()
     props.onClose();
   };
 
+  const attachSelected = async (page: NotionPageSummary) => {
+    if (props.mode === "link") {
+      await link(props.threadId, page);
+      return;
+    }
+    const fetched = await getPage({
+      environmentId: props.environmentId,
+      input: { id: page.id },
+    });
+    if (fetched._tag === "Failure") {
+      Alert.alert(
+        "Could not attach Notion page",
+        notionErrorMessage(squashAtomCommandFailure(fetched), "Try again."),
+      );
+      return;
+    }
+    const record = notionPageContextRecord(fetched.value);
+    if (
+      !insertComposerDraftContext(
+        props.draftKey,
+        {
+          text: formatComposerContextReference(record),
+          context: { version: 1, records: [record] },
+        },
+        props.insertion,
+      )
+    ) {
+      Alert.alert("Too many context items", "Remove some context from the draft and try again.");
+      return;
+    }
+    props.onClose();
+  };
+
   const attach = async (page: NotionPageSummary) => {
     if (attaching) return;
     setAttaching(page.url);
-    try {
-      if (props.mode === "link") {
-        await link(props.threadId, page);
-        return;
-      }
-      const fetched = await getPage({
-        environmentId: props.environmentId,
-        input: { id: page.id },
-      });
-      if (fetched._tag === "Failure") {
-        Alert.alert(
-          "Could not attach Notion page",
-          notionErrorMessage(squashAtomCommandFailure(fetched), "Try again."),
-        );
-        return;
-      }
-      const record = notionPageContextRecord(fetched.value);
-      if (
-        !insertComposerDraftContext(
-          props.draftKey,
-          {
-            text: formatComposerContextReference(record),
-            context: { version: 1, records: [record] },
-          },
-          props.insertion,
-        )
-      ) {
-        Alert.alert("Too many context items", "Remove some context from the draft and try again.");
-        return;
-      }
-      props.onClose();
-    } finally {
-      setAttaching(null);
-    }
+    await attachSelected(page).finally(() => setAttaching(null));
   };
 
   return (

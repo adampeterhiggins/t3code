@@ -1,3 +1,5 @@
+import { transcriptItemId } from "./transcriptCitation.logic";
+import { AudioPreviewUnmountContext } from "../files/AudioPreview";
 import { ThreadFindTimelineContext } from "./ThreadFindProvider";
 import { MarkdownFindContext } from "./markdownFindContext";
 import { useChatCanvas } from "./ChatCanvasContext";
@@ -34,6 +36,7 @@ import {
   useRef,
   useState,
   type ReactNode,
+  type SyntheticEvent,
 } from "react";
 import {
   LegendList,
@@ -65,9 +68,11 @@ import {
 import { AssistantSelectionToolbar } from "./AssistantSelectionToolbar";
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
 import { type AssistantCitationRequest } from "./AssistantCitationSource";
-import { useAssistantCitationTarget, type CitationHistoryPage } from "./useAssistantCitationTarget";
+import { useAssistantCitationTarget } from "./useAssistantCitationTarget";
 import { useTranscriptCitationReveal } from "./useTranscriptCitationReveal";
 import { TranscriptSelectionStyle } from "./TranscriptSelectionStyle";
+import { resolveCitationPhase, type CitedHistory } from "./citationProcedure";
+import { toastManager } from "../ui/toast";
 import {
   resolveTimelineIsAtEnd,
   resolveTimelineMinimapHasPersistentGutter,
@@ -82,7 +87,7 @@ import {
 } from "./MessagesTimeline.logic";
 import { type ThreadFindMatch } from "./threadFind";
 import { useThreadFindNavigation } from "./useThreadFindNavigation";
-import type { ThreadFindPositionReader } from "./threadFind";
+
 import { Tooltip, TooltipPopup, TooltipScrollDismissArea, TooltipTrigger } from "../ui/tooltip";
 import { Button } from "../ui/button";
 import { AgentHandle } from "./AgentHandle";
@@ -179,6 +184,8 @@ const TIMELINE_MAINTAIN_SCROLL_AT_END_SMOOTH = {
   animated: true,
 } as const satisfies MaintainScrollAtEndOptions;
 
+const CITED_HISTORY_LOADING: CitedHistory = { _tag: "loading" };
+
 export interface MessagesTimelineHistoryControls {
   readonly hasMoreHistory: boolean;
   readonly loading: boolean;
@@ -188,7 +195,7 @@ export interface MessagesTimelineHistoryControls {
 
 interface MessagesTimelineProps {
   citationRequest?: AssistantCitationRequest | null;
-  citationHistoryLoading?: boolean;
+  citationHistory?: CitedHistory;
   onCiteAssistantText?: (
     citation: AssistantCitation,
     sourceAnchor?: AssistantCitationSourceAnchor,
@@ -284,8 +291,6 @@ interface MessagesTimelineProps {
   emptyPlaceholderInset: number;
   topFadeEnabled?: boolean;
   historyControls?: MessagesTimelineHistoryControls | undefined;
-  loadEarlier?: CitationHistoryPage | null;
-  findPositionReaderRef?: React.RefObject<ThreadFindPositionReader | null>;
   findExpanded?: boolean;
   findQuery?: string;
   activeFindMatch?: ThreadFindMatch | null;
@@ -310,7 +315,7 @@ export function MessagesTimeline(props: MessagesTimelineProps) {
 
 const ConversationTimeline = memo(function ConversationTimeline({
   citationRequest = null,
-  citationHistoryLoading = false,
+  citationHistory = CITED_HISTORY_LOADING,
   onCiteAssistantText,
   selectionActionBottom = 12,
   isWorking,
@@ -334,7 +339,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
   findQuery = "",
   activeFindMatch = null,
   findNavigationId = 0,
-  findPositionReaderRef,
   latestRun,
   announcedRun = null,
   detailBehindShell = false,
@@ -385,7 +389,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
   emptyPlaceholderInset,
   topFadeEnabled = false,
   historyControls,
-  loadEarlier = null,
 }: MessagesTimelineProps) {
   const listIdentityKey = displayThreadKey ?? routeThreadKey;
   // Snapshot restore positions on identity changes; ongoing scroll writes must not move them.
@@ -405,6 +408,9 @@ const ConversationTimeline = memo(function ConversationTimeline({
   const restoringThreadPosition = positionedThreadKey !== listIdentityKey;
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
   const [settlingListIdentity, setSettlingListIdentity] = useState<string | null>(listIdentityKey);
+  const [playingAudioRows, setPlayingAudioRows] = useState<ReadonlyMap<HTMLAudioElement, string>>(
+    () => new Map(),
+  );
   let paintedExpandedRunIds = expandedRunIds;
   let paintedExpandedWorkGroupIds = expandedWorkGroupIds;
   let paintedExpandedAttemptIds = expandedAttemptIds;
@@ -413,6 +419,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     ? timelineListStateFor(listIdentityKey)
     : listState;
   if (identityChanged) {
+    setPlayingAudioRows(new Map());
     setListState({ identity: listIdentityKey, rememberedPosition, workGroupViewState });
     setPositionedThreadKey(null);
     setSettlingListIdentity(listIdentityKey);
@@ -425,9 +432,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
   }
   const citationThreadRef = parseScopedThreadKey(routeThreadKey);
   const openPullRequest = useOpenPrLink(citationThreadRef ?? undefined);
-  const expandCitedRun = (runId: RunId) => {
-    setExpandedRunIds((current) => (current.has(runId) ? current : new Set([...current, runId])));
-  };
   const [minimapStripMap] = useState(() => new Map<string, HTMLSpanElement>());
   const [disclosureToggleSettling, setDisclosureToggleSettling] = useState(false);
   const disclosureAnchorKeyRef = useRef<string | null>(null);
@@ -594,6 +598,50 @@ const ConversationTimeline = memo(function ConversationTimeline({
       );
     }
   }
+  // A cited response folded inside a turn opens its fold once per activation;
+  // the user can fold it again. Only a citation that can still land opens one.
+  // The marker stops the O(entries) fold lookup once the entry is found, since
+  // the href stays in the URL after the citation settles.
+  const [citationExpandedFor, setCitationExpandedFor] = useState<string | null>(null);
+  // Back/Forward can restore an earlier activation key, so the marker clears
+  // between activations and a revisit opens the fold again.
+  if (!citationRequest && citationExpandedFor !== null) setCitationExpandedFor(null);
+  const citedEntry =
+    citationRequest &&
+    citationExpandedFor !== citationRequest.key &&
+    citationHistory._tag !== "failed"
+      ? timelineEntries.find((entry) =>
+          citationRequest.citation.segments
+            ? transcriptItemId(entry) === citationRequest.citation.segments[0]?.id
+            : entry.kind === "message" &&
+              entry.message.role === "assistant" &&
+              entry.message.id === citationRequest.citation.messageId,
+        )
+      : undefined;
+  if (citationRequest && citedEntry) {
+    const citedRunId = (
+      findFoldRunIds ??
+      timelineTurnFoldRunIdsByEntryId({
+        timelineEntries,
+        latestRun,
+        runningRunId,
+        isWorking,
+        runlessWorkActive,
+      })
+    ).get(citedEntry.id);
+    setCitationExpandedFor(citationRequest.key);
+    if (citedRunId) {
+      setExpandedRunIds((previous) =>
+        previous.has(citedRunId) ? previous : new Set(previous).add(citedRunId),
+      );
+    }
+    const citedAttempt = citedEntry.attempt;
+    if (citedAttempt?.status === "superseded") {
+      setExpandedAttemptIds((previous) =>
+        previous.has(citedAttempt.id) ? previous : new Set(previous).add(citedAttempt.id),
+      );
+    }
+  }
   const visibleExpandedRunIds =
     !activeFindRunId || paintedExpandedRunIds.has(activeFindRunId)
       ? paintedExpandedRunIds
@@ -659,6 +707,38 @@ const ConversationTimeline = memo(function ConversationTimeline({
     null,
   );
   const chatWidth = useClientSettings((settings) => settings.chatWidth);
+  const citationPhase = citationRequest
+    ? resolveCitationPhase({
+        history: citationHistory,
+        messageId: citationRequest.citation.messageId,
+        ...(citationRequest.citation.segments
+          ? { segments: citationRequest.citation.segments }
+          : {}),
+        entries: timelineEntries,
+        rows,
+        isInFoldedTurn: (entryId) =>
+          (
+            findFoldRunIds ??
+            timelineTurnFoldRunIdsByEntryId({
+              timelineEntries,
+              latestRun,
+              runningRunId,
+              isWorking,
+              runlessWorkActive,
+            })
+          ).has(entryId),
+      })
+    : null;
+  const citationHidden = citationPhase?._tag === "hidden" ? citationRequest?.key : undefined;
+  // oxlint-disable-next-line t3code/react-effect-budget -- Warns once per citation activation that cannot be shown.
+  useEffect(() => {
+    if (citationHidden === undefined) return;
+    toastManager.add({
+      type: "warning",
+      title: "The cited items are hidden",
+      description: "Expand the collapsed tool calls to see them. Your saved excerpt is unchanged.",
+    });
+  }, [citationHidden]);
   const {
     target: readyCitationRequest,
     positioning: citationPositioning,
@@ -666,24 +746,8 @@ const ConversationTimeline = memo(function ConversationTimeline({
     alwaysRender: citationAlwaysRender,
   } = useAssistantCitationTarget({
     request: citationRequest,
-    entries: timelineEntries,
-    rows,
-    listRef,
+    phase: citationPhase,
     viewport: timelineViewportElement,
-    historyLoading: citationHistoryLoading,
-    loadEarlier,
-    getTurnFoldRunId: (entryId) =>
-      (
-        findFoldRunIds ??
-        timelineTurnFoldRunIdsByEntryId({
-          timelineEntries,
-          latestRun,
-          runningRunId,
-          isWorking,
-          runlessWorkActive,
-        })
-      ).get(entryId),
-    onExpandTurn: expandCitedRun,
     onManualNavigation,
   });
   const revealedTranscriptItemIds = useTranscriptCitationReveal({
@@ -705,6 +769,9 @@ const ConversationTimeline = memo(function ConversationTimeline({
   const alwaysRenderKeys = [
     ...(citationAlwaysRender?.keys ?? []),
     ...(fullscreenAppRowId === null ? [] : [fullscreenAppRowId]),
+    ...new Set(
+      [...playingAudioRows].filter(([audio]) => audio.isConnected).map(([, rowId]) => rowId),
+    ),
   ];
   const alwaysRender =
     alwaysRenderIndices.length === 0 && alwaysRenderKeys.length === 0
@@ -1070,7 +1137,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   };
 
   useThreadFindPositionReader({
-    findPositionReaderRef,
+    threadKey: listIdentityKey,
     timelineViewportElement,
     findFoldRunIds,
     timelineEntries,
@@ -1096,14 +1163,41 @@ const ConversationTimeline = memo(function ConversationTimeline({
   });
 
   // LegendList moves rows one commit late; per-row providers prevent thread context leaks.
+  const onAudioPlaybackChange = (rowId: string, event: SyntheticEvent) => {
+    const audio = event.target;
+    if (!(audio instanceof HTMLAudioElement)) return;
+    setPlayingAudioRows((current) => {
+      const playing = !audio.paused && !audio.ended;
+      if (playing === current.has(audio)) return current;
+      const next = new Map(current);
+      if (playing) next.set(audio, rowId);
+      else next.delete(audio);
+      return next;
+    });
+  };
+  const onAudioUnmount = useStableCallback((audio: HTMLAudioElement) => {
+    setPlayingAudioRows((current) => {
+      if (!current.has(audio)) return current;
+      const next = new Map(current);
+      next.delete(audio);
+      return next;
+    });
+  });
   const renderItem = ({ item }: { item: MessagesTimelineRow }) => (
     <TimelineRowCtx value={sharedState}>
-      <div className="messages-timeline-row-frame">
+      <div
+        className="messages-timeline-row-frame"
+        onPlayCapture={(event) => onAudioPlaybackChange(item.id, event)}
+        onPauseCapture={(event) => onAudioPlaybackChange(item.id, event)}
+        onEndedCapture={(event) => onAudioPlaybackChange(item.id, event)}
+      >
         <div
           className="@container/chat-lane chat-content-lane overflow-x-clip"
           data-timeline-root="true"
         >
-          <TimelineRowContent row={item} />
+          <AudioPreviewUnmountContext value={onAudioUnmount}>
+            <TimelineRowContent row={item} />
+          </AudioPreviewUnmountContext>
         </div>
       </div>
     </TimelineRowCtx>
@@ -1137,9 +1231,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
           className="flex h-full items-center justify-center ps-(--chat-lane-inset-start) pe-(--chat-lane-inset-end)"
           style={{ paddingBottom: emptyPlaceholderInset }}
         >
-          <p className="text-sm text-muted-foreground/30">
-            Send a message to start the conversation.
-          </p>
+          <p className="text-sm text-muted-foreground">Send a message to start the conversation.</p>
         </div>
       </>
     );
@@ -1178,7 +1270,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
                 !findActive && citationRequest === null && rememberedPosition?.atEnd !== false
               }
               // Legend needs a data refresh to mount new pins without a scroll event.
-              dataVersion={readyCitationRequest?.key ?? listIdentityKey}
+              dataVersion={`${readyCitationRequest?.key ?? listIdentityKey}:${alwaysRenderKeys.join(",")}`}
               {...(alwaysRender ? { alwaysRender } : {})}
               onLoad={handleListLoad}
               {...(anchoredEndSpace ? { anchoredEndSpace } : {})}

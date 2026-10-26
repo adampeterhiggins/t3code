@@ -1,5 +1,6 @@
 import { EnvironmentId } from "@t3tools/contracts";
 import * as Fiber from "effect/Fiber";
+import * as DocumentText from "../provider/DocumentText.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as WorktreeSetupTracker from "../project/WorktreeSetupTracker.ts";
 import * as ProjectCloneTracker from "../project/ProjectCloneTracker.ts";
@@ -198,7 +199,7 @@ function makeHarness(options: HarnessOptions = {}) {
               ? Option.some(otherProject)
               : Option.none(),
         ),
-      getByWorkspaceRoot: () => Effect.succeed(Option.some(project)),
+      getByWorkspaceRoot: () => Effect.succeedSome(project),
       snapshot: Effect.die("unused"),
       getShell: () => Effect.die("unused"),
       listShells: () => Effect.succeed([project, otherProject] as never),
@@ -231,7 +232,7 @@ function makeHarness(options: HarnessOptions = {}) {
       Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
         namedProjectsRoot: "/projects",
         isScratchProject: () => Effect.succeed(false),
-        folderForThread: () => Effect.succeed(Option.none()),
+        folderForThread: () => Effect.succeedNone,
       }),
   );
   const layerLaunch = ThreadLaunch.layer.pipe(
@@ -2069,7 +2070,7 @@ it.effect("creates a strong provider-thread mapping for an imported native sessi
 it.effect("shared intake preserves durable attachment bytes after a lost launch result", () => {
   const harness = makeHarness();
   const layerFiles = ServerConfig.layerTest(process.cwd(), { prefix: "t3-message-intake-" }).pipe(
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(DocumentText.layer.pipe(Layer.provideMerge(NodeServices.layer))),
   );
   return Effect.gen(function* () {
     const config = yield* ServerConfig.ServerConfig;
@@ -2143,10 +2144,9 @@ it.effect("shared intake preserves durable attachment bytes after a lost launch 
     );
     assert.isDefined(stored);
     assert.notEqual(stored.attachments[0]?.id, attachment.id);
-    assert.equal(
-      (stored.context?.records[0] as { attachmentId: string } | undefined)?.attachmentId,
-      stored.attachments[0]?.id,
-    );
+    const record = stored.context?.records[0];
+    assert.isDefined(record);
+    assert.equal((record as { attachmentId: string }).attachmentId, stored.attachments[0]?.id);
     const userItem = accepted.turnItems.find(
       (item) => item.type === "user_message" && item.messageId === stored.id,
     );
@@ -2464,7 +2464,7 @@ const clonedOutcome = {
   fetched: false,
 };
 const intakeFiles = ServerConfig.layerTest(process.cwd(), { prefix: "t3-launch-flow-" }).pipe(
-  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(DocumentText.layer.pipe(Layer.provideMerge(NodeServices.layer))),
 );
 
 function firstMessageCommand(threadId: ThreadId, text: string, context?: typeof repositoryContext) {
@@ -3161,7 +3161,7 @@ it.effect("creates no thread when the pull request cannot be checked out", () =>
 it.effect("replays an accepted send after the project disables the instance", () => {
   const harness = makeHarness();
   const layerFiles = ServerConfig.layerTest(process.cwd(), { prefix: "t3-send-retry-" }).pipe(
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(DocumentText.layer.pipe(Layer.provideMerge(NodeServices.layer))),
   );
   return Effect.gen(function* () {
     const launches = yield* ThreadLaunch.ThreadLaunchService;

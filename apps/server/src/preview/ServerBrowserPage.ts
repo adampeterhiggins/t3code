@@ -247,8 +247,6 @@ const SNAPSHOT_SCRIPT = `(() => {
 })()`;
 
 type CaptureOptions = ReadOptions & {
-  readonly viewport?: Viewport;
-  readonly offset?: { readonly x: number; readonly y: number } | undefined;
   readonly format: "png" | "jpeg";
   readonly quality?: number;
   readonly scale: number;
@@ -273,7 +271,6 @@ export const withoutDataPayload = (url: string) => {
         : ({ t: "\t", n: "\n", r: "\r", '"': '"', "\\": "\\" }[code] ?? "\u0001"),
     )
     .replace(/[\t\n\r]/g, "")
-    // eslint-disable-next-line no-control-regex -- URL parsing ignores these controls.
     .replace(/^[\u0000-\u0020]+/, "");
   const parsed = /^data:([^,;]*)/i.exec(value);
   if (!parsed) return url;
@@ -510,8 +507,6 @@ const pngSize = (base64: string) => {
   return { width: header.readUInt32BE(16), height: header.readUInt32BE(20) };
 };
 
-type Viewport = { readonly width: number; readonly height: number };
-
 /**
  * A page's display ratio and CSS viewport, read in an isolated world since page script can
  * reassign `devicePixelRatio`, `innerWidth`, and `innerHeight` in its own, and its page zoom.
@@ -538,13 +533,7 @@ const readPageMetrics = async (cdp: CDPSession) => {
         readonly width: number;
         readonly height: number;
       };
-      return {
-        ratio,
-        width,
-        height,
-        zoom,
-        offset: { x: cssVisualViewport.pageX * zoom, y: cssVisualViewport.pageY * zoom },
-      };
+      return { ratio, width, height, zoom };
     }
   }
   throw new Error(
@@ -552,44 +541,22 @@ const readPageMetrics = async (cdp: CDPSession) => {
   );
 };
 
-// Scaled captures repaint live screencasts, so callers pause them. Clips use document offsets.
+// Chromium clip scaling corrupts backdrop filters; shrink only after capturing.
 const captureViewportWithinBudget = async (
-  page: Page,
+  _page: Page,
   cdp: CDPSession,
-  options: CaptureOptions & {
-    readonly format: "png" | "jpeg";
-    readonly quality?: number;
-    readonly scale: number;
-    readonly viewport?: Viewport;
-    readonly offset?: { readonly x: number; readonly y: number } | undefined;
-  },
+  options: CaptureOptions,
   read: ReadStage,
 ) => {
-  let clip: { x: number; y: number; width: number; height: number; scale: number } | undefined;
-  if (options.scale < 1) {
-    const viewport = options.viewport ?? page.viewportSize() ?? { width: 1280, height: 800 };
-    let offset = options.offset;
-    if (!offset) {
-      const { cssVisualViewport } = await read("Page.getLayoutMetrics", () =>
-        cdp.send("Page.getLayoutMetrics"),
-      );
-      const zoom = cssVisualViewport.zoom ?? 1;
-      offset = { x: cssVisualViewport.pageX * zoom, y: cssVisualViewport.pageY * zoom };
-    }
-    clip = {
-      ...offset,
-      ...viewport,
-      scale: options.scale,
-    };
-  }
   const { data } = await read("Page.captureScreenshot", () =>
     cdp.send("Page.captureScreenshot", {
       format: options.format,
       ...(options.quality === undefined ? {} : { quality: options.quality }),
-      ...(clip ? { clip } : {}),
     }),
   );
-  return data;
+  return options.scale < 1
+    ? read("shrink screenshot", () => shrinkPng(cdp, data, options.scale))
+    : data;
 };
 
 export const captureViewport = (page: Page, cdp: CDPSession, options: CaptureOptions) =>
@@ -597,6 +564,42 @@ export const captureViewport = (page: Page, cdp: CDPSession, options: CaptureOpt
     { ...options, timeoutMs: options.timeoutMs ?? DEFAULT_CAPTURE_TIMEOUT_MS },
     (read) => captureViewportWithinBudget(page, cdp, options, read),
   );
+/** Runs in the page's own isolated world, as the server has no image library. */
+const SHRINK_PNG = `async function (png, width, height) {
+  const bytes = Uint8Array.from(atob(png), (char) => char.charCodeAt(0));
+  const bitmap = await createImageBitmap(new Blob([bytes], { type: "image/png" }));
+  // Namespaced, as an XML document's createElement makes a plain element with no getContext.
+  const canvas = document.createElementNS("http://www.w3.org/1999/xhtml", "canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  context.imageSmoothingQuality = "high";
+  context.drawImage(bitmap, 0, 0, width, height);
+  bitmap.close();
+  return canvas.toDataURL("image/png").slice("data:image/png;base64,".length);
+}`;
+
+const shrinkPng = async (cdp: CDPSession, png: string, scale: number) => {
+  const size = pngSize(png);
+  const { frameTree } = await cdp.send("Page.getFrameTree");
+  const { executionContextId } = await cdp.send("Page.createIsolatedWorld", {
+    frameId: frameTree.frame.id,
+    worldName: "t3-preview-screenshot",
+  });
+  const { result, exceptionDetails } = await cdp.send("Runtime.callFunctionOn", {
+    functionDeclaration: SHRINK_PNG,
+    executionContextId,
+    arguments: [
+      { value: png },
+      { value: Math.round(size.width * scale) },
+      { value: Math.round(size.height * scale) },
+    ],
+    awaitPromise: true,
+    returnByValue: true,
+  });
+  if (exceptionDetails) throw new Error("The snapshot could not shrink its screenshot.");
+  return result.value as string;
+};
 
 type SnapshotInput = {
   readonly page: Page;
@@ -611,17 +614,16 @@ type SnapshotInput = {
   readonly signal?: AbortSignal | undefined;
 };
 
-/** The scale a page renders at and its viewport in device-independent pixels, a clip's units. */
+/** The scale a page renders at and its viewport in device-independent pixels. */
 const renderingOf = async (input: SnapshotInput) => {
   if (input.renderScale !== "display") {
     const viewport = input.page.viewportSize() ?? { width: 1280, height: 800 };
-    return { renderScale: input.renderScale, viewport, offset: undefined };
+    return { renderScale: input.renderScale, viewport };
   }
   // The display ratio a desktop page reports includes its page zoom, and its sizes are CSS pixels.
   const page = await readPageMetrics(input.cdp);
   return {
     renderScale: page.ratio / page.zoom,
-    offset: page.offset,
     viewport: {
       width: Math.round(page.width * page.zoom),
       height: Math.round(page.height * page.zoom),
@@ -634,7 +636,7 @@ const capture = async (
   deadline: number,
   budget: ReadStage,
 ): Promise<PreviewAutomationSnapshot> => {
-  const { renderScale, viewport, offset } = await renderingOf(input);
+  const { renderScale, viewport } = await renderingOf(input);
   // A late metrics reply must not begin a capture after viewers have resumed.
   if (Date.now() >= deadline) throw tooBusy();
   const scale = Math.min(1, MAX_SCREENSHOT_WIDTH / (viewport.width * renderScale));
@@ -656,19 +658,7 @@ const capture = async (
     >,
     input.includeImage === false
       ? undefined
-      : captureViewportWithinBudget(
-          input.page,
-          input.cdp,
-          {
-            format: "png",
-            scale,
-            viewport,
-            offset,
-            signal: input.signal,
-            timeoutMs: Math.max(1, deadline - Date.now()),
-          },
-          budget,
-        ),
+      : captureViewportWithinBudget(input.page, input.cdp, { format: "png", scale }, budget),
   ]);
   void pageAndScreenshot.catch(constVoid);
   // Leaves time for the second read; a frame that never loads holds the tree until then.

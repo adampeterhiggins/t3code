@@ -210,15 +210,9 @@ export const CONTEXT_PRESENTATION_DEFINITIONS: ContextPresentationDefinitions = 
   model: { capabilities: COMPACT, preview: { details: "card", Body: ModelPreview } },
 };
 
-export function contextPresentationDefinition<K extends KnownComposerContextKind>(
-  kind: K,
-): ContextPresentationDefinition<K> {
-  return CONTEXT_PRESENTATION_DEFINITIONS[kind];
-}
-
 const KNOWN_KINDS: ReadonlySet<string> = new Set(COMPOSER_CONTEXT_KINDS);
 
-export function isKnownContextKind(kind: string): kind is KnownComposerContextKind {
+function isKnownContextKind(kind: string): kind is KnownComposerContextKind {
   return KNOWN_KINDS.has(kind);
 }
 

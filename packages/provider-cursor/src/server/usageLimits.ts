@@ -30,7 +30,7 @@ export interface CursorSdkCredential {
 }
 
 /** Where a credential's key is exchanged and its dashboard read, as the SDK resolves it. */
-export function cursorSdkBackendUrl(
+function cursorSdkBackendUrl(
   credential: CursorSdkCredential,
   environment: NodeJS.ProcessEnv,
 ): string {

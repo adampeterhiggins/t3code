@@ -44,7 +44,7 @@ function parseGoogleTime(iso: string | undefined): Date | null {
 }
 
 /** When a file was last modified, or when an event starts. */
-export function googleFileTime(file: GoogleFileSummary): number {
+function googleFileTime(file: GoogleFileSummary): number {
   return (
     parseGoogleTime(file.fileType === "event" ? file.startsAt : file.updatedAt)?.getTime() ?? 0
   );

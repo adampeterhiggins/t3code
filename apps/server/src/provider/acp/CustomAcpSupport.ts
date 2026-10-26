@@ -1,13 +1,4 @@
-/**
- * CustomAcpSupport — spawn input and capability mapping for user-configured
- * ACP agents.
- *
- * Nothing here knows a particular agent. Models, options, and modes are read
- * from what the agent advertises in its session setup response, and T3's
- * selections are only sent back when they name something it advertised.
- *
- * @module CustomAcpSupport
- */
+/** Only advertised selections are sent back to a custom ACP agent. */
 import {
   CUSTOM_ACP_DEFAULT_MODEL,
   type CustomAcpSettings,
@@ -18,12 +9,9 @@ import {
   type ServerProviderModel,
 } from "@t3tools/contracts";
 import { createModelCapabilities } from "@t3tools/shared/model";
-import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import type * as Scope from "effect/Scope";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
-import type * as EffectAcpErrors from "effect-acp/errors";
 import type * as EffectAcpSchema from "effect-acp/compat";
 
 import {
@@ -52,7 +40,7 @@ export function parseCustomAcpArguments(value: string): ReadonlyArray<string> {
     .filter((argument) => argument.length > 0);
 }
 
-export function buildCustomAcpSpawnInput(
+function buildCustomAcpSpawnInput(
   settings: Pick<CustomAcpSettings, "binaryPath" | "arguments">,
   cwd: string,
   environment?: NodeJS.ProcessEnv,
@@ -74,29 +62,24 @@ export interface CustomAcpRuntimeInput extends Omit<
   readonly environment?: NodeJS.ProcessEnv;
 }
 
-export const makeCustomAcpRuntime = (
+export const makeCustomAcpRuntime = Effect.fn("CustomAcpSupport.makeCustomAcpRuntime")(function* (
   input: CustomAcpRuntimeInput,
-): Effect.Effect<
-  AcpSessionRuntime.AcpSessionRuntime["Service"],
-  EffectAcpErrors.AcpError,
-  Crypto.Crypto | Scope.Scope
-> =>
-  Effect.gen(function* () {
-    const { childProcessSpawner, settings, environment, ...options } = input;
-    const acpContext = yield* Layer.build(
-      AcpSessionRuntime.layer({
-        ...options,
-        spawn: buildCustomAcpSpawnInput(settings, input.cwd, environment),
-        // Files and terminals stay with the agent.
-        clientCapabilities: options.clientCapabilities ?? { elicitation: { form: {} } },
-      }).pipe(
-        Layer.provide(Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, childProcessSpawner)),
-      ),
-    );
-    return yield* Effect.service(AcpSessionRuntime.AcpSessionRuntime).pipe(
-      Effect.provide(acpContext),
-    );
-  });
+) {
+  const { childProcessSpawner, settings, environment, ...options } = input;
+  const acpContext = yield* Layer.build(
+    AcpSessionRuntime.layer({
+      ...options,
+      spawn: buildCustomAcpSpawnInput(settings, input.cwd, environment),
+      // Files and terminals stay with the agent.
+      clientCapabilities: options.clientCapabilities ?? { elicitation: { form: {} } },
+    }).pipe(
+      Layer.provide(Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, childProcessSpawner)),
+    ),
+  );
+  return yield* Effect.service(AcpSessionRuntime.AcpSessionRuntime).pipe(
+    Effect.provide(acpContext),
+  );
+});
 
 function isModelConfigOption(option: EffectAcpSchema.SessionConfigOption): boolean {
   return option.category === "model" || option.id.trim() === "model";

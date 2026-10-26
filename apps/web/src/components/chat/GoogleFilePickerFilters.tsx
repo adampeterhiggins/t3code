@@ -109,7 +109,7 @@ function Checklist(props: {
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** The calendars a search reads by default: the ones ticked in Google Calendar. */
-export function defaultCalendarIds(calendars: ReadonlyArray<GoogleCalendarSummary>): string[] {
+function defaultCalendarIds(calendars: ReadonlyArray<GoogleCalendarSummary>): string[] {
   return calendars.filter((c) => c.primary || c.selected).map((c) => c.id);
 }
 

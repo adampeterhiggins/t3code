@@ -11,7 +11,7 @@ type ContextWindowReading = {
 };
 
 /** Context-window share at which the composer suggests compacting or starting a new tab. */
-export const CONTEXT_WINDOW_NUDGE_PERCENT = 80;
+const CONTEXT_WINDOW_NUDGE_PERCENT = 80;
 
 export interface ThreadUsageCost {
   readonly amount: number;

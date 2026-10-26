@@ -1,15 +1,4 @@
-/**
- * DevinAdapterV2 — the dedicated `devin` driver's ACP flavor.
- *
- * Devin also runs generically through the ACP Registry; this flavor shares
- * that path's Devin protocol handling (`DevinAcp.ts`: subagent markers,
- * message grouping, tool names) and client-owned terminals, and adds what the
- * dedicated driver configures: the instance's binary, `--permission-mode` and
- * private `XDG_DATA_HOME`, grouped model variants from `devinModelCatalog`,
- * runtime-mode → session-mode mapping, `$skill` dispatch, and context windows.
- *
- * @module DevinAdapterV2
- */
+/** Shares registry Devin protocol handling while applying the dedicated instance configuration. */
 import {
   type DevinSettings,
   type ModelSelection,
@@ -54,7 +43,7 @@ import {
 
 export const DEVIN_PROVIDER = ProviderDriverKind.make("devin");
 
-export const DevinProviderCapabilitiesV2 = {
+const DevinProviderCapabilitiesV2 = {
   ...AcpProviderCapabilitiesV2,
   sessions: {
     ...AcpProviderCapabilitiesV2.sessions,
@@ -118,7 +107,7 @@ export function dispatchDevinSkills(input: {
     .pipe(Effect.map((names) => planDevinSkillDispatch(input.text, names)?.prompt ?? input.text));
 }
 
-export function makeDevinAcpAdapterFlavor(options: DevinAdapterV2Options): AcpAdapterV2Flavor {
+function makeDevinAcpAdapterFlavor(options: DevinAdapterV2Options): AcpAdapterV2Flavor {
   return {
     driver: DEVIN_PROVIDER,
     runtimeHarness: "Devin",

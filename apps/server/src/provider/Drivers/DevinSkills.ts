@@ -1,20 +1,4 @@
-/**
- * DevinSkills — skill discovery for the `$` picker via `devin skills list --json`.
- *
- * The Devin CLI reports its own skill catalog, so asking it beats scanning the
- * filesystem: the catalog honors Devin's own skill state (errors, warnings,
- * triggers) and includes skills from locations T3 cannot enumerate cheaply.
- * The command takes the selected workspace as its cwd, so project-scoped
- * skills resolve against the right directory.
- *
- * The module has two halves: a pure parser that validates and normalizes CLI
- * records, and a runner that spawns the command with the configured binary and
- * environment, bounds its output and runtime, and maps process failures to a
- * typed discovery error. Keeping the parser pure makes the normalization rules
- * testable without spawning anything.
- *
- * @module provider/Drivers/DevinSkills
- */
+/** The CLI catalog includes project scopes and skill states that filesystem scans cannot reproduce. */
 import * as NodeOS from "node:os";
 
 import type { DevinSettings, ServerProviderSkill } from "@t3tools/contracts";
@@ -29,10 +13,10 @@ import { collectUint8StreamText } from "@t3tools/provider-core/server/collectStr
 import { isWindowsCommandNotFound } from "../../processRunner.ts";
 
 /** Discovery budget matches the other provider skill probes (Codex uses 20s). */
-export const DEVIN_SKILLS_PROBE_TIMEOUT_MS = 20_000;
+const DEVIN_SKILLS_PROBE_TIMEOUT_MS = 20_000;
 
 /** Skill catalogs are small; anything past this is treated as a runaway. */
-export const DEVIN_SKILLS_MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
+const DEVIN_SKILLS_MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
 
 export class DevinSkillsProbeError extends Schema.TaggedError<DevinSkillsProbeError>()(
   "DevinSkillsProbeError",
@@ -94,15 +78,7 @@ const deriveSkillScope = (
   return personalRoot !== undefined ? "personal" : "other";
 };
 
-/**
- * Map `devin skills list --json` output onto provider skills. Records without
- * a usable name or base_dir are skipped; records carrying errors are disabled
- * while warning-only records stay enabled. Names deduplicate
- * case-insensitively — Devin's `@skills:` syntax is case-insensitive, so two
- * records differing only in case would be ambiguous at dispatch time. An
- * otherwise valid empty array is an authoritative empty result; a non-array
- * payload is a decode failure.
- */
+/** Skill names deduplicate case-insensitively; errors disable entries, warnings do not. */
 export function decodeDevinSkillRecords(
   stdout: string,
   path: Path.Path,
@@ -159,70 +135,47 @@ export function decodeDevinSkillRecords(
   return [...skillsByName.values()].sort((left, right) => left.name.localeCompare(right.name));
 }
 
-interface BoundedCommandResult {
-  readonly stdout: string;
-  readonly stderr: string;
-  readonly code: number;
-  readonly truncated: boolean;
-}
-
-/**
- * Spawn the skills command and collect bounded output. Truncation keeps
- * draining so the child can exit normally (see collectUint8StreamText); the
- * truncated flag lets the caller reject the result instead of decoding a
- * silently clipped catalog.
- */
-const spawnBoundedSkillsCommand = (
+/** Typed probe failures distinguish unavailable discovery from an authoritative empty catalog. */
+const spawnBoundedSkillsCommand = Effect.fn("DevinSkills.spawnBoundedSkillsCommand")(function* (
   binaryPath: string,
   command: ChildProcess.Command,
-): Effect.Effect<
-  BoundedCommandResult,
-  DevinSkillsProbeError,
-  ChildProcessSpawner.ChildProcessSpawner
-> =>
-  Effect.gen(function* () {
-    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-    const child = yield* spawner
-      .spawn(command)
-      .pipe(Effect.mapError((cause) => new DevinSkillsProbeError({ stage: "spawn", cause })));
-    const [stdout, stderr, exitCode] = yield* Effect.all(
-      [
-        collectUint8StreamText({
-          stream: child.stdout,
-          maxBytes: DEVIN_SKILLS_MAX_OUTPUT_BYTES,
-        }),
-        collectUint8StreamText({
-          stream: child.stderr,
-          maxBytes: DEVIN_SKILLS_MAX_OUTPUT_BYTES,
-        }),
-        child.exitCode.pipe(Effect.map(Number)),
-      ],
-      { concurrency: "unbounded" },
-    ).pipe(Effect.mapError((cause) => new DevinSkillsProbeError({ stage: "spawn", cause })));
+) {
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const child = yield* spawner
+    .spawn(command)
+    .pipe(Effect.mapError((cause) => new DevinSkillsProbeError({ stage: "spawn", cause })));
+  const [stdout, stderr, exitCode] = yield* Effect.all(
+    [
+      collectUint8StreamText({
+        stream: child.stdout,
+        maxBytes: DEVIN_SKILLS_MAX_OUTPUT_BYTES,
+      }),
+      collectUint8StreamText({
+        stream: child.stderr,
+        maxBytes: DEVIN_SKILLS_MAX_OUTPUT_BYTES,
+      }),
+      child.exitCode.pipe(Effect.map(Number)),
+    ],
+    { concurrency: "unbounded" },
+  ).pipe(Effect.mapError((cause) => new DevinSkillsProbeError({ stage: "spawn", cause })));
 
-    if (yield* isWindowsCommandNotFound(exitCode, stderr.text)) {
-      return yield* new DevinSkillsProbeError({
-        stage: "spawn",
-        cause: new Error(`Devin command '${binaryPath}' was not found (exit code ${exitCode}).`),
-      });
-    }
-    return {
-      stdout: stdout.text,
-      stderr: stderr.text,
-      code: exitCode,
-      truncated: stdout.truncated || stderr.truncated,
-    };
-  }).pipe(Effect.scoped);
+  if (yield* isWindowsCommandNotFound(exitCode, stderr.text)) {
+    return yield* new DevinSkillsProbeError({
+      stage: "spawn",
+      cause: new Error(`Devin command '${binaryPath}' was not found (exit code ${exitCode}).`),
+    });
+  }
+  return {
+    stdout: stdout.text,
+    stderr: stderr.text,
+    code: exitCode,
+    truncated: stdout.truncated || stderr.truncated,
+  };
+}, Effect.scoped);
 
 const isDevinSkillsProbeError = Schema.is(DevinSkillsProbeError);
 
-/**
- * Run `devin skills list --json` with the workspace as cwd and map the
- * reported catalog onto provider skills. Spawn, timeout, nonzero exit,
- * output-limit, and decode failures surface as typed `DevinSkillsProbeError`s
- * so callers can distinguish a best-effort miss from an authoritative empty
- * catalog.
- */
+/** Typed probe failures distinguish unavailable discovery from an authoritative empty catalog. */
 export const discoverDevinSkills = Effect.fn("discoverDevinSkills")(function* (
   devinSettings: Pick<DevinSettings, "binaryPath">,
   environment: NodeJS.ProcessEnv = process.env,

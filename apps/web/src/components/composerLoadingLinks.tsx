@@ -70,7 +70,7 @@ function loadingLinkIcon(link: ComposerObjectLink) {
 }
 
 /** The chip a link shows while its object loads, labelled from the link alone. */
-export function LoadingLinkChip({ link }: { link: ComposerObjectLink }) {
+function LoadingLinkChip({ link }: { link: ComposerObjectLink }) {
   return (
     <ContextChip
       kind={loadingLinkChipKind(link)}
@@ -91,7 +91,7 @@ interface LoadingLinksState {
 }
 
 /** Where each loading link's text sits, so it can be hidden and stood in for by a chip. */
-export function loadingLinkRanges(
+function loadingLinkRanges(
   doc: ProseMirrorNode,
   urls: ReadonlySet<string>,
 ): Array<{ from: number; to: number; link: ComposerObjectLink }> {

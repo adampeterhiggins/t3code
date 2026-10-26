@@ -1,3 +1,5 @@
+import { isSvgAttachment } from "@t3tools/shared/image";
+
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { useRightPanelStore } from "~/rightPanelStore";
 import {
@@ -14,6 +16,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
+
 import {
   type ChatFileAttachment,
   type ChatImageAttachment,
@@ -71,6 +74,7 @@ import { type ReviewCommentContext } from "../../reviewCommentContext";
 import { TimelineRowCtx, type TimelineRowSharedState } from "./timelineRowContext";
 
 interface UserMessageContextRenderContext {
+  environmentId: import("@t3tools/contracts").EnvironmentId;
   reference: ChatMarkdownContextReference;
   annotationImage: ChatImageAttachment | null;
   attachment: ChatImageAttachment | ChatFileAttachment | null;
@@ -254,6 +258,11 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
         trigger: (
           <FileChip
             name={record.name}
+            svgPreview={
+              isSvgAttachment(attachment)
+                ? { environmentId: context.environmentId, attachmentId: attachment.id }
+                : undefined
+            }
             size={size}
             isVideo={isVideo}
             theme={context.row.resolvedTheme}
@@ -452,6 +461,7 @@ export function UserMessageContextReferenceChip(props: {
     label: props.reference.label,
   });
   return userMessageContextPresentationRegistry.render(props.reference.kind, props.record, {
+    environmentId: row.activeThreadEnvironmentId,
     reference: props.reference,
     annotationImage: props.annotationImage,
     attachment: props.attachment,

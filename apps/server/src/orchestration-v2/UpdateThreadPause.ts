@@ -7,7 +7,7 @@ import * as ServerSelfUpdate from "../cloud/selfUpdate.ts";
 import * as ThreadManagementService from "./ThreadManagementService.ts";
 
 /** Shown on the stopped turn so the thread explains why it is waiting for Resume. */
-export const PAUSE_FOR_UPDATE_REASON = "Paused for an application update.";
+const PAUSE_FOR_UPDATE_REASON = "Paused for an application update.";
 
 /** Long enough for a provider to acknowledge Stop, short enough to stay inside an update's shutdown budget. */
 const PAUSE_TIMEOUT_MS = 15_000;

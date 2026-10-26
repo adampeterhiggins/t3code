@@ -10,7 +10,6 @@ import {
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as KeyValueStore from "effect/persistence/KeyValueStore";
 import * as ThreadLaunch from "../orchestration-v2/ThreadLaunchService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
@@ -60,7 +59,7 @@ const harness = Effect.gen(function* () {
   const dependencies = Layer.mergeAll(
     Layer.mock(Settings.ServerSettingsService)({ getSettings: Effect.sync(() => settings) }),
     Layer.mock(SlackAuth.SlackAuth)({ account: Effect.sync(() => currentAccount) }),
-    Layer.mock(ProjectService.ProjectService)({ getById: () => Effect.succeed(Option.none()) }),
+    Layer.mock(ProjectService.ProjectService)({ getById: () => Effect.succeedNone }),
     Layer.mock(ThreadLaunch.ThreadLaunchService)({
       launch: (input) =>
         Effect.gen(function* () {

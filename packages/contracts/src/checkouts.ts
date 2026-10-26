@@ -12,7 +12,7 @@ import { IsoDateTime, NonNegativeInt, TrimmedNonEmptyString } from "./baseSchema
 const ShortString = Schema.String.check(Schema.isMaxLength(2_048));
 const CheckoutPath = TrimmedNonEmptyString.check(Schema.isMaxLength(4_096));
 
-export const CHECKOUT_INSPECT_MAX_PATHS = 32;
+const CHECKOUT_INSPECT_MAX_PATHS = 32;
 export const MAX_LINKED_CHECKOUTS = 20;
 
 /** What the provider was given for one checkout when the message was sent. */

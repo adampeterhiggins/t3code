@@ -330,13 +330,7 @@ const CLAUDE_ACCOUNT_FILE = Schema.fromJsonString(
 );
 const decodeClaudeAccountFile = Schema.decodeSync(CLAUDE_ACCOUNT_FILE);
 
-/**
- * `claude auth login` stores the signed-in profile in
- * `<claude home>/.claude.json`, but the SDK init omits `account.email` when an
- * environment credential such as `CLAUDE_CODE_OAUTH_TOKEN` shadows that login.
- * Read the stored profile so the signed-in account still shows in provider
- * status.
- */
+/** Environment credentials can hide the SDK account email; the stored login still identifies the signed-in profile. */
 const readStoredClaudeAccountEmail = Effect.fn("ClaudeProvider.readStoredClaudeAccountEmail")(
   function* (claudeSettings: ClaudeSettings) {
     const fileSystem = yield* FileSystem.FileSystem;
@@ -474,10 +468,14 @@ export const probeClaudeWorkspaceSnapshot = Effect.fn("probeClaudeWorkspaceSnaps
 ): Effect.fn.Return<ProviderWorkspaceSnapshot, never, FileSystem.FileSystem | Path.Path> {
   if (!claudeSettings.enabled) return machineSnapshot;
   const skills = yield* discoverClaudeSkills(claudeSettings, cwd, environment);
-  const probeResult = yield* probeClaudeCapabilities(claudeSettings, environment, cwd, false).pipe(
-    Effect.result,
-  );
-  const capabilities = Result.isSuccess(probeResult) ? probeResult.success : undefined;
+  const fileSystem = yield* FileSystem.FileSystem;
+  // A deleted worktree can never answer the probe. Pending would make clients rescan it forever.
+  const cwdExists = yield* fileSystem.exists(cwd).pipe(Effect.orElseSucceed(() => true));
+  const probeResult = cwdExists
+    ? yield* probeClaudeCapabilities(claudeSettings, environment, cwd, false).pipe(Effect.result)
+    : undefined;
+  const capabilities =
+    probeResult && Result.isSuccess(probeResult) ? probeResult.success : undefined;
   return {
     ...machineSnapshot,
     skills,
@@ -485,7 +483,7 @@ export const probeClaudeWorkspaceSnapshot = Effect.fn("probeClaudeWorkspaceSnaps
       COMPACT_SLASH_COMMAND,
       ...(capabilities?.slashCommands ?? []),
     ]),
-    slashCommandsPending: !capabilities,
+    slashCommandsPending: cwdExists && !capabilities,
   };
 });
 
@@ -666,13 +664,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     });
   }
 
-  // `claude auth logout` only clears the stored login — a credential
-  // supplied another way keeps the CLI signed in no matter how many times
-  // logout runs. The SDK names the env variable as its source
-  // (`tokenSource: "CLAUDE_CODE_OAUTH_TOKEN"`), and a configured
-  // `apiKeyHelper` or non-first-party provider creds are equally out of
-  // reach. The exception is an instance-stored `ANTHROPIC_API_KEY`, which
-  // the paste-credential `onLogout` removes.
+  // CLI logout cannot clear external credentials. Instance-stored ANTHROPIC_API_KEY is removed by onLogout.
   const externalAuthSource = [capabilities.tokenSource, capabilities.apiKeySource].find(
     (source) =>
       source !== undefined &&

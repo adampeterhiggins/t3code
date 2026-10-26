@@ -184,7 +184,7 @@ export class SlackAuth extends Context.Service<
   }
 >()("t3/slack/SlackAuth") {}
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const envClientId = yield* Config.String("T3CODE_SLACK_CLIENT_ID").pipe(Config.option);
   const redirect = resolveIntegrationRedirect({
@@ -242,52 +242,47 @@ export const make = Effect.gen(function* () {
   });
   const state = yield* SubscriptionRef.make<SlackConnectionState>(initial);
 
-  const postToken = (params: Record<string, string>) =>
-    Effect.gen(function* () {
-      const response = yield* HttpClientRequest.post(TOKEN_URL).pipe(
-        HttpClientRequest.bodyUrlParams(params),
-        httpClient.execute,
-      );
-      const reply = yield* response.json.pipe(
-        Effect.flatMap(Schema.decodeUnknownEffect(TokenResponse)),
-        Effect.orElseSucceed(() => null),
-      );
-      if (response.status < 200 || response.status >= 300 || reply === null) {
-        return { _tag: "Rejected", error: reply?.error ?? `HTTP ${response.status}` } as const;
-      }
-      if (!reply.ok) return { _tag: "Rejected", error: reply.error ?? "unknown_error" } as const;
-      const token = readUserToken(reply);
-      return token === null
-        ? ({ _tag: "Rejected", error: "no user token" } as const)
-        : ({ _tag: "Ok", token } as const);
-    });
+  const postToken = Effect.fn("postToken")(function* (params: Record<string, string>) {
+    const response = yield* HttpClientRequest.post(TOKEN_URL).pipe(
+      HttpClientRequest.bodyUrlParams(params),
+      httpClient.execute,
+    );
+    const reply = yield* response.json.pipe(
+      Effect.flatMap(Schema.decodeUnknownEffect(TokenResponse)),
+      Effect.orElseSucceed(() => null),
+    );
+    if (response.status < 200 || response.status >= 300 || reply === null) {
+      return { _tag: "Rejected", error: reply?.error ?? `HTTP ${response.status}` } as const;
+    }
+    if (!reply.ok) return { _tag: "Rejected", error: reply.error ?? "unknown_error" } as const;
+    const token = readUserToken(reply);
+    return token === null
+      ? ({ _tag: "Rejected", error: "no user token" } as const)
+      : ({ _tag: "Ok", token } as const);
+  });
 
   const expiresAt = (now: number, expiresIn: number | null) =>
     expiresIn === null ? null : now + expiresIn * 1_000;
 
-  const readAccount = (accessToken: string) =>
-    Effect.gen(function* () {
-      const identity = yield* slackApiRequest(accessToken, "auth.test", {}, AuthTestData);
-      // The display name is what Slack shows; auth.test only has the handle.
-      const info = yield* slackApiRequest(
-        accessToken,
-        "users.info",
-        { user: identity.user_id },
-        UserInfoData,
-      ).pipe(Effect.option);
-      const user = Option.getOrUndefined(info)?.user;
-      return {
-        userId: identity.user_id,
-        userName:
-          user?.profile?.display_name ||
-          user?.profile?.real_name ||
-          user?.real_name ||
-          identity.user,
-        teamId: identity.team_id,
-        teamName: identity.team,
-        teamUrl: identity.url,
-      } satisfies SlackAccount;
-    }).pipe(Effect.provide(services));
+  const readAccount = Effect.fn("readAccount")(function* (accessToken: string) {
+    const identity = yield* slackApiRequest(accessToken, "auth.test", {}, AuthTestData);
+    // The display name is what Slack shows; auth.test only has the handle.
+    const info = yield* slackApiRequest(
+      accessToken,
+      "users.info",
+      { user: identity.user_id },
+      UserInfoData,
+    ).pipe(Effect.option);
+    const user = Option.getOrUndefined(info)?.user;
+    return {
+      userId: identity.user_id,
+      userName:
+        user?.profile?.display_name || user?.profile?.real_name || user?.real_name || identity.user,
+      teamId: identity.team_id,
+      teamName: identity.team,
+      teamUrl: identity.url,
+    } satisfies SlackAccount;
+  }, Effect.provide(services));
 
   const exchangeCode = Effect.fn("slack.auth.exchange_code")(function* (
     code: string,
@@ -322,37 +317,36 @@ export const make = Effect.gen(function* () {
   });
 
   /** Settles a login from the redirect the browser followed. The reply never carries the code. */
-  const settleCallback = (flow: ActiveFlow | null, url: URL) =>
-    Effect.gen(function* () {
-      if (flow === null) {
+  const settleCallback = Effect.fn("settleCallback")(function* (flow: ActiveFlow | null, url: URL) {
+    if (flow === null) {
+      return {
+        status: 400,
+        message: "This Slack sign-in is no longer active. Start again in T3 Code.",
+      } satisfies CallbackReply;
+    }
+    const result = readSlackCallback(url, flow.state);
+    switch (result._tag) {
+      case "Invalid":
+        return { status: 400, message: result.reason } satisfies CallbackReply;
+      case "Denied":
+        yield* Deferred.fail(flow.callback, loginError("Slack sign-in was cancelled."));
         return {
-          status: 400,
-          message: "This Slack sign-in is no longer active. Start again in T3 Code.",
+          status: 200,
+          message: "Slack sign-in was cancelled. You can close this tab.",
         } satisfies CallbackReply;
-      }
-      const result = readSlackCallback(url, flow.state);
-      switch (result._tag) {
-        case "Invalid":
-          return { status: 400, message: result.reason } satisfies CallbackReply;
-        case "Denied":
-          yield* Deferred.fail(flow.callback, loginError("Slack sign-in was cancelled."));
+      case "Code":
+        const accepted = yield* Deferred.succeed(flow.callback, result.code);
+        if (!accepted)
           return {
-            status: 200,
-            message: "Slack sign-in was cancelled. You can close this tab.",
+            status: 400,
+            message: "This sign-in callback was already received.",
           } satisfies CallbackReply;
-        case "Code":
-          const accepted = yield* Deferred.succeed(flow.callback, result.code);
-          if (!accepted)
-            return {
-              status: 400,
-              message: "This sign-in callback was already received.",
-            } satisfies CallbackReply;
-          return {
-            status: 200,
-            message: "Slack authorization received. Return to T3 Code to check the connection.",
-          } satisfies CallbackReply;
-      }
-    });
+        return {
+          status: 200,
+          message: "Slack authorization received. Return to T3 Code to check the connection.",
+        } satisfies CallbackReply;
+    }
+  });
 
   const callbackRoute = (flow: ActiveFlow) =>
     HttpRouter.add(
@@ -366,32 +360,31 @@ export const make = Effect.gen(function* () {
     );
 
   /** Binds the loopback port for one login; a server redirect needs no listener. */
-  const listenOnLoopback = (flow: ActiveFlow) =>
-    Effect.gen(function* () {
-      const listener = HttpRouter.serve(callbackRoute(flow), {
-        disableListenLog: true,
-        disableLogger: true,
-      }).pipe(
-        Layer.provide(
-          NodeHttpServer.layer(NodeHttp.createServer, {
-            host: "127.0.0.1",
-            port: SLACK_LOOPBACK_PORT,
-            disablePreemptiveShutdown: true,
-          }),
+  const listenOnLoopback = Effect.fn("listenOnLoopback")(function* (flow: ActiveFlow) {
+    const listener = HttpRouter.serve(callbackRoute(flow), {
+      disableListenLog: true,
+      disableLogger: true,
+    }).pipe(
+      Layer.provide(
+        NodeHttpServer.layer(NodeHttp.createServer, {
+          host: "127.0.0.1",
+          port: SLACK_LOOPBACK_PORT,
+          disablePreemptiveShutdown: true,
+        }),
+      ),
+    );
+    // A fresh memo map: requests inside the server carry the app's memo
+    // map, and reusing its memoized HttpRouter would serve the whole app
+    // on the loopback port and fail the next login's route registration.
+    yield* Layer.buildWithMemoMap(listener, yield* Layer.makeMemoMap, yield* Effect.scope).pipe(
+      Effect.mapError((cause) =>
+        loginError(
+          `Port ${SLACK_LOOPBACK_PORT} is in use, so the Slack callback cannot be received. Free the port and try again.`,
+          cause,
         ),
-      );
-      // A fresh memo map: requests inside the server carry the app's memo
-      // map, and reusing its memoized HttpRouter would serve the whole app
-      // on the loopback port and fail the next login's route registration.
-      yield* Layer.buildWithMemoMap(listener, yield* Layer.makeMemoMap, yield* Effect.scope).pipe(
-        Effect.mapError((cause) =>
-          loginError(
-            `Port ${SLACK_LOOPBACK_PORT} is in use, so the Slack callback cannot be received. Free the port and try again.`,
-            cause,
-          ),
-        ),
-      );
-    });
+      ),
+    );
+  });
 
   /**
    * Owns the loopback listener for one login. `listening` settles once the
@@ -574,15 +567,14 @@ export const make = Effect.gen(function* () {
       (cause) =>
         new SlackError({ reason: "api", detail: "Could not read the Slack credential.", cause }),
     ),
-    Effect.flatMap((stored) =>
-      Option.isSome(stored)
-        ? Effect.succeed(stored.value)
-        : Effect.fail(
-            new SlackError({
-              reason: "not-connected",
-              detail: "Slack is not connected. Connect it in Settings → Integrations.",
-            }),
-          ),
+    Effect.flatMap(
+      Effect.fromOption(
+        () =>
+          new SlackError({
+            reason: "not-connected",
+            detail: "Slack is not connected. Connect it in Settings → Integrations.",
+          }),
+      ),
     ),
   );
 
@@ -637,8 +629,9 @@ export const make = Effect.gen(function* () {
     accessToken,
     account: storedToken.pipe(Effect.map((token) => token.account)),
     markRevoked,
-    receiveCallback: (url) =>
+    receiveCallback: Effect.fn("SlackAuth.receiveCallback")((url) =>
       Ref.get(activeFlow).pipe(Effect.flatMap((flow) => settleCallback(flow, url))),
+    ),
   });
 });
 

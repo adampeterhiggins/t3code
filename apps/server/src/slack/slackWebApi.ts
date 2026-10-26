@@ -90,7 +90,7 @@ export const slackApiRequest = Effect.fn("slack.web_api")(function* <S extends S
   if (response.status < 200 || response.status >= 300) {
     return yield* apiError(`Slack returned HTTP ${response.status}.`);
   }
-  return yield* Schema.decodeUnknownEffect(data)(json).pipe(
+  return yield* Schema.decodeEffect(data)(json).pipe(
     Effect.mapError((cause) => apiError("Slack returned an unexpected response shape.", cause)),
   );
 });

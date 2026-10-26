@@ -32,7 +32,7 @@ class TriggerProjectMissing extends Data.TaggedError("TriggerProjectMissing")<{
   readonly projectId: string;
 }> {}
 
-export function matchesAssignmentTrigger(
+function matchesAssignmentTrigger(
   rule: Pick<LinearAssignmentTrigger, "teamId" | "labelName">,
   issue: LinearAssignedIssue,
 ): boolean {
@@ -112,7 +112,7 @@ export class LinearAssignmentTriggers extends Context.Service<
   }
 >()("t3/linear/LinearAssignmentTriggers") {}
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const api = yield* LinearApi;

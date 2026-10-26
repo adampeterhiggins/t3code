@@ -1,3 +1,4 @@
+import * as DocumentText from "../provider/DocumentText.ts";
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
@@ -38,9 +39,13 @@ import { dispatchCommand } from "./ThreadMessageIntake.ts";
 const layerIntakeTest = ServerConfig.layerTest(process.cwd(), {
   prefix: "t3-question-intake-",
 }).pipe(
-  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(DocumentText.layer.pipe(Layer.provideMerge(NodeServices.layer))),
   Layer.provideMerge(ServerSettings.layerTest()),
-  Layer.merge(Layer.mock(ThreadLaunch.ThreadLaunchService)({})),
+  Layer.merge(
+    Layer.mock(ThreadLaunch.ThreadLaunchService)({
+      prepareMessageWorkspace: (input) => Effect.succeed(input.context),
+    }),
+  ),
 );
 
 const layerFailingDispatchHandler =

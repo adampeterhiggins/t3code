@@ -31,14 +31,7 @@ import * as SourceControlRepositoryService from "../sourceControl/SourceControlR
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
 
-/**
- * Clones repositories attached to a message into the workspace's context
- * directory, the way `ctxclone` does by hand: full clones side by side under
- * `.context/<folder>`. An existing clone of the same remote is left alone
- * (fetched only, so its ahead/behind is current); anything else in the way
- * is reported, never overwritten. Every outcome carries the clone's git
- * status so the chip and the agent can both see what they are working with.
- */
+/** Existing matching clones are fetched; conflicting folders are never overwritten. */
 export class ContextRepositories extends Context.Service<
   ContextRepositories,
   {
@@ -54,14 +47,7 @@ export class ContextRepositories extends Context.Service<
       readonly cwd: string;
       readonly directory: string;
     }) => Effect.Effect<ContextRepositoryInspectResult, ContextRepositoryError>;
-    /**
-     * Deletes one clone from the workspace's context directory. Refuses a
-     * folder that resolves outside that directory (a symlink, or a context
-     * directory that is itself a link out of the workspace), one that is not a
-     * git repository, and any removal while a turn is running in the workspace.
-     * Waits for a clone of the same folder to finish, and holds the workspace
-     * lease while deleting so a turn starting in the workspace waits for it.
-     */
+    /** Removal holds the workspace lease, waits for cloning, and rejects escapes and active turns. */
     readonly remove: (input: {
       readonly cwd: string;
       readonly directory: string;
@@ -175,7 +161,7 @@ function clampDetail(detail: string): string {
     : detail;
 }
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const config = yield* ServerConfig;
   const fileSystem = yield* FileSystem.FileSystem;
@@ -256,8 +242,8 @@ export const make = Effect.gen(function* () {
    * otherwise see nested repositories. Uses `info/exclude` so no tracked file
    * changes; a repository that already ignores the folder is left alone.
    */
-  const ensureExcluded = (cwd: string, relativeDirectory: string) =>
-    Effect.gen(function* () {
+  const ensureExcluded = Effect.fn("ContextRepositories.ensureExcluded")(
+    function* (cwd: string, relativeDirectory: string) {
       const ignored = yield* runGit(cwd, "checkIgnore", [
         "check-ignore",
         "-q",
@@ -286,18 +272,21 @@ export const make = Effect.gen(function* () {
         excludePath,
         `${existing}${existing.length === 0 || existing.endsWith("\n") ? "" : "\n"}# T3 Code context repositories\n${pattern}\n`,
       );
-    }).pipe(
-      Effect.catchCause((cause) =>
-        Effect.logWarning("could not exclude the context repository folder", { cwd, cause }),
+    },
+    (effect, cwd) =>
+      effect.pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("could not exclude the context repository folder", { cwd, cause }),
+        ),
       ),
-    );
+  );
 
-  const ensureOne = (
-    directory: { readonly relative: string; readonly absolute: string },
-    record: RepositoryContextRecord,
-    onProgress: (event: ContextRepositoryProgress) => Effect.Effect<void>,
-  ) =>
-    Effect.gen(function* () {
+  const ensureOne = Effect.fn("ContextRepositories.ensureOne")(
+    function* (
+      directory: { readonly relative: string; readonly absolute: string },
+      record: RepositoryContextRecord,
+      onProgress: (event: ContextRepositoryProgress) => Effect.Effect<void>,
+    ) {
       const clonePath = path.join(directory.absolute, record.directoryName);
       const relativePath = `${directory.relative}/${record.directoryName}`;
       const outcomeOf = (
@@ -381,57 +370,57 @@ export const make = Effect.gen(function* () {
             discardPartial.pipe(Effect.as(outcomeOf("failed", { detail: error.detail }))),
           ),
         );
-    }).pipe(
-      // Keyed by the clone's own path, so a removal of the same folder waits
-      // for the clone instead of deleting it half-written.
-      (effect) => withWorkspaceLease(path.join(directory.absolute, record.directoryName), effect),
-      Effect.tap((outcome) => onProgress({ type: "finished", record, outcome })),
-      Effect.map((outcome): RepositoryContextRecord => ({ ...record, outcome })),
+    },
+    (effect, directory, record, onProgress) =>
+      effect.pipe(
+        (effect) => withWorkspaceLease(path.join(directory.absolute, record.directoryName), effect),
+        Effect.tap((outcome) => onProgress({ type: "finished", record, outcome })),
+        Effect.map((outcome): RepositoryContextRecord => ({ ...record, outcome })),
+      ),
+  );
+
+  const ensure: ContextRepositories["Service"]["ensure"] = Effect.fn("ensure")(function* (input) {
+    if (input.repositories.length === 0) return input.repositories;
+    const onProgress = input.onProgress ?? (() => Effect.void);
+    const directory = yield* resolveDirectory(input.cwd, input.directory).pipe(Effect.result);
+    if (directory._tag === "Failure") {
+      const detail = directory.failure.detail;
+      return input.repositories.map((record): RepositoryContextRecord => ({
+        ...record,
+        outcome: {
+          status: "failed",
+          path: record.directoryName,
+          detail,
+          git: null,
+          fetched: false,
+        },
+      }));
+    }
+    yield* ensureExcluded(input.cwd, directory.success.relative);
+    yield* fileSystem
+      .makeDirectory(directory.success.absolute, { recursive: true })
+      .pipe(Effect.ignore);
+    return yield* Effect.forEach(
+      input.repositories,
+      (record) =>
+        isDirectoryName(record.directoryName)
+          ? ensureOne(directory.success, record, onProgress)
+          : Effect.succeed<RepositoryContextRecord>({
+              ...record,
+              outcome: {
+                status: "failed",
+                path: record.directoryName,
+                detail: "The folder name must be a single path segment.",
+                git: null,
+                fetched: false,
+              },
+            }),
+      { concurrency: ENSURE_CONCURRENCY },
     );
+  });
 
-  const ensure: ContextRepositories["Service"]["ensure"] = (input) =>
-    Effect.gen(function* () {
-      if (input.repositories.length === 0) return input.repositories;
-      const onProgress = input.onProgress ?? (() => Effect.void);
-      const directory = yield* resolveDirectory(input.cwd, input.directory).pipe(Effect.result);
-      if (directory._tag === "Failure") {
-        const detail = directory.failure.detail;
-        return input.repositories.map((record): RepositoryContextRecord => ({
-          ...record,
-          outcome: {
-            status: "failed",
-            path: record.directoryName,
-            detail,
-            git: null,
-            fetched: false,
-          },
-        }));
-      }
-      yield* ensureExcluded(input.cwd, directory.success.relative);
-      yield* fileSystem
-        .makeDirectory(directory.success.absolute, { recursive: true })
-        .pipe(Effect.ignore);
-      return yield* Effect.forEach(
-        input.repositories,
-        (record) =>
-          isDirectoryName(record.directoryName)
-            ? ensureOne(directory.success, record, onProgress)
-            : Effect.succeed<RepositoryContextRecord>({
-                ...record,
-                outcome: {
-                  status: "failed",
-                  path: record.directoryName,
-                  detail: "The folder name must be a single path segment.",
-                  git: null,
-                  fetched: false,
-                },
-              }),
-        { concurrency: ENSURE_CONCURRENCY },
-      );
-    });
-
-  const inspect: ContextRepositories["Service"]["inspect"] = (input) =>
-    Effect.gen(function* () {
+  const inspect: ContextRepositories["Service"]["inspect"] = Effect.fn("inspect")(
+    function* (input) {
       const directory = yield* resolveDirectory(input.cwd, input.directory);
       const entries = yield* fileSystem
         .readDirectory(directory.absolute)
@@ -456,7 +445,8 @@ export const make = Effect.gen(function* () {
         directory: directory.relative,
         clones: clones.filter((clone) => clone !== null),
       };
-    });
+    },
+  );
 
   const isInside = (root: string, target: string) => {
     const relative = path.relative(root, target);
@@ -473,8 +463,8 @@ export const make = Effect.gen(function* () {
    * or its project's root): a run preparing, starting, running, or waiting on
    * the user.
    */
-  const hasRunningTurn = (workspace: string) =>
-    Effect.gen(function* () {
+  const hasRunningTurn = Effect.fn("hasRunningTurn")(
+    function* (workspace: string) {
       const snapshot = yield* projections.getShellSnapshot({ unsettledOnly: true });
       const running = snapshot.threads.filter(
         (thread) => (thread.activityRunStatus ?? null) !== null,
@@ -489,87 +479,85 @@ export const make = Effect.gen(function* () {
         const cwd = thread.worktreePath ?? roots.get(thread.projectId);
         return cwd !== undefined && path.resolve(cwd) === workspace;
       });
-    }).pipe(
-      Effect.mapError(
-        (cause) =>
-          new ContextRepositoryError({
-            detail: "Could not check for running turns in this workspace.",
-            cause,
-          }),
-      ),
-    );
+    },
+    Effect.mapError(
+      (cause) =>
+        new ContextRepositoryError({
+          detail: "Could not check for running turns in this workspace.",
+          cause,
+        }),
+    ),
+  );
 
-  const removeLocked = (input: {
+  const removeLocked = Effect.fn("removeLocked")(function* (input: {
     readonly workspace: string;
     readonly directory: { readonly relative: string; readonly absolute: string };
     readonly clonePath: string;
     readonly directoryName: string;
-  }) =>
-    Effect.gen(function* () {
-      const { workspace, directory, clonePath } = input;
-      const relativePath = `${directory.relative}/${input.directoryName}`;
-      const realPathOf = (target: string) =>
-        fileSystem
-          .realPath(target)
-          .pipe(
-            Effect.mapError(
-              (cause) =>
-                new ContextRepositoryError({ detail: `${relativePath} does not exist.`, cause }),
-            ),
-          );
-      // Compare resolved paths so a symlinked clone, or a context folder that
-      // links out of the workspace, is refused rather than followed.
-      const realWorkspace = yield* realPathOf(workspace);
-      const realDirectory = yield* realPathOf(directory.absolute);
-      const realClone = yield* realPathOf(clonePath);
-      if (
-        !isInside(realWorkspace, realDirectory) ||
-        realClone !== path.join(realDirectory, input.directoryName)
-      ) {
-        return yield* new ContextRepositoryError({
-          detail: `${relativePath} resolves outside ${directory.relative}; it was not removed.`,
-        });
-      }
-      if (!(yield* isGitRepository(realClone))) {
-        return yield* new ContextRepositoryError({
-          detail: `${relativePath} is not a git repository; it was not removed.`,
-        });
-      }
-      if (yield* hasRunningTurn(workspace)) {
-        return yield* new ContextRepositoryError({
-          detail: "A turn is running in this workspace. Remove the repository once it finishes.",
-        });
-      }
-      yield* fileSystem
-        .remove(realClone, { recursive: true })
+  }) {
+    const { workspace, directory, clonePath } = input;
+    const relativePath = `${directory.relative}/${input.directoryName}`;
+    const realPathOf = (target: string) =>
+      fileSystem
+        .realPath(target)
         .pipe(
           Effect.mapError(
             (cause) =>
-              new ContextRepositoryError({ detail: `Could not remove ${relativePath}.`, cause }),
+              new ContextRepositoryError({ detail: `${relativePath} does not exist.`, cause }),
           ),
         );
-    });
-
-  const remove: ContextRepositories["Service"]["remove"] = (input) =>
-    Effect.gen(function* () {
-      if (!isDirectoryName(input.directoryName)) {
-        return yield* new ContextRepositoryError({
-          detail: "The folder name must be a single path segment.",
-        });
-      }
-      const workspace = path.resolve(input.cwd);
-      const directory = yield* resolveDirectory(workspace, input.directory);
-      const clonePath = path.join(directory.absolute, input.directoryName);
-      // The clone's lease first, so waiting on a clone never holds up turns
-      // and terminals in the workspace; turn start takes only the workspace's.
-      return yield* withWorkspaceLease(
-        clonePath,
-        withWorkspaceLease(
-          workspace,
-          removeLocked({ workspace, directory, clonePath, directoryName: input.directoryName }),
+    // Compare resolved paths so a symlinked clone, or a context folder that
+    // links out of the workspace, is refused rather than followed.
+    const realWorkspace = yield* realPathOf(workspace);
+    const realDirectory = yield* realPathOf(directory.absolute);
+    const realClone = yield* realPathOf(clonePath);
+    if (
+      !isInside(realWorkspace, realDirectory) ||
+      realClone !== path.join(realDirectory, input.directoryName)
+    ) {
+      return yield* new ContextRepositoryError({
+        detail: `${relativePath} resolves outside ${directory.relative}; it was not removed.`,
+      });
+    }
+    if (!(yield* isGitRepository(realClone))) {
+      return yield* new ContextRepositoryError({
+        detail: `${relativePath} is not a git repository; it was not removed.`,
+      });
+    }
+    if (yield* hasRunningTurn(workspace)) {
+      return yield* new ContextRepositoryError({
+        detail: "A turn is running in this workspace. Remove the repository once it finishes.",
+      });
+    }
+    yield* fileSystem
+      .remove(realClone, { recursive: true })
+      .pipe(
+        Effect.mapError(
+          (cause) =>
+            new ContextRepositoryError({ detail: `Could not remove ${relativePath}.`, cause }),
         ),
       );
-    });
+  });
+
+  const remove: ContextRepositories["Service"]["remove"] = Effect.fn("remove")(function* (input) {
+    if (!isDirectoryName(input.directoryName)) {
+      return yield* new ContextRepositoryError({
+        detail: "The folder name must be a single path segment.",
+      });
+    }
+    const workspace = path.resolve(input.cwd);
+    const directory = yield* resolveDirectory(workspace, input.directory);
+    const clonePath = path.join(directory.absolute, input.directoryName);
+    // The clone's lease first, so waiting on a clone never holds up turns
+    // and terminals in the workspace; turn start takes only the workspace's.
+    return yield* withWorkspaceLease(
+      clonePath,
+      withWorkspaceLease(
+        workspace,
+        removeLocked({ workspace, directory, clonePath, directoryName: input.directoryName }),
+      ),
+    );
+  });
 
   const fetchOwner = (owner: string, limit: number) =>
     github
@@ -627,38 +615,36 @@ export const make = Effect.gen(function* () {
    * `LIST_REFRESH_AFTER_MS` is still served, and refetched in the background for
    * the next open; a failed refetch keeps the old list.
    */
-  const listOwner = (owner: string, limit: number) =>
-    Effect.gen(function* () {
-      const key = ownerListKey(owner, limit);
-      const cached = ownerLists.get(key);
-      if (cached === undefined) return yield* fetchOwner(owner, limit);
-      const now = yield* Clock.currentTimeMillis;
-      if (now - cached.fetchedAt > LIST_REFRESH_AFTER_MS && !refreshingOwners.has(key)) {
-        refreshingOwners.add(key);
-        yield* fetchOwner(owner, limit).pipe(
-          Effect.ignoreCause({ log: true }),
-          Effect.ensuring(Effect.sync(() => refreshingOwners.delete(key))),
-          Effect.forkDetach,
-        );
-      }
-      return cached.repositories;
-    });
-
-  const list: ContextRepositories["Service"]["list"] = (input) =>
-    Effect.gen(function* () {
-      const limit = input.limit ?? DEFAULT_LIST_LIMIT;
-      const owners = [...new Set(input.owners ?? [input.owner])];
-      const results = yield* Effect.forEach(
-        owners,
-        (owner) => Effect.result(listOwner(owner, limit)),
-        { concurrency: LIST_CONCURRENCY },
+  const listOwner = Effect.fn("listOwner")(function* (owner: string, limit: number) {
+    const key = ownerListKey(owner, limit);
+    const cached = ownerLists.get(key);
+    if (cached === undefined) return yield* fetchOwner(owner, limit);
+    const now = yield* Clock.currentTimeMillis;
+    if (now - cached.fetchedAt > LIST_REFRESH_AFTER_MS && !refreshingOwners.has(key)) {
+      refreshingOwners.add(key);
+      yield* fetchOwner(owner, limit).pipe(
+        Effect.ignoreCause({ log: true }),
+        Effect.ensuring(Effect.sync(() => refreshingOwners.delete(key))),
+        Effect.forkDetach,
       );
-      const lists = results.filter(Result.isSuccess).map((result) => result.success);
-      // One misspelled owner should not hide every other owner's repositories.
-      const failure = results.find(Result.isFailure);
-      if (lists.length === 0 && failure !== undefined) return yield* failure.failure;
-      return { repositories: lists.flat() };
-    });
+    }
+    return cached.repositories;
+  });
+
+  const list: ContextRepositories["Service"]["list"] = Effect.fn("list")(function* (input) {
+    const limit = input.limit ?? DEFAULT_LIST_LIMIT;
+    const owners = [...new Set(input.owners ?? [input.owner])];
+    const results = yield* Effect.forEach(
+      owners,
+      (owner) => Effect.result(listOwner(owner, limit)),
+      { concurrency: LIST_CONCURRENCY },
+    );
+    const lists = results.filter(Result.isSuccess).map((result) => result.success);
+    // One misspelled owner should not hide every other owner's repositories.
+    const failure = results.find(Result.isFailure);
+    if (lists.length === 0 && failure !== undefined) return yield* failure.failure;
+    return { repositories: lists.flat() };
+  });
 
   return ContextRepositories.of({ list, inspect, remove, ensure });
 });

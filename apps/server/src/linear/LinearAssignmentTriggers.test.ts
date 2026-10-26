@@ -13,7 +13,6 @@ import { assert, describe, it } from "@effect/vitest";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 
 import * as GitWorkflow from "../git/GitWorkflowService.ts";
 import * as ThreadLaunch from "../orchestration-v2/ThreadLaunchService.ts";
@@ -154,7 +153,7 @@ const testLayer = Layer.mergeAll(
       }),
   }),
   Layer.mock(ProjectService.ProjectService)({
-    getById: () => Effect.succeed(Option.some({ workspaceRoot: "/repo" } as Project)),
+    getById: () => Effect.succeedSome({ workspaceRoot: "/repo" } as Project),
   }),
   Layer.mock(GitWorkflow.GitWorkflowService)({
     localStatus: () => Effect.succeed({ isRepo: true, refName: "main" } as VcsStatusLocalResult),

@@ -27,7 +27,7 @@ interface LinkRow {
 }
 
 /** Folds the joined rows into one link per group; the group's own id is always a member. */
-export function groupLinkRows(rows: ReadonlyArray<LinkRow>): GitHubIssueThreadLinksList {
+function groupLinkRows(rows: ReadonlyArray<LinkRow>): GitHubIssueThreadLinksList {
   const links = new Map<string, GitHubIssueThreadLink & { threadIds: ThreadId[] }>();
   for (const row of rows) {
     let link = links.get(row.groupId);
@@ -77,7 +77,7 @@ export class GitHubIssueThreadLinks extends Context.Service<
   }
 >()("t3/githubIssues/GitHubIssueThreadLinks") {}
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const issues = yield* GitHubIssues;
@@ -154,10 +154,11 @@ export const make = Effect.gen(function* () {
     link,
     linkWithReplacement,
     unlink,
-    forThread: (threadId) =>
+    forThread: Effect.fn("GitHubIssueThreadLinks.forThread")((threadId) =>
       SubscriptionRef.get(state).pipe(
         Effect.map((links) => links.find((entry) => entry.threadIds.includes(threadId))),
       ),
+    ),
     refresh,
   });
 });

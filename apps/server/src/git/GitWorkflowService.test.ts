@@ -58,3 +58,38 @@ it.layer(NodeServices.layer)("GitWorkflowService", (it) => {
     ),
   );
 });
+
+it.effect("runs the Conductor archive hook before removing the git worktree", () =>
+  Effect.gen(function* () {
+    const operations: string[] = [];
+    const workflow = yield* GitWorkflowService.GitWorkflowService.pipe(
+      Effect.provide(
+        GitWorkflowService.layer.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(VcsDriverRegistry.VcsDriverRegistry)({
+                resolve: () => Effect.succeed({ kind: "git" } as VcsDriverRegistry.VcsDriverHandle),
+              }),
+              Layer.mock(GitManager.GitManager)({}),
+              Layer.mock(GitVcsDriver.GitVcsDriver)({
+                removeWorktree: () =>
+                  Effect.sync(() => {
+                    operations.push("remove");
+                  }),
+              }),
+              Layer.mock(ConductorWorkspace.ConductorWorkspace)({
+                archiveWorktree: () =>
+                  Effect.sync(() => {
+                    operations.push("archive");
+                  }),
+              }),
+              NodeServices.layer,
+            ),
+          ),
+        ),
+      ),
+    );
+    yield* workflow.removeWorktree({ cwd: "/repo", path: "/repo-feature" });
+    assert.deepEqual(operations, ["archive", "remove"]);
+  }),
+);

@@ -19,7 +19,7 @@ export function isRecord(value: unknown): value is Record_ {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function isText(value: unknown): value is string {
+function isText(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
@@ -192,7 +192,7 @@ export function scalarText(value: unknown): string | null {
   return null;
 }
 
-export function pick(record: Record_, keys: ReadonlyArray<string>, skip?: string): string | null {
+function pick(record: Record_, keys: ReadonlyArray<string>, skip?: string): string | null {
   for (const key of keys) {
     if (key === skip) continue;
     const value = scalarText(record[key]);
@@ -246,7 +246,7 @@ export function recordOf(value: unknown, index: number): PreviewRecord | null {
   };
 }
 
-export function recordsOf(values: ReadonlyArray<unknown>): ReadonlyArray<PreviewRecord> {
+function recordsOf(values: ReadonlyArray<unknown>): ReadonlyArray<PreviewRecord> {
   const items = values.flatMap((value, index) => {
     const record = recordOf(value, index);
     return record ? [record] : [];

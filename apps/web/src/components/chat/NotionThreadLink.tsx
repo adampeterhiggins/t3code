@@ -14,7 +14,7 @@ import { ThreadLinkRow } from "./ThreadLinkRow";
 import { openNotionPagePicker } from "./NotionPagePicker";
 
 /** Every Notion link in the environment. Null until the server answers, or on servers without links. */
-export function useNotionThreadLinks(environmentId: EnvironmentId | null) {
+function useNotionThreadLinks(environmentId: EnvironmentId | null) {
   return useEnvironmentQuery(
     environmentId === null ? null : notionEnvironment.threadLinks({ environmentId, input: {} }),
   ).data;

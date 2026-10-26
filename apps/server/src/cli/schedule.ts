@@ -74,28 +74,26 @@ export const parseEvery = (text: string) => {
  * Day numbers (0 is Sunday), short names, or `weekdays`/`weekends`/`daily`.
  * `undefined` means every day, which the schedule stores as no weekdays.
  */
-export const parseWeekdays = (text: string) => {
+export const parseWeekdays = Effect.fn("parseWeekdays")(function* (text: string) {
   const value = text.trim().toLowerCase();
   if (value === "daily" || value === "all" || value === "every") {
-    return Effect.succeed(undefined);
+    return undefined;
   }
-  if (value === "weekdays") return Effect.succeed([1, 2, 3, 4, 5]);
-  if (value === "weekends") return Effect.succeed([0, 6]);
+  if (value === "weekdays") return yield* Effect.succeed([1, 2, 3, 4, 5]);
+  if (value === "weekends") return yield* Effect.succeed([0, 6]);
   const days = new Set<number>();
   for (const part of value.split(",")) {
     const token = part.trim();
     const byName = WEEKDAY_NAMES.findIndex((name) => token.startsWith(name));
     const day = /^[0-6]$/.test(token) ? Number(token) : byName;
     if (day < 0) {
-      return Effect.fail(
-        usage(`'${part.trim()}' is not a weekday. Use 0-6 (0 is Sunday) or mon,tue,…`),
-      );
+      return yield* usage(`'${part.trim()}' is not a weekday. Use 0-6 (0 is Sunday) or mon,tue,…`);
     }
     days.add(day);
   }
   const sorted = [...days].toSorted((left, right) => left - right);
-  return Effect.succeed(sorted.length === 7 ? undefined : sorted);
-};
+  return yield* Effect.succeed(sorted.length === 7 ? undefined : sorted);
+});
 
 const TIME_OF_DAY = /^([01]?\d|2[0-3]):([0-5]\d)$/;
 
@@ -182,7 +180,7 @@ export const describeSchedule = (schedule: ScheduledTaskSchedule): string => {
 };
 
 /** A local timestamp with how far away it is, such as `2026-10-21 09:00 (in 2h 5m)`. */
-export const formatWhen = (iso: string | null, now: number): string => {
+const formatWhen = (iso: string | null, now: number): string => {
   if (iso === null) return "-";
   const at = Date.parse(iso);
   if (!Number.isFinite(at)) return iso;
@@ -191,7 +189,7 @@ export const formatWhen = (iso: string | null, now: number): string => {
   return `${local} (${at >= now ? `in ${distance}` : `${distance} ago`})`;
 };
 
-export const titleFromPrompt = (prompt: string) => {
+const titleFromPrompt = (prompt: string) => {
   const firstLine = prompt.trim().split("\n")[0]?.trim() ?? "";
   if (firstLine.length === 0) return "Scheduled task";
   return firstLine.length > TITLE_MAX_CHARS
@@ -352,7 +350,7 @@ const modelSelectionFromFlags = (flags: {
  * The settings form's last resort when neither the project nor the settings
  * name a model: a signed-in provider's default model, else its first.
  */
-export const defaultModelFromProviders = (
+const defaultModelFromProviders = (
   providers: ReadonlyArray<ServerProvider>,
 ): ModelSelection | null => {
   const models = providers

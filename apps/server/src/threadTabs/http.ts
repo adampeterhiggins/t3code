@@ -16,18 +16,19 @@ import {
 } from "../auth/http.ts";
 import * as ThreadTabs from "./ThreadTabs.ts";
 
-const mapThreadTabsError = (error: ThreadTabs.ThreadTabsError) =>
-  Effect.gen(function* () {
-    switch (error.reason) {
-      case "thread_not_found":
-        return yield* failEnvironmentNotFound("thread_not_found");
-      case "invalid_request":
-        return yield* failEnvironmentInvalidRequest("invalid_command");
-      case "dispatch_failed":
-      case "internal":
-        return yield* failEnvironmentInternal("internal_error", error);
-    }
-  });
+const mapThreadTabsError = Effect.fn("mapThreadTabsError")(function* (
+  error: ThreadTabs.ThreadTabsError,
+) {
+  switch (error.reason) {
+    case "thread_not_found":
+      return yield* failEnvironmentNotFound("thread_not_found");
+    case "invalid_request":
+      return yield* failEnvironmentInvalidRequest("invalid_command");
+    case "dispatch_failed":
+    case "internal":
+      return yield* failEnvironmentInternal("internal_error", error);
+  }
+});
 
 export const layer = HttpApiBuilder.group(
   EnvironmentHttpApi,

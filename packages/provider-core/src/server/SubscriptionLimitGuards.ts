@@ -42,14 +42,17 @@ const make = Effect.gen(function* () {
       });
       if (changed) yield* PubSub.publish(changes, { threadId, enabled });
     }),
-    read: (threadId) => Ref.get(values).pipe(Effect.map((current) => current.get(threadId))),
-    clear: (threadId) =>
+    read: Effect.fn("SubscriptionLimitGuards.read")((threadId) =>
+      Ref.get(values).pipe(Effect.map((current) => current.get(threadId))),
+    ),
+    clear: Effect.fn("SubscriptionLimitGuards.clear")((threadId) =>
       Ref.update(values, (current) => {
         if (!current.has(threadId)) return current;
         const next = new Map(current);
         next.delete(threadId);
         return next;
       }),
+    ),
     changes: (threadId) =>
       Stream.fromPubSub(changes).pipe(
         Stream.filter((change) => change.threadId === threadId),

@@ -14,7 +14,7 @@ import { ThreadLinkRow } from "./ThreadLinkRow";
 import { openDiscordMessagePicker } from "./DiscordMessagePicker";
 
 /** Every Discord link in the environment. Null until the server answers, or on servers without links. */
-export function useDiscordThreadLinks(environmentId: EnvironmentId | null) {
+function useDiscordThreadLinks(environmentId: EnvironmentId | null) {
   return useEnvironmentQuery(
     environmentId === null ? null : discordEnvironment.threadLinks({ environmentId, input: {} }),
   ).data;

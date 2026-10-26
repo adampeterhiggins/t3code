@@ -1,4 +1,4 @@
-export const NOTION_AUTHORIZE_URL = "https://api.notion.com/v1/oauth/authorize";
+const NOTION_AUTHORIZE_URL = "https://api.notion.com/v1/oauth/authorize";
 export const NOTION_TOKEN_URL = "https://api.notion.com/v1/oauth/token";
 export const NOTION_REVOKE_URL = "https://api.notion.com/v1/oauth/revoke";
 

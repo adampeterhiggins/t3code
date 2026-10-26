@@ -476,7 +476,7 @@ const launchWorkspaceStrategy = (input: {
     onNone: () =>
       Option.isSome(input.branch)
         ? Effect.fail(new ThreadUsageError({ detail: "--branch needs --worktree <base-ref>." }))
-        : Effect.succeed(undefined),
+        : Effect.void,
     onSome: (baseRef) =>
       Effect.succeed({
         type: "worktree" as const,
@@ -714,16 +714,6 @@ const threadShowCommand = Command.make("show", {
       );
     }).pipe(reportThreadErrors),
   ),
-);
-
-export const threadCommand = Command.make("thread").pipe(
-  Command.withDescription("Start, message, and read threads on the running server."),
-  Command.withSubcommands([
-    threadListCommand,
-    threadStartCommand,
-    threadSendCommand,
-    threadShowCommand,
-  ]),
 );
 
 // Fork: shared with the fork-only commands in threadFork.ts and draft.ts.

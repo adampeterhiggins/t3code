@@ -37,6 +37,8 @@ const makeBrowser = () => {
         return Promise.resolve(layout);
       case "Page.captureScreenshot":
         return Promise.resolve({ data: png });
+      case "Runtime.callFunctionOn":
+        return Promise.resolve({ result: { value: png } });
       case "Runtime.evaluate":
         return Promise.resolve({ result: { value: 42 } });
       default:
@@ -106,50 +108,45 @@ describe("bounded server browser reads", () => {
     vi.restoreAllMocks();
   });
 
-  it.each([
-    "snapshot metadata",
-    "accessibility tree",
-    "Page.getLayoutMetrics",
-    "Page.captureScreenshot",
-  ])("times out a stalled %s stage and permits a fresh snapshot", async (stage) => {
-    const browser = makeBrowser();
-    const stalled = deferred<never>();
-    const abort = observeAbort();
-    if (stage === "snapshot metadata") browser.pageEvaluate.mockReturnValueOnce(stalled.promise);
-    else if (stage === "accessibility tree")
-      browser.ariaSnapshot.mockReturnValueOnce(stalled.promise);
-    else if (stage === "Page.getLayoutMetrics") browser.send.mockReturnValueOnce(stalled.promise);
-    else browser.send.mockResolvedValueOnce(layout).mockReturnValueOnce(stalled.promise);
-    const failed = expect(
-      browser.snapshot({ timeoutMs: 100, signal: abort.controller.signal }),
-    ).rejects.toMatchObject({
-      tag: "PreviewAutomationTimeoutError",
-      message: expect.stringContaining(stage),
-      detail: { stage, timeoutMs: 100 },
-    });
-    await vi.advanceTimersByTimeAsync(100);
-    await failed;
-    abort.expectClean();
-    if (stage === "Page.getLayoutMetrics")
-      expect(browser.send).not.toHaveBeenCalledWith("Page.captureScreenshot", expect.anything());
-    const fresh = await browser.snapshot({ signal: abort.controller.signal });
-    expect(fresh).toMatchObject({ title: "Test page", screenshot: { data: png } });
-    expect(String(fresh.accessibilityTree)).toContain("[ref=t3-");
-    abort.expectClean();
-    // The timed-out protocol response can reject after the replacement read finishes.
-    stalled.reject(new Error("Late browser response"));
-    await vi.advanceTimersByTimeAsync(0);
-    abort.expectClean();
-  });
+  it.each(["snapshot metadata", "accessibility tree", "Page.captureScreenshot"])(
+    "times out a stalled %s stage and permits a fresh snapshot",
+    async (stage) => {
+      const browser = makeBrowser();
+      const stalled = deferred<never>();
+      const abort = observeAbort();
+      if (stage === "snapshot metadata") browser.pageEvaluate.mockReturnValueOnce(stalled.promise);
+      else if (stage === "accessibility tree")
+        browser.ariaSnapshot.mockReturnValueOnce(stalled.promise);
+      else browser.send.mockReturnValueOnce(stalled.promise);
+      const failed = expect(
+        browser.snapshot({ timeoutMs: 100, signal: abort.controller.signal }),
+      ).rejects.toMatchObject({
+        tag: "PreviewAutomationTimeoutError",
+        message: expect.stringContaining(stage),
+        detail: { stage, timeoutMs: 100 },
+      });
+      await vi.advanceTimersByTimeAsync(100);
+      await failed;
+      abort.expectClean();
+      const fresh = await browser.snapshot({ signal: abort.controller.signal });
+      expect(fresh).toMatchObject({ title: "Test page", screenshot: { data: png } });
+      expect(String(fresh.accessibilityTree)).toContain("[ref=t3-");
+      abort.expectClean();
+      // The timed-out protocol response can reject after the replacement read finishes.
+      stalled.reject(new Error("Late browser response"));
+      await vi.advanceTimersByTimeAsync(0);
+      abort.expectClean();
+    },
+  );
 
-  it.each(["Page.getLayoutMetrics", "Page.captureScreenshot"])(
+  it.each(["Page.captureScreenshot", "Runtime.callFunctionOn"])(
     "bounds a standalone stalled %s and permits another capture",
     async (stage) => {
       const browser = makeBrowser();
       const stalled = deferred<never>();
       const abort = observeAbort();
-      if (stage === "Page.getLayoutMetrics") browser.send.mockReturnValueOnce(stalled.promise);
-      else browser.send.mockResolvedValueOnce(layout).mockReturnValueOnce(stalled.promise);
+      if (stage === "Page.captureScreenshot") browser.send.mockReturnValueOnce(stalled.promise);
+      else browser.send.mockResolvedValueOnce({ data: png }).mockReturnValueOnce(stalled.promise);
       const options = {
         format: "jpeg",
         quality: 70,
@@ -161,7 +158,10 @@ describe("bounded server browser reads", () => {
         ServerBrowserPage.captureViewport(browser.page, browser.cdp, options),
       ).rejects.toMatchObject({
         tag: "PreviewAutomationTimeoutError",
-        detail: { stage, timeoutMs: 100 },
+        detail: {
+          stage: stage === "Runtime.callFunctionOn" ? "shrink screenshot" : stage,
+          timeoutMs: 100,
+        },
       });
       await vi.advanceTimersByTimeAsync(100);
       await failed;
@@ -173,11 +173,11 @@ describe("bounded server browser reads", () => {
     },
   );
 
-  it("shares the total capture budget across layout and screenshot", async () => {
+  it("shares the total capture budget across screenshot and shrinking", async () => {
     const browser = makeBrowser();
-    const metrics = deferred<typeof layout>();
+    const screenshot = deferred<{ data: string }>();
     browser.send
-      .mockReturnValueOnce(metrics.promise)
+      .mockReturnValueOnce(screenshot.promise)
       .mockReturnValueOnce(new Promise<never>(() => {}));
     const failed = expect(
       ServerBrowserPage.captureViewport(browser.page, browser.cdp, {
@@ -187,15 +187,13 @@ describe("bounded server browser reads", () => {
       }),
     ).rejects.toMatchObject({
       tag: "PreviewAutomationTimeoutError",
-      detail: { stage: "Page.captureScreenshot", timeoutMs: 100 },
+      detail: { stage: "shrink screenshot", timeoutMs: 100 },
     });
     await vi.advanceTimersByTimeAsync(80);
-    metrics.resolve(layout);
+    screenshot.resolve({ data: png });
     await vi.advanceTimersByTimeAsync(0);
-    expect(browser.send).toHaveBeenCalledWith(
-      "Page.captureScreenshot",
-      expect.objectContaining({ clip: { x: 10, y: 20, width: 2560, height: 1600, scale: 0.5 } }),
-    );
+    expect(browser.send).toHaveBeenCalledWith("Page.captureScreenshot", { format: "png" });
+    expect(browser.send).toHaveBeenCalledWith("Runtime.callFunctionOn", expect.anything());
     await vi.advanceTimersByTimeAsync(19);
     expect(vi.getTimerCount()).toBe(1);
     await vi.advanceTimersByTimeAsync(1);
@@ -203,17 +201,17 @@ describe("bounded server browser reads", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("shares the snapshot deadline with the screenshot after layout completes", async () => {
+  it("shares the snapshot deadline with shrinking after screenshot completes", async () => {
     const browser = makeBrowser();
-    const metrics = deferred<typeof layout>();
+    const screenshot = deferred<{ data: string }>();
     browser.send
-      .mockReturnValueOnce(metrics.promise)
+      .mockReturnValueOnce(screenshot.promise)
       .mockReturnValueOnce(new Promise<never>(() => {}));
     const failed = expect(browser.snapshot({ timeoutMs: 100 })).rejects.toMatchObject({
-      detail: { stage: "Page.captureScreenshot", timeoutMs: 100 },
+      detail: { stage: "shrink screenshot", timeoutMs: 100 },
     });
     await vi.advanceTimersByTimeAsync(80);
-    metrics.resolve(layout);
+    screenshot.resolve({ data: png });
     await vi.advanceTimersByTimeAsync(20);
     await failed;
     expect(vi.getTimerCount()).toBe(0);
@@ -240,13 +238,13 @@ describe("bounded server browser reads", () => {
     abort.expectClean();
   });
 
-  it("aborts every pending snapshot stage and never starts capture after delayed layout", async () => {
+  it("aborts every pending snapshot stage and never starts shrinking after a delayed screenshot", async () => {
     const browser = makeBrowser();
     const abort = observeAbort();
-    const metrics = deferred<typeof layout>();
+    const screenshot = deferred<{ data: string }>();
     browser.pageEvaluate.mockReturnValueOnce(new Promise<never>(() => {}));
     browser.ariaSnapshot.mockReturnValueOnce(new Promise<never>(() => {}));
-    browser.send.mockReturnValueOnce(metrics.promise);
+    browser.send.mockReturnValueOnce(screenshot.promise);
     const failed = expect(
       browser.snapshot({ signal: abort.controller.signal }),
     ).rejects.toMatchObject({ tag: "PreviewAutomationControlInterruptedError" });
@@ -254,9 +252,9 @@ describe("bounded server browser reads", () => {
     abort.controller.abort();
     await failed;
     abort.expectClean();
-    metrics.resolve(layout);
+    screenshot.resolve({ data: png });
     await vi.advanceTimersByTimeAsync(0);
-    expect(browser.send.mock.calls.map(([method]) => method)).toEqual(["Page.getLayoutMetrics"]);
+    expect(browser.send.mock.calls.map(([method]) => method)).toEqual(["Page.captureScreenshot"]);
     await expect(browser.snapshot()).resolves.toMatchObject({ title: "Test page" });
     abort.expectClean();
   });

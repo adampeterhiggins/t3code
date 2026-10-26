@@ -1,3 +1,4 @@
+/* oxlint-disable react/no-array-index-key -- Read-only preview rows can repeat identical text and have no local state. */
 import {
   capitalizeTerm,
   sourceControlClients,

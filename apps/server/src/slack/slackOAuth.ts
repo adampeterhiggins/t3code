@@ -1,6 +1,6 @@
 import { SLACK_REDIRECT_URI, SLACK_USER_SCOPES } from "@t3tools/contracts";
 
-export const SLACK_AUTHORIZE_URL = "https://slack.com/oauth/v2/authorize";
+const SLACK_AUTHORIZE_URL = "https://slack.com/oauth/v2/authorize";
 export const SLACK_API_URL = "https://slack.com/api";
 
 /**

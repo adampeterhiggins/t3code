@@ -10,7 +10,6 @@ import {
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as KeyValueStore from "effect/persistence/KeyValueStore";
 import * as TestClock from "effect/testing/TestClock";
 
@@ -71,7 +70,7 @@ const harness = Effect.gen(function* () {
   const dependencies = Layer.mergeAll(
     Layer.mock(Settings.ServerSettingsService)({ getSettings: Effect.sync(() => settings) }),
     Layer.mock(DiscordAuth.DiscordAuth)({ account: Effect.succeed(account) }),
-    Layer.mock(ProjectService.ProjectService)({ getById: () => Effect.succeed(Option.none()) }),
+    Layer.mock(ProjectService.ProjectService)({ getById: () => Effect.succeedNone }),
     Layer.mock(ThreadLaunch.ThreadLaunchService)({
       launch: (input) =>
         Effect.sync(() => {

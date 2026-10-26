@@ -285,8 +285,8 @@ const make = Effect.gen(function* () {
     return { worktrees };
   }).pipe(Effect.withSpan("WorktreeInventory.list"));
 
-  const size: WorktreeInventory["Service"]["size"] = (target) =>
-    Effect.gen(function* () {
+  const size: WorktreeInventory["Service"]["size"] = Effect.fn("WorktreeInventory.size")(
+    function* (target) {
       const managed = yield* managedPath(target, yield* roots);
       if (managed === null) return { bytes: null };
       const output = yield* sizePermits.withPermit(
@@ -301,10 +301,9 @@ const make = Effect.gen(function* () {
       // du still prints the total when it could not read some entries.
       const kibibytes = Number.parseInt(output.stdout.trim().split(/\s/)[0] ?? "", 10);
       return { bytes: Number.isFinite(kibibytes) && kibibytes >= 0 ? kibibytes * 1024 : null };
-    }).pipe(
-      Effect.catch(() => Effect.succeed({ bytes: null })),
-      Effect.withSpan("WorktreeInventory.size"),
-    );
+    },
+    Effect.orElseSucceed(() => ({ bytes: null })),
+  );
 
   const removeOne = Effect.fn("WorktreeInventory.removeOne")(function* (
     target: string,
@@ -349,8 +348,8 @@ const make = Effect.gen(function* () {
     );
   });
 
-  const remove: WorktreeInventory["Service"]["remove"] = (input) =>
-    Effect.gen(function* () {
+  const remove: WorktreeInventory["Service"]["remove"] = Effect.fn("WorktreeInventory.remove")(
+    function* (input) {
       const managedRoots = yield* roots;
       const projectRoots = yield* projects.listShells().pipe(
         Effect.map((shells) => shells.map((shell) => path.resolve(shell.workspaceRoot))),
@@ -376,7 +375,8 @@ const make = Effect.gen(function* () {
         { concurrency: 1 },
       );
       return { results };
-    }).pipe(Effect.withSpan("WorktreeInventory.remove"));
+    },
+  );
 
   return WorktreeInventory.of({ list, size, remove });
 });

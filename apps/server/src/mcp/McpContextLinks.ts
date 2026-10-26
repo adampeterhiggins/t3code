@@ -91,7 +91,7 @@ const unreadable = (verb: Verb, url: string) => (error: { readonly message: stri
 const UNRECOGNIZED_LINK =
   "Use a Slack or Discord message, Notion page, Google Drive file, folder or Calendar event, Granola note, Linear issue, project, document, or initiative, GitHub issue, GitHub repository, GitHub release, tag, branch, or commit, or T3 Code prompt link.";
 
-export const make = Effect.gen(function* () {
+const make = Effect.gen(function* () {
   const linear = yield* LinearApi.LinearApi;
   const notion = yield* NotionApi.NotionApi;
   const google = yield* GoogleApi.GoogleApi;

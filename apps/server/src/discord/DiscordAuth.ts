@@ -72,7 +72,7 @@ export class DiscordAuth extends Context.Service<
   }
 >()("t3/discord/DiscordAuth") {}
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const secrets = yield* ServerSecretStore.ServerSecretStore;
   const services = Context.make(HttpClient.HttpClient, yield* HttpClient.HttpClient);
@@ -160,15 +160,14 @@ export const make = Effect.gen(function* () {
       (cause) =>
         new DiscordError({ reason: "api", detail: "Could not read the Discord bot token.", cause }),
     ),
-    Effect.flatMap((stored) =>
-      Option.isSome(stored)
-        ? Effect.succeed(stored.value)
-        : Effect.fail(
-            new DiscordError({
-              reason: "not-connected",
-              detail: "Discord is not connected. Connect it in Settings → Integrations.",
-            }),
-          ),
+    Effect.flatMap(
+      Effect.fromOption(
+        () =>
+          new DiscordError({
+            reason: "not-connected",
+            detail: "Discord is not connected. Connect it in Settings → Integrations.",
+          }),
+      ),
     ),
   );
 

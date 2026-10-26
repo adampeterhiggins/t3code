@@ -1,14 +1,4 @@
-/**
- * DevinProvider — status + model-catalog snapshot for the Devin CLI.
- *
- * Probes `devin --version`, `devin auth status`, and
- * `devin models list --format json`. ACP `session/new` exposes the same model
- * list as a `model` config option, but spawning a session just to read the
- * catalog would boot the agent on every health refresh — the JSON listing is
- * cheaper and needs no session.
- *
- * @module DevinProvider
- */
+/** Probe the JSON model listing; creating an ACP session for each health refresh boots an agent. */
 import type {
   DevinSettings,
   ModelCapabilities,
@@ -203,27 +193,26 @@ export function parseDevinAuthStatus(
   };
 }
 
-const runDevinCommand = (
+const runDevinCommand = Effect.fn("runDevinCommand")(function* (
   devinSettings: DevinSettings,
   args: ReadonlyArray<string>,
   environment?: NodeJS.ProcessEnv,
-) =>
-  Effect.gen(function* () {
-    const spawnCommand = yield* resolveSpawnCommand(
-      devinSettings.binaryPath || "devin",
-      args,
-      environment ? { env: environment } : {},
-    );
-    return yield* spawnAndCollect(
-      devinSettings.binaryPath || "devin",
-      ChildProcess.make(spawnCommand.command, spawnCommand.args, {
-        ...(environment ? { env: environment } : { extendEnv: true }),
-        shell: spawnCommand.shell,
-      }),
-    );
-  }).pipe(Effect.scoped);
+) {
+  const spawnCommand = yield* resolveSpawnCommand(
+    devinSettings.binaryPath || "devin",
+    args,
+    environment ? { env: environment } : {},
+  );
+  return yield* spawnAndCollect(
+    devinSettings.binaryPath || "devin",
+    ChildProcess.make(spawnCommand.command, spawnCommand.args, {
+      ...(environment ? { env: environment } : { extendEnv: true }),
+      shell: spawnCommand.shell,
+    }),
+  );
+}, Effect.scoped);
 
-export function buildDevinProviderSnapshot(input: {
+function buildDevinProviderSnapshot(input: {
   readonly checkedAt: string;
   readonly devinSettings: DevinSettings;
   readonly parsed: DevinProbeResult;
@@ -410,47 +399,46 @@ export const checkDevinProviderStatus = Effect.fn("checkDevinProviderStatus")(fu
   });
 });
 
-export const buildInitialDevinProviderSnapshot = (
-  devinSettings: DevinSettings,
-): Effect.Effect<ServerProviderDraft> =>
-  Effect.gen(function* () {
-    const checkedAt = yield* Effect.map(DateTime.now, DateTime.formatIso);
-    const models = getDevinFallbackModels(devinSettings);
+export const buildInitialDevinProviderSnapshot = Effect.fn(
+  "DevinProvider.buildInitialDevinProviderSnapshot",
+)(function* (devinSettings: DevinSettings) {
+  const checkedAt = yield* Effect.map(DateTime.now, DateTime.formatIso);
+  const models = getDevinFallbackModels(devinSettings);
 
-    if (!devinSettings.enabled) {
-      return buildServerProvider({
-        presentation: DEVIN_PRESENTATION,
-        enabled: false,
-        checkedAt,
-        modelCatalogVersion: DEVIN_MODEL_CATALOG_VERSION,
-        supportsConversationRollback: false,
-        models,
-        probe: {
-          installed: false,
-          version: null,
-          status: "warning",
-          auth: { status: "unknown" },
-          message: "Devin is disabled in T3 Code settings.",
-        },
-      });
-    }
-
+  if (!devinSettings.enabled) {
     return buildServerProvider({
       presentation: DEVIN_PRESENTATION,
-      enabled: true,
+      enabled: false,
       checkedAt,
       modelCatalogVersion: DEVIN_MODEL_CATALOG_VERSION,
       supportsConversationRollback: false,
       models,
       probe: {
-        installed: true,
+        installed: false,
         version: null,
         status: "warning",
         auth: { status: "unknown" },
-        message: "Checking Devin CLI availability...",
+        message: "Devin is disabled in T3 Code settings.",
       },
     });
+  }
+
+  return buildServerProvider({
+    presentation: DEVIN_PRESENTATION,
+    enabled: true,
+    checkedAt,
+    modelCatalogVersion: DEVIN_MODEL_CATALOG_VERSION,
+    supportsConversationRollback: false,
+    models,
+    probe: {
+      installed: true,
+      version: null,
+      status: "warning",
+      auth: { status: "unknown" },
+      message: "Checking Devin CLI availability...",
+    },
   });
+});
 
 /**
  * Background maintenance enrichment: republishes update/version advisory

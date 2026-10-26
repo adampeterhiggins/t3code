@@ -1,11 +1,12 @@
 import type { MenuAction, MenuComponentProps } from "@react-native-menu/menu";
 import type { ReactNode } from "react";
-import { use, useCallback, useEffect, useRef, useState } from "react";
+import { use, useRef, useState } from "react";
 import type { StyleProp, ViewInstance, ViewStyle } from "react-native";
-import { BackHandler, Pressable, ScrollView, View } from "react-native";
+import { Pressable, ScrollView, View } from "react-native";
 import { useKeyboardState } from "react-native-keyboard-controller";
 import Animated, { FadeIn } from "react-native-reanimated";
 
+import { useHardwareBack } from "../../lib/backHandler";
 import { deriveMenuHorizontalPlacement } from "../../lib/menu-placement";
 import { WindowHingeContext } from "../../native/window-hinge-context";
 import { OverlayPortal } from "./OverlayPortal";
@@ -47,7 +48,9 @@ export function AndroidAnchoredMenu(props: AndroidAnchoredMenuProps) {
   const [rootHeight, setRootHeight] = useState<number | null>(null);
   const [overlay, setOverlay] = useState<OverlayFrame | null>(null);
   const windowHinge = use(WindowHingeContext);
-  const anchorRef = useRef<ViewInstance>(null);
+  // State, not a ref: `open` reaches render-prop children, and the compiler
+  // bails out of the whole component when a ref might be read during render.
+  const [anchorNode, setAnchorNode] = useState<ViewInstance | null>(null);
   const overlayRef = useRef<ViewInstance>(null);
 
   const keyboardVisible = useKeyboardState((state) => state.isVisible);
@@ -60,7 +63,7 @@ export function AndroidAnchoredMenu(props: AndroidAnchoredMenuProps) {
   };
 
   const open = () => {
-    anchorRef.current?.measureInWindow((x, y, width, height) => {
+    anchorNode?.measureInWindow((x, y, width, height) => {
       setAnchor({ x, y, width, height, keyboardWasVisible: keyboardVisible });
     });
   };
@@ -72,21 +75,16 @@ export function AndroidAnchoredMenu(props: AndroidAnchoredMenuProps) {
     });
   };
 
-  const submenuDepth = path.length;
-  useEffect(() => {
-    if (anchor === null || !anchor.keyboardWasVisible) {
-      return;
+  // Only the in-window (keyboard) presentation needs this; the native popup
+  // handles back itself.
+  useHardwareBack(anchor?.keyboardWasVisible === true, () => {
+    if (path.length > 0) {
+      setPath((current) => current.slice(0, -1));
+    } else {
+      close();
     }
-    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
-      if (submenuDepth > 0) {
-        setPath((current) => current.slice(0, -1));
-      } else {
-        close();
-      }
-      return true;
-    });
-    return () => subscription.remove();
-  }, [anchor, close, submenuDepth]);
+    return true;
+  });
 
   const parent = path[path.length - 1] ?? null;
   const levelActions = (parent?.subactions ?? props.actions).filter(
@@ -141,12 +139,17 @@ export function AndroidAnchoredMenu(props: AndroidAnchoredMenuProps) {
   return (
     <>
       {typeof props.children === "function" ? (
-        <View ref={anchorRef} collapsable={false} className={props.className} style={props.style}>
+        <View
+          ref={setAnchorNode}
+          collapsable={false}
+          className={props.className}
+          style={props.style}
+        >
           {props.children(open)}
         </View>
       ) : (
         <Pressable
-          ref={anchorRef}
+          ref={setAnchorNode}
           accessibilityRole="button"
           className={props.className}
           collapsable={false}

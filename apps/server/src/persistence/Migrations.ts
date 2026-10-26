@@ -199,21 +199,11 @@ export interface RunMigrationsOptions {
 }
 
 /**
- * Run all pending migrations.
- *
- * Creates the migrations tracking table (effect_sql_migrations) if it doesn't exist,
- * then runs any migrations with ID greater than the latest recorded migration.
- *
- * Returns array of [id, name] tuples for migrations that were run.
- *
- * @returns Effect containing array of executed migrations
- */
-/**
  * Fork builds recorded `55_ProjectionThreadsCreatedBy` before upstream assigned
  * 55 to OrchestrationV2. The migrator compares ids only, so that row would skip
  * V2 forever. Forget it (its column is additive and unused) so V2 runs.
  */
-export const forgetForkMigration55 = Effect.fn("forgetForkMigration55")(function* () {
+const forgetForkMigration55 = Effect.fn("forgetForkMigration55")(function* () {
   const sql = yield* SqlClient.SqlClient;
   const tables = yield* sql`
     SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'effect_sql_migrations'

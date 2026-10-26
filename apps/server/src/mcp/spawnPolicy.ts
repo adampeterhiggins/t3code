@@ -15,7 +15,7 @@ import type * as ThreadManagementService from "../orchestration-v2/ThreadManagem
  */
 
 /** Threads an agent started sit one level below the thread that started them. */
-export const MAX_SPAWN_DEPTH = 2;
+const MAX_SPAWN_DEPTH = 2;
 /** Started threads a thread may have going at once; see isLive. */
 export const MAX_LIVE_CHILDREN = 5;
 

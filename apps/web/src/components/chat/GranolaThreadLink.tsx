@@ -14,7 +14,7 @@ import { ThreadLinkRow } from "./ThreadLinkRow";
 import { openGranolaNotePicker } from "./GranolaNotePicker";
 
 /** Every Granola link in the environment. Null until the server answers, or on servers without links. */
-export function useGranolaThreadLinks(environmentId: EnvironmentId | null) {
+function useGranolaThreadLinks(environmentId: EnvironmentId | null) {
   return useEnvironmentQuery(
     environmentId === null ? null : granolaEnvironment.threadLinks({ environmentId, input: {} }),
   ).data;

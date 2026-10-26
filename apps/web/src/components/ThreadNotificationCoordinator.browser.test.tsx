@@ -1,9 +1,11 @@
 import type { ClientSettings } from "@t3tools/contracts/settings";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
-import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+
+import { Atom, AtomRegistry } from "effect/reactivity";
+import { EnvironmentId } from "@t3tools/contracts";
+import type { AnyRouter } from "@tanstack/react-router";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 const state = vi.hoisted(() => ({
   mode: "off" as ClientSettings["notificationMode"],
@@ -136,42 +138,40 @@ function mockThreads() {
   return [stableParent, child];
 }
 
-vi.mock(import("@effect/atom-react"), async (original) => ({
-  ...(await original()),
-  useAtomValue: (() => ({
-    status: state.live ? "live" : "disconnected",
-    snapshot: Option.some({ threads: mockThreads() }),
-  })) as never,
-}));
-vi.mock(import("@tanstack/react-router"), async (original) => ({
-  ...(await original()),
-  useNavigate: (() => state.navigate) as never,
-  useParams: (() => state.active) as never,
-}));
+const shellAtom = Atom.make<unknown>(null);
+const environmentIdsAtom = Atom.make([EnvironmentId.make("env-1")]);
+const settingsListeners = new Set<() => void>();
+vi.mock(import("../state/shell"), async (original) => {
+  const actual = await original();
+  return {
+    ...actual,
+    environmentShell: { ...actual.environmentShell, stateValueAtom: (() => shellAtom) as never },
+  };
+});
+vi.mock(import("../state/presentation"), async (original) => {
+  const actual = await original();
+  return {
+    ...actual,
+    environmentSummaries: {
+      ...actual.environmentSummaries,
+      get environmentIdsAtom() {
+        return environmentIdsAtom;
+      },
+    },
+  };
+});
 vi.mock(import("../hooks/useSettings"), async (original) => ({
   ...(await original()),
-  useClientSettings: ((
-    select: (
-      settings: Pick<
-        ClientSettings,
-        | "notificationMode"
-        | "inAppNotificationsEnabled"
-        | "mutedNotificationEvents"
-        | "mutedNotificationProjects"
-      >,
-    ) => unknown,
-  ) =>
-    select({
-      notificationMode: state.mode,
-      inAppNotificationsEnabled: state.inApp,
-      mutedNotificationEvents: state.mutedEvents,
-      mutedNotificationProjects: state.mutedProjects,
-    })) as never,
-  getClientSettings: (() => ({ notificationMode: state.mode })) as never,
-}));
-vi.mock(import("../state/environments"), async (original) => ({
-  ...(await original()),
-  useEnvironmentIds: (() => ["env-1"]) as never,
+  getClientSettings: (() => ({
+    notificationMode: state.mode,
+    inAppNotificationsEnabled: state.inApp,
+    mutedNotificationEvents: state.mutedEvents,
+    mutedNotificationProjects: state.mutedProjects,
+  })) as never,
+  subscribeClientSettings: ((listener: () => void) => {
+    settingsListeners.add(listener);
+    return () => settingsListeners.delete(listener);
+  }) as never,
 }));
 vi.mock(import("../threadNotifications"), async (original) => ({
   ...(await original()),
@@ -186,12 +186,21 @@ vi.mock(import("./ui/toast"), async (original) => {
   };
 });
 
-import { ThreadNotificationCoordinator } from "./ThreadNotificationCoordinator";
+import { startThreadNotifications } from "./ThreadNotificationCoordinator";
 
-let root: Root;
-
+let registry: AtomRegistry.AtomRegistry;
+let stop: (() => void) | null = null;
 async function render() {
-  await act(() => root.render(<ThreadNotificationCoordinator />));
+  registry.set(shellAtom, {
+    status: state.live ? "live" : "disconnected",
+    snapshot: Option.some({ threads: mockThreads() }),
+  });
+  if (!stop)
+    stop = startThreadNotifications(registry, {
+      state: { matches: [{ params: state.active }] },
+      navigate: state.navigate,
+    } as unknown as AnyRouter);
+  for (const listener of settingsListeners) listener();
 }
 
 async function complete() {
@@ -199,7 +208,7 @@ async function complete() {
   await render();
 }
 
-beforeEach(() => {
+function setup() {
   vi.clearAllMocks();
   Object.assign(state, {
     mode: "off",
@@ -223,23 +232,27 @@ beforeEach(() => {
     delegatedChild: null,
   });
   stableParent = null;
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.spyOn(document, "visibilityState", "get").mockImplementation(
     () => state.visible as DocumentVisibilityState,
   );
   vi.spyOn(document, "hasFocus").mockImplementation(() => state.focused);
   vi.stubGlobal("Notification", Object.assign(state.notification, { permission: "granted" }));
-  root = createRoot(document.createElement("div"));
-});
-
-afterEach(async () => {
-  await act(() => root.unmount());
-  vi.restoreAllMocks();
-  vi.unstubAllGlobals();
-});
+  registry = AtomRegistry.make();
+  stop = null;
+  return {
+    [Symbol.dispose]() {
+      stop?.();
+      registry.dispose();
+      settingsListeners.clear();
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
+    },
+  };
+}
 
 describe("thread notifications", () => {
   it.each([true, false])("keeps subagents silent with focus=%s", async (focused) => {
+    using _fixture = setup();
     state.subagent = true;
     state.focused = focused;
     state.mode = "notifications-and-sound";
@@ -253,6 +266,7 @@ describe("thread notifications", () => {
   });
 
   it("alerts on the parent when its delegated subagent asks for approval", async () => {
+    using _fixture = setup();
     state.mode = "notifications-and-sound";
     state.delegatedChild = "running";
     await render();
@@ -266,6 +280,7 @@ describe("thread notifications", () => {
   });
 
   it("alerts once with system alerts off and opens the completed thread", async () => {
+    using _fixture = setup();
     await render();
     await complete();
     await render();
@@ -285,6 +300,7 @@ describe("thread notifications", () => {
   it.each(["active", "blurred", "hidden", "archived", "disabled"])(
     "does not show a completion toast for %s threads",
     async (condition) => {
+      using _fixture = setup();
       await render();
       if (condition === "active") state.active.threadId = "thread-1";
       if (condition === "blurred") state.focused = false;
@@ -303,6 +319,7 @@ describe("thread notifications", () => {
     ["turnError", "Thread failed"],
     ["limited", "Usage limit reached"],
   ] as const)("uses the same %s event for in-app and desktop alerts", async (event, title) => {
+    using _fixture = setup();
     state.mode = "notifications-and-sound";
     await render();
     state[event] = true;
@@ -329,6 +346,7 @@ describe("thread notifications", () => {
   });
 
   it("alerts when only a dev server is left running, not while a monitor can wake the agent", async () => {
+    using _fixture = setup();
     await render();
     state.background = [{ taskId: "watch", kind: "monitor" }];
     await complete();
@@ -342,6 +360,7 @@ describe("thread notifications", () => {
   });
 
   it("keeps background desktop alerts when in-app notifications are disabled", async () => {
+    using _fixture = setup();
     state.focused = false;
     state.inApp = false;
     state.mode = "notifications";
@@ -355,6 +374,7 @@ describe("thread notifications", () => {
   });
 
   it("does not replay a completion when opting in from all alerts off", async () => {
+    using _fixture = setup();
     state.inApp = false;
     await render();
     await complete();
@@ -364,6 +384,7 @@ describe("thread notifications", () => {
   });
 
   it("compares the environment as well as the thread", async () => {
+    using _fixture = setup();
     state.active = { environmentId: "env-2", threadId: "thread-1" };
     await render();
     await complete();
@@ -371,6 +392,7 @@ describe("thread notifications", () => {
   });
 
   it("does not replay completed threads on first load or reconnect", async () => {
+    using _fixture = setup();
     await complete();
     state.live = false;
     await render();
@@ -380,6 +402,7 @@ describe("thread notifications", () => {
   });
 
   it("keeps sound but replaces the system popup when showing a toast", async () => {
+    using _fixture = setup();
     state.mode = "notifications-and-sound";
     await render();
     await complete();
@@ -392,6 +415,7 @@ describe("thread notifications", () => {
     ["a muted event", () => (state.mutedEvents = ["completed"])],
     ["a muted project", () => (state.mutedProjects = ["env-1:project-1"])],
   ])("stays silent everywhere for %s", async (_label, mute) => {
+    using _fixture = setup();
     mute();
     state.mode = "notifications-and-sound";
     await render();
@@ -404,6 +428,7 @@ describe("thread notifications", () => {
   });
 
   it("alerts on pull request watch news unless that event is muted", async () => {
+    using _fixture = setup();
     await render();
     state.conflicting = true;
     await render();
@@ -421,6 +446,7 @@ describe("thread notifications", () => {
   });
 
   it("keeps system alerts when the app is in the background", async () => {
+    using _fixture = setup();
     state.mode = "notifications";
     state.focused = false;
     await render();
@@ -434,6 +460,7 @@ describe("thread notifications", () => {
   });
 
   it("reveals the desktop window and opens the thread when a system alert is clicked", async () => {
+    using _fixture = setup();
     const revealWindow = vi.fn(() => Promise.resolve());
     vi.stubGlobal("desktopBridge", { revealWindow });
     state.mode = "notifications";

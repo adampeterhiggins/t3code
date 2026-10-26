@@ -73,6 +73,9 @@ async function render(optionsPending: boolean, loaded = false) {
   );
 }
 
+// The search field's busy spinner is aria-hidden; only the loading row is announced.
+const announcedStatus = () => document.querySelector('[role="status"]:not([aria-hidden="true"])');
+
 async function click(text: string) {
   const element = [...document.querySelectorAll<HTMLElement>("button, [role^=menuitem]")].find(
     (item) => item.textContent?.trim() === text,
@@ -83,15 +86,15 @@ async function click(text: string) {
 
 it.each([
   ["AuthorAnyone", "Loading authors…", "No authors found"],
-  ["LabelsAny", "Loading labels…", "No labels in this view"],
+  ["LabelsAny", "Loading labels…", "No labels found"],
 ])("distinguishes pending and empty options in %s", async (trigger, loading, empty) => {
   await render(true);
   await click("Filters");
   await click(trigger);
-  expect(document.querySelector('[role="status"]')?.textContent).toBe(loading);
+  expect(announcedStatus()?.textContent).toBe(loading);
   expect(document.body.textContent).not.toContain(empty);
   await render(false);
-  expect(document.querySelector('[role="status"]')).toBeNull();
+  expect(announcedStatus()).toBeNull();
   expect(document.body.textContent).toContain(empty);
 });
 
@@ -99,11 +102,11 @@ it("keeps loaded labels selectable during a refresh, without a loading row", asy
   await render(true, true);
   await click("Filters");
   await click("LabelsAny");
-  expect(document.querySelector('[role="status"]')).toBeNull();
+  expect(announcedStatus()).toBeNull();
   await click("bugOnly1");
   expect(onFilters.mock.calls[0]?.[0].labels).toEqual([["bug"]]);
   await render(false, true);
-  expect(document.querySelector('[role="status"]')).toBeNull();
+  expect(announcedStatus()).toBeNull();
   expect(document.body.textContent).toContain("bug");
 });
 
@@ -129,8 +132,8 @@ it("keeps an asynchronous radio submenu available before its first option arrive
   await renderSource(true);
   await click("Filters");
   await click("SourceLoading…");
-  expect(document.querySelector('[role="status"]')?.textContent).toBe("Loading filters…");
+  expect(announcedStatus()?.textContent).toBe("Loading filters…");
   await renderSource(false);
-  expect(document.querySelector('[role="status"]')).toBeNull();
+  expect(announcedStatus()).toBeNull();
   expect(document.querySelector('[role="menuitemradio"]')?.textContent).toContain("Codex");
 });

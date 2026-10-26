@@ -95,7 +95,7 @@ export const withRunningThreadContinuation = Effect.fn(
       ),
     );
 
-  const update: ServerSelfUpdate["Service"]["update"] = (
+  const update: ServerSelfUpdate["Service"]["update"] = Effect.fn("update")((
     request,
     reportProgress = () => Effect.void,
   ) => {
@@ -157,7 +157,7 @@ export const withRunningThreadContinuation = Effect.fn(
       () => continuationThreadIds,
       () => handoffAccepted,
     );
-  };
+  });
 
   return ServerSelfUpdate.of({
     update,
@@ -386,8 +386,11 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* () {
 
   return ServerSelfUpdate.of({
     update,
-    commitDesktopUpdate: (requestId, onHandoffAccepted) =>
-      desktopAppUpdate.commit(requestId, onHandoffAccepted),
+    commitDesktopUpdate: Effect.fn("ServerSelfUpdate.commitDesktopUpdate")(
+      function (requestId, onHandoffAccepted) {
+        return desktopAppUpdate.commit(requestId, onHandoffAccepted);
+      },
+    ),
   });
 });
 

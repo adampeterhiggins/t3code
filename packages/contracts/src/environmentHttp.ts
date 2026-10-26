@@ -781,7 +781,7 @@ class EnvironmentProjectsHttpApi extends HttpApiGroup.make("projects")
 
 const ThreadTabParams = Schema.Struct({ threadId: ThreadId });
 
-export class EnvironmentThreadTabsHttpApi extends HttpApiGroup.make("threadTabs")
+class EnvironmentThreadTabsHttpApi extends HttpApiGroup.make("threadTabs")
   .add(
     HttpApiEndpoint.get("memberships", "/api/thread-tabs", {
       headers: OptionalBearerHeaders,

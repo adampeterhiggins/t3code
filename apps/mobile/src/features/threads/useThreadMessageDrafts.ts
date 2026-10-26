@@ -85,12 +85,10 @@ export function useThreadMessageDrafts(input: {
     if (busyRef.current) return false;
     busyRef.current = true;
     setBusy(true);
-    try {
-      return await work();
-    } finally {
+    return work().finally(() => {
       busyRef.current = false;
       setBusy(false);
-    }
+    });
   };
 
   /** Uploads local files and saves the message; false (after telling the user) on failure. */

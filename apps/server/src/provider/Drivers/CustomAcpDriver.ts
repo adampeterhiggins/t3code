@@ -1,13 +1,3 @@
-/**
- * CustomAcpDriver — any stdio ACP agent the user configures in Settings.
- *
- * Each added instance is one agent: its executable, arguments, and the
- * instance's environment variables. There is no default instance. Sign-in,
- * updates, and text generation belong to the agent's own tooling, so this
- * driver offers none of them.
- *
- * @module CustomAcpDriver
- */
 import { CustomAcpSettings, type ServerProvider, TextGenerationError } from "@t3tools/contracts";
 import { resolveSelfInvocation } from "@t3tools/shared/nodeRuntime";
 import * as Crypto from "effect/Crypto";
@@ -86,95 +76,101 @@ export const CustomAcpDriver: ProviderDriver<CustomAcpSettings, CustomAcpDriverE
   },
   configSchema: CustomAcpSettings,
   defaultConfig: (): CustomAcpSettings => decodeCustomAcpSettings({}),
-  create: ({ instanceId, displayName, accentColor, environment, enabled, config }) =>
-    Effect.gen(function* () {
-      const crypto = yield* Crypto.Crypto;
-      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-      const { cwd } = (yield* ProviderHost).paths;
-      const selfInvocation = yield* resolveSelfInvocation();
-      const eventLoggers = yield* ProviderEventLoggers;
-      const makeNativeLogger = yield* makeAcpNativeLoggerFactory();
-      const processEnv = yield* mergeProviderInstanceEnvironment(environment);
-      const effectiveConfig = { ...config, enabled } satisfies CustomAcpSettings;
-      const continuationIdentity = defaultProviderContinuationIdentity({
-        driverKind: CUSTOM_ACP_DRIVER_KIND,
-        instanceId,
-      });
-      const stampIdentity = withInstanceIdentity({
-        instanceId,
-        driverKind: CUSTOM_ACP_DRIVER_KIND,
-        displayName,
-        accentColor,
-        continuationGroupKey: continuationIdentity.continuationKey,
-      });
-      // Sign-in and text generation belong to the agent's own tooling.
-      const withAgentOwnedSetup = (snapshot: ServerProvider): ServerProvider => ({
-        ...snapshot,
-        supportsTextGeneration: false,
-        setup: { canAuthenticate: false, canInstall: false },
-      });
+  create: Effect.fn("create")(function* ({
+    instanceId,
+    displayName,
+    accentColor,
+    environment,
+    enabled,
+    config,
+  }) {
+    const crypto = yield* Crypto.Crypto;
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const { cwd } = (yield* ProviderHost).paths;
+    const selfInvocation = yield* resolveSelfInvocation();
+    const eventLoggers = yield* ProviderEventLoggers;
+    const makeNativeLogger = yield* makeAcpNativeLoggerFactory();
+    const processEnv = yield* mergeProviderInstanceEnvironment(environment);
+    const effectiveConfig = { ...config, enabled } satisfies CustomAcpSettings;
+    const continuationIdentity = defaultProviderContinuationIdentity({
+      driverKind: CUSTOM_ACP_DRIVER_KIND,
+      instanceId,
+    });
+    const stampIdentity = withInstanceIdentity({
+      instanceId,
+      driverKind: CUSTOM_ACP_DRIVER_KIND,
+      displayName,
+      accentColor,
+      continuationGroupKey: continuationIdentity.continuationKey,
+    });
+    // Sign-in and text generation belong to the agent's own tooling.
+    const withAgentOwnedSetup = (snapshot: ServerProvider): ServerProvider => ({
+      ...snapshot,
+      supportsTextGeneration: false,
+      setup: { canAuthenticate: false, canInstall: false },
+    });
 
-      // Settings are fixed for the instance's lifetime: the registry rebuilds
-      // the instance when its config changes.
-      const managedSnapshot = yield* makeManagedServerProvider<CustomAcpSettings>({
-        resolveMaintenance: () => Effect.succeed(MAINTENANCE),
-        getSettings: Effect.succeed(effectiveConfig),
-        streamSettings: Stream.never,
-        haveSettingsChanged: () => false,
-        initialSnapshot: (settings) =>
-          buildInitialCustomAcpProviderSnapshot(settings).pipe(
-            Effect.map(stampIdentity),
-            Effect.map(withAgentOwnedSetup),
-          ),
-        checkProvider: checkCustomAcpProviderStatus(effectiveConfig, processEnv, cwd).pipe(
+    // Settings are fixed for the instance's lifetime: the registry rebuilds
+    // the instance when its config changes.
+    const managedSnapshot = yield* makeManagedServerProvider<CustomAcpSettings>({
+      resolveMaintenance: () => Effect.succeed(MAINTENANCE),
+      getSettings: Effect.succeed(effectiveConfig),
+      streamSettings: Stream.never,
+      haveSettingsChanged: () => false,
+      initialSnapshot: (settings) =>
+        buildInitialCustomAcpProviderSnapshot(settings).pipe(
           Effect.map(stampIdentity),
           Effect.map(withAgentOwnedSetup),
-          Effect.provideService(Crypto.Crypto, crypto),
-          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
         ),
-      }).pipe(
-        Effect.mapError(
-          (cause) =>
-            new ProviderDriverError({
-              driver: CUSTOM_ACP_DRIVER_KIND,
-              instanceId,
-              detail: `Failed to build Custom ACP snapshot: ${cause.message ?? String(cause)}`,
-              cause,
-            }),
-        ),
-      );
-      // Slash commands arrive per workspace once a session is running.
-      const { snapshot, onAvailableCommands, snapshotForCwd } =
-        yield* makeAcpCommandCatalog(managedSnapshot);
-
-      const orchestrationAdapter = yield* makeCustomAcpAdapterV2({
-        instanceId,
-        settings: effectiveConfig,
-        harness: displayName ?? "Custom ACP agent",
-        environment: processEnv,
-        childProcessSpawner: spawner,
-        selfInvocation,
-        onAvailableCommands: (commands, workspaceCwd) =>
-          onAvailableCommands(commands, workspaceCwd, []),
-        nativeLogging: (threadId) =>
-          makeNativeLogger({
-            nativeEventLogger: eventLoggers.native,
-            provider: CUSTOM_ACP_DRIVER_KIND,
-            threadId,
+      checkProvider: checkCustomAcpProviderStatus(effectiveConfig, processEnv, cwd).pipe(
+        Effect.map(stampIdentity),
+        Effect.map(withAgentOwnedSetup),
+        Effect.provideService(Crypto.Crypto, crypto),
+        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+      ),
+    }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ProviderDriverError({
+            driver: CUSTOM_ACP_DRIVER_KIND,
+            instanceId,
+            detail: `Failed to build Custom ACP snapshot: ${cause.message ?? String(cause)}`,
+            cause,
           }),
-      });
+      ),
+    );
+    // Slash commands arrive per workspace once a session is running.
+    const { snapshot, onAvailableCommands, snapshotForCwd } =
+      yield* makeAcpCommandCatalog(managedSnapshot);
 
-      return {
-        instanceId,
-        driverKind: CUSTOM_ACP_DRIVER_KIND,
-        continuationIdentity,
-        displayName,
-        accentColor,
-        enabled,
-        snapshot,
-        snapshotForCwd: (workspaceCwd) => snapshotForCwd(workspaceCwd, []),
-        orchestrationAdapter,
-        textGeneration: unsupportedTextGeneration,
-      } satisfies ProviderInstance;
-    }),
+    const orchestrationAdapter = yield* makeCustomAcpAdapterV2({
+      instanceId,
+      settings: effectiveConfig,
+      harness: displayName ?? "Custom ACP agent",
+      environment: processEnv,
+      childProcessSpawner: spawner,
+      selfInvocation,
+      onAvailableCommands: (commands, workspaceCwd) =>
+        onAvailableCommands(commands, workspaceCwd, []),
+      nativeLogging: (threadId) =>
+        makeNativeLogger({
+          nativeEventLogger: eventLoggers.native,
+          provider: CUSTOM_ACP_DRIVER_KIND,
+          threadId,
+        }),
+    });
+
+    return {
+      instanceId,
+      driverKind: CUSTOM_ACP_DRIVER_KIND,
+      continuationIdentity,
+      displayName,
+      accentColor,
+      enabled,
+      snapshot,
+      snapshotForCwd: (workspaceCwd) => snapshotForCwd(workspaceCwd, []),
+      orchestrationAdapter,
+      textGeneration: unsupportedTextGeneration,
+    } satisfies ProviderInstance;
+  }),
 };

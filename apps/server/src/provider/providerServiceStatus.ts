@@ -1,13 +1,4 @@
-/**
- * ProviderServiceStatus — the public status-page rollup for each provider
- * that publishes one.
- *
- * Statuspage's `minor` indicator is the "Partially Degraded Service" state.
- * A page that cannot be read keeps the previous rollup, so a blip does not
- * clear a real degradation. Providers without a status feed are omitted.
- *
- * @module provider/providerServiceStatus
- */
+/** Failed status reads retain the previous rollup; a transient error must not clear degradation. */
 import {
   ProviderDriverKind,
   type ServerProvider,
@@ -136,8 +127,8 @@ export class ProviderServiceStatus extends Context.Service<
   }
 >()("t3/provider/providerServiceStatus") {}
 
-const readPage = (page: (typeof STATUS_PAGES)[number], checkedAt: string) =>
-  Effect.gen(function* () {
+const readPage = Effect.fn("readPage")(
+  function* (page: (typeof STATUS_PAGES)[number], checkedAt: string) {
     const client = yield* HttpClient.HttpClient;
     const response = yield* client.execute(
       HttpClientRequest.get(page.statusUrl).pipe(
@@ -150,7 +141,10 @@ const readPage = (page: (typeof STATUS_PAGES)[number], checkedAt: string) =>
     const status = serviceStatusFromBody(page.pageUrl, checkedAt, body);
     if (!status) return yield* Effect.fail("unrecognized status page");
     return { driver: page.driver, status } satisfies ProviderServiceReport;
-  }).pipe(Effect.timeout("10 seconds"), Effect.option);
+  },
+  Effect.timeout("10 seconds"),
+  Effect.option,
+);
 
 /** One pass over the status pages. A failed page keeps its previous rollup. */
 export const readProviderServiceReports = Effect.fn("readProviderServiceReports")(function* (

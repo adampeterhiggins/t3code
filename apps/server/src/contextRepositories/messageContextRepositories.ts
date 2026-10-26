@@ -17,9 +17,10 @@ export const messageRepositoryRecords = (context: OrchestrationMessageContext | 
   (context?.records ?? []).filter(isRepositoryContextRecord);
 
 /** One line for the setup card: how the attached repositories came out. */
-export function summarizeContextRepositoryOutcomes(
-  records: ReadonlyArray<RepositoryContextRecord>,
-): { readonly ok: boolean; readonly detail: string } {
+function summarizeContextRepositoryOutcomes(records: ReadonlyArray<RepositoryContextRecord>): {
+  readonly ok: boolean;
+  readonly detail: string;
+} {
   const counts = { cloned: 0, present: 0, conflict: 0, failed: 0 };
   for (const record of records) if (record.outcome) counts[record.outcome.status] += 1;
   const parts = [
@@ -31,13 +32,7 @@ export function summarizeContextRepositoryOutcomes(
   return { ok: counts.conflict + counts.failed === 0, detail: parts.join(", ") };
 }
 
-/**
- * Clones the message's attached repositories into `cwd` and returns its
- * context with each record's outcome filled in, so the persisted message (and
- * through it the chip and the agent's prompt) says what happened. Progress goes
- * to the thread's `context-repositories` setup stage when one is tracked.
- * Never fails: a clone problem is a warning on its record.
- */
+/** Clone failures stay on their context record; progress attaches to the tracked setup stage. */
 export const ensureMessageContextRepositories = Effect.fn("ensureMessageContextRepositories")(
   function* (input: {
     readonly threadId: ThreadId;

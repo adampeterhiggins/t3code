@@ -157,7 +157,7 @@ export class NotionAuth extends Context.Service<
   }
 >()("t3/notion/NotionAuth") {}
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const envClientId = yield* Config.String("T3CODE_NOTION_CLIENT_ID").pipe(Config.withDefault(""));
   const envClientSecret = yield* Config.String("T3CODE_NOTION_CLIENT_SECRET").pipe(
@@ -249,27 +249,27 @@ export const make = Effect.gen(function* () {
   const basicAuth = ({ clientId, clientSecret }: NotionClientCredentials) =>
     `Basic ${Base64.encode(new TextEncoder().encode(`${clientId}:${clientSecret}`))}`;
 
-  const postToken = (credentials: NotionClientCredentials, params: Record<string, string>) =>
-    Effect.gen(function* () {
-      const response = yield* HttpClientRequest.post(NOTION_TOKEN_URL).pipe(
-        HttpClientRequest.setHeader("Authorization", basicAuth(credentials)),
-        HttpClientRequest.bodyJsonUnsafe(params),
-        httpClient.execute,
-      );
-      if (response.status >= 200 && response.status < 300) {
-        return {
-          _tag: "Ok",
-          token: yield* response.json.pipe(
-            Effect.flatMap(Schema.decodeUnknownEffect(TokenResponse)),
-          ),
-        } as const;
-      }
-      const failure = yield* response.json.pipe(
-        Effect.flatMap(Schema.decodeUnknownEffect(TokenErrorResponse)),
-        Effect.orElseSucceed(() => ({ error: `HTTP ${response.status}` })),
-      );
-      return { _tag: "Rejected", error: failure.error } as const;
-    });
+  const postToken = Effect.fn("postToken")(function* (
+    credentials: NotionClientCredentials,
+    params: Record<string, string>,
+  ) {
+    const response = yield* HttpClientRequest.post(NOTION_TOKEN_URL).pipe(
+      HttpClientRequest.setHeader("Authorization", basicAuth(credentials)),
+      HttpClientRequest.bodyJsonUnsafe(params),
+      httpClient.execute,
+    );
+    if (response.status >= 200 && response.status < 300) {
+      return {
+        _tag: "Ok",
+        token: yield* response.json.pipe(Effect.flatMap(Schema.decodeUnknownEffect(TokenResponse))),
+      } as const;
+    }
+    const failure = yield* response.json.pipe(
+      Effect.flatMap(Schema.decodeUnknownEffect(TokenErrorResponse)),
+      Effect.orElseSucceed(() => ({ error: `HTTP ${response.status}` })),
+    );
+    return { _tag: "Rejected", error: failure.error } as const;
+  });
 
   const exchangeCode = Effect.fn("notion.auth.exchange_code")(function* (
     code: string,
@@ -300,37 +300,36 @@ export const make = Effect.gen(function* () {
   });
 
   /** Settles a login from the redirect the browser followed. The reply never carries the code. */
-  const settleCallback = (flow: ActiveFlow | null, url: URL) =>
-    Effect.gen(function* () {
-      if (flow === null) {
+  const settleCallback = Effect.fn("settleCallback")(function* (flow: ActiveFlow | null, url: URL) {
+    if (flow === null) {
+      return {
+        status: 400,
+        message: "This Notion sign-in is no longer active. Start again in T3 Code.",
+      } satisfies CallbackReply;
+    }
+    const result = readNotionCallback(url, flow.state);
+    switch (result._tag) {
+      case "Invalid":
+        return { status: 400, message: result.reason } satisfies CallbackReply;
+      case "Denied":
+        yield* Deferred.fail(flow.callback, loginError("Notion sign-in was cancelled."));
         return {
-          status: 400,
-          message: "This Notion sign-in is no longer active. Start again in T3 Code.",
+          status: 200,
+          message: "Notion sign-in was cancelled. You can close this tab.",
         } satisfies CallbackReply;
-      }
-      const result = readNotionCallback(url, flow.state);
-      switch (result._tag) {
-        case "Invalid":
-          return { status: 400, message: result.reason } satisfies CallbackReply;
-        case "Denied":
-          yield* Deferred.fail(flow.callback, loginError("Notion sign-in was cancelled."));
+      case "Code":
+        const accepted = yield* Deferred.succeed(flow.callback, result.code);
+        if (!accepted)
           return {
-            status: 200,
-            message: "Notion sign-in was cancelled. You can close this tab.",
+            status: 400,
+            message: "This sign-in callback was already received.",
           } satisfies CallbackReply;
-        case "Code":
-          const accepted = yield* Deferred.succeed(flow.callback, result.code);
-          if (!accepted)
-            return {
-              status: 400,
-              message: "This sign-in callback was already received.",
-            } satisfies CallbackReply;
-          return {
-            status: 200,
-            message: "Notion authorization received. Return to T3 Code to check the connection.",
-          } satisfies CallbackReply;
-      }
-    });
+        return {
+          status: 200,
+          message: "Notion authorization received. Return to T3 Code to check the connection.",
+        } satisfies CallbackReply;
+    }
+  });
 
   const callbackRoute = (flow: ActiveFlow) =>
     HttpRouter.add(
@@ -347,32 +346,31 @@ export const make = Effect.gen(function* () {
     );
 
   /** Binds the loopback port for one login; a server redirect needs no listener. */
-  const listenOnLoopback = (flow: ActiveFlow) =>
-    Effect.gen(function* () {
-      const listener = HttpRouter.serve(callbackRoute(flow), {
-        disableListenLog: true,
-        disableLogger: true,
-      }).pipe(
-        Layer.provide(
-          NodeHttpServer.layer(NodeHttp.createServer, {
-            host: "127.0.0.1",
-            port: NOTION_LOOPBACK_PORT,
-            disablePreemptiveShutdown: true,
-          }),
+  const listenOnLoopback = Effect.fn("listenOnLoopback")(function* (flow: ActiveFlow) {
+    const listener = HttpRouter.serve(callbackRoute(flow), {
+      disableListenLog: true,
+      disableLogger: true,
+    }).pipe(
+      Layer.provide(
+        NodeHttpServer.layer(NodeHttp.createServer, {
+          host: "127.0.0.1",
+          port: NOTION_LOOPBACK_PORT,
+          disablePreemptiveShutdown: true,
+        }),
+      ),
+    );
+    // A fresh memo map: requests inside the server carry the app's memo
+    // map, and reusing its memoized HttpRouter would serve the whole app
+    // on the loopback port and fail the next login's route registration.
+    yield* Layer.buildWithMemoMap(listener, yield* Layer.makeMemoMap, yield* Effect.scope).pipe(
+      Effect.mapError((cause) =>
+        loginError(
+          `Port ${NOTION_LOOPBACK_PORT} is in use, so the Notion callback cannot be received. Free the port and try again.`,
+          cause,
         ),
-      );
-      // A fresh memo map: requests inside the server carry the app's memo
-      // map, and reusing its memoized HttpRouter would serve the whole app
-      // on the loopback port and fail the next login's route registration.
-      yield* Layer.buildWithMemoMap(listener, yield* Layer.makeMemoMap, yield* Effect.scope).pipe(
-        Effect.mapError((cause) =>
-          loginError(
-            `Port ${NOTION_LOOPBACK_PORT} is in use, so the Notion callback cannot be received. Free the port and try again.`,
-            cause,
-          ),
-        ),
-      );
-    });
+      ),
+    );
+  });
 
   /**
    * Owns one login and its loopback listener. `listening` settles once the
@@ -612,8 +610,9 @@ export const make = Effect.gen(function* () {
     accessToken,
     refreshAccessToken,
     markRevoked,
-    receiveCallback: (url) =>
+    receiveCallback: Effect.fn("NotionAuth.receiveCallback")((url) =>
       Ref.get(activeFlow).pipe(Effect.flatMap((flow) => settleCallback(flow, url))),
+    ),
   });
 });
 

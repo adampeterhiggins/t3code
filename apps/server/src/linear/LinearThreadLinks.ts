@@ -75,7 +75,7 @@ export class LinearThreadLinks extends Context.Service<
   }
 >()("t3/linear/LinearThreadLinks") {}
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const api = yield* LinearApi;
@@ -145,10 +145,11 @@ export const make = Effect.gen(function* () {
     link,
     linkWithReplacement,
     unlink,
-    forThread: (threadId) =>
+    forThread: Effect.fn("LinearThreadLinks.forThread")((threadId) =>
       SubscriptionRef.get(state).pipe(
         Effect.map((links) => links.find((entry) => entry.threadIds.includes(threadId))),
       ),
+    ),
     refresh,
   });
 });

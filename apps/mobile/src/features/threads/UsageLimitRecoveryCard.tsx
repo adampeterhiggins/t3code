@@ -5,12 +5,17 @@ import { AsyncResult } from "effect/reactivity";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import type { EnvironmentId } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { View } from "react-native";
 import { AppText as Text } from "../../components/ui/AppText";
 import { environmentServerConfigsAtom } from "../../state/server";
+import { useDeadlinePassed } from "../../lib/clock";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
+
+function resumeFailureMessage(cause: unknown): string {
+  return cause instanceof Error ? cause.message : "Could not resume.";
+}
 
 export function UsageLimitRecoveryCard({
   thread,
@@ -32,23 +37,7 @@ export function UsageLimitRecoveryCard({
   const canSchedule =
     resetAt !== null &&
     Date.parse(resetAt) > Date.parse(thread.latestRun?.completedAt ?? thread.updatedAt);
-  // Use timer-driven state; the compiler can cache render-time clock reads and leave Snooze enabled after reset.
-  const resetAtMs = resetAt === null ? null : Date.parse(resetAt);
-  const [resetPassedFor, setResetPassedFor] = useState<number | null>(null);
-  const resetPassed = resetAtMs !== null && resetPassedFor === resetAtMs;
-  useEffect(() => {
-    if (resetAtMs === null || Number.isNaN(resetAtMs)) return;
-    const flip = () => setResetPassedFor(resetAtMs);
-    const delay = resetAtMs - Date.now();
-    if (delay <= 0) {
-      flip();
-      return;
-    }
-    // Beyond setTimeout's 32-bit range the card re-renders long before then.
-    if (delay > 2_147_483_647) return;
-    const timer = setTimeout(flip, delay);
-    return () => clearTimeout(timer);
-  }, [resetAtMs]);
+  const resetPassed = useDeadlinePassed(resetAt === null ? null : Date.parse(resetAt));
   const runId = thread.latestRun?.runId;
   const recovery = thread.limitRecovery;
   const scheduled =
@@ -70,23 +59,22 @@ export function UsageLimitRecoveryCard({
     if (!runId) return;
     setPending(true);
     setError(null);
-    try {
-      const result = await resumeUsageLimited({
-        environmentId,
-        // The thread carries the composer's model, so a switch away from the limited provider sticks.
-        input: {
-          threadId: thread.id,
-          runId,
-          modelSelection: thread.modelSelection,
-          creationSource: "mobile",
-        },
-      });
-      if (result._tag === "Failure") throw squashAtomCommandFailure(result);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not resume.");
-    } finally {
-      setPending(false);
-    }
+    const failure = await resumeUsageLimited({
+      environmentId,
+      // The thread carries the composer's model, so a switch away from the limited provider sticks.
+      input: {
+        threadId: thread.id,
+        runId,
+        modelSelection: thread.modelSelection,
+        creationSource: "mobile",
+      },
+    }).then(
+      (result) =>
+        result._tag === "Failure" ? resumeFailureMessage(squashAtomCommandFailure(result)) : null,
+      resumeFailureMessage,
+    );
+    setPending(false);
+    if (failure !== null) setError(failure);
   }
   async function toggle(action: "resume" | "snooze") {
     if (!resetAt || !runId || !canSchedule) return;

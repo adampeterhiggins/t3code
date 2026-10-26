@@ -1,3 +1,4 @@
+import * as DocumentText from "../../provider/DocumentText.ts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
@@ -23,7 +24,6 @@ import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderS
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
-import * as Option from "effect/Option";
 import * as TestClock from "effect/testing/TestClock";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -340,7 +340,7 @@ it.effect("returns an HTML render reference that Codex and Claude tool rows both
         Layer.provide(McpProviderSessions.layer),
         Layer.provide(PreviewBrowser.layer),
         Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-mcp-html-render-" })),
-        Layer.provide(NodeServices.layer),
+        Layer.provide(DocumentText.layer.pipe(Layer.provideMerge(NodeServices.layer))),
         Layer.provide(FetchHttpClient.layer),
         Layer.provide(
           Layer.mock(ThreadManagement.ThreadManagementService)({
@@ -970,7 +970,7 @@ it.effect("only the caller that prepared a pending upload can discard it", () =>
         Layer.provide(McpToolAccessTestkit.liveThreadsLayer),
         Layer.provide(ServerSecretStore.layer),
         Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-mcp-attachment-" })),
-        Layer.provide(NodeServices.layer),
+        Layer.provide(DocumentText.layer.pipe(Layer.provideMerge(NodeServices.layer))),
       ),
     ),
   ),
@@ -1155,7 +1155,7 @@ it.effect.each(["existing-worktree", "pull-request", "foreign-worktree"] as cons
         layerThreadToolkitWith(
           Layer.mergeAll(
             Layer.mock(ProjectService.ProjectService)({
-              getById: () => Effect.succeed(Option.some(project)),
+              getById: () => Effect.succeedSome(project),
             }),
             Layer.mock(GitWorkflow.GitWorkflowService)({
               localStatus: () => Effect.succeed({ refName: "existing" } as never),

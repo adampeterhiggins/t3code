@@ -12,7 +12,6 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Function from "effect/Function";
 import * as Layer from "effect/Layer";
-import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as Semaphore from "effect/Semaphore";
 
@@ -209,8 +208,8 @@ export const makeProviderAuthService = Effect.gen(function* () {
         });
       return yield* auth.reconnectProfile(input.methodId);
     }),
-    importProfile: (input) =>
-      credentialChanges.withPermit(
+    importProfile: Effect.fn("ProviderAuthService.importProfile")(function (input) {
+      return credentialChanges.withPermit(
         Effect.gen(function* () {
           const auth = yield* getController(input.instanceId, "import");
           yield* checkSharedBinding(input.instanceId, "start", auth);
@@ -225,7 +224,8 @@ export const makeProviderAuthService = Effect.gen(function* () {
             stopSessions(input.instanceId, auth.credentialBinding),
           );
         }),
-      ),
+      );
+    }),
     start: Effect.fn("ProviderAuthService.start")(function* (input, ownerSessionId) {
       return yield* credentialChanges.withPermit(
         Effect.gen(function* () {

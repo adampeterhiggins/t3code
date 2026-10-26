@@ -1,12 +1,7 @@
 /**
- * Fork: presentation over orchestration-v2 subagents, shared by every client.
- *
- * - The user's view of a thread's agents list: status filter, search, sort.
- *   Filter menus count each choice under the search and the other filters (`filterFacets`).
- *   Spawn order is the default, and no sort moves a row while it works.
- * - A subagent's tool calls, read from its child thread's turn items, for the
- *   compact rows' latest call and the agent tab's searchable log.
- * - The text that carries an agent's work into chat (attach, continue).
+ * Fork: presentation over orchestration-v2 subagents, shared by every client: the agents list's
+ * filter/search/sort (spawn order by default; no sort moves a working row), each subagent's tool
+ * calls from its child thread, and the text that carries an agent's work into chat.
  */
 import type {
   OrchestrationV2ModelCallUsage,
@@ -411,7 +406,7 @@ function mentionsDirectory(text: string, directory: string): boolean {
  * absolute paths. One call is not enough: a single read of a neighboring file
  * stays absolute. Two checkouts used equally often stay absolute too.
  */
-export function subagentSiblingCheckout(
+function subagentSiblingCheckout(
   callTexts: ReadonlyArray<string>,
   workspaceRoot: string | null | undefined,
 ): string | null {
@@ -604,7 +599,7 @@ export function latestSubagentToolCall(
 }
 
 /** Everything a call recorded, deduplicated, for search and expansion. */
-export function subagentToolCallText(call: SubagentToolCall): string {
+function subagentToolCallText(call: SubagentToolCall): string {
   return [
     ...new Set([call.title, call.detail, call.preview].filter((value) => value != null)),
   ].join("\n\n");
@@ -705,7 +700,6 @@ export function applySubagentToolCallView(
       return visible;
     case "newest":
       // `filter` returned a fresh array; reversing it cannot touch the input (Hermes lacks toReversed).
-      // oxlint-disable-next-line unicorn/no-array-reverse
       return visible.reverse();
     case "duration":
       return copySorted(visible, (left, right) => durationMs(right) - durationMs(left));
@@ -725,13 +719,9 @@ export type SubagentToolCallListEntry =
   | { readonly kind: "call"; readonly call: SubagentToolCall };
 
 /**
- * Groups a tool-call list into model-call steps.
- *
- * `chronological` is the full log, oldest first. Step numbers follow the first
- * appearance of each `modelCallId` there, so reversing or filtering `visible`
- * does not renumber them. Consecutive visible rows that share an id are one
- * step; a row without one is not grouped. Usage is whichever row of that model
- * call carries it, including a row the current filter hid.
+ * Groups tool calls into model-call steps. Step numbers follow each `modelCallId`'s first
+ * appearance in `chronological`, so filtering or reversing `visible` never renumbers them;
+ * adjacent visible rows sharing an id form one step, and usage may come from a hidden row.
  */
 export function groupSubagentToolCallSteps(
   chronological: ReadonlyArray<SubagentToolCall>,

@@ -325,22 +325,22 @@ export const CursorDriver: ProviderDriver<
       });
 
     // Sends the defaults the model picker shows for anything the selection leaves out.
-    const withPickerDefaults = (
+    const withPickerDefaults = Effect.fn("CursorDriver.withPickerDefaults")(function* (
       model: CursorSdkModelSelection | undefined,
-    ): Effect.Effect<CursorSdkModelSelection | undefined> =>
-      model === undefined
-        ? Effect.succeed(undefined)
-        : snapshot.getSnapshot.pipe(
-            Effect.map((provider) =>
-              withCursorDefaultParameters(
-                model,
-                (
-                  provider.models.find((candidate) => candidate.slug === model.id) ??
-                  catalogModels.find((candidate) => candidate.slug === model.id)
-                )?.capabilities?.optionDescriptors,
-              ),
-            ),
-          );
+    ) {
+      if (model === undefined) return undefined;
+      return yield* snapshot.getSnapshot.pipe(
+        Effect.map((provider) =>
+          withCursorDefaultParameters(
+            model,
+            (
+              provider.models.find((candidate) => candidate.slug === model.id) ??
+              catalogModels.find((candidate) => candidate.slug === model.id)
+            )?.capabilities?.optionDescriptors,
+          ),
+        ),
+      );
+    });
 
     const withSendPickerDefaults = (
       session: CursorAgentSdk.CursorAgentSdkSession,
@@ -450,14 +450,17 @@ export const CursorDriver: ProviderDriver<
           },
           auth.usesApiKey ? "api-key" : "browser",
         ).pipe(
-          Effect.flatMap((snapshot) =>
-            effectiveConfig.enabled &&
-            snapshot.installed &&
-            snapshot.auth.status === "authenticated"
-              ? readUsageLimits(credential).pipe(
-                  Effect.map((usageLimits) => ({ ...snapshot, usageLimits })),
-                )
-              : Effect.succeed(snapshot),
+          Effect.filterOrElse(
+            (snapshot) =>
+              !(
+                effectiveConfig.enabled &&
+                snapshot.installed &&
+                snapshot.auth.status === "authenticated"
+              ),
+            (snapshot) =>
+              readUsageLimits(credential).pipe(
+                Effect.map((usageLimits) => ({ ...snapshot, usageLimits })),
+              ),
           ),
         ),
       ),

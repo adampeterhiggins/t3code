@@ -184,9 +184,11 @@ export function findSharedSettingsMismatches(input: {
 export function mergeSharedSettingMaps<Value>(
   perEnvironment: Iterable<Readonly<Record<string, Value>>>,
 ): Readonly<Record<string, Value>> {
-  let merged: Readonly<Record<string, Value>> = {};
+  const merged = new Map<string, Value>();
   for (const own of perEnvironment) {
-    if (Object.keys(own).length > 0) merged = { ...own, ...merged };
+    for (const [key, value] of Object.entries(own)) {
+      if (!merged.has(key)) merged.set(key, value);
+    }
   }
-  return merged;
+  return Object.fromEntries(merged);
 }

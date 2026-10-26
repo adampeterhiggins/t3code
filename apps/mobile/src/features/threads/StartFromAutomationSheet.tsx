@@ -87,7 +87,7 @@ function StartFromAutomationSheet(
   ) => {
     startScheduledTaskEditor(editor);
     props.onClose();
-    if (prefilled) openSettings(navigation, "SettingsScheduledTaskNew", { prefilled: true });
+    if (prefilled) openSettings(navigation, "SettingsScheduledTaskNew");
     else openSettings(navigation, "SettingsScheduledTaskEdit");
   };
 

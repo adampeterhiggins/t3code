@@ -117,10 +117,11 @@ const make = Effect.gen(function* () {
 
   return GoogleThreadLinks.of({
     links: SubscriptionRef.changes(state),
-    forThread: (threadId) =>
+    forThread: Effect.fn("GoogleThreadLinks.forThread")((threadId) =>
       SubscriptionRef.get(state).pipe(
         Effect.map((links) => links.find((entry) => entry.threadIds.includes(threadId))),
       ),
+    ),
     link,
     unlink,
     refresh,

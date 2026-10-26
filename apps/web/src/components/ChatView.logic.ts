@@ -111,7 +111,7 @@ type ThreadStructureRow = ThreadStructure["visibleTurnItems"][number];
 export const LAST_INVOKED_SCRIPT_BY_PROJECT_KEY = "t3code:last-invoked-script-by-project";
 export const MAX_HIDDEN_MOUNTED_TERMINAL_THREADS = 10;
 
-const ENVIRONMENT_RECONNECT_WARNING_GRACE_MS = 2_000;
+export const ENVIRONMENT_RECONNECT_WARNING_GRACE_MS = 2_000;
 
 export function agentControlledBrowserCloseConfirmation(
   surfaces: readonly RightPanelSurface[],
@@ -465,18 +465,6 @@ export function resolveDraftPromotionNavigationTarget(input: {
     latestRun?.status === "cancelled";
   const messagePersisted = input.serverThread?.latestUserMessageAt != null;
   return runStarted || startupStopped || messagePersisted ? input.serverThreadRef : null;
-}
-
-export function scheduleEnvironmentReconnectWarning(showWarning: () => void): () => void {
-  const timeoutId = globalThis.setTimeout(showWarning, ENVIRONMENT_RECONNECT_WARNING_GRACE_MS);
-  return () => globalThis.clearTimeout(timeoutId);
-}
-
-export function hasEnvironmentReconnectWarningGraceElapsed(
-  activeEnvironmentId: EnvironmentId | null,
-  elapsedEnvironmentId: EnvironmentId | null,
-): boolean {
-  return activeEnvironmentId !== null && activeEnvironmentId === elapsedEnvironmentId;
 }
 
 export function startNewThreadForProject(
@@ -1431,23 +1419,6 @@ export function makeThreadErrorSetter(input: {
       }
       return { ...existing, [localDraftErrorKey]: nextEntry };
     });
-  };
-}
-
-/** Why the model picker should disable a model, or null when it can be chosen. */
-export function makeModelDisabledReason(
-  context: Omit<
-    Parameters<typeof getStartedThreadModelChangeBlockReason>[0],
-    "nextModelSelection"
-  > | null,
-) {
-  return (instanceId: ProviderInstanceId, model: string): string | null => {
-    if (!context) return null;
-    const reason = getStartedThreadModelChangeBlockReason({
-      ...context,
-      nextModelSelection: { instanceId, model },
-    });
-    return reason ? `${reason.description} Start a new thread to use this model.` : null;
   };
 }
 

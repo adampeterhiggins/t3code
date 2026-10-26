@@ -313,7 +313,7 @@ it.effect.each([false, true])(
                       runtimePolicyLayer: RuntimePolicy.layerFromProjectStore.pipe(
                         Layer.provide(
                           Layer.mock(ProviderInstanceRegistry.ProviderInstanceRegistry)({
-                            getInstance: () => Effect.succeed(undefined),
+                            getInstance: () => Effect.sync(() => undefined),
                           }),
                         ),
                       ),

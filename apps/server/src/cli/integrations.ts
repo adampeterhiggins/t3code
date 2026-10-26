@@ -36,7 +36,7 @@ import {
 const SESSION_LABEL = "t3 integration cli";
 const isDiscordSnowflake = Schema.is(DiscordSnowflake);
 
-export const LOGIN_INTEGRATIONS = ["linear", "slack", "notion", "google", "granola"] as const;
+const LOGIN_INTEGRATIONS = ["linear", "slack", "notion", "google", "granola"] as const;
 export type LoginIntegration = (typeof LOGIN_INTEGRATIONS)[number];
 export type IntegrationName = LoginIntegration | "discord";
 
@@ -86,7 +86,7 @@ export const fromLinear = (state: LinearConnectionState): IntegrationState => ({
   url: state.authorizationUrl,
 });
 
-export const fromSlack = (state: SlackConnectionState): IntegrationState => ({
+const fromSlack = (state: SlackConnectionState): IntegrationState => ({
   ...base(
     "slack",
     state,
@@ -96,7 +96,7 @@ export const fromSlack = (state: SlackConnectionState): IntegrationState => ({
   url: state.authorizationUrl,
 });
 
-export const fromNotion = (state: NotionConnectionState): IntegrationState => ({
+const fromNotion = (state: NotionConnectionState): IntegrationState => ({
   ...base("notion", state, state.account?.workspaceName ?? null),
   flowId: state.flowId,
   url: state.authorizationUrl,
@@ -121,7 +121,7 @@ export const fromGranola = (state: GranolaConnectionState): IntegrationState => 
   userCode: state.userCode,
 });
 
-export const fromDiscord = (state: DiscordConnectionState): IntegrationState =>
+const fromDiscord = (state: DiscordConnectionState): IntegrationState =>
   base("discord", state, state.account && `bot ${state.account.botName}`);
 
 /** Linear has no toggle; the others can be switched off in settings. */

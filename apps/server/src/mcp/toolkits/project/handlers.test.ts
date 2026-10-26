@@ -17,6 +17,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 
+import * as DocumentText from "../../../provider/DocumentText.ts";
 import * as ThreadLaunch from "../../../orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadManagement from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as ServerConfig from "../../../config.ts";
@@ -65,6 +66,7 @@ it.effect("attributes a launched thread's first message to the calling thread", 
     let launchedMessage: ThreadLaunch.ThreadLaunchInput["initialMessage"];
     const context = { version: 1, records: [] } as const;
     const layerDependencies = Layer.mergeAll(
+      Layer.mock(DocumentText.DocumentText)({}),
       ServerSettings.layerTest(),
       NodeCrypto.layer,
       Layer.mock(McpContextLinks.McpContextLinks)({
@@ -95,7 +97,7 @@ it.effect("attributes a launched thread's first message to the calling thread", 
           return Effect.succeed({
             threadId: input.threadId,
             projection: {
-              thread: { id: input.threadId, projectId, modelSelection },
+              thread: { id: input.threadId, title: input.title, projectId, modelSelection },
               runs: [],
             },
             resumed: false,
@@ -155,6 +157,7 @@ it.effect("launches a scratch thread into the Scratch project", () =>
     } as OrchestrationV2ThreadShell;
     const launched: Array<ThreadLaunch.ThreadLaunchInput> = [];
     const layerDependencies = Layer.mergeAll(
+      Layer.mock(DocumentText.DocumentText)({}),
       ServerSettings.layerTest(),
       NodeCrypto.layer,
       noContextLinks,
@@ -180,7 +183,12 @@ it.effect("launches a scratch thread into the Scratch project", () =>
           return Effect.succeed({
             threadId: input.threadId,
             projection: {
-              thread: { id: input.threadId, projectId: input.projectId, modelSelection },
+              thread: {
+                id: input.threadId,
+                title: input.title,
+                projectId: input.projectId,
+                modelSelection,
+              },
               runs: [],
             },
             resumed: false,
@@ -256,6 +264,7 @@ it.effect("starts a project from just a title when workspaceRoot is omitted", ()
       deletedAt: null,
     };
     const layerDependencies = Layer.mergeAll(
+      Layer.mock(DocumentText.DocumentText)({}),
       ServerSettings.layerTest(),
       NodeCrypto.layer,
       noContextLinks,
@@ -416,7 +425,7 @@ const clientLaunchHarness = (input: {
         ),
     }),
     Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({ namedProjectsRoot: "/projects" }),
-    NodeServices.layer,
+    DocumentText.layer.pipe(Layer.provideMerge(NodeServices.layer)),
   ).pipe(
     Layer.provideMerge(GitVcsDriver.layer),
     Layer.provideMerge(VcsProcess.layer),
