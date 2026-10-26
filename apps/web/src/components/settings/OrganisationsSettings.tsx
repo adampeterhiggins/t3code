@@ -2,7 +2,7 @@ import type { Organisation } from "@t3tools/contracts/settings";
 import { lazy, Suspense, useState } from "react";
 
 import { useOrganisations } from "../../hooks/useOrganisations";
-import { buildOrganisationOptions, type OrganisationOption } from "../Sidebar.logic";
+import { buildOrganisationOptions, type OrganisationOption } from "../sidebar/organization.logic";
 import { githubAvatarUrlOf, OrganisationIcon } from "../sidebar/OrganisationIcon";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";

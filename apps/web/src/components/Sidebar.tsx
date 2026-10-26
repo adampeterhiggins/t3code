@@ -1,3 +1,15 @@
+import { groupSidebarThreadsByName, projectSidebarPages } from "./sidebar/pageProjection";
+import {
+  sidebarThreadView,
+  isSidebarThreadGroupedAway,
+  buildSidebarFilterFacets,
+  sidebarGroupPage,
+} from "./sidebar/organization.logic";
+import { useSidebarProjectScope } from "./sidebar/useSidebarProjectScope";
+import { useSidebarOrganization } from "./sidebar/useSidebarOrganization";
+import { createSidebarGroupActions } from "./sidebar/groupActions";
+import { partitionSidebarThreads, type SidebarOptimisticDrop } from "./sidebar/partitionThreads";
+import { SidebarGroupHeader } from "./sidebar/SidebarGroupHeader";
 import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
 import {
   type ScopedProjectRef,
@@ -43,10 +55,7 @@ import {
   effectiveSnoozed,
   threadWokeAt,
 } from "@t3tools/client-runtime/state/thread-settled";
-import {
-  createInboxReturnTracker,
-  isThreadWorking,
-} from "@t3tools/client-runtime/state/thread-inbox";
+import { createInboxReturnTracker } from "@t3tools/client-runtime/state/thread-inbox";
 import { sortSettledThreads } from "@t3tools/client-runtime/state/thread-sort";
 import {
   nextShownOrder,
@@ -75,15 +84,13 @@ import {
   scopedThreadKey,
 } from "@t3tools/client-runtime/environment";
 import {
-  threadGroupsShownInThreads,
   type SidebarTabSortDirection,
   type SidebarTabSortOrder,
-  type ThreadGroup,
 } from "@t3tools/contracts/settings";
 import type { OlderSettledScope } from "@t3tools/client-runtime/state/threads";
 
 import { ChevronDownIcon, PlusIcon } from "lucide-react";
-import { PencilIcon, ChevronUpIcon, TerminalIcon, XIcon } from "lucide-react";
+import { ChevronUpIcon, TerminalIcon, XIcon } from "lucide-react";
 import {
   createContext,
   memo,
@@ -125,7 +132,6 @@ import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
 import { selectProjectGroupingSettings } from "../logicalProject";
 import {
   projectGroupsSpanEnvironments,
-  resolveSidebarProjectScopeKey,
   getSidebarProjectSettingsKey,
   type SidebarProjectSnapshot,
 } from "../sidebarProjectGrouping";
@@ -164,7 +170,6 @@ import {
   readEnvironmentLinkIntegrations,
   readProject,
   readThreadShell,
-  useAllEnvironmentProjectSnapshotsReady,
   useProjects,
   useServerConfigs,
   useQuietThreadShells,
@@ -175,7 +180,7 @@ import {
 } from "../state/providerEntries";
 
 import { primaryServerKeybindingsAtom } from "../state/server";
-import { environmentProjects } from "../state/projects";
+
 import { threadEnvironment } from "../state/threads";
 import { useOlderSettledShelf, useOlderSettledShelfGrowth } from "../state/olderSettledShelf";
 import { useThreadSearch } from "../state/queries";
@@ -218,7 +223,6 @@ import {
   buildBulkTitleRegenerationContextMenuItem,
   buildBulkUnpinContextMenuItem,
   deleteSelectedThreadEntries,
-  firstValidTimestampMs,
   foldedSidebarTabThreads,
   groupSidebarTabThreads,
   isSidebarTabGroupOpen,
@@ -237,7 +241,6 @@ import {
   withSidebarTabRanks,
   isSidebarNestedLinkClick,
   isTrailingDoubleClick,
-  orderItemsByPreferredIds,
   planSidebarThreadDrop,
   resolveAdjacentThreadId,
   resolveSidebarSweepKeys,
@@ -249,28 +252,12 @@ import {
   shouldCreateNewThreadInCurrentProject,
   shouldNavigateAfterThreadPark,
   shouldRecedeSidebarThread,
-  availableSidebarPages,
-  buildOrganisationOptions,
-  buildSidebarFilterFacets,
-  repositoryOrganisationOf,
-  type SidebarFacetThread,
-  sidebarShelfPage,
-  isSidebarThreadGroupedAway,
-  type SidebarThreadShelf,
-  resolveSidebarPages,
-  sidebarPagesAllowDragging,
-  sidebarGroupPage,
   sidebarListItemId,
-  type SidebarPage,
   sidebarThreadKeyAtY,
   sortInboxThreadsByReturn,
-  sortPinnedThreadsForSidebar,
   NO_SIDEBAR_TAB_MANUAL_RANKS,
   SIDEBAR_TAB_MANUAL_RANKS_KEY,
   SidebarTabManualRanksSchema,
-  sidebarThreadShelf,
-  sortThreadsForSidebar,
-  sortWorkingThreadsBySend,
   withSidebarTabThreads,
   useThreadJumpHintsVisible,
   type SidebarListItem,
@@ -311,14 +298,10 @@ import { SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
 import {
   SidebarFilterMenu,
   SidebarFilterPills,
-  SidebarPagesSchema,
   sidebarPageLabel,
 } from "./sidebar/SidebarFilterMenu";
 import { requestThreadGroup } from "./ThreadGroupDialog";
-import { ThreadGroupIcon } from "./sidebar/ThreadGroupIcon";
-import { projectIconColorClassName } from "../projectIconColors";
-import { useThreadGroups } from "../hooks/useThreadGroups";
-import { useOrganisations } from "../hooks/useOrganisations";
+
 import {
   SIDEBAR_TAB_SORT_ORDER_LABELS,
   sidebarTabSortDirectionLabel,
@@ -356,13 +339,6 @@ const EMPTY_PROVIDER_ENTRIES: ReadonlyMap<string, ProviderEntrySummary> = new Ma
 // Collapsed shelves share one empty list so a route change alone does not
 // give the sidebar list a new identity.
 const EMPTY_THREADS: readonly EnvironmentThreadShell[] = [];
-const SIDEBAR_PAGES_KEY = "t3code:sidebar:pages";
-const SIDEBAR_ORGANISATIONS_KEY = "t3code:sidebar:organisations";
-const NO_ORGANISATION_KEYS: readonly string[] = [];
-const DEFAULT_SIDEBAR_PAGES: readonly string[] = ["threads", "automations"];
-// Page headers the user folded away. Pages start open: picking one is asking to see it.
-const SIDEBAR_COLLAPSED_PAGES_KEY = "t3code:sidebar:collapsed-pages";
-const NO_COLLAPSED_PAGES: readonly string[] = [];
 const SIDEBAR_PAGE_BY_MARKER = {
   "automations-header": "automations",
   "snoozed-header": "snoozed",
@@ -410,65 +386,6 @@ function sidebarThreadKey(thread: EnvironmentThreadShell): string {
 }
 const SIDEBAR_DRAG_DISTANCE = 6;
 const SIDEBAR_DRAG_LABEL_HEIGHT = 24;
-// Titles a user-made group in its accent. Click the title to collapse it; click the pencil, or
-// right-click, to rename or restyle.
-function SidebarGroupHeader(props: {
-  name: string;
-  style: ThreadGroup | undefined;
-  count: number;
-  collapsed: boolean;
-  onEdit: (name: string) => void;
-  onToggle: () => void;
-}) {
-  const accent = props.style?.accent;
-  return (
-    <div
-      className="group/group-header flex h-8 items-center gap-2 px-2 text-xs font-medium text-sidebar-muted-foreground"
-      onContextMenu={(event) => {
-        event.preventDefault();
-        props.onEdit(props.name);
-      }}
-    >
-      <button
-        type="button"
-        aria-expanded={!props.collapsed}
-        className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-        onClick={props.onToggle}
-      >
-        <ThreadGroupIcon style={props.style} />
-        <span
-          className={cn("min-w-0 flex-1 truncate", accent && projectIconColorClassName(accent))}
-        >
-          {props.name}
-        </span>
-        {props.count === 0 ? (
-          <span className="shrink-0 font-normal text-muted-foreground/70">Empty</span>
-        ) : props.collapsed ? (
-          <span className="shrink-0 font-normal text-muted-foreground/70">{props.count}</span>
-        ) : null}
-      </button>
-      <button
-        type="button"
-        aria-label={`Edit group ${props.name}`}
-        className="invisible shrink-0 cursor-pointer rounded-sm p-0.5 text-muted-foreground outline-none group-hover/group-header:visible hover:text-foreground focus-visible:visible focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-        onClick={() => props.onEdit(props.name)}
-      >
-        <PencilIcon aria-hidden className="size-3" />
-      </button>
-      <button
-        type="button"
-        tabIndex={-1}
-        aria-hidden
-        className="shrink-0 cursor-pointer"
-        onClick={props.onToggle}
-      >
-        <ChevronDownIcon
-          className={cn("size-3 transition-transform", !props.collapsed && "rotate-180")}
-        />
-      </button>
-    </div>
-  );
-}
 /**
  * A group's tabs under its header, including the thread the row stands for. Tabs drag within
  * the list in their own drag context, so picking one up never drags the whole group, and they
@@ -1136,171 +1053,6 @@ function useSidebarTabProvider(
     modelLabel: selectedModel ? getTriggerDisplayModelLabel(selectedModel) : modelSelection.model,
   };
 }
-type SidebarOptimisticDrop = {
-  readonly key: string;
-  readonly sourceSection: SidebarSection;
-  readonly section: "pinned" | "active" | "settled";
-  readonly occurredAt: string;
-  readonly clearsSnooze: boolean;
-  readonly order: readonly string[] | null;
-  readonly keysAtDrop: ReadonlyMap<string, string | null>;
-  readonly assignedKeys: ReadonlyMap<string, string>;
-};
-
-function partitionSidebarThreads(input: {
-  threads: ReadonlyArray<EnvironmentThreadShell>;
-  tabThreadGroups: ReadonlyMap<string, string>;
-  groupsShownInThreads: ReadonlySet<string>;
-  serverConfigs: ReturnType<typeof useServerConfigs>;
-  scopedProjectKeys: ReadonlySet<string> | null;
-  optimisticDrop: SidebarOptimisticDrop | null;
-  workingShelfEnabled: boolean;
-  clockKey: string;
-}) {
-  const {
-    threads,
-    tabThreadGroups,
-    groupsShownInThreads,
-    serverConfigs,
-    scopedProjectKeys,
-    optimisticDrop,
-    workingShelfEnabled,
-  } = input;
-  const preciseNow = new Date().toISOString();
-  // sidebar roster (v2 models them as real threads with lineage). Chat tabs
-  // list under their group's row instead of as rows of their own.
-  // Every project's threads are classified, so the filter menu can count the ones outside
-  // the current scope; only scoped threads reach the shelves.
-  const visible = filterSidebarV2VisibleThreads(threads, null).filter(
-    (thread) => !tabThreadGroups.has(`${thread.environmentId}:${thread.id}`),
-  );
-  const inboxObservation = inboxReturns.observe(workingShelfEnabled ? threads : null);
-  const pinned: EnvironmentThreadShell[] = [];
-  const active: EnvironmentThreadShell[] = [];
-  const working: EnvironmentThreadShell[] = [];
-  const inbox = (thread: EnvironmentThreadShell) =>
-    workingShelfEnabled && isThreadWorking(thread) ? "working" : "active";
-  const snoozed: EnvironmentThreadShell[] = [];
-  const hidden: EnvironmentThreadShell[] = [];
-  const grouped: EnvironmentThreadShell[] = [];
-  const automations: EnvironmentThreadShell[] = [];
-  // Members of groups shown in Threads, which keep their own shelf too.
-  const shownGrouped: Array<{
-    thread: EnvironmentThreadShell;
-    page: SidebarPage;
-  }> = [];
-  const settled: EnvironmentThreadShell[] = [];
-  const facetThreads: SidebarFacetThread[] = [];
-  const draggable = new Set<string>();
-  const activeReorderable = new Set<string>();
-  for (const thread of visible) {
-    const capabilities = serverConfigs.get(thread.environmentId)?.environment.capabilities;
-    const supportsSettlement = capabilities?.threadSettlement === true;
-    const supportsSnooze = capabilities?.threadSnooze === true;
-    const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
-    let row = thread;
-    let shelf: SidebarThreadShelf;
-    if (optimisticDrop?.key === threadKey) {
-      const projected = applySidebarThreadDrop(
-        thread,
-        optimisticDrop.section,
-        optimisticDrop.occurredAt,
-        optimisticDrop.assignedKeys.get(threadKey),
-      );
-      shelf =
-        optimisticDrop.section === "pinned"
-          ? "pinned"
-          : optimisticDrop.section === "settled"
-            ? "settled"
-            : inbox(projected);
-      row = optimisticDrop.clearsSnooze
-        ? projected
-        : {
-            ...projected,
-            snoozedAt: thread.snoozedAt,
-            snoozedUntil: thread.snoozedUntil,
-          };
-    } else {
-      shelf = sidebarThreadShelf(thread, {
-        supportsSnooze,
-        supportsSettlement,
-        workingShelfEnabled,
-        now: preciseNow,
-        groupsShownInThreads,
-        working: inboxObservation.isWorking(thread),
-      });
-    }
-    const page = sidebarShelfPage(shelf, row.groupName);
-    const alsoGroupedIn =
-      shelf !== "grouped" && shelf !== "hidden" && row.groupName != null ? row.groupName : null;
-    facetThreads.push({
-      environmentId: thread.environmentId,
-      projectId: thread.projectId,
-      pages: alsoGroupedIn === null ? [page] : [page, sidebarGroupPage(alsoGroupedIn)],
-    });
-    if (
-      scopedProjectKeys !== null &&
-      !scopedProjectKeys.has(`${thread.environmentId}:${thread.projectId}`)
-    ) {
-      continue;
-    }
-    if (capabilities?.threadActiveReorder === true) activeReorderable.add(threadKey);
-    // Older servers retain their existing drag actions. Active placement
-    // additionally requires its own ordering capability at the drop target.
-    if (capabilities?.threadPinning === true && capabilities.threadPinReorder === true) {
-      draggable.add(threadKey);
-    }
-    ({ hidden, grouped, automations, snoozed, settled, pinned, working, active })[shelf].push(row);
-    if (alsoGroupedIn !== null) shownGrouped.push({ thread: row, page });
-  }
-  // Server capability only gates DRAGGING — it must not influence the
-  // sort, or mixed-version fleets would render different pinned orders on
-  // web and mobile from the same data.
-  const sortedPinned = sortPinnedThreadsForSidebar(pinned);
-  const sortedActive = workingShelfEnabled
-    ? sortInboxThreadsByReturn(active, inboxObservation.returnedAt)
-    : sortThreadsForSidebar(active);
-  return {
-    pinnedThreads:
-      optimisticDrop?.section !== "pinned" || optimisticDrop.order === null
-        ? sortedPinned
-        : orderItemsByPreferredIds({
-            items: sortedPinned,
-            preferredIds: optimisticDrop.order,
-            getId: (thread) => scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
-          }),
-    draggableThreadKeys: draggable,
-    activeReorderableThreadKeys: activeReorderable,
-    activeThreads:
-      optimisticDrop?.section !== "active" || optimisticDrop.order === null
-        ? sortedActive
-        : orderItemsByPreferredIds({
-            items: sortedActive,
-            preferredIds: optimisticDrop.order,
-            getId: (thread) => scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
-          }),
-    workingThreads: sortWorkingThreadsBySend(working),
-    snoozedThreads: snoozed.toSorted(
-      (left, right) =>
-        firstValidTimestampMs(left.snoozedUntil ?? null) -
-        firstValidTimestampMs(right.snoozedUntil ?? null),
-    ),
-    // Most recently hidden first.
-    hiddenThreads: hidden.toSorted(
-      (left, right) =>
-        firstValidTimestampMs(right.hiddenAt ?? null) -
-        firstValidTimestampMs(left.hiddenAt ?? null),
-    ),
-    // Each group keeps the same order the active list uses.
-    groupedThreads: sortThreadsForSidebar(grouped),
-    shownGroupThreads: shownGrouped,
-    automationThreads: sortThreadsForSidebar(automations),
-    settledThreads: sortSettledThreads(settled),
-    facetThreads,
-    snoozeNow: preciseNow,
-  };
-}
-
 function olderSettledScopes(
   environmentIds: ReadonlyArray<EnvironmentId>,
   scopedProjectKeys: ReadonlySet<string> | null,
@@ -1327,8 +1079,6 @@ function readRouteThreadKey(router: AnyRouter): string | null {
   const ref = resolveActiveThreadRouteRef(target, draft);
   return ref === null ? null : scopedThreadKey(ref);
 }
-
-const ORGANISATION_KEYS_SCHEMA = Schema.Array(Schema.String);
 
 export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReveal }) {
   const projects = useProjects();
@@ -1545,22 +1295,17 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   // Snooze wake times are second-precise, so classifying with the quantized
   // minute would hold a woken thread on the shelf for up to a minute.
   const [snoozeWakeTick, bumpSnoozeWakeTick] = useState(() => Date.now());
-  const persistedProjectScopeKeys = useUiStateStore((store) => store.sidebarProjectScopeKeys);
-  const setProjectScopeKeys = useUiStateStore((store) => store.setSidebarProjectScopeKeys);
-  // A saved physical scratch scope maps onto the group its environment config
-  // coalesces it into (see resolveSidebarProjectScopeKey).
-  const projectScopeKeys = [
-    ...new Set(
-      persistedProjectScopeKeys.flatMap((key) => {
-        const resolved = resolveSidebarProjectScopeKey({
-          groups: projectGroups,
-          key,
-          settings: projectGroupingSettings,
-        });
-        return resolved === null ? [] : [resolved];
-      }),
-    ),
-  ];
+  const {
+    persistedProjectScopeKeys,
+    setProjectScopeKeys,
+    projectScopeKeys,
+    scopedProjectGroups,
+    storedOrganisationKeys,
+    setOrganisationKeys,
+    scopedOrganisationKeys,
+    organisationOptions,
+    scopedProjectKeys,
+  } = useSidebarProjectScope(projectGroups, projectGroupingSettings);
   const showProjectEnvironments = projectGroupsSpanEnvironments(projectGroups);
   const scratchMachineLabelFor = (
     thread: Pick<SidebarThreadSummary, "environmentId" | "projectId">,
@@ -1575,83 +1320,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     }
     return environmentLabelById.get(thread.environmentId) ?? null;
   };
-  const projectGroupByScopeKey = new Map(
-    projectGroups.map((project) => [project.projectKey, project] as const),
-  );
-  const scopedProjectGroups = projectScopeKeys.flatMap((key) => {
-    const project = projectGroupByScopeKey.get(key);
-    return project ? [project] : [];
-  });
-  // Organisations narrow the same way projects do, per checkout: a project group can hold
-  // checkouts from a fork and its upstream, which belong to different owners.
-  const [storedOrganisationKeys, setOrganisationKeys] = useLocalStorage(
-    SIDEBAR_ORGANISATIONS_KEY,
-    NO_ORGANISATION_KEYS,
-    ORGANISATION_KEYS_SCHEMA,
-  );
-  const { organisations } = useOrganisations();
-  // A picked organisation with no checkout left still narrows the list, so it stays offered
-  // (and pilled) until it is dropped rather than silently coming back with a new checkout.
-  // Until projects load nothing has an organisation yet, so the saved picks wait rather than
-  // emptying the list for a moment.
-  const scopedOrganisationKeys =
-    projectGroups.length === 0 ? NO_ORGANISATION_KEYS : storedOrganisationKeys;
-  const organisationOptions = buildOrganisationOptions(
-    projectGroups.flatMap((project) =>
-      project.memberProjects.map((member) => member.repositoryIdentity),
-    ),
-    organisations,
-    scopedOrganisationKeys,
-  );
-  const scopedProjectKeys = (() => {
-    if (scopedProjectGroups.length === 0 && scopedOrganisationKeys.length === 0) return null;
-    const organisations = new Set(scopedOrganisationKeys);
-    return new Set(
-      (scopedProjectGroups.length > 0 ? scopedProjectGroups : projectGroups).flatMap((project) =>
-        project.memberProjects
-          .filter(
-            (member) =>
-              organisations.size === 0 ||
-              organisations.has(repositoryOrganisationOf(member.repositoryIdentity)?.key ?? ""),
-          )
-          .map((member) => `${member.environmentId}:${member.id}`),
-      ),
-    );
-  })();
-  // Scoped projects that are gone drop out of the scope. Configs identify
-  // scratch projects, so both they and live project snapshots must arrive
-  // before a persisted scope can be considered missing.
-  const allProjectSnapshotsReady = useAllEnvironmentProjectSnapshotsReady();
-  const allProjectConfigsReady = useAtomValue(environmentProjects.projectConfigsReadyAtom);
-  useEffect(() => {
-    const canClearMissingScope = allProjectSnapshotsReady && allProjectConfigsReady;
-    const nextKeys = [
-      ...new Set(
-        persistedProjectScopeKeys.flatMap((key) => {
-          const resolved = resolveSidebarProjectScopeKey({
-            groups: projectGroups,
-            key,
-            settings: projectGroupingSettings,
-            canClearMissingScope,
-          });
-          return resolved === null ? [] : [resolved];
-        }),
-      ),
-    ];
-    if (
-      nextKeys.length !== persistedProjectScopeKeys.length ||
-      nextKeys.some((key, index) => key !== persistedProjectScopeKeys[index])
-    ) {
-      setProjectScopeKeys(nextKeys);
-    }
-  }, [
-    allProjectConfigsReady,
-    allProjectSnapshotsReady,
-    persistedProjectScopeKeys,
-    projectGroups,
-    projectGroupingSettings,
-    setProjectScopeKeys,
-  ]);
   const routeDraftIdForRows = routeTarget?.kind === "draft" ? routeTarget.draftId : null;
   const visibleDraftSessionCount = useComposerDraftStore((store) => {
     let count = 0;
@@ -1702,8 +1370,18 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     },
   );
   // Groups are names threads share, so they are read off every thread, not just the scoped ones.
-  const { groups: threadGroups, saveGroup, deleteGroup } = useThreadGroups();
-  const groupsShownInThreads = threadGroupsShownInThreads(threadGroups);
+  const {
+    threadGroups,
+    saveGroup,
+    deleteGroup,
+    groupsShownInThreads,
+    sidebarPages,
+    setSidebarPages,
+    availablePages,
+    collapsedPages,
+    setCollapsedPages,
+    togglePageCollapsed,
+  } = useSidebarOrganization(threads);
   // Keep a dropped row at its destination while its server applies the
   // lifecycle command and any order-key writes. The next pickup waits for
   // this hold so a second drop cannot replace an unconfirmed placement.
@@ -1723,6 +1401,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     facetThreads,
     snoozeNow,
   } = partitionSidebarThreads({
+    inboxReturns,
     threads,
     tabThreadGroups,
     groupsShownInThreads,
@@ -1925,41 +1604,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     const id = window.setTimeout(() => bumpSnoozeWakeTick(Date.now()), delayMs);
     return () => window.clearTimeout(id);
   }, [snoozedThreads]);
-  // Snoozed, settled and hidden threads each live on their own sidebar page,
-  // picked from the header's page menu. A page replaces the list rather than
-  // stacking under it, so the main list holds only live work. Rows off the
-  // current page don't render (and so don't take jump shortcuts or selection).
-  const [storedSidebarPages, setSidebarPages] = useLocalStorage(
-    SIDEBAR_PAGES_KEY,
-    DEFAULT_SIDEBAR_PAGES,
-    SidebarPagesSchema,
-  );
-  const threadGroupNames = collectThreadGroupNames(threads, Object.keys(threadGroups));
-  const availablePages = availableSidebarPages(threadGroupNames);
-  const sidebarPages = resolveSidebarPages(storedSidebarPages, threadGroupNames);
   // A group shown in Threads lists only the members no other picked page already lists.
-  const groupedThreadsByName = (() => {
-    const byName = new Map<string, EnvironmentThreadShell[]>();
-    const add = (thread: EnvironmentThreadShell) => {
-      const name = thread.groupName!;
-      byName.set(name, [...(byName.get(name) ?? []), thread]);
-    };
-    for (const thread of groupedThreads) add(thread);
-    let mixed = false;
-    for (const { thread, page } of shownGroupThreads) {
-      if (sidebarPages.includes(page)) continue;
-      add(thread);
-      mixed = true;
-    }
-    if (!mixed) return byName;
-    return new Map([...byName].map(([name, list]) => [name, sortThreadsForSidebar(list)]));
-  })();
-  const [storedCollapsedPages, setCollapsedPages] = useLocalStorage(
-    SIDEBAR_COLLAPSED_PAGES_KEY,
-    NO_COLLAPSED_PAGES,
-    SidebarPagesSchema,
+  const groupedThreadsByName = groupSidebarThreadsByName(
+    groupedThreads,
+    shownGroupThreads,
+    sidebarPages,
   );
-  const collapsedPages = new Set(storedCollapsedPages);
   const [settledVisibleCount, setSettledVisibleCount] = useState(SETTLED_TAIL_INITIAL_COUNT);
   const settledResetKey = JSON.stringify([projectScopeKeys, scopedOrganisationKeys]);
   const [lastSettledResetKey, setLastSettledResetKey] = useState(settledResetKey);
@@ -2003,38 +1653,25 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const filterOrganisationOptions = organisationOptions.filter((option) =>
     filterFacets.organisationKeys.has(option.key),
   );
-  const togglePageCollapsed = (page: SidebarPage) =>
-    setCollapsedPages((pages) =>
-      pages.includes(page) ? pages.filter((entry) => entry !== page) : [...pages, page],
-    );
-  // The rows a picked page lists. A folded page keeps only the open thread, as the
-  // Working shelf does, so the route's row never vanishes behind its header.
-  const pageRows = (page: SidebarPage, list: readonly EnvironmentThreadShell[]) => {
-    if (!sidebarPages.includes(page)) return EMPTY_THREADS;
-    if (!collapsedPages.has(page)) return list;
-    const routeThread = list.find((thread) => sidebarThreadKey(thread) === sidebarRouteThreadKey);
-    return routeThread === undefined ? EMPTY_THREADS : [routeThread];
-  };
-  // Picked groups in list order, each with the rows the current project scope leaves it.
-  const visibleGroups = sidebarPages.flatMap((page) => {
-    if (!page.startsWith("group:")) return [];
-    const name = page.slice("group:".length);
-    return [
-      {
-        name,
-        threads: pageRows(page, groupedThreadsByName.get(name) ?? EMPTY_THREADS),
-      },
-    ];
+  const {
+    visibleGroups,
+    showsPage,
+    showsThreads,
+    threadsOnly,
+    visibleAutomationThreads,
+    renderedSettledThreads,
+    visibleSnoozedThreads,
+    visibleHiddenThreads,
+  } = projectSidebarPages({
+    sidebarPages,
+    collapsedPages,
+    sidebarRouteThreadKey,
+    groupedThreadsByName,
+    automationThreads,
+    visibleSettledThreads,
+    snoozedThreads,
+    hiddenThreads,
   });
-  const showsPage = (page: SidebarPage) => sidebarPages.includes(page);
-  const showsThreads = showsPage("threads");
-  // Dragging moves rows between pinned and active only, so it stays off while
-  // pages it cannot place share the list.
-  const threadsOnly = sidebarPagesAllowDragging(sidebarPages);
-  const visibleAutomationThreads = pageRows("automations", automationThreads);
-  const renderedSettledThreads = pageRows("settled", visibleSettledThreads);
-  const visibleSnoozedThreads = pageRows("snoozed", snoozedThreads);
-  const visibleHiddenThreads = pageRows("hidden", hiddenThreads);
   // Navigating anywhere folds an expanded tab list back to its limit.
   const [expandedForRouteKey, setExpandedForRouteKey] = useState(routeThreadKey);
   if (expandedForRouteKey !== routeThreadKey) {
@@ -2064,7 +1701,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         ...(threadViews.active === "card" ? activeThreads : []),
         ...(threadViews.working === "card" ? workingThreads : []),
         ...visibleGroups.flatMap((group) =>
-          (threadGroups[group.name]?.view ?? threadViews.grouped) === "card" ? group.threads : [],
+          sidebarThreadView("grouped", group.name, threadGroups, threadViews) === "card"
+            ? group.threads
+            : [],
         ),
         // Automations is a built-in group, so it takes the groups' view.
         ...(threadViews.grouped === "card" ? visibleAutomationThreads : []),
@@ -2530,45 +2169,15 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       }
     })();
   };
-  /**
-   * Renames, restyles or deletes a group. Renaming moves each of its threads and keeps it picked;
-   * deleting returns its threads to the live list and drops it from Show.
-   */
-  const editThreadGroup = (name: string) => {
-    void (async () => {
-      const result = await requestThreadGroup({
-        name,
-        group: threadGroups[name] ?? {},
-      });
-      if (result === null) return;
-      const nextName = result === "delete" ? null : result.name;
-      if (result === "delete") deleteGroup(name);
-      else saveGroup({ from: name, ...result });
-      if (nextName === name) return;
-      for (const thread of threads) {
-        if (thread.groupName === name) {
-          attemptSetGroup(scopeThreadRef(thread.environmentId, thread.id), nextName);
-        }
-      }
-      const renamePage = (pages: readonly string[]) =>
-        nextName === null
-          ? pages.filter((page) => page !== sidebarGroupPage(name))
-          : pages.map((page) =>
-              page === sidebarGroupPage(name) ? sidebarGroupPage(nextName) : page,
-            );
-      setSidebarPages(renamePage);
-      setCollapsedPages(renamePage);
-    })();
-  };
-  /** Creates an empty group from the filter menu and shows it. */
-  const createThreadGroup = () => {
-    void (async () => {
-      const result = await requestThreadGroup();
-      if (result === null || result === "delete") return;
-      saveGroup(result);
-      setSidebarPages((pages) => [...pages, sidebarGroupPage(result.name)]);
-    })();
-  };
+  const { editThreadGroup, createThreadGroup } = createSidebarGroupActions({
+    threads,
+    threadGroups,
+    saveGroup,
+    deleteGroup,
+    setSidebarPages,
+    setCollapsedPages,
+    attemptSetGroup,
+  });
   const attemptUnhide = (threadRef: ScopedThreadRef) => attemptSetHidden(threadRef, false);
   const threadListRef = useRef<HTMLUListElement | null>(null);
   const dragLabelOffsetRef = useRef(0);
@@ -4418,12 +4027,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                         const threadKey = scopedThreadKey(
                           scopeThreadRef(thread.environmentId, thread.id),
                         );
-                        const rowVariant =
-                          section === "grouped" && thread.groupName != null
-                            ? (threadGroups[thread.groupName]?.view ?? threadViews.grouped)
-                            : section === "automations"
-                              ? threadViews.grouped
-                              : threadViews[section];
+                        const rowVariant = sidebarThreadView(
+                          section,
+                          thread.groupName,
+                          threadGroups,
+                          threadViews,
+                        );
                         const isCard = rowVariant === "card";
                         const rowTabs = tabsByRowKey.get(threadKey);
                         const rowTabsOpen = listedTabsByRowKey.has(threadKey);

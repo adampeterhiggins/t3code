@@ -38,14 +38,6 @@ import {
   resolveProjectStatusIndicator,
   resolveSidebarSweepKeys,
   resolveSidebarStageBadgeLabel,
-  resolveSidebarThreadSection,
-  resolveSidebarPages,
-  sidebarPagesAllowDragging,
-  buildOrganisationOptions,
-  buildSidebarFilterFacets,
-  sidebarThreadShelf,
-  type SidebarPage,
-  repositoryOrganisationOf,
   resolveSidebarRowAccessibility,
   resolveSidebarThreadStatus,
   resolveSidebarV2TopStatus,
@@ -84,6 +76,15 @@ import {
   type SidebarSection,
   resolveSidebarDropVerb,
 } from "./Sidebar.logic";
+import { resolveSidebarThreadSection, sidebarThreadShelf } from "./sidebar/organization.logic";
+import {
+  resolveSidebarPages,
+  sidebarPagesAllowDragging,
+  buildOrganisationOptions,
+  buildSidebarFilterFacets,
+  type SidebarPage,
+  repositoryOrganisationOf,
+} from "./sidebar/organization.logic";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
 import { EnvironmentId, ProjectId, ProviderInstanceId, RunId, ThreadId } from "@t3tools/contracts";
 

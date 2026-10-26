@@ -79,8 +79,8 @@ import {
   SidebarTabManualRanksSchema,
   sidebarSiblingTabs,
   sidebarTabSortTimestamp,
-  sidebarThreadShelf,
 } from "../Sidebar.logic";
+import { sidebarThreadShelf } from "../sidebar/organization.logic";
 import { splitPartnerKey, useSplitViewStore } from "../../splitViewStore";
 import { useThreadTabContextStore } from "../../threadTabContextStore";
 import { SidebarTabSummary } from "../sidebar/SidebarTabSummary";
