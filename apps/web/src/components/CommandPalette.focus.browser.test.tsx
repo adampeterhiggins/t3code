@@ -1,18 +1,13 @@
-import { act, useImperativeHandle, useRef } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
+import { useImperativeHandle, useRef } from "react";
+import { describe, expect, it, vi } from "vite-plus/test";
+import { page, userEvent } from "vite-plus/test/browser";
+import { act, render } from "../../test/render";
+import { isMacPlatform, DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import { CommandPalette } from "./CommandPalette";
 import { useComposerHandleContext } from "../composerHandleContext";
 import { openCommandPalette } from "../commandPaletteBus";
 import { primaryServerKeybindingsAtom } from "../state/server";
 
-vi.mock("@tanstack/react-router", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@tanstack/react-router")>()),
-  useNavigate: () => vi.fn(),
-  useParams: () => null,
-  useLocation: () => "/settings",
-}));
 vi.mock("@effect/atom-react", async (importOriginal) => {
   const original = await importOriginal<typeof import("@effect/atom-react")>();
   return {
@@ -22,6 +17,8 @@ vi.mock("@effect/atom-react", async (importOriginal) => {
   };
 });
 vi.mock("../hooks/useTheme", () => ({
+  getRenderedAppearance: () => "light",
+  subscribeRenderedAppearance: () => () => {},
   useRenderedAppearance: () => "light",
   useTheme: () => ({ theme: "default", resolvedTheme: "light", appearanceMode: "light" }),
 }));
@@ -36,7 +33,12 @@ vi.mock("../hooks/useScratchProject", () => ({
 }));
 vi.mock("../hooks/useNewProject", () => ({ useNewProject: () => vi.fn() }));
 vi.mock("../hooks/useHandleNewThread", () => ({
-  useHandleNewThread: () => ({}),
+  useHandleNewThread: () => ({
+    activeThread: null,
+    activeDraftThread: null,
+    defaultProjectRef: null,
+    handleNewThread: vi.fn(),
+  }),
   useNewThreadHandler: () => vi.fn(),
 }));
 vi.mock("../hooks/useOpenPanelPullRequestUrl", () => ({ useOpenPanelPullRequestUrl: () => null }));
@@ -56,7 +58,11 @@ vi.mock("../state/entities", async (importOriginal) => ({
 }));
 vi.mock("../state/queries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../state/queries")>()),
-  useThreadSearch: () => ({ matches: [] }),
+  useThreadSearch: (_environments: unknown, query: string) => ({
+    query,
+    matches: [],
+    isPending: false,
+  }),
 }));
 vi.mock("../state/session", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../state/session")>()),
@@ -70,40 +76,11 @@ vi.mock("./settings/useAvailableSettingsSearchItems", () => ({
   useAvailableSettingsSearchItems: () => [],
 }));
 
-let root: Root;
-let container: HTMLDivElement;
-
-beforeEach(() => {
-  vi.useFakeTimers();
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  container = document.createElement("div");
-  document.body.append(container);
-  root = createRoot(container);
-});
-
-afterEach(async () => {
-  await act(async () => {
-    root.unmount();
-    await vi.runOnlyPendingTimersAsync();
-  });
-  container.remove();
-  vi.unstubAllGlobals();
-  vi.useRealTimers();
-});
-
-async function flushFocus() {
-  await act(() => vi.advanceTimersByTimeAsync(0));
-  await act(() => vi.advanceTimersToNextFrame());
-}
-
 async function dismissPalette() {
-  await act(() =>
-    document.activeElement?.dispatchEvent(
-      new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
-    ),
-  );
-  await flushFocus();
-  expect(document.querySelector("[data-command-palette]")).toBeNull();
+  await userEvent.keyboard("{Escape}");
+  await expect
+    .element(page.getByRole("dialog", { name: "Command palette" }))
+    .not.toBeInTheDocument();
 }
 
 function Composer() {
@@ -124,76 +101,64 @@ function Composer() {
 
 describe("command palette focus restoration", () => {
   it("returns to the previously focused Settings field when no composer is mounted", async () => {
-    await act(() =>
-      root.render(
-        <CommandPalette>
-          <input aria-label="Settings field" />
-        </CommandPalette>,
-      ),
+    await using screen = await render(
+      <CommandPalette>
+        <input aria-label="Settings field" />
+      </CommandPalette>,
+      { router: "/settings" },
     );
-    const field = container.querySelector("input")!;
-    await act(() => field.focus());
+    const field = screen.getByRole("textbox", { name: "Settings field" });
+    await userEvent.click(field);
     await act(() => openCommandPalette());
-    await flushFocus();
-    expect(document.activeElement?.closest("[data-command-palette]")).not.toBeNull();
+    await expect.element(page.getByRole("combobox")).toHaveFocus();
     await dismissPalette();
-    expect(document.activeElement).toBe(field);
+    await expect.element(field).toHaveFocus();
   });
 
   it("focuses the replacement command input after leaving the file picker", async () => {
-    await act(() =>
-      root.render(
-        <CommandPalette>
-          <input aria-label="Settings field" />
-        </CommandPalette>,
-      ),
+    await using screen = await render(
+      <CommandPalette>
+        <input aria-label="Settings field" />
+      </CommandPalette>,
+      { router: "/settings" },
     );
-    const field = container.querySelector("input")!;
-    await act(() => field.focus());
+    const field = screen.getByRole("textbox", { name: "Settings field" });
+    await userEvent.click(field);
+    const mac = isMacPlatform(navigator.platform);
     await act(() =>
-      field.dispatchEvent(
+      field.element().dispatchEvent(
         new KeyboardEvent("keydown", {
           key: "p",
-          ctrlKey: true,
+          ctrlKey: !mac,
+          metaKey: mac,
           bubbles: true,
           cancelable: true,
         }),
       ),
     );
-    await flushFocus();
-    expect(document.querySelector('[data-palette-mode="files"]')).not.toBeNull();
-    await act(() =>
-      document.activeElement?.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: "Escape",
-          bubbles: true,
-          cancelable: true,
-        }),
-      ),
-    );
-    await flushFocus();
-    expect(document.activeElement?.closest('[data-palette-mode="command"]')).not.toBeNull();
-    expect(document.activeElement?.tagName).toBe("INPUT");
+    await expect.element(page.getByRole("dialog", { name: "File picker" })).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await expect.element(page.getByRole("dialog", { name: "Command palette" })).toBeInTheDocument();
+    await expect.element(page.getByRole("combobox")).toHaveFocus();
     await dismissPalette();
-    expect(document.activeElement).toBe(field);
+    await expect.element(field).toHaveFocus();
   });
 
   it("focuses the mounted composer at the end instead of the previous field", async () => {
-    await act(() =>
-      root.render(
-        <CommandPalette>
-          <input aria-label="Previous field" />
-          <Composer />
-        </CommandPalette>,
-      ),
+    await using screen = await render(
+      <CommandPalette>
+        <input aria-label="Previous field" />
+        <Composer />
+      </CommandPalette>,
+      { router: "/settings" },
     );
-    await act(() => container.querySelector("input")!.focus());
+    await userEvent.click(screen.getByRole("textbox", { name: "Previous field" }));
     await act(() => openCommandPalette());
-    await flushFocus();
-    expect(document.activeElement?.closest("[data-command-palette]")).not.toBeNull();
+    await expect.element(page.getByRole("combobox")).toHaveFocus();
     await dismissPalette();
-    const composer = container.querySelector("textarea")!;
-    expect(document.activeElement).toBe(composer);
-    expect(composer.selectionStart).toBe(composer.value.length);
+    const composer = screen.getByRole("textbox", { name: "Composer" });
+    await expect.element(composer).toHaveFocus();
+    const input = composer.element() as HTMLTextAreaElement;
+    expect(input.selectionStart).toBe(input.value.length);
   });
 });
