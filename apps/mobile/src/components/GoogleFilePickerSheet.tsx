@@ -1,4 +1,9 @@
-import type { EnvironmentId, GoogleFileSummary, ThreadId } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  GoogleFileSummary,
+  GoogleSearchFilesInput,
+  ThreadId,
+} from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { googleFileContextRecord } from "@t3tools/client-runtime/state/google";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
@@ -55,7 +60,7 @@ type OpenedGoogleFilePicker =
   | { readonly mode: "link"; readonly environmentId: EnvironmentId; readonly threadId: ThreadId };
 
 /**
- * A Google file or event picker. The owner renders `sheet` somewhere that outlives composer focus:
+ * A Google file, event or email picker. The owner renders `sheet` somewhere that outlives composer focus:
  * opening the sheet blurs the editor, which can unmount a focus-dependent toolbar.
  */
 export function useGoogleFilePicker(target: GoogleFilePickerTarget | null): {
@@ -88,7 +93,7 @@ export function useGoogleFilePicker(target: GoogleFilePickerTarget | null): {
 }
 
 /**
- * Attaches a Google file or event at the caret the composer had when the sheet opened, or links it to the
+ * Attaches a Google file, event or email at the caret the composer had when the sheet opened, or links it to the
  * thread's tab group. Mobile has no Google settings, so an unconnected environment points at
  * desktop or web.
  */
@@ -99,7 +104,9 @@ function GoogleFilePickerSheet(props: OpenedGoogleFilePicker & { readonly onClos
   const phase = connection.data?.phase;
   return (
     <PickerSheet
-      title={props.mode === "link" ? "Link Google file or event" : "Google file or event"}
+      title={
+        props.mode === "link" ? "Link Google file, event or email" : "Google file, event or email"
+      }
       onClose={props.onClose}
     >
       {phase === "connected" ? (
@@ -122,6 +129,7 @@ function GoogleFilePickerSheet(props: OpenedGoogleFilePicker & { readonly onClos
 
 function GoogleFileSearch(props: OpenedGoogleFilePicker & { readonly onClose: () => void }) {
   const [query, setQuery] = useState("");
+  const [source, setSource] = useState<NonNullable<GoogleSearchFilesInput["source"]>>("all");
   const trimmed = query.trim();
   const settled = useDebouncedValue(trimmed, SEARCH_DEBOUNCE_MS);
   const getFile = useAtomCommand(googleEnvironment.getFile, {
@@ -141,7 +149,7 @@ function GoogleFileSearch(props: OpenedGoogleFilePicker & { readonly onClose: ()
     });
     if (result._tag === "Failure") {
       Alert.alert(
-        "Could not link Google file or event",
+        "Could not link Google file, event or email",
         googleErrorMessage(squashAtomCommandFailure(result), "Try again."),
       );
       return;
@@ -160,7 +168,7 @@ function GoogleFileSearch(props: OpenedGoogleFilePicker & { readonly onClose: ()
     });
     if (fetched._tag === "Failure") {
       Alert.alert(
-        "Could not attach Google file or event",
+        "Could not attach Google file, event or email",
         googleErrorMessage(squashAtomCommandFailure(fetched), "Try again."),
       );
       return;
@@ -190,23 +198,47 @@ function GoogleFileSearch(props: OpenedGoogleFilePicker & { readonly onClose: ()
 
   return (
     <View className="flex-1">
+      <View className="flex-row gap-2 px-4 pb-3">
+        {(["all", "drive", "calendar", "gmail"] as const).map((value) => (
+          <Pressable
+            key={value}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: source === value }}
+            onPress={() => setSource(value)}
+            className="rounded-md bg-surface px-3 py-2"
+          >
+            <Text className={source === value ? "text-foreground" : "text-foreground-muted"}>
+              {value === "gmail"
+                ? "Gmail"
+                : value === "all"
+                  ? "All"
+                  : value === "drive"
+                    ? "Drive"
+                    : "Calendar"}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
       <View className="px-4 pb-3">
         <AppTextInput
-          accessibilityLabel="Search Google files"
+          accessibilityLabel="Search Google sources"
           autoFocus
           autoCapitalize="none"
           autoCorrect={false}
           clearButtonMode="while-editing"
-          placeholder="Search Google"
+          placeholder={
+            source === "gmail" ? "Search Gmail (from:, subject:, is:unread)" : "Search Google"
+          }
           returnKeyType="search"
           value={query}
           onChangeText={setQuery}
         />
       </View>
-      {settled ? (
+      {settled || source === "gmail" ? (
         <GoogleFileResults
           environmentId={props.environmentId}
           query={settled}
+          source={source}
           pendingInput={settled !== trimmed}
           attaching={attaching}
           onPick={(page) => void attach(page)}
@@ -217,7 +249,7 @@ function GoogleFileSearch(props: OpenedGoogleFilePicker & { readonly onClose: ()
             <ActivityIndicator />
           ) : (
             <Text className="text-center text-foreground-muted">
-              Search files and events by title or paste a Google link.
+              Search files, events and emails or paste a Google link.
             </Text>
           )}
         </View>
@@ -230,6 +262,7 @@ function GoogleFileSearch(props: OpenedGoogleFilePicker & { readonly onClose: ()
 function GoogleFileResults(props: {
   readonly environmentId: EnvironmentId;
   readonly query: string;
+  readonly source: GoogleSearchFilesInput["source"];
   readonly pendingInput: boolean;
   readonly attaching: string | null;
   readonly onPick: (page: GoogleFileSummary) => void;
@@ -238,7 +271,7 @@ function GoogleFileResults(props: {
   const result = useAtomValue(
     googleEnvironment.files({
       environmentId: props.environmentId,
-      input: { query: props.query, source: "all" },
+      input: { query: props.query, source: props.source },
     }),
   );
   const files = Option.getOrNull(AsyncResult.value(result))?.files ?? [];

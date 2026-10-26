@@ -274,15 +274,7 @@ const LINEAR_OBJECT_NOUNS: Record<LinearObjectType, string> = {
   initiative: "Linear initiative",
 };
 
-/**
- * The short name a bare link reads as once it is recognised: `owner/repo#7` for a pull request
- * or issue (`owner/repo#7 L4-L14` for lines of one of its files, `owner/repo#7issuecomment-1` for
- * one remark on it), `ENG-123` for a Linear issue, the name a Linear project, document, or
- * initiative link spells (`Roadmap`), `owner/repo` for a repository, and
- * `owner/repo@v1.2.0` for a release, tag, branch, or commit (`owner/repo@abc1234`). Null for ordinary links, and for Slack or Discord messages and prompt links:
- * an attached one is already a chip, so a bare one was not attached and should not read as if it
- * were.
- */
+/** Bare chat links stay ordinary links; only attached messages should read as chips. */
 export function objectLinkLabel(url: string): string | null {
   const link = parseComposerObjectLink(url);
   switch (link?.kind) {
@@ -291,7 +283,9 @@ export function objectLinkLabel(url: string): string | null {
     case "notion-page":
       return "Notion page";
     case "google-file":
-      return "Google document";
+      return parseGoogleFileLink(url)?.fileType === "email"
+        ? "Gmail conversation"
+        : "Google document";
     case "granola-note":
       return "Granola note";
     case "linear-issue":
@@ -335,7 +329,7 @@ export function objectLinkLabel(url: string): string | null {
 
 const OBJECT_LINK_NOUNS: Record<ComposerObjectLink["kind"], string> = {
   "notion-page": "Notion page",
-  "google-file": "Google file or event",
+  "google-file": "Google file, event or email",
   "granola-note": "Granola note",
   "linear-issue": "Linear issue",
   "linear-object": "Linear project, document, or initiative",

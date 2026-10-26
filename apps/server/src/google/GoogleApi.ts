@@ -21,6 +21,7 @@ import * as Schema from "effect/Schema";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import * as GoogleAuth from "./GoogleAuth.ts";
+import { gmailBody, GmailMessage, GmailThread } from "./gmailContent.ts";
 import { boundedGoogleRange, googleDocumentMarkdown, googleGridMarkdown } from "./googleContent.ts";
 
 const File = Schema.Struct({
@@ -179,6 +180,17 @@ export class GoogleApi extends Context.Service<
   }
 >()("t3/google/GoogleApi") {}
 
+const GoogleFailure = Schema.fromJsonString(
+  Schema.Struct({
+    error: Schema.Struct({
+      message: Schema.optional(Schema.String),
+      details: Schema.optional(
+        Schema.Array(Schema.Struct({ reason: Schema.optional(Schema.String) })),
+      ),
+    }),
+  }),
+);
+
 const make = Effect.gen(function* () {
   const auth = yield* GoogleAuth.GoogleAuth;
   const client = yield* HttpClient.HttpClient;
@@ -206,11 +218,29 @@ const make = Effect.gen(function* () {
         reason: "rate-limited",
         detail: "Google's rate limit was reached. Try again shortly.",
       });
+    if (response.status === 403) {
+      const failure = yield* response.text.pipe(
+        Effect.flatMap(Schema.decodeUnknownEffect(GoogleFailure)),
+        Effect.orElseSucceed(() => undefined),
+      );
+      const reasons = failure?.error.details?.map((detail) => detail.reason) ?? [];
+      if (reasons.includes("ACCESS_TOKEN_SCOPE_INSUFFICIENT"))
+        return yield* new GoogleError({
+          reason: "permission",
+          detail:
+            "Google has not granted access to this source. Reconnect Google in Settings → Integrations to grant it.",
+        });
+      if (reasons.includes("SERVICE_DISABLED"))
+        return yield* new GoogleError({
+          reason: "permission",
+          detail: failure?.error.message ?? "Enable this Google API in Google Cloud.",
+        });
+    }
     if (response.status === 403 || response.status === 404)
       return yield* new GoogleError({
         reason: "not-found",
         detail:
-          "Google cannot read this document. Check this account's access, enable the relevant Google API, and reconnect Google if Calendar permission was added.",
+          "Google cannot read this document. Check this account's access, enable the relevant Google API, and reconnect Google if Calendar or Gmail permission was added.",
       });
     if (response.status < 200 || response.status >= 300)
       return yield* new GoogleError({
@@ -337,7 +367,7 @@ const make = Effect.gen(function* () {
       // Connections made before directory access, or a Workspace that hides its directory.
       Effect.catchTags({
         GoogleError: (error) =>
-          error.reason === "not-found"
+          error.reason === "not-found" || error.reason === "permission"
             ? Effect.succeed({ found: { people: [] }, directoryAvailable: false })
             : Effect.fail(error),
       }),
@@ -419,6 +449,82 @@ const make = Effect.gen(function* () {
       hasMore: files.length > EVENT_LIMIT || pages.some((p) => p.hasMore),
     };
   });
+  const readMail = Effect.fn("google.gmail.read")(function* (url: string, metadataOnly = false) {
+    const id = parseGoogleFileLink(url)?.gmailThreadId;
+    if (!id)
+      return yield* new GoogleError({
+        reason: "not-found",
+        detail: "Use a Gmail conversation link from the Google picker.",
+      });
+    const thread = yield* request(
+      `https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(id)}?format=${metadataOnly ? "metadata" : "full"}`,
+      GmailThread,
+    );
+    const messages = thread.messages ?? [];
+    const header = (message: typeof GmailMessage.Type, name: string) =>
+      message.payload?.headers?.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value ??
+      "";
+    const last = messages.at(-1);
+    const title = messages[0]
+      ? header(messages[0], "subject") || "(No subject)"
+      : "Gmail conversation";
+    const updatedAt = DateTime.formatIso(
+      DateTime.makeUnsafe(
+        messages.reduce(
+          (latest, message) => Math.max(latest, Number(message.internalDate) || 0),
+          0,
+        ),
+      ),
+    );
+    const sections = [`# ${title}`];
+    let length = sections[0]!.length;
+    for (const message of metadataOnly ? [] : messages) {
+      const section = `## ${header(message, "from")}\n\nTo: ${header(message, "to")}\nCc: ${header(message, "cc")}\nDate: ${header(message, "date")}\nLabels: ${(message.labelIds ?? []).join(", ")}\n\n${gmailBody(message.payload) || message.snippet || "[No text body.]"}`;
+      sections.push(section);
+      length += section.length + 2;
+      if (length > GOOGLE_FILE_MARKDOWN_MAX_CHARS) break;
+    }
+    let markdown = sections.join("\n\n");
+    const note = "\n\n[Google content truncated.]";
+    if (markdown.length > GOOGLE_FILE_MARKDOWN_MAX_CHARS)
+      markdown = markdown.slice(0, GOOGLE_FILE_MARKDOWN_MAX_CHARS - note.length) + note;
+    return {
+      id: url,
+      url,
+      title,
+      fileType: "email" as const,
+      updatedAt,
+      owner: last ? header(last, "from") : "",
+      revision: thread.historyId,
+      markdown,
+    };
+  });
+  const searchMail = Effect.fn("google.gmail.search")(function* (input: GoogleSearchFilesInput) {
+    const params = new URLSearchParams({ maxResults: "20", q: input.query.trim() });
+    const result = yield* request(
+      `https://gmail.googleapis.com/gmail/v1/users/me/threads?${params}`,
+      Schema.Struct({
+        threads: Schema.optional(Schema.Array(Schema.Struct({ id: Schema.String }))),
+        nextPageToken: Schema.optional(Schema.String),
+      }),
+    );
+    const files = yield* Effect.forEach(
+      result.threads ?? [],
+      (thread) =>
+        readMail(`https://mail.google.com/mail/#all/${thread.id}`, true).pipe(
+          Effect.map(({ id, url, title, fileType, updatedAt, owner }) => ({
+            id,
+            url,
+            title,
+            fileType,
+            updatedAt,
+            owner,
+          })),
+        ),
+      { concurrency: 3 },
+    );
+    return { files, hasMore: Boolean(result.nextPageToken) };
+  });
   const resolve = (input: GoogleGetFileInput) => {
     const location = parseGoogleFileLink(input.id);
     const id = location?.fileId ?? (/^[\w-]+$/.test(input.id) ? input.id : null);
@@ -428,7 +534,7 @@ const make = Effect.gen(function* () {
           new GoogleError({
             reason: "not-found",
             detail:
-              "Use a Google Drive, Docs, Sheets, Slides or Calendar link, or a Drive file ID.",
+              "Use a Google Drive, Docs, Sheets, Slides, Calendar or Gmail link, or a Drive file ID.",
           }),
         );
   };
@@ -447,6 +553,7 @@ const make = Effect.gen(function* () {
   const getFileSummary = Effect.fn("google.get_file_summary")(function* (
     input: GoogleGetFileInput,
   ) {
+    if (parseGoogleFileLink(input.id)?.fileType === "email") return yield* readMail(input.id, true);
     if (parseGoogleFileLink(input.id)?.fileType === "event") return yield* readEvent(input.id);
     const { id, location } = yield* resolve(input);
     const file = yield* metadata(id);
@@ -458,6 +565,7 @@ const make = Effect.gen(function* () {
     return { ...file, ...(location ? { url: input.id } : {}) };
   });
   const getFile = Effect.fn("google.get_file")(function* (input: GoogleGetFileInput) {
+    if (parseGoogleFileLink(input.id)?.fileType === "email") return yield* readMail(input.id);
     if (parseGoogleFileLink(input.id)?.fileType === "event") return yield* readEvent(input.id);
     const { id, location: selector } = yield* resolve(input);
     const file = yield* metadata(id);
@@ -617,6 +725,7 @@ const make = Effect.gen(function* () {
     if (parseGoogleFileLink(input.query.trim()))
       return { files: [yield* getFileSummary({ id: input.query.trim() })], hasMore: false };
     if (input.source === "calendar") return yield* searchEvents(input);
+    if (input.source === "gmail") return yield* searchMail(input);
     const term = input.query.trim().replaceAll("\\", "\\\\").replaceAll("'", "\\'");
     const params = new URLSearchParams({
       q: `trashed = false${term ? ` and name contains '${term}'` : ""}`,
@@ -629,16 +738,28 @@ const make = Effect.gen(function* () {
     const result = yield* request(`https://www.googleapis.com/drive/v3/files?${params}`, Search);
     const calendar =
       input.source === "all" ? yield* searchEvents(input) : { files: [], hasMore: false };
+    const mail =
+      input.source === "all"
+        ? yield* searchMail(input).pipe(
+            Effect.catchTags({
+              GoogleError: (error) =>
+                error.reason === "not-found" || error.reason === "permission"
+                  ? Effect.succeed({ files: [], hasMore: false })
+                  : Effect.fail(error),
+            }),
+          )
+        : { files: [], hasMore: false };
     const drive = result.files.map(summary);
-    const files = Array.from({ length: Math.max(drive.length, calendar.files.length) }, (_, i) => [
-      drive[i],
-      calendar.files[i],
-    ])
+    const files = Array.from(
+      { length: Math.max(drive.length, calendar.files.length, mail.files.length) },
+      (_, i) => [drive[i], calendar.files[i], mail.files[i]],
+    )
       .flat()
       .filter((file): file is GoogleFileSummary => file !== undefined);
     return {
       files: files.slice(0, 60),
-      hasMore: Boolean(result.nextPageToken) || calendar.hasMore,
+      hasMore:
+        files.length > 60 || Boolean(result.nextPageToken) || calendar.hasMore || mail.hasMore,
     };
   });
   return GoogleApi.of({

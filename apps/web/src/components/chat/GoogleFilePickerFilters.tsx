@@ -237,7 +237,8 @@ export function GoogleFilePickerFilterBar(props: {
 }) {
   const { view, source } = props;
   const defaults = DEFAULT_GOOGLE_FILE_PICKER_VIEWS[source];
-  const ownerNoun = source === "calendar" ? "organizers" : "owners";
+  const ownerNoun =
+    source === "gmail" ? "senders" : source === "calendar" ? "organizers" : "owners";
   const [menuOpen, setMenuOpen] = useState(false);
   const pickOnly = (next: GoogleFilePickerView) => {
     props.onChange(next);
@@ -295,7 +296,9 @@ export function GoogleFilePickerFilterBar(props: {
               </MenuSub>
             ) : null}
             <MenuSub>
-              <MenuSubTrigger>{source === "calendar" ? "Organizer" : "Owner"}</MenuSubTrigger>
+              <MenuSubTrigger>
+                {source === "gmail" ? "Sender" : source === "calendar" ? "Organizer" : "Owner"}
+              </MenuSubTrigger>
               <MenuSubPopup>
                 <Checklist
                   options={props.owners}
@@ -409,7 +412,13 @@ export function GoogleFilePickerFilterBar(props: {
             <FilterPill
               key={`owner:${owner}`}
               icon={<UserIcon />}
-              label={source === "calendar" ? `Organized by ${owner}` : `Owned by ${owner}`}
+              label={
+                source === "gmail"
+                  ? `Sent by ${owner}`
+                  : source === "calendar"
+                    ? `Organized by ${owner}`
+                    : `Owned by ${owner}`
+              }
               onRemove={() =>
                 props.onChange({ ...view, owners: view.owners.filter((entry) => entry !== owner) })
               }

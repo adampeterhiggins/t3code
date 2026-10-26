@@ -98,6 +98,7 @@ const googleBrands = [
   ["google-sheet", "googleSheets"],
   ["google-drive", "googleDrive"],
   ["google-calendar", "googleCalendar"],
+  ["gmail", "gmail"],
 ];
 for (const [token, brand] of googleBrands) {
   const icon = INTEGRATION_ICONS[brand];

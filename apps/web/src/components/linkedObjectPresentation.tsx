@@ -121,17 +121,19 @@ export function linkedObjectKindLabel(record: LinkedObjectContextRecord): string
     case "notion-page":
       return "Notion page";
     case "google-file":
-      return record.fileType === "event"
-        ? "Google Calendar event"
-        : record.fileType === "sheet"
-          ? "Google Sheet"
-          : record.fileType === "doc"
-            ? "Google Doc"
-            : record.fileType === "folder"
-              ? "Google Drive folder"
-              : record.fileType === "slides"
-                ? "Google Slides"
-                : "Google Drive file";
+      return record.fileType === "email"
+        ? "Gmail conversation"
+        : record.fileType === "event"
+          ? "Google Calendar event"
+          : record.fileType === "sheet"
+            ? "Google Sheet"
+            : record.fileType === "doc"
+              ? "Google Doc"
+              : record.fileType === "folder"
+                ? "Google Drive folder"
+                : record.fileType === "slides"
+                  ? "Google Slides"
+                  : "Google Drive file";
     case "granola-note":
       return "Granola note";
     case "prompt-link":

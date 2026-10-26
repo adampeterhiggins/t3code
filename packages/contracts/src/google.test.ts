@@ -6,6 +6,27 @@ import { parseGoogleFileLink } from "./google.ts";
 const decodeContextRecord = Schema.decodeUnknownSync(ComposerContextRecord);
 
 describe("parseGoogleFileLink", () => {
+  it("recognizes Gmail conversation links and rejects mailbox and foreign links", () => {
+    for (const path of [
+      "/mail/#all/18abcdef12345678",
+      "/mail/u/1/#inbox/18abcdef12345678",
+      "/mail/u/0/#search/from%3Aada/18abcdef12345678",
+    ]) {
+      const url = `https://mail.google.com${path}`;
+      expect(parseGoogleFileLink(url)).toEqual({
+        fileId: url,
+        fileType: "email",
+        gmailThreadId: "18abcdef12345678",
+      });
+    }
+    for (const url of [
+      "https://mail.google.com/mail/#inbox",
+      "https://mail.google.com.evil.test/mail/#all/18abcdef12345678",
+      "https://mail.google.com/mail/#all/invalid",
+      "https://mail.google.com/other/#all/18abcdef12345678",
+    ])
+      expect(parseGoogleFileLink(url)).toBeNull();
+  });
   it("keeps heading and tab selectors for document citations", () => {
     expect(
       parseGoogleFileLink(
@@ -69,6 +90,21 @@ describe("parseGoogleFileLink", () => {
 });
 
 describe("Google context records", () => {
+  it("decodes an attached Gmail conversation snapshot", () => {
+    const url = "https://mail.google.com/mail/#all/18abcdef12345678";
+    const record = {
+      version: 1,
+      kind: "google-file",
+      contextId: "google-file_mail_1",
+      label: "Launch mail",
+      fileType: "email",
+      fileId: url,
+      title: "Launch mail",
+      url,
+      markdown: "Hello",
+    };
+    expect(decodeContextRecord(record)).toEqual(record);
+  });
   it("decodes a Calendar event chip, whose id is its full event URL", () => {
     const url = `https://calendar.google.com/calendar/event?eid=${btoa(`launch-review-${"x".repeat(120)} team@example.com`)}`;
     const record = {

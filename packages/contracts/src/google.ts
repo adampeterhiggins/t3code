@@ -50,8 +50,8 @@ export const GoogleFileSummary = Schema.Struct({
   title: Schema.String,
   url: Schema.String,
   updatedAt: IsoDateTime,
-  fileType: Schema.Literals(["doc", "sheet", "drive", "folder", "slides", "event"]),
-  /** The Drive file's owner, or the event's organizer. */
+  fileType: Schema.Literals(["doc", "sheet", "drive", "folder", "slides", "event", "email"]),
+  /** The Drive file's owner, event organizer, or latest email sender. */
   owner: Schema.optional(Schema.String),
   /** When an event starts: a date-time, or a date for all-day events. */
   startsAt: Schema.optional(Schema.String),
@@ -63,7 +63,7 @@ export type GoogleFileSummary = typeof GoogleFileSummary.Type;
 export const GOOGLE_CALENDAR_SEARCH_LIMIT = 20;
 export const GoogleSearchFilesInput = Schema.Struct({
   query: Schema.String.check(Schema.isMaxLength(2048)),
-  source: Schema.optional(Schema.Literals(["all", "drive", "calendar"])),
+  source: Schema.optional(Schema.Literals(["all", "drive", "calendar", "gmail"])),
   calendarId: Schema.optional(TrimmedNonEmptyString.check(Schema.isMaxLength(512))),
   /**
    * The calendars to search, in place of the ones ticked in Google Calendar. A colleague's
@@ -132,7 +132,7 @@ export const GoogleThreadLink = Schema.Struct({
   groupId: ThreadId,
   threadIds: Schema.Array(ThreadId),
   fileId: Schema.String,
-  fileType: Schema.Literals(["doc", "sheet", "drive", "folder", "slides", "event"]),
+  fileType: Schema.Literals(["doc", "sheet", "drive", "folder", "slides", "event", "email"]),
   title: Schema.String,
   url: Schema.String,
   linkedAt: IsoDateTime,
@@ -155,6 +155,7 @@ export class GoogleError extends Schema.TaggedError<GoogleError>()("GoogleError"
     "revoked",
     "rate-limited",
     "not-found",
+    "permission",
     "login",
     "api",
   ]),
@@ -171,7 +172,8 @@ export class GoogleError extends Schema.TaggedError<GoogleError>()("GoogleError"
 
 export interface GoogleFileLocation {
   readonly fileId: string;
-  readonly fileType: "doc" | "sheet" | "drive" | "folder" | "slides" | "event";
+  readonly fileType: "doc" | "sheet" | "drive" | "folder" | "slides" | "event" | "email";
+  readonly gmailThreadId?: string;
   readonly calendarId?: string;
   readonly eventId?: string;
   readonly tab?: string;
@@ -186,12 +188,22 @@ export function parseGoogleFileLink(value: string): GoogleFileLocation | null {
     const url = new URL(value);
     if (
       url.protocol !== "https:" ||
-      !["docs.google.com", "drive.google.com", "calendar.google.com"].includes(url.hostname) ||
+      !["docs.google.com", "drive.google.com", "calendar.google.com", "mail.google.com"].includes(
+        url.hostname,
+      ) ||
       url.username ||
       url.password ||
       url.port
     )
       return null;
+    if (url.hostname === "mail.google.com") {
+      if (!/^\/mail(?:\/u\/\d+)?\/?$/.test(url.pathname)) return null;
+      const id =
+        /^(?:inbox|all|sent|trash|spam|starred|snoozed|important|search\/[^/]+|label\/[^/]+)\/([a-f0-9]{10,32})$/i.exec(
+          url.hash.slice(1),
+        )?.[1];
+      return id ? { fileId: value, fileType: "email", gmailThreadId: id } : null;
+    }
     if (url.hostname === "calendar.google.com") {
       const encoded = url.searchParams.getAll("eid");
       if (encoded.length > 1) return null;

@@ -521,7 +521,12 @@ export function useComposerCommandMenu({
           type: "google-file",
           url: file.url,
           label: file.title,
-          description: file.fileType === "event" ? "Google Calendar" : "Google Drive",
+          description:
+            file.fileType === "email"
+              ? "Gmail"
+              : file.fileType === "event"
+                ? "Google Calendar"
+                : "Google Drive",
         })),
       ];
     }

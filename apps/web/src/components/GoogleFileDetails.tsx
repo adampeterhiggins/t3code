@@ -22,16 +22,18 @@ export function GoogleFileDetails({
           onClick={(event) => onOpenLink(event, record.url)}
           className="shrink-0 underline-offset-2 hover:text-foreground hover:underline"
         >
-          Open in Google{" "}
-          {record.fileType === "event"
-            ? "Calendar"
-            : record.fileType === "sheet"
-              ? "Sheets"
-              : record.fileType === "doc"
-                ? "Docs"
-                : record.fileType === "slides"
-                  ? "Slides"
-                  : "Drive"}
+          Open in{" "}
+          {record.fileType === "email"
+            ? "Gmail"
+            : record.fileType === "event"
+              ? "Google Calendar"
+              : record.fileType === "sheet"
+                ? "Google Sheets"
+                : record.fileType === "doc"
+                  ? "Google Docs"
+                  : record.fileType === "slides"
+                    ? "Google Slides"
+                    : "Google Drive"}
         </a>
       </div>
       {record.grid ? (

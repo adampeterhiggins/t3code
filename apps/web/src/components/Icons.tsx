@@ -1,4 +1,5 @@
 import { parseGoogleFileLink, type GoogleFileSummary } from "@t3tools/contracts";
+import { MailIcon } from "lucide-react";
 import React, { type SVGProps, useId } from "react";
 import { cn } from "~/lib/utils";
 import { INTEGRATION_ICONS } from "@t3tools/shared/brandMarks";
@@ -597,12 +598,14 @@ export function GoogleSourceIcon({
 }: React.SVGProps<SVGSVGElement> & { fileType?: GoogleFileSummary["fileType"]; url?: string }) {
   const kind = fileType ?? (url ? parseGoogleFileLink(url)?.fileType : undefined);
   const Icon =
-    kind === "event"
-      ? GoogleCalendarIcon
-      : kind === "sheet"
-        ? GoogleSheetIcon
-        : kind === "doc"
-          ? GoogleDocIcon
-          : GoogleDriveIcon;
+    kind === "email"
+      ? MailIcon
+      : kind === "event"
+        ? GoogleCalendarIcon
+        : kind === "sheet"
+          ? GoogleSheetIcon
+          : kind === "doc"
+            ? GoogleDocIcon
+            : GoogleDriveIcon;
   return <Icon {...props} />;
 }

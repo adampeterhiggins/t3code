@@ -16,7 +16,7 @@ const GITHUB_ISSUE_ACTION: MenuAction = {
 const NOTION_ACTION: MenuAction = { id: "notion", title: "Notion page", image: "doc.text" };
 const GOOGLE_ACTION: MenuAction = {
   id: "google",
-  title: "Google file or event",
+  title: "Google file, event or email",
   image: "doc.text",
 };
 const GRANOLA_ACTION: MenuAction = { id: "granola", title: "Granola note", image: "waveform" };

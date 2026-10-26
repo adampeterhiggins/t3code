@@ -70,7 +70,7 @@ function GoogleIntegrationRows(props: {
     <>
       <SettingsRow
         title="Enable Google integration"
-        description="Attach Google Drive files and Calendar events. Turn off to keep pasted Google links as links without setup prompts. Your connected account is kept."
+        description="Attach Google Drive files, Calendar events and Gmail conversations. Turn off to keep pasted Google links as links without setup prompts. Your connected account is kept."
         control={
           <Switch
             aria-label="Enable Google integration"
@@ -94,7 +94,7 @@ function describeConnection(state: GoogleConnectionState | null): string {
     case "failed":
       return state.message ?? "Google sign-in failed.";
     case "disconnected":
-      return "Attach Google Drive files and Calendar events to messages as context for the agent.";
+      return "Attach Google Drive files, Calendar events and Gmail conversations to messages as context for the agent.";
   }
 }
 
@@ -280,8 +280,8 @@ function GoogleConnectionRows({
           >
             <p className="max-w-2xl text-xs leading-relaxed text-muted-foreground">
               Create a Google Cloud OAuth client for a Web application and enable the Drive, Docs,
-              Sheets, Calendar and People APIs. Register this redirect URI, then add its client ID
-              and secret. The secret stays on {environmentLabel}.{" "}
+              Sheets, Calendar, Gmail and People APIs. Register this redirect URI, then add its
+              client ID and secret. The secret stays on {environmentLabel}.{" "}
               <InlineButton
                 render={
                   <a
