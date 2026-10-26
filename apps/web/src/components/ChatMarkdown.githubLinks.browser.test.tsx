@@ -146,38 +146,11 @@ describe("ChatMarkdown GitHub issue links", () => {
   });
 });
 
-describe("ChatMarkdown colour codes that may be issue numbers", () => {
-  it("shows the colour once neither an issue nor a pull request has the number", async () => {
+describe("ChatMarkdown numeric reference links", () => {
+  it("keeps an explicit link even when neither lookup finds its number", async () => {
     setup(pending, { pullRequestPreview: notFound, issueSummary: notFound });
     await using _screen = await renderReference();
 
-    await expect
-      .element(page.getByRole("button", { name: "Colour #679. Show swatch" }))
-      .toBeVisible();
-    await expect.element(page.getByRole("link", { name: "#679" })).not.toBeInTheDocument();
-  });
-
-  it("keeps the reference when a pull request has the number, or the lookup cannot tell", async () => {
-    setup(pending, {
-      pullRequestPreview: { data: { number: 679 }, error: null },
-      issueSummary: notFound,
-    });
-    await using screen = await renderReference();
-    await expect.element(page.getByRole("link", { name: "#679" })).toBeVisible();
-
-    setup(pending, {
-      pullRequestPreview: notFound,
-      issueSummary: { data: null, error: "Signed out", failure: { reason: "not-authenticated" } },
-    });
-    await screen.rerender(
-      <div style={{ padding: 200 }}>
-        <ChatMarkdown
-          cwd="/tmp/project"
-          environmentId={environmentId}
-          text={`[#679](${issueUrl}) `}
-        />
-      </div>,
-    );
     await expect.element(page.getByRole("link", { name: "#679" })).toBeVisible();
     expect(page.getByRole("button", { name: /^Colour/ }).elements()).toHaveLength(0);
   });

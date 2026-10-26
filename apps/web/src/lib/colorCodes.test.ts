@@ -57,15 +57,21 @@ describe("remarkColorCodes", () => {
     ]);
   });
 
+  it("preserves explicit issue and pull request links with numeric colour labels", () => {
+    expect(
+      colorCodes(
+        `[#6264](${REPOSITORY}/issues/6264) and [#6258](${REPOSITORY}/pull/6258)`,
+        REPOSITORY,
+      ),
+    ).toEqual([]);
+  });
+
   it("checks numbers that may be issues against the thread's repository", () => {
     expect(colorCodes("#333333 and #012345", REPOSITORY)).toEqual([
       `text #333333 ${REPOSITORY}/issues/333333`,
       "text #012345",
     ]);
-    expect(colorCodes("#333333 and #012345", REPOSITORY, true)).toEqual([
-      `link #333333 ${REPOSITORY}/issues/333333`,
-      "text #012345",
-    ]);
+    expect(colorCodes("#333333 and #012345", REPOSITORY, true)).toEqual(["text #012345"]);
     // Outside GitHub it is a colour; with no thread to ask, it stays text.
     expect(colorCodes("#333333 and #F2EDE5", null)).toEqual(["text #333333", "text #F2EDE5"]);
     expect(colorCodes("#333333 and #F2EDE5", undefined)).toEqual(["text #F2EDE5"]);
