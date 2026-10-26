@@ -1060,7 +1060,7 @@ Code: `apps/server/src/linear/`, `packages/contracts/src/linear.ts`, `LinearIssu
 `packages/contracts/src/composerContext.ts`, `packages/client-runtime/src/state/linear.ts`,
 `apps/web/src/components/settings/LinearSettings.tsx`,
 `apps/web/src/components/chat/LinearIssuePicker.tsx`,
-`apps/web/src/components/chat/ComposerAttachMenu.tsx`,
+`apps/web/src/components/chat/composerIntegrationPickers.tsx`,
 `apps/web/src/components/chat/useComposerLinearIssueItems.ts`,
 `apps/web/src/components/chat/LinearIssueFilters.tsx`,
 `apps/web/src/components/chat/LinearThreadLink.tsx`,
@@ -1571,7 +1571,7 @@ is not one of these: it names the message only when Slack is on and connected (s
 
 Code: `packages/source-control-definitions/src/composerObjectLinks.ts`,
 `apps/web/src/components/chat/useResolveComposerObjectLink.ts`, and `convertObjectLinks` in
-`apps/web/src/components/chat/ChatComposer.tsx`; GitHub refs are read in
+`apps/web/src/components/chat/useComposerObjectLinks.ts`; GitHub refs are read in
 `apps/server/src/githubIssues/gitHubRefs.ts`. User guide:
 [composer.md](./user/composer.md#context-in-your-message).
 
