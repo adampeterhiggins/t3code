@@ -150,6 +150,50 @@ describe("RPC scope middleware", () => {
   );
 });
 
+describe("integration RPC authorization", () => {
+  it.effect.each([
+    WS_METHODS.linearUnlinkThread,
+    WS_METHODS.notionUnlinkThread,
+    WS_METHODS.googleUnlinkThread,
+    WS_METHODS.granolaUnlinkThread,
+    WS_METHODS.slackUnlinkThread,
+    WS_METHODS.discordUnlinkThread,
+    WS_METHODS.githubIssuesUnlinkThread,
+  ] as const)("requires operate permission for %s", (method) =>
+    Effect.gen(function* () {
+      const group = WsRpcGroup.omit(
+        ...[...WsRpcGroup.requests.keys()].filter(
+          (tag): tag is Exclude<keyof typeof RPC_REQUIRED_SCOPES, typeof method> => tag !== method,
+        ),
+      );
+      let mutations = 0;
+      const handlers = group.toLayerHandler(method, () =>
+        Effect.sync(() => {
+          mutations++;
+          return {};
+        }),
+      );
+      const clientFor = (scopes: Parameters<typeof RpcAuthorization.layer>[0]) =>
+        RpcTest.makeClient(group).pipe(
+          Effect.provide(Layer.merge(handlers, RpcAuthorization.layer(scopes))),
+        );
+      const input = { threadId: ThreadId.make("linked-thread") };
+      const rejected = Effect.gen(function* () {
+        const reader = yield* clientFor([AuthOrchestrationReadScope]);
+        return yield* reader[method](input);
+      });
+      expect(yield* rejected.pipe(Effect.flip)).toMatchObject({
+        _tag: "EnvironmentAuthorizationError",
+        requiredPermission: AuthOrchestrationOperateScope,
+      });
+      expect(mutations).toBe(0);
+      const operator = yield* clientFor([AuthOrchestrationOperateScope]);
+      expect(yield* operator[method](input)).toEqual({});
+      expect(mutations).toBe(1);
+    }).pipe(Effect.scoped),
+  );
+});
+
 describe("settings mutation authorization", () => {
   const group = WsRpcGroup.omit(
     ...[...WsRpcGroup.requests.keys()].filter(

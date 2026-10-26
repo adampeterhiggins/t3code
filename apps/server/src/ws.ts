@@ -176,27 +176,7 @@ import * as ModelManifest from "./provider/ModelManifest.ts";
 import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderLatestVersions";
 import { latestProviderVersionCacheKeys } from "@t3tools/provider-core/server/maintenanceResolver";
 import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner.ts";
-import { LinearApi } from "./linear/LinearApi.ts";
-import { LinearAuth } from "./linear/LinearAuth.ts";
-import { LinearThreadLinks } from "./linear/LinearThreadLinks.ts";
-import { GranolaApi } from "./granola/GranolaApi.ts";
-import { GranolaAuth } from "./granola/GranolaAuth.ts";
-import { GranolaThreadLinks } from "./granola/GranolaThreadLinks.ts";
-import { NotionApi } from "./notion/NotionApi.ts";
-import { GoogleApi } from "./google/GoogleApi.ts";
-import { NotionAuth } from "./notion/NotionAuth.ts";
-import { GoogleAuth } from "./google/GoogleAuth.ts";
-import { SlackApi } from "./slack/SlackApi.ts";
-import { SlackAuth } from "./slack/SlackAuth.ts";
-import { SlackThreadLinks } from "./slack/SlackThreadLinks.ts";
-import { DiscordApi } from "./discord/DiscordApi.ts";
-import { DiscordAuth } from "./discord/DiscordAuth.ts";
-import { DiscordThreadLinks } from "./discord/DiscordThreadLinks.ts";
-import { ThreadLinkWatches } from "./threadLinkWatch/ThreadLinkWatches.ts";
-import { NotionThreadLinks } from "./notion/NotionThreadLinks.ts";
-import { GoogleThreadLinks } from "./google/GoogleThreadLinks.ts";
-import { GitHubIssues } from "./githubIssues/GitHubIssues.ts";
-import { GitHubIssueThreadLinks } from "./githubIssues/GitHubIssueThreadLinks.ts";
+import { makeIntegrationRpcHandlers } from "./integrations/rpcHandlers.ts";
 import * as MessageDrafts from "./messageDrafts/MessageDrafts.ts";
 import * as ProviderAuthService from "./provider/ProviderAuthService.ts";
 import { makeProviderInstallation } from "./provider/providerInstallation.ts";
@@ -1370,27 +1350,6 @@ export const layerWsRpc = (
         yield* AcpRegistryRuntimeCoordinator.AcpRegistryRuntimeCoordinator;
       const providerMaintenanceRunner = yield* ProviderMaintenanceRunner.ProviderMaintenanceRunner;
       const providerAuth = yield* ProviderAuthService.ProviderAuthService;
-      const linearAuth = yield* LinearAuth;
-      const linearApi = yield* LinearApi;
-      const linearThreadLinks = yield* LinearThreadLinks;
-      const slackAuth = yield* SlackAuth;
-      const slackApi = yield* SlackApi;
-      const notionApi = yield* NotionApi;
-      const googleApi = yield* GoogleApi;
-      const notionAuth = yield* NotionAuth;
-      const googleAuth = yield* GoogleAuth;
-      const notionThreadLinks = yield* NotionThreadLinks;
-      const googleThreadLinks = yield* GoogleThreadLinks;
-      const granolaApi = yield* GranolaApi;
-      const granolaAuth = yield* GranolaAuth;
-      const granolaThreadLinks = yield* GranolaThreadLinks;
-      const slackThreadLinks = yield* SlackThreadLinks;
-      const discordAuth = yield* DiscordAuth;
-      const discordApi = yield* DiscordApi;
-      const discordThreadLinks = yield* DiscordThreadLinks;
-      const threadLinkWatches = yield* ThreadLinkWatches;
-      const githubIssues = yield* GitHubIssues;
-      const githubIssueThreadLinks = yield* GitHubIssueThreadLinks;
       const messageDrafts = yield* MessageDrafts.MessageDrafts;
       const providerInstallation = yield* makeProviderInstallation();
       const serverSelfUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
@@ -2868,91 +2827,7 @@ export const layerWsRpc = (
         [WS_METHODS.projectCloneRetry]: (input) =>
           projectCloneTracker.retry(input.projectId).pipe(Effect.map((applied) => ({ applied }))),
         [WS_METHODS.subscribeProjectClones]: () => projectCloneTracker.stream,
-        [WS_METHODS.linearSubscribeState]: (_input) => linearAuth.state,
-        [WS_METHODS.linearStartLogin]: (_input) => linearAuth.startLogin,
-        [WS_METHODS.linearCompleteLogin]: (input) => linearAuth.completeLogin(input),
-        [WS_METHODS.linearCancelLogin]: (input) => linearAuth.cancelLogin(input),
-        [WS_METHODS.linearDisconnect]: (_input) => linearAuth.disconnect,
-        [WS_METHODS.linearListIssues]: (input) => linearApi.listIssues(input),
-        [WS_METHODS.linearGetFilterOptions]: (_input) => linearApi.getFilterOptions,
-        [WS_METHODS.linearGetIssue]: (input) => linearApi.getIssue(input),
-        [WS_METHODS.linearGetIssueSummary]: (input) => linearApi.getIssueSummary(input),
-        [WS_METHODS.linearGetObject]: (input) => linearApi.getObject(input),
-        [WS_METHODS.linearSubscribeThreadLinks]: (_input) => linearThreadLinks.links,
-        [WS_METHODS.linearLinkThread]: (input) => linearThreadLinks.link(input),
-        [WS_METHODS.linearUnlinkThread]: (input) =>
-          linearThreadLinks.unlink(input).pipe(Effect.as({})),
-        [WS_METHODS.notionSubscribeState]: (_input) => notionAuth.state,
-        [WS_METHODS.notionStartLogin]: (input) => notionAuth.startLogin(input),
-        [WS_METHODS.notionCompleteLogin]: (input) => notionAuth.completeLogin(input),
-        [WS_METHODS.notionCancelLogin]: (input) => notionAuth.cancelLogin(input),
-        [WS_METHODS.notionDisconnect]: (_input) => notionAuth.disconnect,
-        [WS_METHODS.notionSearchPages]: (input) => notionApi.searchPages(input),
-        [WS_METHODS.notionGetPage]: (input) => notionApi.getPage(input),
-        [WS_METHODS.notionSubscribeThreadLinks]: (_input) => notionThreadLinks.links,
-        [WS_METHODS.notionLinkThread]: (input) => notionThreadLinks.link(input),
-        [WS_METHODS.notionUnlinkThread]: (input) =>
-          notionThreadLinks.unlink(input).pipe(Effect.as({})),
-        [WS_METHODS.googleSubscribeState]: (_input) => googleAuth.state,
-        [WS_METHODS.googleStartLogin]: (input) => googleAuth.startLogin(input),
-        [WS_METHODS.googleCompleteLogin]: (input) => googleAuth.completeLogin(input),
-        [WS_METHODS.googleCancelLogin]: (input) => googleAuth.cancelLogin(input),
-        [WS_METHODS.googleDisconnect]: (_input) => googleAuth.disconnect,
-        [WS_METHODS.googleSearchFiles]: (input) => googleApi.searchFiles(input),
-        [WS_METHODS.googleListCalendars]: (_input) => googleApi.listCalendars,
-        [WS_METHODS.googleSearchPeople]: (input) => googleApi.searchPeople(input),
-        [WS_METHODS.googleGetFile]: (input) => googleApi.getFile(input),
-        [WS_METHODS.googleSubscribeThreadLinks]: (_input) => googleThreadLinks.links,
-        [WS_METHODS.googleLinkThread]: (input) => googleThreadLinks.link(input),
-        [WS_METHODS.googleUnlinkThread]: (input) =>
-          googleThreadLinks.unlink(input).pipe(Effect.as({})),
-        [WS_METHODS.granolaSubscribeState]: (_input) => granolaAuth.state,
-        [WS_METHODS.granolaStartLogin]: (_input) => granolaAuth.startLogin,
-        [WS_METHODS.granolaCancelLogin]: (input) => granolaAuth.cancelLogin(input),
-        [WS_METHODS.granolaDisconnect]: (_input) => granolaAuth.disconnect,
-        [WS_METHODS.granolaSearchNotes]: (input) => granolaApi.searchNotes(input),
-        [WS_METHODS.granolaGetNote]: (input) => granolaApi.getNote(input),
-        [WS_METHODS.granolaGetNoteSummary]: (input) => granolaApi.getNoteSummary(input),
-        [WS_METHODS.granolaSubscribeThreadLinks]: (_input) => granolaThreadLinks.links,
-        [WS_METHODS.granolaLinkThread]: (input) => granolaThreadLinks.link(input),
-        [WS_METHODS.granolaUnlinkThread]: (input) =>
-          granolaThreadLinks.unlink(input).pipe(Effect.as({})),
-        [WS_METHODS.slackSubscribeState]: (_input) => slackAuth.state,
-        [WS_METHODS.slackStartLogin]: (input) => slackAuth.startLogin(input),
-        [WS_METHODS.slackCompleteLogin]: (input) => slackAuth.completeLogin(input),
-        [WS_METHODS.slackCancelLogin]: (input) => slackAuth.cancelLogin(input),
-        [WS_METHODS.slackDisconnect]: (_input) => slackAuth.disconnect,
-        [WS_METHODS.slackSearchMessages]: (input) => slackApi.searchMessages(input),
-        [WS_METHODS.slackSuggestions]: (_input) => slackApi.suggestions,
-        [WS_METHODS.slackGetThread]: (input) => slackApi.getThread(input),
-        [WS_METHODS.slackGetLinkPreview]: (input) => slackApi.getLinkPreview(input),
-        [WS_METHODS.slackSubscribeThreadLinks]: (_input) => slackThreadLinks.links,
-        [WS_METHODS.slackLinkThread]: (input) => slackThreadLinks.link(input),
-        [WS_METHODS.slackUnlinkThread]: (input) =>
-          slackThreadLinks.unlink(input).pipe(Effect.as({})),
-        [WS_METHODS.discordSubscribeState]: (_input) => discordAuth.state,
-        [WS_METHODS.discordConnect]: (input) => discordAuth.connect(input),
-        [WS_METHODS.discordDisconnect]: (_input) => discordAuth.disconnect,
-        [WS_METHODS.discordListServers]: (_input) => discordApi.listServers,
-        [WS_METHODS.discordLeaveServer]: (input) =>
-          discordApi.leaveServer(input).pipe(Effect.as({})),
-        [WS_METHODS.discordSearchMessages]: (input) => discordApi.searchMessages(input),
-        [WS_METHODS.discordGetThread]: (input) => discordApi.getThread(input),
-        [WS_METHODS.discordGetLinkPreview]: (input) => discordApi.getLinkPreview(input),
-        [WS_METHODS.discordSubscribeThreadLinks]: (_input) => discordThreadLinks.links,
-        [WS_METHODS.discordLinkThread]: (input) => discordThreadLinks.link(input),
-        [WS_METHODS.discordUnlinkThread]: (input) =>
-          discordThreadLinks.unlink(input).pipe(Effect.as({})),
-        [WS_METHODS.threadLinkWatchesSubscribe]: (_input) => threadLinkWatches.watches,
-        [WS_METHODS.threadLinkWatchSet]: (input) => threadLinkWatches.set(input),
-        [WS_METHODS.githubIssuesList]: (input) => githubIssues.listIssues(input),
-        [WS_METHODS.githubIssuesGet]: (input) => githubIssues.getIssue(input),
-        [WS_METHODS.githubIssuesGetSummary]: (input) => githubIssues.getIssueSummary(input),
-        [WS_METHODS.githubRefsGet]: (input) => githubIssues.getRef(input),
-        [WS_METHODS.githubIssuesSubscribeThreadLinks]: (_input) => githubIssueThreadLinks.links,
-        [WS_METHODS.githubIssuesLinkThread]: (input) => githubIssueThreadLinks.link(input),
-        [WS_METHODS.githubIssuesUnlinkThread]: (input) =>
-          githubIssueThreadLinks.unlink(input).pipe(Effect.as({})),
+        ...(yield* makeIntegrationRpcHandlers()),
         [WS_METHODS.messageDraftsSubscribe]: (_input) => messageDrafts.drafts,
         [WS_METHODS.messageDraftsSave]: (input) => messageDrafts.save(input),
         [WS_METHODS.messageDraftsTake]: (input) => messageDrafts.take(input.draftId),
