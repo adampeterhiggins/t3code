@@ -7,6 +7,7 @@ import {
   NodeId,
   ORCHESTRATOR_MCP_RUNNING_TASK_NEXT,
   type OrchestratorMcpCapabilitiesResult,
+  type OrchestratorMcpDelegateTaskInput,
   OrchestratorMcpTarget,
   type OrchestrationV2ThreadShell,
   type ScheduledTask,
@@ -25,6 +26,7 @@ import { checkpointWorkspace } from "@t3tools/provider-testing/replayWorkspace";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
@@ -1620,7 +1622,9 @@ describe("OrchestratorMcpService provider resolution", () => {
     }),
   );
 
-  const delegateIntoWorktree = (worktreePath: string) =>
+  const delegateWithWorkspace = (
+    workspace: Pick<OrchestratorMcpDelegateTaskInput, "workspaceStrategy" | "projectId">,
+  ) =>
     Effect.gen(function* () {
       const otherProjectId = ProjectId.make("project:mcp-providers-other");
       const dispatched = yield* Ref.make<ReadonlyArray<{ readonly projectId?: ProjectId }>>([]);
@@ -1690,6 +1694,12 @@ describe("OrchestratorMcpService provider resolution", () => {
               { id: projectId, workspaceRoot: "/repos/parent" },
               { id: otherProjectId, workspaceRoot: "/repos/other" },
             ] as never),
+          getById: (id) =>
+            Effect.succeed(
+              id === projectId || id === otherProjectId
+                ? Option.some({ id } as never)
+                : Option.none(),
+            ),
         }),
         Layer.mock(SecretRequests.SecretRequests)({}),
         Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
@@ -1705,8 +1715,8 @@ describe("OrchestratorMcpService provider resolution", () => {
           task: "Migrate the registry.",
           target: { providerInstanceId: codexInstanceId },
           mode: "async",
-          clientRequestId: `delegate-worktree-${worktreePath}`,
-          workspaceStrategy: { type: "existing_worktree", worktreePath, branch: "feature" },
+          clientRequestId: `delegate-worktree-${JSON.stringify(workspace)}`,
+          ...workspace,
         });
       }).pipe(
         Effect.result,
@@ -1723,6 +1733,11 @@ describe("OrchestratorMcpService provider resolution", () => {
         ),
       );
       return { outcome, dispatched: yield* Ref.get(dispatched), otherProjectId };
+    });
+
+  const delegateIntoWorktree = (worktreePath: string) =>
+    delegateWithWorkspace({
+      workspaceStrategy: { type: "existing_worktree", worktreePath, branch: "feature" },
     });
 
   it.effect("files a child bound to another project's worktree under that project", () =>
@@ -1743,6 +1758,41 @@ describe("OrchestratorMcpService provider resolution", () => {
       assert.isTrue(Result.isFailure(outcome));
       if (Result.isFailure(outcome)) assert.equal(outcome.failure.code, "invalid_request");
       assert.equal(dispatched.length, 0);
+    }),
+  );
+
+  it.effect("files a child with a new worktree under the projectId it names", () =>
+    Effect.gen(function* () {
+      const other = yield* delegateWithWorkspace({
+        projectId: ProjectId.make("project:mcp-providers-other"),
+        workspaceStrategy: { type: "worktree", baseRef: "origin/main", branch: "child" },
+      });
+      assert.isTrue(Result.isSuccess(other.outcome));
+      assert.equal(other.dispatched[0]?.projectId, other.otherProjectId);
+    }),
+  );
+
+  it.effect("refuses projectId without a new worktree or for an unknown project", () =>
+    Effect.gen(function* () {
+      for (const workspace of [
+        { projectId: ProjectId.make("project:mcp-providers-other") },
+        {
+          projectId: ProjectId.make("project:mcp-providers-other"),
+          workspaceStrategy: {
+            type: "existing_worktree",
+            worktreePath: "/worktrees/other/feature",
+          },
+        },
+        {
+          projectId: ProjectId.make("project:missing"),
+          workspaceStrategy: { type: "worktree", baseRef: "origin/main" },
+        },
+      ] as const) {
+        const { outcome, dispatched } = yield* delegateWithWorkspace(workspace);
+        assert.isTrue(Result.isFailure(outcome));
+        if (Result.isFailure(outcome)) assert.equal(outcome.failure.code, "invalid_request");
+        assert.equal(dispatched.length, 0);
+      }
     }),
   );
 
