@@ -1,19 +1,3 @@
-/**
- * The sidebar header's one filter control. Each narrowing is a row showing its current value
- * and opening a multi-select submenu, the same shape as the pull request filters:
- *
- * - Show: which of live threads, the user's own groups, Automations, snoozed, hidden and settled
- *   the list holds. Live threads and Automations are the default; other picks join as titled
- *   sections below them.
- * - Organisations: which repository owners the list is scoped to, by each checkout's remote.
- * - Projects: which projects the list is scoped to. None picked means every project.
- *
- * Each choice shows how many threads picking it would leave under the other two narrowings
- * (see buildSidebarFilterFacets), and "Only" on a row narrows to just that choice and closes the
- * menu. The trigger carries a count of the narrowings off their default, so a narrowed list is never
- * a mystery. Hovering it opens a preview of those selections, and SidebarFilterPills lists each
- * one under the header with a way to drop it.
- */
 import {
   AlarmClockIcon,
   BuildingIcon,
@@ -30,12 +14,11 @@ import {
   XIcon,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
-import * as Schema from "effect/Schema";
 import { type MouseEvent as ReactMouseEvent, type ReactNode, useRef, useState } from "react";
 
 import type { SidebarProjectSnapshot } from "../../sidebarProjectGrouping";
 import type { ThreadGroups } from "@t3tools/contracts/settings";
-import type { OrganisationOption, SidebarPage } from "../Sidebar.logic";
+import type { OrganisationOption, SidebarPage } from "./organization.logic";
 import { OrganisationIcon } from "./OrganisationIcon";
 import { ThreadGroupIcon } from "./ThreadGroupIcon";
 import { MenuChoiceLabel } from "../MenuChoiceLabel";
@@ -57,7 +40,6 @@ import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview
 import { SidebarHeaderIconButton } from "./SidebarThreadHeader";
 
 /** Stored loosely: groups come and go, so Sidebar.logic's resolveSidebarPages cleans it on read. */
-export const SidebarPagesSchema = Schema.Array(Schema.String);
 
 const BUILT_IN_PAGES = {
   threads: { label: "Threads", Icon: ListIcon },

@@ -854,7 +854,7 @@ Code: [`SidebarFilterMenu.tsx`](../apps/web/src/components/sidebar/SidebarFilter
 [`home-list-filter-menu.ts`](../apps/mobile/src/features/home/home-list-filter-menu.ts) and
 [`thread-list-filter-facets.ts`](../apps/mobile/src/features/home/thread-list-filter-facets.ts);
 the web counts come from `buildSidebarFilterFacets` in
-[`Sidebar.logic.ts`](../apps/web/src/components/Sidebar.logic.ts). User
+[`organization.logic.ts`](../apps/web/src/components/sidebar/organization.logic.ts). User
 guide: [thread-sidebar.md](./user/thread-sidebar.md#pin-and-reorder-threads).
 
 ## Automation threads
@@ -873,7 +873,7 @@ dragged.
 Code: `thread.scheduled-task.set` in
 [`Orchestrator.ts`](../apps/server/src/orchestration-v2/Orchestrator.ts), `fileThread` in
 [`ScheduledTaskService.ts`](../apps/server/src/scheduledTasks/ScheduledTaskService.ts),
-`resolveSidebarThreadSection` in [`Sidebar.logic.ts`](../apps/web/src/components/Sidebar.logic.ts),
+`resolveSidebarThreadSection` in [`organization.logic.ts`](../apps/web/src/components/sidebar/organization.logic.ts),
 and mobile's [`threadListV2.ts`](../apps/mobile/src/features/threads/threadListV2.ts). User guide:
 [thread-sidebar.md](./user/thread-sidebar.md#automation-threads).
 
@@ -2073,7 +2073,7 @@ tab mirrors across the group's other live tabs. Agents reach it through `t3_thre
 
 Code: `thread.hidden.set` in [`Orchestrator.ts`](../apps/server/src/orchestration-v2/Orchestrator.ts),
 [`sidebarRow.ts`](../apps/server/src/threadTabs/sidebarRow.ts),
-the `hidden` section in [`Sidebar.logic.ts`](../apps/web/src/components/Sidebar.logic.ts) and
+the `hidden` section in [`organization.logic.ts`](../apps/web/src/components/sidebar/organization.logic.ts) and
 mobile's [`threadListV2.ts`](../apps/mobile/src/features/threads/threadListV2.ts). User guide:
 [thread-sidebar.md](./user/thread-sidebar.md#hide-a-thread).
 
@@ -2099,7 +2099,7 @@ tabs, and a new tab starts in its source's group rather than the project default
 reach membership through `t3_thread_organize`'s `move_to_group` and `remove_from_group`.
 
 Code: `thread.group.set` in [`Orchestrator.ts`](../apps/server/src/orchestration-v2/Orchestrator.ts),
-`resolveSidebarPages` in [`Sidebar.logic.ts`](../apps/web/src/components/Sidebar.logic.ts), the
+`resolveSidebarPages` in [`organization.logic.ts`](../apps/web/src/components/sidebar/organization.logic.ts), the
 menu in [`threadActionMenu.logic.ts`](../apps/web/src/components/threadActionMenu.logic.ts),
 [`useThreadGroups.ts`](../apps/web/src/hooks/useThreadGroups.ts), and
 mobile's [`threadListV2.ts`](../apps/mobile/src/features/threads/threadListV2.ts). User guide:

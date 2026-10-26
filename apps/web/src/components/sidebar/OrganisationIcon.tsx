@@ -2,7 +2,7 @@ import { BuildingIcon } from "lucide-react";
 import { useState } from "react";
 
 import { cn } from "~/lib/utils";
-import type { OrganisationOption } from "../Sidebar.logic";
+import type { OrganisationOption } from "./organization.logic";
 import { ThreadGroupIcon } from "./ThreadGroupIcon";
 
 /** The GitHub avatar of a `github.com/<owner>` organisation, or null for other hosts. */
