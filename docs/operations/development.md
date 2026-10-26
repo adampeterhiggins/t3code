@@ -200,6 +200,30 @@ export check's workspace selectors as more workspaces become clean. Review calle
 deleting code; production mode can also report development scripts and test fixtures.
 Runtime-discovered entrypoints and dependency exceptions belong in [knip.jsonc](../../knip.jsonc).
 
+## Fork maintenance report
+
+Fetch upstream, then inspect the committed fork patches and the next merge without changing
+branches or working files:
+
+```sh
+git fetch upstream main
+vp run fork:report
+vp run fork:report --compare origin/main --limit 50
+vp run fork:report --head <fork-commit> --upstream <upstream-commit> --json
+```
+
+The report lists patched upstream files, growing and shrinking upstream patches, fork-added files, retired patches,
+and paths changed on both sides. Growth defaults to the selected head's first parent. Each
+snapshot is compared with its own common upstream ancestor, so newly integrated upstream work
+does not count as fork growth. Binary sizes are unknown; renames count as deletion/addition.
+Markdown limits each table to 30 paths by default; JSON includes every path and the exact commits.
+
+The merge preview requires Git with `git merge-tree --write-tree` support. It can write temporary
+Git objects, but does not fetch, update refs, stage files, create a checkout, or touch working
+files. Uncommitted edits are excluded. Conflicts are advisory and leave the command successful;
+missing refs or Git errors fail it. A clean preview still needs behavioral verification during
+the actual sync.
+
 ## Desktop artifacts
 
 Local artifact builds are unsigned by default and write to `release/`:
