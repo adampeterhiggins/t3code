@@ -25,7 +25,7 @@ type ModelChangeRun = Pick<
 >;
 
 /** Instance and model slug. Option-only changes are the same model. */
-export function modelIdentitiesDiffer(left: ModelSelection, right: ModelSelection): boolean {
+function modelIdentitiesDiffer(left: ModelSelection, right: ModelSelection): boolean {
   return left.instanceId !== right.instanceId || left.model !== right.model;
 }
 
@@ -40,11 +40,9 @@ export function modelOptionDescriptors(
 }
 
 /**
- * True when the selection moved to another model or changed an option such as
- * effort, fast mode, or context window. With descriptors, an omitted option
- * resolves to the provider default, so explicitly picking the default is not a
- * change, and options the model does not offer are ignored. Without them the
- * raw values are compared, which is all the server can do.
+ * True when the model or an option changed. With descriptors, omitted options resolve to the
+ * provider default and options the model lacks are ignored; without them (the server) raw values
+ * are compared.
  */
 export function modelSelectionChanged(
   from: ModelSelection,

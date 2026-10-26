@@ -78,7 +78,7 @@ export const LinearIssueFilters = Schema.Struct({
 });
 export type LinearIssueFilters = typeof LinearIssueFilters.Type;
 
-export const LINEAR_ISSUE_SORT_FIELDS = [
+const LINEAR_ISSUE_SORT_FIELDS = [
   "updated",
   "created",
   "priority",

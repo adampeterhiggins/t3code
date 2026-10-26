@@ -122,7 +122,7 @@ export const formatLimitsReport = (report: ReturnType<typeof limitsReport>, now:
 };
 
 /** The calendar day of `ms` in an IANA zone, as `YYYY-MM-DD`. */
-export const dayInZone = (ms: number, timeZone: string) =>
+const dayInZone = (ms: number, timeZone: string) =>
   new Intl.DateTimeFormat("en-CA", {
     timeZone,
     year: "numeric",
@@ -131,25 +131,27 @@ export const dayInZone = (ms: number, timeZone: string) =>
   }).format(ms);
 
 /** `7d` (the last seven days including today), `today`, or a `YYYY-MM-DD` start day. */
-export const sinceDay = (since: string, today: string) => {
+export const sinceDay = Effect.fn("sinceDay")(function* (since: string, today: string) {
   const value = since.trim().toLowerCase();
-  if (value === "today") return Effect.succeed(today);
+  if (value === "today") return yield* Effect.succeed(today);
   const days = /^(\d+)d$/.exec(value);
   if (days !== null) {
     const count = Number(days[1]);
-    if (count < 1) return Effect.fail(new LiveUsageError({ detail: "--since needs 1d or more." }));
+    if (count < 1) return yield* new LiveUsageError({ detail: "--since needs 1d or more." });
     const start = Date.parse(`${today}T00:00:00Z`) - (count - 1) * DAY_MS;
-    return Effect.succeed(new Intl.DateTimeFormat("en-CA", { timeZone: "UTC" }).format(start));
+    return yield* Effect.succeed(
+      new Intl.DateTimeFormat("en-CA", { timeZone: "UTC" }).format(start),
+    );
   }
   if (/^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(`${value}T00:00:00Z`))) {
-    return value > today
+    return yield* value > today
       ? Effect.fail(new LiveUsageError({ detail: "--since is in the future." }))
       : Effect.succeed(value);
   }
-  return Effect.fail(
-    new LiveUsageError({ detail: `'${since}' is not a day. Use 7d, today, or YYYY-MM-DD.` }),
-  );
-};
+  return yield* new LiveUsageError({
+    detail: `'${since}' is not a day. Use 7d, today, or YYYY-MM-DD.`,
+  });
+});
 
 export interface UsageRow {
   readonly provider: UsageBucket["provider"];

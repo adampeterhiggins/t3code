@@ -36,7 +36,7 @@ describe("orchestrator MCP tool guidance", () => {
     );
     assert.include(
       OrchestratorToolkit.tools.task_cancel.description ?? "",
-      "This includes later child-thread runs, even after the task is terminal",
+      "including later runs in its child thread",
     );
   });
 
@@ -63,7 +63,7 @@ describe("orchestrator MCP tool guidance", () => {
     ]
       .filter((value) => typeof value === "string")
       .join(" ");
-    assert.include(modeText, "Defaults to async");
+    assert.include(modeText, "Default 'async'");
     assert.include(timeoutText, "does not cancel the child");
   });
 
@@ -78,8 +78,8 @@ describe("orchestrator MCP tool guidance", () => {
     assert.equal(schema.type, "object");
     assert.isString(schema.properties?.schedule?.description);
     assert.isAtLeast(schema.properties?.schedule?.anyOf?.length ?? 0, 2);
-    assert.include(ScheduleTaskTool.description ?? "", "STRUCTURED OBJECT");
-    assert.include(ScheduleTaskTool.description ?? "", "nextRunAt");
+    assert.include(ScheduleTaskTool.description ?? "", "`schedule` is an object, not text");
+    assert.include(ScheduleTaskTool.description ?? "", "next run time");
   });
 
   it("publishes thread metadata actions from an object-root schema", () => {
@@ -96,7 +96,7 @@ describe("orchestrator MCP tool guidance", () => {
       "pullRequest",
       "clientRequestId",
     ]);
-    assert.include(ThreadUpdateTool.description ?? "", "Workspace and branch changes");
+    assert.include(ThreadUpdateTool.description ?? "", "Workspace and branch cannot change here");
   });
 });
 

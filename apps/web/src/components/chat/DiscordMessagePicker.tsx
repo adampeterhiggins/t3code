@@ -111,7 +111,7 @@ export function useAttachDiscordMessage() {
 }
 
 /** Links the Discord thread a message belongs to (or starts) to the thread's tab group. */
-export function useLinkDiscordThread() {
+function useLinkDiscordThread() {
   const linkThread = useAtomCommand(discordEnvironment.linkThread, { reportFailure: false });
   return async (threadRef: ScopedThreadRef, message: DiscordMessageSummary): Promise<boolean> => {
     const result = await linkThread({
@@ -140,7 +140,7 @@ export function useLinkDiscordThread() {
 }
 
 /** A search result row. Fixed widths so channels and times line up down the list. */
-export function DiscordMessageRow(props: { message: DiscordMessageSummary }) {
+function DiscordMessageRow(props: { message: DiscordMessageSummary }) {
   const { message } = props;
   return (
     <span className="flex min-w-0 flex-1 items-center gap-2">

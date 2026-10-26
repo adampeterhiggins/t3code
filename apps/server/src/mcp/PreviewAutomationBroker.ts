@@ -728,16 +728,16 @@ export const make = Effect.gen(function* PreviewAutomationBrokerMake() {
               Effect.timeoutOption(remainingTimeoutMs),
             );
             return yield* Option.match(result, {
-              onNone: () =>
-                Effect.gen(function* () {
-                  // Remote silence can mean disconnection; slow in-process hosts stay registered.
-                  // Never replay actions whose effects may already have been applied.
-                  // Read-only background metadata timeouts must not disconnect the host.
-                  if (connection.disconnectOnTimeout && input.updateCurrentTab !== false) {
-                    yield* disconnect(connection.clientId, connection.queue, true);
-                  }
-                  return yield* new PreviewAutomationTimeoutError(requestContext);
-                }),
+              // awaitResponse owns this inline handler's span.
+              onNone: Effect.fnUntraced(function* () {
+                // Remote silence can mean disconnection; slow in-process hosts stay registered.
+                // Never replay actions whose effects may already have been applied.
+                // Read-only background metadata timeouts must not disconnect the host.
+                if (connection.disconnectOnTimeout && input.updateCurrentTab !== false) {
+                  yield* disconnect(connection.clientId, connection.queue, true);
+                }
+                return yield* new PreviewAutomationTimeoutError(requestContext);
+              }),
               onSome: (value) => Effect.succeed(value as A),
             });
           });

@@ -5,10 +5,14 @@ import {
   type RunId,
 } from "@t3tools/contracts";
 import { ChevronDownIcon, GaugeIcon, GitForkIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { ProviderInstanceEntry } from "../../providerInstances";
 import { Button } from "../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
+import { type TimestampFormat } from "@t3tools/contracts/settings";
+import { deadlineStore } from "@t3tools/client-runtime/clock";
+import { useDeadlinePassed } from "../../hooks/useDeadline";
+import { formatUpcomingTimestamp } from "../../timestampFormat";
 import { toastManager } from "../ui/toast";
 import type { ComposerBannerStackItem } from "./ComposerBannerStack";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
@@ -31,6 +35,7 @@ type RecoveryProps = {
   stoppedAt: string;
   snoozedUntil: string | null;
   recovery: OrchestrationV2LimitRecovery | null;
+  timestampFormat: TimestampFormat;
   onChange: (recovery: OrchestrationV2LimitRecoveryUpdate) => Promise<void>;
   /** Absent when the server cannot resume before the reset. */
   onResumeNow: (() => Promise<void>) | null;
@@ -38,7 +43,7 @@ type RecoveryProps = {
 };
 
 export function usageLimitRecoveryBannerItem(props: RecoveryProps): ComposerBannerStackItem {
-  const { runId, resetAt, stoppedAt, recovery } = props;
+  const { runId, resetAt, stoppedAt, recovery, timestampFormat } = props;
   const canSchedule = resetAt !== null && Date.parse(resetAt) > Date.parse(stoppedAt);
   const scheduled =
     recovery?.runId === runId && recovery.resetAt === resetAt && recovery.autoResume;
@@ -53,8 +58,8 @@ export function usageLimitRecoveryBannerItem(props: RecoveryProps): ComposerBann
     descriptionPlacement: "details",
     description: resetAt
       ? scheduled
-        ? `Resumes automatically about a minute after ${new Date(resetAt).toLocaleString()}`
-        : `Resets ${new Date(resetAt).toLocaleString()}`
+        ? `Resumes automatically about a minute after ${formatUpcomingTimestamp(resetAt, timestampFormat)}`
+        : `Resets ${formatUpcomingTimestamp(resetAt, timestampFormat)}`
       : "Reset time unavailable; retry manually",
     actions:
       canSchedule || props.onResumeNow || props.continueElsewhere ? (
@@ -77,20 +82,13 @@ function RecoveryActions({
     null,
   );
   const pending = pendingAction !== null;
-  const [nowMs, setNowMs] = useState(() => Date.now());
-  useEffect(() => {
-    const delay = Date.parse(resetAt ?? "") - Math.max(nowMs, Date.now());
-    if (!Number.isFinite(delay) || delay <= 0) return;
-    const timer = window.setTimeout(() => setNowMs(Date.now()), Math.min(delay + 1, 2_147_483_647));
-    return () => window.clearTimeout(timer);
-  }, [resetAt, nowMs]);
 
   const canSchedule = resetAt !== null && Date.parse(resetAt) > Date.parse(stoppedAt);
   const scheduled =
     recovery?.runId === runId && recovery.resetAt === resetAt && recovery.autoResume;
   // The server leaves snoozedUntil in place after the timer wakes the thread,
   // so a snooze whose reset has passed is no longer active.
-  const resetPassed = Date.parse(resetAt ?? "") <= nowMs;
+  const resetPassed = useDeadlinePassed(resetAt === null ? null : Date.parse(resetAt));
   const snoozed =
     recovery?.snooze === true &&
     recovery.runId === runId &&
@@ -124,7 +122,8 @@ function RecoveryActions({
         title: "Could not snooze thread",
         description: "The reset time has passed. Retry the thread manually.",
       });
-      setNowMs(Date.now());
+      // The deadline timer can lag after a throttled tab or sleep; disable now.
+      deadlineStore(Date.parse(resetAt)).refresh();
       return;
     }
     void run(

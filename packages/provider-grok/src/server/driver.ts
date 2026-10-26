@@ -217,7 +217,7 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv, Path.Path> 
         id: "device",
         label: "Sign in with device code",
         description:
-          "Runs `grok login --device-auth` — sign in at the shown URL with a one-time code. Works on remote and headless environments.",
+          "Runs `grok login --device-auth`: sign in at the shown URL with a one-time code. Works on remote and headless environments.",
         args: ["login", "--device-auth"],
         urlPattern: /https:\/\/\S*\.?x\.ai\/\S+/,
         codePattern: /code[^A-Z0-9]*([A-Z0-9]{4}-[A-Z0-9]{4})/i,
@@ -258,16 +258,21 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv, Path.Path> 
     });
 
     const checkProvider = checkGrokProviderStatus(effectiveConfig, processEnv, cwd).pipe(
-      Effect.flatMap((snapshot) =>
-        effectiveConfig.enabled && snapshot.installed && snapshot.auth.status === "authenticated"
-          ? readGrokAccount(processEnv).pipe(
-              Effect.map(({ email, usageLimits }) => ({
-                ...snapshot,
-                auth: email ? { ...snapshot.auth, email } : snapshot.auth,
-                usageLimits,
-              })),
-            )
-          : Effect.succeed(snapshot),
+      Effect.filterOrElse(
+        (snapshot) =>
+          !(
+            effectiveConfig.enabled &&
+            snapshot.installed &&
+            snapshot.auth.status === "authenticated"
+          ),
+        (snapshot) =>
+          readGrokAccount(processEnv).pipe(
+            Effect.map(({ email, usageLimits }) => ({
+              ...snapshot,
+              auth: email ? { ...snapshot.auth, email } : snapshot.auth,
+              usageLimits,
+            })),
+          ),
       ),
       Effect.map(stampSetup),
       Effect.map(stampIdentity),

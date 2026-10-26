@@ -234,54 +234,54 @@ function LinearIssueSearch(props: OpenedLinearIssuePicker & { readonly onClose: 
     await attach(issue);
   };
 
-  const attach = async (issue: LinearIssueSummary) => {
-    setAttaching(issue.id);
-    try {
-      if (props.mode === "link") {
-        const linked = await linkThread({
-          environmentId: props.environmentId,
-          input: { threadId: props.threadId, issueId: issue.id },
-        });
-        if (linked._tag === "Failure") {
-          Alert.alert(
-            "Could not link issue",
-            linearErrorMessage(squashAtomCommandFailure(linked), "Try again."),
-          );
-          return;
-        }
-        props.onClose();
-        return;
-      }
-      const fetched = await getIssue({
+  const attachSelected = async (issue: LinearIssueSummary) => {
+    if (props.mode === "link") {
+      const linked = await linkThread({
         environmentId: props.environmentId,
-        input: { id: issue.id },
+        input: { threadId: props.threadId, issueId: issue.id },
       });
-      if (fetched._tag === "Failure") {
+      if (linked._tag === "Failure") {
         Alert.alert(
-          "Could not attach issue",
-          linearErrorMessage(squashAtomCommandFailure(fetched), "Try again."),
+          "Could not link issue",
+          linearErrorMessage(squashAtomCommandFailure(linked), "Try again."),
         );
         return;
       }
-      const record = linearIssueContextRecord(fetched.value);
-      if (
-        !insertComposerDraftContext(
-          props.draftKey,
-          {
-            text: formatComposerContextReference(record),
-            context: { version: 1, records: [record] },
-          },
-          props.insertion,
-        )
-      ) {
-        Alert.alert("Too many context items", "Remove some context from the draft and try again.");
-        return;
-      }
-      if (startFrom) startFromIssueIds.set(props.draftKey, issue.id);
       props.onClose();
-    } finally {
-      setAttaching(null);
+      return;
     }
+    const fetched = await getIssue({
+      environmentId: props.environmentId,
+      input: { id: issue.id },
+    });
+    if (fetched._tag === "Failure") {
+      Alert.alert(
+        "Could not attach issue",
+        linearErrorMessage(squashAtomCommandFailure(fetched), "Try again."),
+      );
+      return;
+    }
+    const record = linearIssueContextRecord(fetched.value);
+    if (
+      !insertComposerDraftContext(
+        props.draftKey,
+        {
+          text: formatComposerContextReference(record),
+          context: { version: 1, records: [record] },
+        },
+        props.insertion,
+      )
+    ) {
+      Alert.alert("Too many context items", "Remove some context from the draft and try again.");
+      return;
+    }
+    if (startFrom) startFromIssueIds.set(props.draftKey, issue.id);
+    props.onClose();
+  };
+
+  const attach = async (issue: LinearIssueSummary) => {
+    setAttaching(issue.id);
+    await attachSelected(issue).finally(() => setAttaching(null));
   };
 
   return (

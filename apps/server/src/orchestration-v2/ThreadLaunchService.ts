@@ -647,7 +647,7 @@ const make = Effect.gen(function* () {
           worktreePath ?? project.workspaceRoot,
           initialMessage,
         ).pipe(
-          Effect.map(Option.some),
+          Effect.asSome,
           Effect.catchCause((cause) =>
             Effect.logWarning("Thread worktree branch name generation failed", {
               commandId: input.commandId,

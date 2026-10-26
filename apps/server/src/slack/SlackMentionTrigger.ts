@@ -99,7 +99,7 @@ export class SlackMentionTrigger extends Context.Service<
   }
 >()("t3/slack/SlackMentionTrigger") {}
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const auth = yield* SlackAuth.SlackAuth;
   const slack = yield* SlackApi.SlackApi;
@@ -256,7 +256,7 @@ const stateStoreLayer = Layer.unwrap(
   }),
 );
 
-export const layer = Layer.effect(SlackMentionTrigger, make).pipe(
+const layer = Layer.effect(SlackMentionTrigger, make).pipe(
   Layer.provide(stateStoreLayer),
   Layer.catch(() => {
     const unavailable = Effect.logWarning(

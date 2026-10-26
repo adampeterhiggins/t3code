@@ -170,49 +170,49 @@ function SlackMessageSearch(props: OpenedSlackMessagePicker & { readonly onClose
     props.onClose();
   };
 
+  const attachSelected = async (message: SlackMessageSummary) => {
+    if (props.mode === "link") {
+      await link(props.threadId, message);
+      return;
+    }
+    const fetched = await getThread({
+      environmentId: props.environmentId,
+      input: {
+        channelId: message.channelId,
+        ts: message.ts,
+        threadTs: message.threadTs ?? undefined,
+        url: message.url,
+        scope: "thread",
+      },
+    });
+    if (fetched._tag === "Failure") {
+      Alert.alert(
+        "Could not attach Slack message",
+        slackErrorMessage(squashAtomCommandFailure(fetched), "Try again."),
+      );
+      return;
+    }
+    const record = slackThreadContextRecord(fetched.value);
+    if (
+      !insertComposerDraftContext(
+        props.draftKey,
+        {
+          text: formatComposerContextReference(record),
+          context: { version: 1, records: [record] },
+        },
+        props.insertion,
+      )
+    ) {
+      Alert.alert("Too many context items", "Remove some context from the draft and try again.");
+      return;
+    }
+    props.onClose();
+  };
+
   const attach = async (message: SlackMessageSummary) => {
     if (attaching) return;
     setAttaching(message.url);
-    try {
-      if (props.mode === "link") {
-        await link(props.threadId, message);
-        return;
-      }
-      const fetched = await getThread({
-        environmentId: props.environmentId,
-        input: {
-          channelId: message.channelId,
-          ts: message.ts,
-          threadTs: message.threadTs ?? undefined,
-          url: message.url,
-          scope: "thread",
-        },
-      });
-      if (fetched._tag === "Failure") {
-        Alert.alert(
-          "Could not attach Slack message",
-          slackErrorMessage(squashAtomCommandFailure(fetched), "Try again."),
-        );
-        return;
-      }
-      const record = slackThreadContextRecord(fetched.value);
-      if (
-        !insertComposerDraftContext(
-          props.draftKey,
-          {
-            text: formatComposerContextReference(record),
-            context: { version: 1, records: [record] },
-          },
-          props.insertion,
-        )
-      ) {
-        Alert.alert("Too many context items", "Remove some context from the draft and try again.");
-        return;
-      }
-      props.onClose();
-    } finally {
-      setAttaching(null);
-    }
+    await attachSelected(message).finally(() => setAttaching(null));
   };
 
   return (

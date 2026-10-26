@@ -91,9 +91,7 @@ export const GitHubCliError = Schema.Union([
 ]);
 export type GitHubCliError = typeof GitHubCliError.Type;
 
-export const isGitHubCliError = Schema.is(GitHubCliError);
-
-export function fromVcsError(
+function fromVcsError(
   context: {
     readonly command: "gh";
     readonly cwd: string;
@@ -167,7 +165,7 @@ export class GitHubCli extends Context.Service<
   }
 >()("t3/sourceControl/GitHubCli") {}
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const process = yield* VcsProcess.VcsProcess;
   const environment = yield* HostProcess.Environment;

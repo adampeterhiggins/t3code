@@ -72,7 +72,7 @@ const OUTCOME_TEXT: Record<WorktreeInventoryRemoveResult["results"][number]["out
   failed: "failed",
 };
 
-export const formatCleanupReport = (report: StorageCleanupReport) => {
+const formatCleanupReport = (report: StorageCleanupReport) => {
   const lines = [
     `${report.trigger} cleanup ${report.finishedAt}: ${report.counts.removed} removed, ${report.counts.kept} kept, ${report.counts.failed} failed, ${formatBytes(report.bytesFreed)} freed`,
   ];

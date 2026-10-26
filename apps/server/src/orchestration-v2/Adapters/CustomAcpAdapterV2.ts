@@ -1,13 +1,4 @@
-/**
- * CustomAcpAdapterV2 — the `customAcp` driver's ACP flavor: any stdio agent
- * from an executable, arguments, and the instance environment.
- *
- * The flavor only knows the ACP spec. Models, options, and modes come from
- * what the agent advertises; T3's MCP tools, approvals, elicitations, and auth
- * methods come from the shared ACP adapter.
- *
- * @module CustomAcpAdapterV2
- */
+/** Custom agents advertise their own models, options, and modes through the shared ACP adapter. */
 import type { CustomAcpSettings, ProviderInstanceId } from "@t3tools/contracts";
 import type { SelfInvocation } from "@t3tools/shared/nodeRuntime";
 import type * as Crypto from "effect/Crypto";
@@ -54,7 +45,7 @@ export interface CustomAcpAdapterV2Options {
   >;
 }
 
-export function makeCustomAcpAdapterFlavor(options: CustomAcpAdapterV2Options): AcpAdapterV2Flavor {
+function makeCustomAcpAdapterFlavor(options: CustomAcpAdapterV2Options): AcpAdapterV2Flavor {
   return {
     driver: CUSTOM_ACP_DRIVER_KIND,
     runtimeHarness: options.harness,
@@ -71,24 +62,27 @@ export function makeCustomAcpAdapterFlavor(options: CustomAcpAdapterV2Options): 
               : { ...options.environment, ...processEnvironment },
           childProcessSpawner: options.childProcessSpawner,
         })),
-    applyModelSelection: ({ runtime, startResult, modelSelection }) =>
-      Effect.gen(function* () {
-        const configOptions = yield* runtime.getConfigOptions;
-        const update = resolveCustomAcpModelUpdate({
-          configOptions,
-          models: startResult.sessionSetupResult.models,
-          model: modelSelection.model,
-        });
-        if (update?.type === "config") {
-          yield* runtime.setConfigOption(update.configId, update.value);
-          return update.value;
-        }
-        if (update?.type === "session") {
-          yield* runtime.setSessionModel(update.modelId);
-          return update.modelId;
-        }
-        return undefined;
-      }),
+    applyModelSelection: Effect.fn("applyModelSelection")(function* ({
+      runtime,
+      startResult,
+      modelSelection,
+    }) {
+      const configOptions = yield* runtime.getConfigOptions;
+      const update = resolveCustomAcpModelUpdate({
+        configOptions,
+        models: startResult.sessionSetupResult.models,
+        model: modelSelection.model,
+      });
+      if (update?.type === "config") {
+        yield* runtime.setConfigOption(update.configId, update.value);
+        return update.value;
+      }
+      if (update?.type === "session") {
+        yield* runtime.setSessionModel(update.modelId);
+        return update.modelId;
+      }
+      return undefined;
+    }),
     sessionModeForPolicy: (policy, modeState) =>
       policy.interactionMode === "plan"
         ? undefined

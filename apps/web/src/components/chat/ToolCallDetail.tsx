@@ -46,7 +46,7 @@ export type ToolCallContext = Pick<
   turnItemSource?: TurnItemSource | undefined;
 };
 
-export function workEntryRawCommand(
+function workEntryRawCommand(
   workEntry: Pick<WorkLogEntry, "command" | "rawCommand">,
 ): string | null {
   const rawCommand = workEntry.rawCommand?.trim();
@@ -56,7 +56,7 @@ export function workEntryRawCommand(
   return rawCommand === workEntry.command.trim() ? null : rawCommand;
 }
 
-export function buildToolCallExpandedBody(
+function buildToolCallExpandedBody(
   workEntry: WorkLogEntry,
   workspaceRoot: string | undefined,
   visibleLabel: string,

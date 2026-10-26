@@ -763,7 +763,7 @@ it.effect("resolves setup scripts through the standalone project service", () =>
     Layer.provide(
       Layer.mergeAll(
         Layer.mock(ProjectService.ProjectService)({
-          getById: () => Effect.succeed(Option.some(project)),
+          getById: () => Effect.succeedSome(project),
         }),
         Layer.mock(TerminalManager.TerminalManager)({ open, write, subscribe, closeIdle }),
         ServerSettings.layerTest(),

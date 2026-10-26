@@ -1031,6 +1031,9 @@ export const OrchestrationV2ProviderThreadNativeMetadata = Schema.Struct({
   /** A native session that already had turns when T3 imported it, so T3 resumes it. */
   importedNativeId: Schema.optional(TrimmedNonEmptyString),
   forkHeadMessageId: Schema.optional(TrimmedNonEmptyString),
+  claudeAttachmentBudget: Schema.optional(
+    Schema.Struct({ bytesUsed: NonNegativeInt, pagesUsed: NonNegativeInt }),
+  ),
 });
 export type OrchestrationV2ProviderThreadNativeMetadata =
   typeof OrchestrationV2ProviderThreadNativeMetadata.Type;
@@ -2073,8 +2076,6 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   latestRunStartedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   latestRunCompletedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   latestRunStopRequested: Schema.optional(Schema.Boolean),
-  /** Suppress routine notifications for idle compaction; failures still notify. */
-  latestRunSilent: Schema.optional(Schema.Boolean),
   activeRunId: Schema.NullOr(RunId),
   activityRunStartedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   activityRunStatus: Schema.optional(

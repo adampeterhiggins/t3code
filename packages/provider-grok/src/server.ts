@@ -5,5 +5,5 @@
  * @module provider-grok/server
  */
 export { GrokDriver, type GrokDriverEnv } from "./server/driver.ts";
-export { GrokAdapterV2Driver, type GrokAdapterV2DriverEnv } from "./server/adapter.ts";
+export { type GrokAdapterV2DriverEnv } from "./server/adapter.ts";
 export { GrokUsageResponse, grokUsageResponseToLimits } from "./server/usageLimits.ts";

@@ -59,7 +59,7 @@ export function useAttachNotionPage() {
   };
 }
 /** Links a page to the thread's tab group, replacing the one it had. */
-export function useLinkNotionPage() {
+function useLinkNotionPage() {
   const linkThread = useAtomCommand(notionEnvironment.linkThread, { reportFailure: false });
   return async (threadRef: ScopedThreadRef, pageId: string): Promise<boolean> => {
     const result = await linkThread({

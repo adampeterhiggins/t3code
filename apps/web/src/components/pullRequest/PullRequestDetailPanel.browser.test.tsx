@@ -10,9 +10,9 @@ import {
   type ThreadPullRequestLink,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
-import { act, type ComponentProps } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import type { ComponentProps } from "react";
+import { act, render as renderScreen } from "../../../test/render";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 import { composerTargetKey, DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { useComposerSubmitRequestStore } from "~/composerSubmitRequestStore";
@@ -288,31 +288,24 @@ const shortcutContext = () => ({
   isDesktop: false,
 });
 
-const roots: Root[] = [];
-
 function render(props: Partial<ComponentProps<typeof PullRequestDetailPanel>> = {}) {
   const container = document.createElement("div");
   container.className = "flex h-[700px] w-[900px]";
-  document.body.append(container);
-  const root = createRoot(container);
-  roots.push(root);
-  return act(async () =>
-    root.render(
-      <PullRequestDetailPanel
-        environmentId={threadRef.environmentId}
-        reference={detail}
-        context="page"
-        shortcutsEnabled={false}
-        getShortcutContext={shortcutContext}
-        {...props}
-      />,
-    ),
+  return renderScreen(
+    <PullRequestDetailPanel
+      environmentId={threadRef.environmentId}
+      reference={detail}
+      context="page"
+      shortcutsEnabled={false}
+      getShortcutContext={shortcutContext}
+      {...props}
+    />,
+    { container },
   );
 }
 
-beforeEach(() => {
+function setup() {
   activityDetail = null;
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   currentDetail = detail;
   useComposerDraftStore.setState({ draftsByThreadKey: {} });
   useComposerSubmitRequestStore.setState({ pending: new Map() });
@@ -330,12 +323,7 @@ beforeEach(() => {
     value: { branch: "feature", worktreePath: "/workspace/pr" },
   });
   update.mockReset().mockResolvedValue({ _tag: "Success", value: undefined });
-});
-afterEach(async () => {
-  for (const root of roots.splice(0)) await act(async () => root.unmount());
-  document.body.replaceChildren();
-  vi.unstubAllGlobals();
-});
+}
 
 const surface = { projectId: detail.projectId, repository: detail.repository, number: 1 };
 const link = (number: number, source: ThreadPullRequestLink["source"]): ThreadPullRequestLink => ({
@@ -375,7 +363,8 @@ it.each([
   { isComposing: true, keyCode: 13 },
   { isComposing: false, keyCode: 229 },
 ])("does not save the PR title during IME composition (%j)", async ({ isComposing, keyCode }) => {
-  await render();
+  setup();
+  await using _screen = await render();
   await page.getByRole("button", { name: "Edit title" }).click();
   const titleInput = page.getByRole("textbox", { name: "Pull request title" });
   const title = "日本語のタイトル";
@@ -433,7 +422,8 @@ describe.each([
     render({ context, ...(target ? { composerDraftTarget: target, threadRef } : {}) });
 
   it(`${thread === stackThread ? "hides" : "offers"} the checkout`, async () => {
-    await renderPanel();
+    setup();
+    await using _screen = await renderPanel();
     await expect.element(page.getByText("Test pull request").first()).toBeVisible();
     expect(page.getByRole("button", { name: "Check out" }).elements()).toHaveLength(
       thread === stackThread ? 0 : 1,
@@ -449,6 +439,7 @@ describe.each([
     "Add to agent",
     "Send to agent",
   ])("%s writes to the correct composer", async (action) => {
+    setup();
     // Cover both a host without inline comments and an account that cannot write them.
     currentDetail =
       thread === stackThread
@@ -461,7 +452,7 @@ describe.each([
           }
         : { ...detail, viewerPermissions: { ...detail.viewerPermissions, comment: true } };
     if (target) useComposerDraftStore.getState().setPrompt(target, "Keep my draft");
-    await renderPanel();
+    await using _screen = await renderPanel();
     await runAction(target ? action : action.replace("in this thread", "in a thread"));
     const draft = () => useComposerDraftStore.getState().getComposerDraft(target ?? newDraftId);
     await vi.waitFor(() => {
@@ -499,6 +490,7 @@ describe.each([
 });
 
 it("offers both selection actions and queues a permitted host review locally", async () => {
+  setup();
   currentDetail = {
     ...detail,
     capabilities: {
@@ -507,7 +499,7 @@ it("offers both selection actions and queues a permitted host review locally", a
     },
     viewerPermissions: { ...detail.viewerPermissions, comment: true },
   };
-  await render({ composerDraftTarget: draftId, threadRef });
+  await using _screen = await render({ composerDraftTarget: draftId, threadRef });
   await tab("Code").click();
   await page.getByRole("button", { name: "Expand all files", exact: true }).click();
   await selectFirstLine();
@@ -529,7 +521,8 @@ it("offers both selection actions and queues a permitted host review locally", a
 });
 
 it("cancels an agent-only selection and submits a fresh one with the keyboard without a host review", async () => {
-  await render({ composerDraftTarget: draftId, threadRef });
+  setup();
+  await using _screen = await render({ composerDraftTarget: draftId, threadRef });
   await tab("Code").click();
   await page.getByRole("button", { name: "Expand all files", exact: true }).click();
   await selectFirstLine();
@@ -555,7 +548,8 @@ it("cancels an agent-only selection and submits a fresh one with the keyboard wi
 });
 
 it("folds the title only for the active tab's own scroller", async () => {
-  await render();
+  setup();
+  await using _screen = await render();
   const title = page.getByRole("heading", { level: 1, name: "Test pull request" });
   await expect.element(title).toBeVisible();
   const titleFold = () => title.element().closest("[inert]") !== null;
@@ -600,19 +594,18 @@ it("folds the title only for the active tab's own scroller", async () => {
 });
 
 it("restores the selected PR tab when switching threads and remounting the right panel", async () => {
+  setup();
   const otherThread = { ...threadRef, threadId: ThreadId.make("thread-2") };
   useRightPanelStore.getState().openPullRequest(threadRef, surface);
   useRightPanelStore.getState().openPullRequest(otherThread, surface);
   const codeTab = () => page.getByRole("button", { name: "Expand all files", exact: true });
   const container = document.createElement("div");
   container.className = "flex h-[700px] w-[900px]";
-  document.body.append(container);
-  const root = createRoot(container);
-  roots.push(root);
+  await using screen = await renderScreen(null, { container });
   const show = (ref: ScopedThreadRef) => {
     const selected = selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, ref);
     return act(async () => {
-      root.render(
+      screen.rerender(
         <RightPanelSurfaceContent
           surface={selected}
           activeSurfaceId={selected?.id ?? null}
@@ -629,7 +622,6 @@ it("restores the selected PR tab when switching threads and remounting the right
           onCloseSurface={() => {}}
           terminal={{
             launchContext: null,
-            focusRequestId: 0,
             keybindings: [],
             onAddTerminalContext: () => {},
             onSplitTerminal: () => {},
@@ -678,7 +670,7 @@ it("restores the selected PR tab when switching threads and remounting the right
   await show(threadRef);
   await expect.element(codeTab()).toBeVisible();
 
-  await act(async () => root.render(null));
+  await act(async () => screen.rerender(null));
   useRightPanelStore.getState().openPullRequest(threadRef, { ...surface, url: detail.url });
   await show(threadRef);
   await expect.element(codeTab()).toBeVisible();
@@ -689,7 +681,8 @@ it("restores the selected PR tab when switching threads and remounting the right
 });
 
 it("stays collapsed at the bottom after native scroll clamping and reopens at the top", async () => {
-  await render();
+  setup();
+  await using _screen = await render();
   const title = page.getByRole("heading", { level: 1, name: "Test pull request" });
   await expect.element(title).toBeVisible();
   const scroller = page.getByTestId("summary-scroller").element() as HTMLElement;
@@ -726,6 +719,7 @@ it("stays collapsed at the bottom after native scroll clamping and reopens at th
 });
 
 it("shows the current checkout recovery detail on the first failure and on retry", async () => {
+  setup();
   const first = new GitManagerError({
     cwd: "/workspace",
     operation: "preparePullRequestThread",
@@ -737,7 +731,7 @@ it("shows the current checkout recovery detail on the first failure and on retry
     command: "git worktree add",
     detail: "The worktree directory already exists. Choose another directory.",
   });
-  await render();
+  await using _screen = await render();
 
   for (const [index, error] of [first, second].entries()) {
     prepareThread.mockImplementationOnce(async () => {
@@ -755,6 +749,7 @@ it("shows the current checkout recovery detail on the first failure and on retry
 });
 
 it("keeps discussion counts and Timeline expansion in sync with activity refreshes", async () => {
+  setup();
   activityDetail = {
     ...detail,
     provider: SourceControlProviderKind.make("gitlab"),
@@ -789,7 +784,7 @@ it("keeps discussion counts and Timeline expansion in sync with activity refresh
       },
     ],
   };
-  await render({ reference: activityDetail });
+  await using _screen = await render({ reference: activityDetail });
   await expect.element(page.getByText("Discussion finding", { exact: true })).toBeVisible();
   await expect.element(page.getByText("Discussion reply", { exact: true })).toBeVisible();
   expect

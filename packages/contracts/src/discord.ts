@@ -13,7 +13,7 @@ export const DiscordSnowflake = TrimmedNonEmptyString.check(Schema.isPattern(/^\
  * What the bot needs in each server: View Channels (1024) and Read Message History (65536).
  * It never posts.
  */
-export const DISCORD_BOT_PERMISSIONS = "66560";
+const DISCORD_BOT_PERMISSIONS = "66560";
 
 /** The page that adds the bot to a server the user manages. */
 export function discordBotInviteUrl(applicationId: string): string {

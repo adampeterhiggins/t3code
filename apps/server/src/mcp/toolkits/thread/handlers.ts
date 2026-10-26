@@ -93,15 +93,14 @@ const writesThread = <P extends { readonly threadId?: ThreadId | undefined }, A,
 
 /** Chat tabs are fork-owned and served only where their service is provided. */
 const threadTabs = Effect.serviceOption(ThreadTabs.ThreadTabs).pipe(
-  Effect.flatMap((tabs) =>
-    Option.isNone(tabs)
-      ? Effect.fail(
-          new OrchestratorMcpFailure({
-            code: "capability_denied",
-            message: "Chat-tab groups are unavailable.",
-          }),
-        )
-      : Effect.succeed(tabs.value),
+  Effect.flatMap(
+    Effect.fromOption(
+      () =>
+        new OrchestratorMcpFailure({
+          code: "capability_denied",
+          message: "Chat-tab groups are unavailable.",
+        }),
+    ),
   ),
 );
 

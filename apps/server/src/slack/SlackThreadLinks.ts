@@ -29,7 +29,7 @@ interface LinkRow {
 }
 
 /** Folds the joined rows into one link per group; the group's own id is always a member. */
-export function groupLinkRows(rows: ReadonlyArray<LinkRow>): SlackThreadLinksList {
+function groupLinkRows(rows: ReadonlyArray<LinkRow>): SlackThreadLinksList {
   const links = new Map<string, SlackThreadLink & { threadIds: ThreadId[] }>();
   for (const row of rows) {
     let link = links.get(row.groupId);
@@ -70,7 +70,7 @@ export class SlackThreadLinks extends Context.Service<
   }
 >()("t3/slack/SlackThreadLinks") {}
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const api = yield* SlackApi;
@@ -135,10 +135,11 @@ export const make = Effect.gen(function* () {
 
   return SlackThreadLinks.of({
     links: SubscriptionRef.changes(state),
-    forThread: (threadId) =>
+    forThread: Effect.fn("SlackThreadLinks.forThread")((threadId) =>
       SubscriptionRef.get(state).pipe(
         Effect.map((links) => links.find((entry) => entry.threadIds.includes(threadId))),
       ),
+    ),
     link,
     unlink,
     refresh,

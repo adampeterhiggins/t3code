@@ -14,8 +14,7 @@ export const CONDUCTOR_LOCAL_SETTINGS_PATH = ".conductor/settings.local.toml";
 export const WORKTREE_INCLUDE_PATH = ".worktreeinclude";
 /** Conductor's own default when a repository configures no Files to copy. */
 export const DEFAULT_CONDUCTOR_INCLUDE_PATTERNS = ".env*";
-export const CONDUCTOR_SETTINGS_SCHEMA_URL =
-  "https://conductor.build/schemas/settings.repo.schema.json";
+const CONDUCTOR_SETTINGS_SCHEMA_URL = "https://conductor.build/schemas/settings.repo.schema.json";
 
 /**
  * Settings files in the order they apply; later files win. Legacy

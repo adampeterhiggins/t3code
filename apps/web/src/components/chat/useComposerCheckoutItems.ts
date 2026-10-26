@@ -25,7 +25,7 @@ const RESULT_LIMIT = 20;
 const RECENTS_STORAGE_KEY = "t3code:checkout-recents";
 const MAX_RECENTS = 30;
 
-export function readCheckoutRecents(): ReadonlyArray<string> {
+function readCheckoutRecents(): ReadonlyArray<string> {
   try {
     const parsed: unknown = JSON.parse(localStorage.getItem(RECENTS_STORAGE_KEY) ?? "[]");
     return Array.isArray(parsed) ? parsed.filter((entry) => typeof entry === "string") : [];
@@ -34,7 +34,7 @@ export function readCheckoutRecents(): ReadonlyArray<string> {
   }
 }
 
-export function recordCheckoutRecent(path: string): void {
+function recordCheckoutRecent(path: string): void {
   try {
     const key = checkoutPathKey(path);
     const next = [key, ...readCheckoutRecents().filter((entry) => entry !== key)];

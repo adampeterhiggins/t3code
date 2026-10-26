@@ -258,12 +258,11 @@ describe("discoverDevinSkills", () => {
 
   it.effect("fails with a typed exit error on nonzero exit", () =>
     Effect.gen(function* () {
-      const exit = yield* discoverDevinSkills({ binaryPath: "devin" }, {})
-        .pipe(
-          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, makeListSpawner("", 2)),
-          Effect.provide(nodePathLayerPosix),
-        )
-        .pipe(Effect.exit);
+      const exit = yield* discoverDevinSkills({ binaryPath: "devin" }, {}).pipe(
+        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, makeListSpawner("", 2)),
+        Effect.provide(nodePathLayerPosix),
+        Effect.exit,
+      );
       const error = findProbeError(exit);
       expect(error?.stage).toBe("exit");
       expect(error?.exitCode).toBe(2);
@@ -272,30 +271,25 @@ describe("discoverDevinSkills", () => {
 
   it.effect("fails with a typed decode error on invalid JSON", () =>
     Effect.gen(function* () {
-      const exit = yield* discoverDevinSkills({ binaryPath: "devin" }, {})
-        .pipe(
-          Effect.provideService(
-            ChildProcessSpawner.ChildProcessSpawner,
-            makeListSpawner("not json"),
-          ),
-          Effect.provide(nodePathLayerPosix),
-        )
-        .pipe(Effect.exit);
+      const exit = yield* discoverDevinSkills({ binaryPath: "devin" }, {}).pipe(
+        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, makeListSpawner("not json")),
+        Effect.provide(nodePathLayerPosix),
+        Effect.exit,
+      );
       expect(findProbeError(exit)?.stage).toBe("decode");
     }),
   );
 
   it.effect("fails with a typed decode error on a non-array payload", () =>
     Effect.gen(function* () {
-      const exit = yield* discoverDevinSkills({ binaryPath: "devin" }, {})
-        .pipe(
-          Effect.provideService(
-            ChildProcessSpawner.ChildProcessSpawner,
-            makeListSpawner('{"skills": []}'),
-          ),
-          Effect.provide(nodePathLayerPosix),
-        )
-        .pipe(Effect.exit);
+      const exit = yield* discoverDevinSkills({ binaryPath: "devin" }, {}).pipe(
+        Effect.provideService(
+          ChildProcessSpawner.ChildProcessSpawner,
+          makeListSpawner('{"skills": []}'),
+        ),
+        Effect.provide(nodePathLayerPosix),
+        Effect.exit,
+      );
       expect(findProbeError(exit)?.stage).toBe("decode");
     }),
   );

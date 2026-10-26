@@ -9,7 +9,7 @@ import {
   looksLikeCheckoutPath,
   rankCheckoutCandidates,
 } from "@t3tools/shared/checkouts";
-import { useMemo, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Alert, FlatList, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -56,32 +56,26 @@ function CheckoutPickerSheet(props: OpenedCheckoutPicker & { readonly onClose: (
   const threads = useThreadShells();
   const config = useEnvironmentServerConfig(props.environmentId);
   const [query, setQuery] = useState("");
-  const candidates = useMemo(
-    () =>
-      checkoutCandidates({
-        currentEnvironmentId: props.environmentId,
-        projects,
-        worktrees: threads.map((thread) => ({
-          environmentId: thread.environmentId,
-          worktreePath: thread.worktreePath,
-        })),
-        environmentLabel: (id) =>
-          id === props.environmentId
-            ? (config?.environment.label ?? "This environment")
-            : "Another environment",
-      }).filter((candidate) => candidate.selectable),
-    [config?.environment.label, projects, props.environmentId, threads],
-  );
-  const ranked = useMemo(
-    () => rankCheckoutCandidates(candidates, looksLikeCheckoutPath(query) ? "" : query, new Map()),
-    [candidates, query],
+  const candidates = checkoutCandidates({
+    currentEnvironmentId: props.environmentId,
+    projects,
+    worktrees: threads.map((thread) => ({
+      environmentId: thread.environmentId,
+      worktreePath: thread.worktreePath,
+    })),
+    environmentLabel: (id) =>
+      id === props.environmentId
+        ? (config?.environment.label ?? "This environment")
+        : "Another environment",
+  }).filter((candidate) => candidate.selectable);
+  const ranked = rankCheckoutCandidates(
+    candidates,
+    looksLikeCheckoutPath(query) ? "" : query,
+    new Map(),
   );
   const pasted = looksLikeCheckoutPath(query) ? checkoutPathKey(query.trim()) : null;
-  const paths = useMemo(() => {
-    const listed = ranked.slice(0, 20).map((candidate) => candidate.path);
-    if (pasted !== null && !listed.includes(pasted)) listed.unshift(pasted);
-    return listed;
-  }, [pasted, ranked]);
+  const paths = ranked.slice(0, 20).map((candidate) => candidate.path);
+  if (pasted !== null && !paths.includes(pasted)) paths.unshift(pasted);
   const settled = useDebouncedValue(paths.join("\n"), 200);
   const inspection = useEnvironmentQuery(
     settled.length === 0
@@ -91,23 +85,21 @@ function CheckoutPickerSheet(props: OpenedCheckoutPicker & { readonly onClose: (
           input: { paths: settled.split("\n") },
         }),
   );
-  const rows = useMemo(() => {
-    const listed = ranked.slice(0, 20);
-    if (pasted === null || listed.some((candidate) => checkoutPathKey(candidate.path) === pasted)) {
-      return listed;
-    }
-    return [
-      {
-        environmentId: props.environmentId,
-        environmentLabel: "",
-        selectable: true,
-        path: pasted,
-        name: checkoutDisplayName(pasted),
-        kind: "project" as const,
-      },
-      ...listed,
-    ];
-  }, [pasted, props.environmentId, ranked]);
+  const listed = ranked.slice(0, 20);
+  const rows =
+    pasted === null || listed.some((candidate) => checkoutPathKey(candidate.path) === pasted)
+      ? listed
+      : [
+          {
+            environmentId: props.environmentId,
+            environmentLabel: "",
+            selectable: true,
+            path: pasted,
+            name: checkoutDisplayName(pasted),
+            kind: "project" as const,
+          },
+          ...listed,
+        ];
 
   const attach = (path: string, name: string) => {
     const entry = inspection.data?.entries.find(

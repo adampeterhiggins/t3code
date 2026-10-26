@@ -10,10 +10,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
  * Adds owners from free text: one or several, separated by commas or spaces. Owners already in
  * the list (case-insensitively) are skipped, so pasting a list twice is harmless.
  */
-export function addRepositoryOwners(
-  owners: ReadonlyArray<string>,
-  text: string,
-): ReadonlyArray<string> {
+function addRepositoryOwners(owners: ReadonlyArray<string>, text: string): ReadonlyArray<string> {
   const next = [...owners];
   for (const owner of text.split(/[\s,]+/)) {
     if (owner.length === 0) continue;

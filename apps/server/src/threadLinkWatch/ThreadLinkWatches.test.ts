@@ -79,7 +79,7 @@ const makeHarness = (settings: Parameters<typeof ServerSettings.layerTest>[0] = 
     googleLink: undefined as GoogleThreadLink | undefined,
     shell: liveThreadShell(THREAD_ID, { activeRunId: null }) as OrchestrationV2ThreadShell | null,
   };
-  const none = { forThread: () => Effect.succeed(undefined) };
+  const none = { forThread: () => Effect.sync(() => undefined) };
   const layer = ThreadLinkWatches.layer.pipe(
     Layer.provide(
       Layer.mergeAll(

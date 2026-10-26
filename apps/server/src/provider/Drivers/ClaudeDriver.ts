@@ -1,17 +1,3 @@
-/**
- * ClaudeDriver — `ProviderDriver` for the Claude Agent SDK runtime.
- *
- * Mirrors `CodexDriver`: a plain value whose `create()` returns one
- * `ProviderInstance` bundling `snapshot` / `adapter` / `textGeneration`
- * closures captured over the per-instance `ClaudeSettings`.
- *
- * Unlike Codex, the Claude snapshot probe may invoke a secondary probe
- * (`probeClaudeCapabilities`) to read Anthropic account + slash-command
- * metadata. That probe is per-instance and keyed by binary + resolved HOME so
- * two concurrent Claude instances don't cross-contaminate account metadata.
- *
- * @module provider/Drivers/ClaudeDriver
- */
 import { ClaudeSettings, ProviderDriverKind, type ServerProvider } from "@t3tools/contracts";
 import * as Cache from "effect/Cache";
 import * as Duration from "effect/Duration";
@@ -236,7 +222,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
             DateTime.now.pipe(
               Effect.flatMap((now) =>
                 capabilities.usage === undefined
-                  ? Effect.succeed(undefined)
+                  ? Effect.sync(() => undefined)
                   : recordClaudeUsageResponse(scopedLimitNames, {
                       response: capabilities.usage,
                       checkedAt: capabilities.usageCheckedAt ?? DateTime.formatIso(now),
@@ -336,7 +322,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
         id: "browser",
         label: "Sign in with browser",
         description:
-          "Runs `claude auth login` — open the shown URL, sign in, then paste the code it displays.",
+          "Runs `claude auth login`. open the shown URL, sign in, then paste the code it displays.",
         args: ["auth", "login"],
         // Suppresses `claude auth login`'s automatic browser open; the URL is
         // surfaced in the UI for the user to open instead.

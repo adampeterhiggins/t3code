@@ -212,18 +212,16 @@ const makeImporter = Effect.fn(function* (
           }),
           Layer.mock(ProjectService.ProjectService)({
             getById: () =>
-              Effect.succeed(
-                Option.some({
-                  id: projectId,
-                  title: "Project",
-                  workspaceRoot: "/workspace/project",
-                  defaultModelSelection: null,
-                  scripts: [],
-                  createdAt: timestamp,
-                  updatedAt: timestamp,
-                  deletedAt: null,
-                }),
-              ),
+              Effect.succeedSome({
+                id: projectId,
+                title: "Project",
+                workspaceRoot: "/workspace/project",
+                defaultModelSelection: null,
+                scripts: [],
+                createdAt: timestamp,
+                updatedAt: timestamp,
+                deletedAt: null,
+              }),
           }),
           Layer.mock(Orchestrator.OrchestratorV2)({
             getThreadRecords: (threadId, fields) =>
@@ -382,9 +380,7 @@ it.effect("imports one picked session and lists sessions with the threads holdin
         Layer.succeed(AgentSessionScanner.AgentSessionScanner, scanner),
         Layer.mock(ProjectService.ProjectService)({
           getById: () =>
-            Effect.succeed(
-              Option.some({ id: projectId, workspaceRoot: "/workspace/project" } as never),
-            ),
+            Effect.succeedSome({ id: projectId, workspaceRoot: "/workspace/project" } as never),
         }),
         Layer.mock(Orchestrator.OrchestratorV2)({
           getThreadRecords: (threadId) =>
@@ -467,9 +463,7 @@ it.effect("caps the listing and reports truncation", () => {
         ),
         Layer.mock(ProjectService.ProjectService)({
           getById: () =>
-            Effect.succeed(
-              Option.some({ id: projectId, workspaceRoot: "/workspace/project" } as never),
-            ),
+            Effect.succeedSome({ id: projectId, workspaceRoot: "/workspace/project" } as never),
         }),
         Layer.mock(Orchestrator.OrchestratorV2)({}),
         Layer.mock(EventSink.EventSinkV2)({}),

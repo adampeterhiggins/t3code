@@ -15,16 +15,7 @@ export interface SubagentWorktreeSetupInput {
 
 type Prepare = (input: SubagentWorktreeSetupInput) => Effect.Effect<void>;
 
-/**
- * Prepares a worktree a provider created for one of its subagents the way T3
- * prepares a thread's own worktree: files to copy, then the setup script with
- * the project's environment variables. `prepare` returns once a blocking
- * (non-async) script exits, so the subagent starts in a ready worktree.
- *
- * Providers are built below the project layers, so the server installs the
- * implementation with `layerInstall` once those exist. Until then, and in
- * tests that skip it, `prepare` does nothing.
- */
+/** Providers precede project layers, so preparation is installed later and defaults to a no-op. */
 export class SubagentWorktreeSetup extends Context.Service<
   SubagentWorktreeSetup,
   {
@@ -38,8 +29,10 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const current = yield* Ref.make<Prepare>(() => Effect.void);
     return SubagentWorktreeSetup.of({
-      prepare: (input) => Ref.get(current).pipe(Effect.flatMap((prepare) => prepare(input))),
-      install: (prepare) => Ref.set(current, prepare),
+      prepare: Effect.fn("SubagentWorktreeSetup.prepare")((input) =>
+        Ref.get(current).pipe(Effect.flatMap((prepare) => prepare(input))),
+      ),
+      install: Effect.fn("SubagentWorktreeSetup.install")((prepare) => Ref.set(current, prepare)),
     });
   }),
 );

@@ -94,13 +94,7 @@ function latestFixedTimeRunAt(
   return null;
 }
 
-/**
- * The occurrence a missed fixed-time run should catch up with, or null to skip
- * it. Only the most recent occurrence is eligible, so a long sleep never
- * replays a backlog, and only while it is still that occurrence's local day: a
- * missed evening brief runs later that evening, not the next morning. `now`
- * must be zoned to the scheduler's local zone.
- */
+/** Catch up only the latest occurrence on its local day. `now` must use the scheduler’s local zone. */
 export function missedRunCatchUpAt(
   schedule: ScheduledTaskSchedule,
   dueAt: DateTime.DateTime,
@@ -118,24 +112,4 @@ export function missedRunCatchUpAt(
     latestParts.day === nowParts.day
     ? latest
     : null;
-}
-
-function describeSchedule(schedule: ScheduledTaskSchedule): string {
-  if (schedule.type === "webhook") return "On webhook";
-  if (schedule.type === "interval") {
-    const minutes = schedule.everyMs / MINUTE_MS;
-    if (Number.isInteger(minutes)) {
-      return `Every ${minutes === 1 ? "minute" : `${minutes} minutes`}`;
-    }
-    return `Every ${Math.round(schedule.everyMs / 1000)} seconds`;
-  }
-
-  const weekdayCount = schedule.weekdays?.length ?? 0;
-  const days =
-    weekdayCount === 0
-      ? "day"
-      : weekdayCount === 5 && schedule.weekdays?.every((day) => day >= 1 && day <= 5)
-        ? "weekday"
-        : "selected day";
-  return `At ${schedule.timeOfDay} every ${days}`;
 }

@@ -1,21 +1,4 @@
-/**
- * ConductorWorkspace - runs a repository's Conductor (conductor.build)
- * workspace lifecycle for T3 worktrees, so repositories set up for Conductor
- * work without a t3.json.
- *
- * Reads `.conductor/settings.toml` (plus `settings.local.toml`, the `.json`
- * equivalents, and legacy `conductor.json`) from the project root. On worktree
- * creation it copies gitignored files matching `.worktreeinclude` /
- * `file_include_globs` from the project root and offers `scripts.setup` as
- * the setup script; before a worktree is removed it runs `scripts.archive`.
- * Scripts get Conductor's `CONDUCTOR_*` variables. Run scripts are not
- * supported yet.
- *
- * Everything here is best effort: unreadable or invalid files are logged and
- * treated as absent, and a failed copy never blocks the worktree.
- *
- * @module ConductorWorkspace
- */
+/** Conductor lifecycle hooks are best effort: unreadable settings or failed copies never block a worktree. */
 import {
   CONDUCTOR_SETTINGS_FILES,
   WORKTREE_INCLUDE_PATH,
@@ -63,7 +46,7 @@ export class ConductorWorkspace extends Context.Service<
   }
 >()("t3/project/ConductorWorkspace") {}
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -254,6 +237,8 @@ export const layer = Layer.effect(ConductorWorkspace, make);
 
 /** A workspace with no Conductor settings, for tests that do not exercise Conductor. */
 export const layerNoop = Layer.succeed(ConductorWorkspace, {
-  prepareWorktree: () => Effect.succeed({ setupScript: null, env: {} }),
-  archiveWorktree: () => Effect.void,
+  prepareWorktree: Effect.fn("ConductorWorkspace.prepareWorktree")(() =>
+    Effect.succeed({ setupScript: null, env: {} }),
+  ),
+  archiveWorktree: Effect.fn("ConductorWorkspace.archiveWorktree")(() => Effect.void),
 });

@@ -127,9 +127,7 @@ const SEARCH_ONLY_TABS: ReadonlySet<ComposerReferenceTab> = new Set([
 ]);
 
 /** Team keys seen in issue identifiers like `ENG-123`, upper-cased. */
-export function linearTeamKeysFromItems(
-  items: ReadonlyArray<ComposerReferenceItem>,
-): ReadonlySet<string> {
+function linearTeamKeysFromItems(items: ReadonlyArray<ComposerReferenceItem>): ReadonlySet<string> {
   const keys = new Set<string>();
   for (const item of items) {
     if (item.type !== "linear-issue") continue;
@@ -163,15 +161,9 @@ function habitualTab(
 }
 
 /**
- * The `#` menu's starting tab, from the shape of the query and what the user has inserted before:
- *
- * - An identifier (`#ENG-123`), or a known Linear team key (`#ENG`), names a Linear issue.
- * - A filesystem path names a checkout. `#owner/name` names a repository, and so does a
- *   hyphenated name (`#cin-questionnaire`) once a default repository owner is set, unless a
- *   local checkout already matches that name.
- * - A number names a pull request, unless a recent GitHub issue has exactly that number.
- * - Otherwise the tab whose recent inserts or preloaded rows match the query, preferring the tab
- *   the user inserts from most, then pull requests.
+ * The `#` menu's starting tab: Linear for `#ENG-123`/team keys; checkout for paths; repository for
+ * `owner/name` or, with a default owner and no matching checkout, a hyphenated name; pull request for
+ * numbers unless a recent issue matches; else the matching tab the user inserts from most.
  */
 export function predictComposerReferenceTab(input: {
   readonly query: string;

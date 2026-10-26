@@ -14,7 +14,7 @@ import { ThreadLinkRow } from "./ThreadLinkRow";
 import { openSlackMessagePicker } from "./SlackMessagePicker";
 
 /** Every Slack link in the environment. Null until the server answers, or on servers without links. */
-export function useSlackThreadLinks(environmentId: EnvironmentId | null) {
+function useSlackThreadLinks(environmentId: EnvironmentId | null) {
   return useEnvironmentQuery(
     environmentId === null ? null : slackEnvironment.threadLinks({ environmentId, input: {} }),
   ).data;

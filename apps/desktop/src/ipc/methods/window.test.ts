@@ -312,7 +312,22 @@ describe("pickProjectFavicon", () => {
             filters: [
               {
                 name: "Images",
-                extensions: ["avif", "gif", "ico", "jpeg", "jpg", "png", "svg", "webp", "icns"],
+                extensions: [
+                  "avif",
+                  "bmp",
+                  "gif",
+                  "ico",
+                  "heic",
+                  "heif",
+                  "jpeg",
+                  "jpg",
+                  "png",
+                  "svg",
+                  "tif",
+                  "tiff",
+                  "webp",
+                  "icns",
+                ],
               },
             ],
           },

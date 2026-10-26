@@ -208,54 +208,54 @@ function GitHubIssuePickerSheet(props: OpenedGitHubIssuePicker & { readonly onCl
     await attach(issue);
   };
 
-  const attach = async (issue: GitHubIssueSummary) => {
-    setAttaching(issue.url);
-    try {
-      if (props.mode === "link") {
-        const linked = await linkThread({
-          environmentId: props.environmentId,
-          input: { threadId: props.threadId, url: issue.url },
-        });
-        if (linked._tag === "Failure") {
-          Alert.alert(
-            "Could not link issue",
-            gitHubIssueErrorMessage(squashAtomCommandFailure(linked), "Try again."),
-          );
-          return;
-        }
-        props.onClose();
-        return;
-      }
-      const fetched = await getIssue({
+  const attachSelected = async (issue: GitHubIssueSummary) => {
+    if (props.mode === "link") {
+      const linked = await linkThread({
         environmentId: props.environmentId,
-        input: { url: issue.url },
+        input: { threadId: props.threadId, url: issue.url },
       });
-      if (fetched._tag === "Failure") {
+      if (linked._tag === "Failure") {
         Alert.alert(
-          "Could not attach issue",
-          gitHubIssueErrorMessage(squashAtomCommandFailure(fetched), "Try again."),
+          "Could not link issue",
+          gitHubIssueErrorMessage(squashAtomCommandFailure(linked), "Try again."),
         );
         return;
       }
-      const record = gitHubIssueContextRecord(fetched.value);
-      if (
-        !insertComposerDraftContext(
-          props.draftKey,
-          {
-            text: formatComposerContextReference(record),
-            context: { version: 1, records: [record] },
-          },
-          props.insertion,
-        )
-      ) {
-        Alert.alert("Too many context items", "Remove some context from the draft and try again.");
-        return;
-      }
-      if (startFrom) startFromIssueUrls.set(props.draftKey, issue.url);
       props.onClose();
-    } finally {
-      setAttaching(null);
+      return;
     }
+    const fetched = await getIssue({
+      environmentId: props.environmentId,
+      input: { url: issue.url },
+    });
+    if (fetched._tag === "Failure") {
+      Alert.alert(
+        "Could not attach issue",
+        gitHubIssueErrorMessage(squashAtomCommandFailure(fetched), "Try again."),
+      );
+      return;
+    }
+    const record = gitHubIssueContextRecord(fetched.value);
+    if (
+      !insertComposerDraftContext(
+        props.draftKey,
+        {
+          text: formatComposerContextReference(record),
+          context: { version: 1, records: [record] },
+        },
+        props.insertion,
+      )
+    ) {
+      Alert.alert("Too many context items", "Remove some context from the draft and try again.");
+      return;
+    }
+    if (startFrom) startFromIssueUrls.set(props.draftKey, issue.url);
+    props.onClose();
+  };
+
+  const attach = async (issue: GitHubIssueSummary) => {
+    setAttaching(issue.url);
+    await attachSelected(issue).finally(() => setAttaching(null));
   };
 
   return (

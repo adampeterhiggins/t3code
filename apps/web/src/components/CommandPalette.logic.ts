@@ -68,15 +68,7 @@ export function browseInputEndPaddingClass(input: {
   return "*:data-[slot=autocomplete-input]:pe-24!";
 }
 
-/**
- * The global search overlay hosts three mutually exclusive surfaces: the
- * command palette (⌘K), the project file picker (⌘P), and project content
- * search (⇧⌘F). One reducer owns open/mode state so the surfaces can never
- * stack and re-triggering a mode's shortcut toggles it closed.
- *
- * Like VS Code's quick open, typing `>` in the file picker hands the query to
- * the command palette's actions-only search, and deleting the `>` hands it back.
- */
+/** The global search overlay hosts three mutually exclusive surfaces: the command palette (⌘K), the project file picker (⌘P), and project content search (⇧⌘F). */
 export type SearchOverlayMode = "command" | "files" | "content";
 
 export type CommandPaletteOpenIntent =
@@ -842,8 +834,8 @@ export function buildPaletteRemoteSourceReadiness(
       : {
           ...entry,
           hint: entry.hint.replace(
-            "Open Source Control settings",
-            "Open Settings -> Source Control",
+            "Open source control settings",
+            "Open Settings -> Source control",
           ),
         };
   };

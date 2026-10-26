@@ -135,7 +135,7 @@ interface GranolaMeeting extends GranolaNoteSummary {
  * Granola lists participants as `Ada Lovelace (note creator) from Acme <ada@acme.com>, …`. Names
  * come without the role, company, and address; the description keeps the company for agents.
  */
-export function readParticipants(value: string) {
+function readParticipants(value: string) {
   const text = value
     .replace(/\s*<[^>]*>/gu, "")
     .replace(/\s+/gu, " ")

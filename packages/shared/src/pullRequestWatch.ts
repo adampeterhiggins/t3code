@@ -4,7 +4,7 @@ import type { ThreadPullRequestSnapshot, ThreadPullRequestWatch } from "@t3tools
 export const PULL_REQUEST_WATCH_FOLLOW_UP_LIMIT = 3;
 
 /** The watch paused itself because its follow-up budget ran out. */
-export function pullRequestWatchExhausted(watch: ThreadPullRequestWatch): boolean {
+function pullRequestWatchExhausted(watch: ThreadPullRequestWatch): boolean {
   return watch.paused === true && (watch.followUps ?? 0) >= PULL_REQUEST_WATCH_FOLLOW_UP_LIMIT;
 }
 

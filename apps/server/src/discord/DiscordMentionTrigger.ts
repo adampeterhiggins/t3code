@@ -95,7 +95,7 @@ export class DiscordMentionTrigger extends Context.Service<
   }
 >()("t3/discord/DiscordMentionTrigger") {}
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const auth = yield* DiscordAuth.DiscordAuth;
   const discord = yield* DiscordApi.DiscordApi;
@@ -251,7 +251,7 @@ const stateStoreLayer = Layer.unwrap(
   }),
 );
 
-export const layer = Layer.effect(DiscordMentionTrigger, make).pipe(
+const layer = Layer.effect(DiscordMentionTrigger, make).pipe(
   Layer.provide(stateStoreLayer),
   Layer.catch(() => {
     const unavailable = Effect.logWarning(

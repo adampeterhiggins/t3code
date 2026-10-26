@@ -105,7 +105,7 @@ const avatarUrl = (user: User) =>
     ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=64`
     : `https://cdn.discordapp.com/embed/avatars/${(BigInt(user.id) >> 22n) % 6n}.png`;
 
-export const discordMessageUrl = (guildId: string, channelId: string, messageId: string) =>
+const discordMessageUrl = (guildId: string, channelId: string, messageId: string) =>
   `https://discord.com/channels/${guildId}/${channelId}/${messageId}`;
 
 /** A message that @mentions a user, as the mention trigger reads it. */
@@ -149,7 +149,7 @@ export class DiscordApi extends Context.Service<
   }
 >()("t3/discord/DiscordApi") {}
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const auth = yield* DiscordAuth;
   const services = Context.make(HttpClient.HttpClient, yield* HttpClient.HttpClient);

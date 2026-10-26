@@ -1,3 +1,4 @@
+/* oxlint-disable react/no-array-index-key -- Read-only preview rows can repeat identical text and have no local state. */
 import type {
   GitHubRefContextRecord,
   LinearObjectContextRecord,
@@ -31,6 +32,7 @@ import { composerObjectLinkNoun } from "@t3tools/source-control-definitions/comp
 import {
   Fragment,
   useRef,
+  useEffect,
   useState,
   type ComponentProps,
   type CSSProperties,
@@ -38,6 +40,8 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
+import { useAssetUrlState } from "~/assets/assetUrls";
+import { documentIconColorForFileName } from "~/pierre-icons";
 
 import { PULL_REQUEST_STATE_PRESENTATION } from "~/components/pullRequest/pullRequestIcons";
 import type { PullRequestContextDisplayState } from "~/lib/composerContextRecords";
@@ -128,7 +132,7 @@ export function ContextChipPopover(props: {
   state?: "unresolved" | "invalid";
   icon: ReactNode;
   label: string;
-  copyMarkdown?: string;
+  copyMarkdown?: string | undefined;
   accessibleLabel: string;
   onIntent?: () => void;
   stayOpenAfterPress?: boolean;
@@ -332,13 +336,17 @@ export function ImageChipButton({
   previewUrl,
   size,
   suffix,
+  disabled,
+  onPreviewError,
   style,
   ...props
 }: Omit<ComponentProps<typeof ContextChip>, "kind" | "render"> & {
   name: string;
   previewUrl: string | undefined;
   size: string;
-  suffix?: string | null;
+  suffix?: string | null | undefined;
+  disabled?: boolean | undefined;
+  onPreviewError?: (() => void) | undefined;
 }) {
   const [sample, setSample] = useState<{ url: string; color: string | undefined }>();
   const [corsFailedUrl, setCorsFailedUrl] = useState<string>();
@@ -346,7 +354,7 @@ export function ImageChipButton({
   return (
     <ContextChip
       kind="image"
-      render={<button type="button" />}
+      render={<button type="button" disabled={disabled} />}
       aria-label={`Image attachment, ${name}, ${size}`}
       style={{ ...style, ...(accent ? { "--context-chip-accent": accent } : {}) } as CSSProperties}
       {...props}
@@ -358,7 +366,10 @@ export function ImageChipButton({
           src={previewUrl}
           alt=""
           className="size-[1.17em] shrink-0 rounded-sm object-cover"
-          onError={() => setCorsFailedUrl(previewUrl)}
+          onError={() => {
+            if (corsFailedUrl === previewUrl) onPreviewError?.();
+            else setCorsFailedUrl(previewUrl);
+          }}
           onLoad={(event) =>
             setSample({ url: previewUrl, color: averageImageColor(event.currentTarget) })
           }
@@ -387,6 +398,8 @@ export function FileChip({
   error,
   unresolved,
   onOpen,
+  svgPreview,
+  tooltip,
   ...rest
 }: Omit<ComponentProps<typeof ContextChip>, "kind" | "render" | "children" | "onClick"> & {
   name: string;
@@ -394,19 +407,48 @@ export function FileChip({
   isVideo: boolean;
   theme: "light" | "dark";
   accessibleLabel: string;
-  suffix?: string | null;
-  copyMarkdown?: string;
-  disabled?: boolean;
-  error?: boolean;
-  unresolved?: boolean;
+  suffix?: string | null | undefined;
+  copyMarkdown?: string | undefined;
+  disabled?: boolean | undefined;
+  error?: boolean | undefined;
+  unresolved?: boolean | undefined;
   onOpen?: (() => void) | undefined;
+  tooltip?: ReactNode;
+  svgPreview?:
+    | {
+        file?: Blob | null | undefined;
+        environmentId?: EnvironmentId | undefined;
+        attachmentId?: string | undefined;
+      }
+    | undefined;
 }) {
-  const content = (
-    <FileChipContent name={name} size={size} isVideo={isVideo} theme={theme} suffix={suffix} />
-  );
+  if (svgPreview && !unresolved)
+    return (
+      <SvgFileChip
+        {...{
+          name,
+          size,
+          isVideo,
+          theme,
+          accessibleLabel,
+          suffix,
+          copyMarkdown,
+          disabled,
+          error,
+          unresolved,
+          onOpen,
+          svgPreview,
+          tooltip,
+          ...rest,
+        }}
+      />
+    );
+  const content = <FileChipContent {...{ name, size, isVideo, theme, suffix }} />;
+  const accent = isVideo ? undefined : documentIconColorForFileName(name);
   const state = unresolved ? ("unresolved" as const) : error ? ("invalid" as const) : null;
   const attributes = {
     kind: isVideo ? "video" : "file",
+    style: accent ? ({ "--context-chip-accent": accent } as CSSProperties) : undefined,
     ...(state ? { state } : {}),
     "aria-label": [accessibleLabel, suffix].filter(Boolean).join(", "),
     "data-markdown-copy": copyMarkdown,
@@ -434,6 +476,65 @@ export function ImageAttachmentPreview(props: { url: string }) {
     <div className="overflow-hidden rounded-t-lg border-b border-border/70 bg-muted/40">
       <img src={props.url} alt="" className="mx-auto block max-h-64 max-w-full object-contain" />
     </div>
+  );
+}
+
+function SvgFileChip(props: ComponentProps<typeof FileChip>) {
+  const preview = props.svgPreview;
+  const [local, setLocal] = useState<{ file: Blob; url: string }>();
+  const [failedPreviewUrl, setFailedPreviewUrl] = useState<string>();
+  const asset = useAssetUrlState(
+    preview?.file ? null : (preview?.environmentId ?? null),
+    preview?.attachmentId
+      ? {
+          _tag: "attachment",
+          attachmentId: preview.attachmentId,
+          fileName: props.name,
+          mimeType: "image/svg+xml",
+          disposition: "inline",
+        }
+      : null,
+  );
+  useEffect(() => {
+    const file = preview?.file;
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    // oxlint-disable-next-line react/set-state-in-effect -- Publish a Blob URL with its cleanup registered.
+    setLocal({ file, url });
+    return () => URL.revokeObjectURL(url);
+  }, [preview?.file]);
+  const url = preview?.file
+    ? local?.file === preview.file
+      ? local.url
+      : undefined
+    : asset._tag === "Success"
+      ? asset.url
+      : undefined;
+  if (url !== undefined && failedPreviewUrl === url) {
+    return <FileChip {...props} svgPreview={undefined} />;
+  }
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <ImageChipButton
+            name={props.name}
+            size={props.size}
+            previewUrl={url}
+            suffix={props.suffix}
+            disabled={props.disabled}
+            onClick={props.onOpen}
+            onPreviewError={() => setFailedPreviewUrl(url)}
+            data-markdown-copy={props.copyMarkdown}
+            aria-label={props.accessibleLabel}
+            {...(props.error ? { state: "invalid" as const } : {})}
+          />
+        }
+      />
+      <TooltipPopup side="top" className="whitespace-pre-wrap">
+        {props.tooltip}
+      </TooltipPopup>
+    </Tooltip>
   );
 }
 
@@ -609,7 +710,7 @@ export function LinearIssueMarkdown({ markdown, url }: { markdown: string; url: 
 }
 
 /** A GitHub issue snapshot, rendered by the server from its description and comments. */
-export function GitHubIssueMarkdown({ markdown }: { markdown: string }) {
+function GitHubIssueMarkdown({ markdown }: { markdown: string }) {
   return <IssueMarkdownBody text={markdown} />;
 }
 

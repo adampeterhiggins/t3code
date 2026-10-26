@@ -50,7 +50,7 @@ export type AgentMenuTarget =
   | { childThreadId: null; subagentId: NodeId; title: string };
 
 /** The Agents panel's key for an agent (`AgentFleetEntry.key`). */
-export function agentMenuTargetKey(agent: AgentMenuTarget): string {
+function agentMenuTargetKey(agent: AgentMenuTarget): string {
   return agent.childThreadId ?? `subagent:${agent.subagentId}`;
 }
 
@@ -67,11 +67,9 @@ export function showAgentsPanel(parentRef: ScopedThreadRef): void {
 }
 
 /**
- * Returns a context-menu handler for the agents listed in `parentRef`'s chat. Tabs open in
- * `parentRef`'s right panel. A nested agent names its `ownerThreadId`, the subagent thread that
- * spawned it, whose record is loaded when the menu opens. An agent without a child thread has no
- * tab. `showInAgentsPanel` adds the item that opens the Agents panel, for lists other than that
- * panel.
+ * Context-menu handler for agents listed in `parentRef`'s chat; tabs open in its right panel. A
+ * nested agent's `ownerThreadId` record loads when the menu opens; agents without a child thread
+ * have no tab. `showInAgentsPanel` adds an Agents panel item for lists outside that panel.
  */
 export function useAgentContextMenu(
   parentRef: ScopedThreadRef,

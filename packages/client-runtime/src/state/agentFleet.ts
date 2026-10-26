@@ -1,10 +1,6 @@
 /**
- * Fork: a thread's whole agent fleet over orchestration-v2 data, for the Agents
- * panel, plus the per-agent presentation the thread-details Lineage rows share.
- *
- * Every subagent is a child thread. The viewed thread's projection carries the
- * records of the agents it spawned (prompt, result, usage); agents those agents
- * spawned are found through thread shells' lineage alone, so listing them never
+ * Fork: a thread's agent fleet for the Agents panel and Lineage rows. Direct agents come from the
+ * viewed thread's projection; deeper ones only from shell lineage, so listing them never
  * subscribes to another thread's projection.
  */
 import {
@@ -72,7 +68,7 @@ function isoOrNull(value: DateTime.Utc | null | undefined): string | null {
  * the child follow-ups. While the child thread has a live run, the agent's
  * status and timer follow that run instead of the settled task.
  */
-export function liveSubagent<Agent extends RuntimeSubagent>(
+function liveSubagent<Agent extends RuntimeSubagent>(
   agent: Agent | undefined,
   childThread: OrchestrationV2ThreadShell | null | undefined,
 ): Agent | undefined {
@@ -119,7 +115,7 @@ export function subagentFromRecord(
 }
 
 /** An agent known only from its child thread's shell: status and timing, no prompt or result. */
-export function shellSubagent(shell: OrchestrationV2ThreadShell): RuntimeSubagent {
+function shellSubagent(shell: OrchestrationV2ThreadShell): RuntimeSubagent {
   const status = edgeAgentStatus(shell.activityRunStatus ?? shell.status);
   const live = shell.activityRunStatus != null;
   const startedAt = shell.activityRunStartedAt ?? shell.latestRunStartedAt ?? null;

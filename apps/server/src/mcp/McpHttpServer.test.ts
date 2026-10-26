@@ -683,7 +683,8 @@ it.effect(
       const linkTool = server.tools.find(({ tool }) => tool.name === "link_pull_request");
       expect(linkTool?.tool.annotations?.idempotentHint).toBe(true);
       expect(linkTool?.tool.annotations?.openWorldHint).toBe(false);
-      expect(linkTool?.tool.description).toContain("Register every pull request you open");
+      expect(linkTool?.tool.description).toContain("Link a PR to this thread");
+      expect(linkTool?.tool.description).toContain("settles the thread on merge");
 
       const denied = yield* server
         .callTool({ name: "list_thread_pull_requests", arguments: {} })
@@ -997,7 +998,6 @@ it.effect("registers annotated tools and preserves authenticated request context
       expect(clickTool?.tool.outputSchema).toMatchObject({
         type: "object",
         additionalProperties: true,
-        description: "The preview action completed successfully.",
       });
 
       const navigateTool = server.tools.find(({ tool }) => tool.name === "preview_navigate");

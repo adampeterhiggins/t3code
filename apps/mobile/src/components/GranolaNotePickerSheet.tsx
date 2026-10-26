@@ -173,43 +173,43 @@ function GranolaNoteSearch(props: OpenedGranolaNotePicker & { readonly onClose: 
     props.onClose();
   };
 
+  const attachSelected = async (note: GranolaNoteSummary) => {
+    if (props.mode === "link") {
+      await link(props.threadId, note);
+      return;
+    }
+    const fetched = await getNote({
+      environmentId: props.environmentId,
+      input: { id: note.id },
+    });
+    if (fetched._tag === "Failure") {
+      Alert.alert(
+        "Could not attach Granola note",
+        granolaErrorMessage(squashAtomCommandFailure(fetched), "Try again."),
+      );
+      return;
+    }
+    const record = granolaNoteContextRecord(fetched.value);
+    if (
+      !insertComposerDraftContext(
+        props.draftKey,
+        {
+          text: formatComposerContextReference(record),
+          context: { version: 1, records: [record] },
+        },
+        props.insertion,
+      )
+    ) {
+      Alert.alert("Too many context items", "Remove some context from the draft and try again.");
+      return;
+    }
+    props.onClose();
+  };
+
   const attach = async (note: GranolaNoteSummary) => {
     if (attaching) return;
     setAttaching(note.id);
-    try {
-      if (props.mode === "link") {
-        await link(props.threadId, note);
-        return;
-      }
-      const fetched = await getNote({
-        environmentId: props.environmentId,
-        input: { id: note.id },
-      });
-      if (fetched._tag === "Failure") {
-        Alert.alert(
-          "Could not attach Granola note",
-          granolaErrorMessage(squashAtomCommandFailure(fetched), "Try again."),
-        );
-        return;
-      }
-      const record = granolaNoteContextRecord(fetched.value);
-      if (
-        !insertComposerDraftContext(
-          props.draftKey,
-          {
-            text: formatComposerContextReference(record),
-            context: { version: 1, records: [record] },
-          },
-          props.insertion,
-        )
-      ) {
-        Alert.alert("Too many context items", "Remove some context from the draft and try again.");
-        return;
-      }
-      props.onClose();
-    } finally {
-      setAttaching(null);
-    }
+    await attachSelected(note).finally(() => setAttaching(null));
   };
 
   return (

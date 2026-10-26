@@ -499,30 +499,6 @@ export const SlackIcon: Icon = (props) => (
     <path d={INTEGRATION_ICONS.slack.path} />
   </svg>
 );
-export const MacScreenRecordingIcon: Icon = (props) => {
-  const gradientId = useId();
-  return (
-    <svg viewBox="0 0 32 32" aria-hidden="true" {...props}>
-      <defs>
-        <linearGradient id={gradientId} x2="0" y2="1">
-          <stop stopColor="#ff6972" />
-          <stop offset="1" stopColor="#ff2938" />
-        </linearGradient>
-      </defs>
-      <rect
-        x="0.5"
-        y="0.5"
-        width="31"
-        height="31"
-        rx="7"
-        fill={`url(#${gradientId})`}
-        stroke="#ffffff40"
-      />
-      <circle cx="16" cy="16" r="10" fill="none" stroke="#fff" strokeWidth="2" />
-      <circle cx="16" cy="16" r="4.5" fill="#fff" />
-    </svg>
-  );
-};
 
 /** Discord's mark (Simple Icons, CC0). Fills with `currentColor`, so it takes the surrounding text color. */
 export const DiscordIcon: Icon = (props) => (

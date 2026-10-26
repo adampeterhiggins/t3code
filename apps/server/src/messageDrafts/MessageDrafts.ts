@@ -1,3 +1,4 @@
+import * as DocumentText from "../provider/DocumentText.ts";
 import {
   ChatAttachment,
   CommandId,
@@ -102,7 +103,10 @@ const make = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
   // Attachment claims and sends read these per call.
   const services = yield* Effect.context<
-    ThreadManagement.ThreadManagementService | ServerConfig.ServerConfig | FileSystem.FileSystem
+    | ThreadManagement.ThreadManagementService
+    | ServerConfig.ServerConfig
+    | FileSystem.FileSystem
+    | DocumentText.DocumentText
   >();
 
   // A row that no longer decodes is skipped rather than failing every subscriber.

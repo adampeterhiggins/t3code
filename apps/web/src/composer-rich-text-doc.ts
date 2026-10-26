@@ -152,7 +152,7 @@ export const ComposerCodeExtension = Code.extend({
  * Tiptap's `_text_` rules fire on the `_` in names like `node_modules` and
  * italicize back to an earlier `_build`, even one inside a code span.
  */
-export const ComposerItalicExtension = Italic.extend({
+const ComposerItalicExtension = Italic.extend({
   addInputRules() {
     return [markInputRule({ find: starInputRegex, type: this.type })];
   },
@@ -162,11 +162,8 @@ export const ComposerItalicExtension = Italic.extend({
 });
 
 /**
- * With code no longer excluding emphasis, Tiptap's mark input rules would
- * take a `*`, `_` or `~` inside a code span as their opener: typing `*` after
- * `` `ls *.ts` then `` italicised from inside the code and ate its marker.
- * Code spans bind tighter than emphasis in Markdown, so an opener in code
- * does not count.
+ * Code no longer excludes emphasis, so Tiptap's input rules would treat `*`, `_` or `~` inside a
+ * code span as an opener. Code binds tighter than emphasis in Markdown, so openers in code don't count.
  */
 function withoutOpenersInCode(rules: InputRule[] | undefined): InputRule[] {
   return (rules ?? []).map(

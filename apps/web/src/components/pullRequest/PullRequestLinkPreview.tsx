@@ -12,7 +12,7 @@ import {
 } from "react";
 
 import { useLinkClickHandler } from "~/browser/useOpenLink";
-import { formatRelativeTimeLabel } from "~/timestampFormat";
+
 import { RelativeTime } from "~/components/RelativeTime";
 import { pullRequestEnvironment } from "~/state/pullRequests";
 import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
@@ -73,9 +73,9 @@ export function PullRequestLinkPreview({
   const previewActionsRef = useRef<PreviewCardPrimitive.Root.Actions | null>(null);
   const [resolvingClick, setResolvingClick] = useState(false);
   const openLink = useLinkClickHandler(null);
-  const detailQuery = useEnvironmentQuery(
+  const previewQuery = useEnvironmentQuery(
     open
-      ? pullRequestEnvironment.detail({
+      ? pullRequestEnvironment.previewCard({
           environmentId: target.environmentId,
           input: target.input,
         })
@@ -116,13 +116,13 @@ export function PullRequestLinkPreview({
           },
         })
       : link;
-  const detail = detailQuery.data;
-  const showCard = detail !== null || (detailQuery.error !== null && fallback !== undefined);
-  const showUrlTooltip = open && detailQuery.error !== null && !showCard;
+  const preview = previewQuery.data;
+  const showCard = preview !== null || (previewQuery.error !== null && fallback !== undefined);
+  const showUrlTooltip = open && previewQuery.error !== null && !showCard;
   const state =
-    detail === null
+    preview === null
       ? null
-      : resolvePullRequestState({ state: detail.state, isDraft: detail.isDraft });
+      : resolvePullRequestState({ state: preview.state, isDraft: preview.isDraft });
   const linkedComment =
     activityQuery.data === null ? null : findPullRequestComment(activityQuery.data, originalUrl);
 
@@ -152,13 +152,13 @@ export function PullRequestLinkPreview({
       {showCard ? (
         <PreviewCardPopup {...cursorAnchor.popupProps} className="w-80 max-w-[calc(100vw-2rem)]">
           <div className="p-3">
-            {detail === null ? (
+            {preview === null ? (
               fallback
             ) : (
               <div className="min-w-0">
                 <div className="flex min-w-0 items-center gap-1.5 text-2xs text-muted-foreground">
-                  <span className="min-w-0 truncate">{detail.repository}</span>
-                  <span className="shrink-0">#{detail.number}</span>
+                  <span className="min-w-0 truncate">{preview.repository}</span>
+                  <span className="shrink-0">#{preview.number}</span>
                   <span aria-hidden>·</span>
                   {state === null ? null : (
                     <span className="inline-flex shrink-0 items-center gap-1">
@@ -167,25 +167,25 @@ export function PullRequestLinkPreview({
                     </span>
                   )}
                   <a
-                    href={linkedComment?.comment.url ?? detail.url}
+                    href={linkedComment?.comment.url ?? preview.url}
                     target="_blank"
                     rel="noreferrer"
                     className="ml-auto shrink-0 pl-2 underline-offset-2 hover:text-foreground hover:underline"
-                    onClick={(event) => openLink(event, linkedComment?.comment.url ?? detail.url)}
+                    onClick={(event) => openLink(event, linkedComment?.comment.url ?? preview.url)}
                   >
                     Open
                   </a>
                 </div>
                 <p className="mt-1 text-sm font-medium leading-snug text-foreground text-pretty">
-                  {detail.title}
+                  {preview.title}
                 </p>
                 {linkedComment === null ? (
                   <div className="mt-2 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-                    <PullRequestActorAvatar actor={detail.author} className="size-4" />
-                    <span className="min-w-0 truncate">{actorLabel(detail.author)}</span>
+                    <PullRequestActorAvatar actor={preview.author} className="size-4" />
+                    <span className="min-w-0 truncate">{actorLabel(preview.author)}</span>
                     <span aria-hidden>·</span>
                     <span className="shrink-0">
-                      opened <RelativeTime timestamp={detail.createdAt} />
+                      opened <RelativeTime timestamp={preview.createdAt} />
                     </span>
                   </div>
                 ) : (

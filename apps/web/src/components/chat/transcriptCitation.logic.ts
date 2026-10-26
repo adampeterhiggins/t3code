@@ -159,10 +159,7 @@ export function buildTranscriptCitation({
 }
 
 /** The row that shows a timeline item: its message row, or the tool row that lists the call. */
-export function transcriptItemRowIndex(
-  rows: ReadonlyArray<MessagesTimelineRow>,
-  itemId: string,
-): number {
+function transcriptItemRowIndex(rows: ReadonlyArray<MessagesTimelineRow>, itemId: string): number {
   return rows.findIndex((row) => {
     if (row.kind === "message") return row.message.id === itemId;
     if (row.kind === "work") return row.groupedEntries.some((entry) => entry.id === itemId);
@@ -176,7 +173,7 @@ export function transcriptItemRowIndex(
 /** The first row showing any item a citation quotes, so a folded or collapsed start still lands. */
 export function citationRowIndex(
   rows: ReadonlyArray<MessagesTimelineRow>,
-  citation: AssistantCitation,
+  citation: { readonly messageId: string; readonly segments?: AssistantCitation["segments"] },
 ): number {
   if (!citation.segments) {
     return rows.findIndex((row) => row.kind === "message" && row.message.id === citation.messageId);

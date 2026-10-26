@@ -1,67 +1,58 @@
 import "../../index.css";
 
+import { InfoIcon } from "lucide-react";
+import { render as renderScreen } from "../../../test/render";
 import { RunId } from "@t3tools/contracts";
-import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
+import { act } from "../../../test/render";
+import { expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
 import { Button, InlineButton } from "../ui/button";
 
-import { ComposerBannerStack } from "./ComposerBannerStack";
+import { ComposerBannerStack, type ComposerBannerStackItem } from "./ComposerBannerStack";
 import { usageLimitRecoveryBannerItem } from "./UsageLimitRecoveryBanner";
 
-let root: Root;
-let container: HTMLDivElement;
-
-beforeEach(() => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  container = document.createElement("div");
-  document.body.append(container);
-  root = createRoot(container);
-});
-
-afterEach(async () => {
-  await act(async () => root.unmount());
-  container.remove();
-  vi.unstubAllGlobals();
-});
-
-const nextFrame = () =>
-  act(() => new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0))));
-
-async function render(width: number, description: string) {
-  container.style.width = `${width}px`;
-  await act(async () =>
-    root.render(
+async function setup() {
+  const screen = await renderScreen(null);
+  const container = screen.container;
+  const hasDetails = () => container.querySelector('[aria-label="Show notice details"]') !== null;
+  const render = async (width: number, description: string) => {
+    container.style.width = `${width}px`;
+    await screen.rerender(
       <ComposerBannerStack
         items={[{ id: "usage", variant: "info", icon: null, title: "Usage limits", description }]}
       />,
-    ),
-  );
-  await nextFrame();
+    );
+  };
+  return {
+    screen,
+    container,
+    render,
+    hasDetails,
+    [Symbol.asyncDispose]: () => screen[Symbol.asyncDispose](),
+  };
 }
 
-const hasDetails = () => container.querySelector('[aria-label="Show notice details"]') !== null;
-
 it("only offers notice details when the description cannot fit", async () => {
+  await using fixture = await setup();
+  const { container, render, hasDetails } = fixture;
   await render(700, "OpenCode");
-  expect(hasDetails()).toBe(false);
+  await vi.waitFor(() => expect(hasDetails()).toBe(false));
 
   await render(700, "OpenCode ".repeat(40));
-  expect(hasDetails()).toBe(true);
+  await vi.waitFor(() => expect(hasDetails()).toBe(true));
 
   container.style.width = "4000px";
-  await nextFrame();
-  expect(hasDetails()).toBe(false);
+
+  await vi.waitFor(() => expect(hasDetails()).toBe(false));
 
   await render(4000, "OpenCode");
-  expect(hasDetails()).toBe(false);
+  await vi.waitFor(() => expect(hasDetails()).toBe(false));
 
   // A narrow composer hides the description entirely, so details are the only way to read it.
   container.style.width = "300px";
-  await nextFrame();
-  expect(hasDetails()).toBe(true);
+
+  await vi.waitFor(() => expect(hasDetails()).toBe(true));
   const details = container.querySelector<HTMLElement>('[aria-label="Show notice details"]')!;
   const detailsBounds = details.getBoundingClientRect();
   const bannerBounds = container
@@ -74,6 +65,8 @@ it("only offers notice details when the description cannot fit", async () => {
 });
 
 it("does not flash a wrapped action row when the details button appears", async () => {
+  await using fixture = await setup();
+  const { screen, container, hasDetails } = fixture;
   const description = "Resumes automatically about a minute after 10/20/2026, 11:30:00 PM";
   const actions = (
     <>
@@ -95,7 +88,7 @@ it("does not flash a wrapped action row when the details button appears", async 
   for (let width = 480; width <= 1100; width += 20) {
     container.style.width = `${width}px`;
     await act(async () =>
-      root.render(
+      screen.rerender(
         <ComposerBannerStack
           items={[
             {
@@ -119,22 +112,23 @@ it("does not flash a wrapped action row when the details button appears", async 
         details: hasDetails(),
       };
     };
-    await nextFrame();
+
     const first = sample();
     for (let frame = 0; frame < 8; frame += 1) {
-      await nextFrame();
       expect(sample(), `width ${width}px`).toEqual(first);
     }
   }
 });
 
 it("keeps the usage-limit reset time on the details hover", async () => {
+  await using fixture = await setup();
+  const { screen, container } = fixture;
   await page.viewport(760, 800);
   container.style.width = "720px";
   const runId = RunId.make("run");
   const resetAt = "2026-10-20T22:30:00.000Z";
   await act(async () =>
-    root.render(
+    screen.rerender(
       <ComposerBannerStack
         items={[
           usageLimitRecoveryBannerItem({
@@ -144,6 +138,7 @@ it("keeps the usage-limit reset time on the details hover", async () => {
             snoozedUntil: null,
             recovery: { runId, resetAt, autoResume: true },
             onChange: async () => {},
+            timestampFormat: "locale",
             onResumeNow: async () => {},
             continueElsewhere: null,
           }),
@@ -151,7 +146,6 @@ it("keeps the usage-limit reset time on the details hover", async () => {
       />,
     ),
   );
-  await nextFrame();
 
   const banner = container.querySelector<HTMLElement>('[data-slot="composer-banner"]')!;
   const title = page.getByText("Usage limit reached", { exact: true });
@@ -173,7 +167,6 @@ it("keeps the usage-limit reset time on the details hover", async () => {
 
   const height = banner.getBoundingClientRect().height;
   for (let frame = 0; frame < 6; frame += 1) {
-    await nextFrame();
     expect(banner.getBoundingClientRect().height).toBe(height);
   }
 
@@ -192,12 +185,14 @@ it("keeps the usage-limit reset time on the details hover", async () => {
 });
 
 it("offers one details button when the usage-limit title is clipped", async () => {
+  await using fixture = await setup();
+  const { screen, container } = fixture;
   await page.viewport(400, 800);
   container.style.width = "360px";
   const runId = RunId.make("run");
   const resetAt = "2026-10-20T22:30:00.000Z";
   await act(async () =>
-    root.render(
+    screen.rerender(
       <ComposerBannerStack
         items={[
           usageLimitRecoveryBannerItem({
@@ -207,6 +202,7 @@ it("offers one details button when the usage-limit title is clipped", async () =
             snoozedUntil: null,
             recovery: null,
             onChange: async () => {},
+            timestampFormat: "locale",
             onResumeNow: async () => {},
             continueElsewhere: null,
           }),
@@ -214,7 +210,6 @@ it("offers one details button when the usage-limit title is clipped", async () =
       />,
     ),
   );
-  await nextFrame();
 
   const title = container.querySelector<HTMLElement>(".truncate.font-medium")!;
   expect(title.scrollWidth).toBeGreaterThan(title.clientWidth);
@@ -229,12 +224,14 @@ it("offers one details button when the usage-limit title is clipped", async () =
 it.each([320, 800])(
   "keeps long background-work links reachable beside Stop in a %ipx composer",
   async (width) => {
+    await using fixture = await setup();
+    const { screen, container } = fixture;
     await page.viewport(width + 32, 800);
     container.style.width = `${width}px`;
     const openThread = vi.fn();
     const label = "Review the background task layout and child-thread navigation ".repeat(6);
     await act(async () =>
-      root.render(
+      screen.rerender(
         <ComposerBannerStack
           items={[
             {
@@ -267,7 +264,6 @@ it.each([320, 800])(
         />,
       ),
     );
-    await nextFrame();
 
     const firstLink = page.getByRole("button", { name: "Open subagent 1", exact: true });
     const lastLink = page.getByRole("button", { name: "Open subagent 12", exact: true });
@@ -295,7 +291,7 @@ it.each([320, 800])(
     expect(openThread).toHaveBeenLastCalledWith(1);
 
     viewport.scrollTop = viewport.scrollHeight;
-    await nextFrame();
+
     expect(viewport.scrollTop).toBeGreaterThan(0);
     const lastBounds = lastLink.element().getBoundingClientRect();
     expect(lastBounds.top).toBeGreaterThanOrEqual(scrollBounds.top);
@@ -315,8 +311,10 @@ it.each([320, 800])(
 );
 
 it("keeps only the usage limit attached while an active goal waits in the collapsible stack", async () => {
+  await using fixture = await setup();
+  const { screen, container } = fixture;
   await act(async () =>
-    root.render(
+    screen.rerender(
       <ComposerBannerStack
         items={[
           {
@@ -353,23 +351,25 @@ it("keeps only the usage limit attached while an active goal waits in the collap
     "Usage limit reached",
   );
 
-  await act(async () => page.getByRole("button", { name: "Show other notices" }).click());
+  await page.getByRole("button", { name: "Show other notices" }).click();
   await expect.element(goal).toBeVisible();
   await expect.element(limit).toBeVisible();
   await expect.poll(visibleBanners).toHaveLength(2);
 
-  await act(async () => userEvent.keyboard("{Escape}"));
+  await userEvent.keyboard("{Escape}");
   await expect.element(goal).not.toBeVisible();
   await expect.element(limit).toBeVisible();
   expect(visibleBanners()).toHaveLength(1);
 });
 
 it("reveals the full running command only while its title is clipped", async () => {
+  await using fixture = await setup();
+  const { screen, container } = fixture;
   const command =
     "Running: /usr/bin/zsh -lc 'sleep 600 > /tmp/t3-background-command-with-a-long-log-filename-for-truncation.log 2>&1'";
   container.style.width = "240px";
   await act(async () =>
-    root.render(
+    screen.rerender(
       <ComposerBannerStack
         items={[
           {
@@ -394,4 +394,22 @@ it("reveals the full running command only while its title is clipped", async () 
   container.style.width = "4000px";
   await expect.element(details).not.toBeInTheDocument();
   await expect.element(popup).not.toBeInTheDocument();
+});
+it("commits a dismissal when the thread switches during the exit transition", async () => {
+  const onDismiss = vi.fn();
+  const item: ComposerBannerStackItem = {
+    id: "notice",
+    variant: "info",
+    icon: <InfoIcon />,
+    title: "Thread A notice",
+    dismissLabel: "Dismiss notice",
+    onDismiss,
+  };
+  await using screen = await renderScreen(<ComposerBannerStack key="thread-a" items={[item]} />);
+
+  await userEvent.click(screen.getByRole("button", { name: "Dismiss notice" }));
+  // The composer keys the stack by thread, so switching threads remounts it mid-exit.
+  await screen.rerender(<ComposerBannerStack key="thread-b" items={[]} />);
+
+  await vi.waitFor(() => expect(onDismiss).toHaveBeenCalledTimes(1));
 });

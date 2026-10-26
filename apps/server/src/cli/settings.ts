@@ -70,7 +70,7 @@ export const splitKeyPath = (root: unknown, key: string): ReadonlyArray<string> 
   return segments;
 };
 
-export const getAtPath = (root: unknown, segments: ReadonlyArray<string>): unknown => {
+const getAtPath = (root: unknown, segments: ReadonlyArray<string>): unknown => {
   let node = root;
   for (const segment of segments) {
     if (!isObject(node) || !Object.hasOwn(node, segment)) return undefined;
@@ -79,18 +79,14 @@ export const getAtPath = (root: unknown, segments: ReadonlyArray<string>): unkno
   return node;
 };
 
-export const setAtPath = (
-  root: unknown,
-  segments: ReadonlyArray<string>,
-  value: unknown,
-): unknown => {
+const setAtPath = (root: unknown, segments: ReadonlyArray<string>, value: unknown): unknown => {
   const [head, ...rest] = segments;
   if (head === undefined) return value;
   const node = isObject(root) ? root : {};
   return { ...node, [head]: setAtPath(node[head], rest, value) };
 };
 
-export const deleteAtPath = (root: unknown, segments: ReadonlyArray<string>): unknown => {
+const deleteAtPath = (root: unknown, segments: ReadonlyArray<string>): unknown => {
   const [head, ...rest] = segments;
   if (head === undefined || !isObject(root) || !Object.hasOwn(root, head)) return root;
   if (rest.length === 0) {

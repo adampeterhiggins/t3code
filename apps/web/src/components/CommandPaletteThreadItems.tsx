@@ -1,5 +1,5 @@
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { findForMessageMatch, requestThreadFindQuery } from "./chat/threadFindActionBus";
+import { findForMessageMatch, openThreadFindOnQuery } from "./chat/threadFindStore";
 import {
   claimThreadOpen,
   nextShownOrder,
@@ -164,6 +164,7 @@ export function useCommandPaletteThreadItems(input: {
       const isOpen =
         activeThread?.environmentId === thread.environmentId && activeThread.id === thread.id;
       if (threadSearchQuery.trim().length > 0 && !threadSearchQuery.startsWith(">") && !isOpen) {
+        // oxlint-disable-next-line react/purity -- runs in an event handler (oxc#27309)
         claimThreadOpen(thread.environmentId, thread.id, Date.now());
       }
       if (
@@ -219,7 +220,7 @@ export function useCommandPaletteThreadItems(input: {
         run: async () => {
           await item.run();
           if (match.source !== "group_name")
-            requestThreadFindQuery(
+            openThreadFindOnQuery(
               scopedThreadKey(scopeThreadRef(match.environmentId, match.threadId)),
               findForMessageMatch(match, messageSearch.query),
             );

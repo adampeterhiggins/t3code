@@ -109,7 +109,7 @@ export class GranolaAuth extends Context.Service<
   }
 >()("t3/granola/GranolaAuth") {}
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
   const httpClient = yield* HttpClient.HttpClient;
@@ -147,25 +147,23 @@ export const make = Effect.gen(function* () {
   const fail = (message: string) =>
     SubscriptionRef.set(state, { ...emptyState, phase: "failed", message });
 
-  const postForm = (url: string, params: Record<string, string>) =>
-    Effect.gen(function* () {
-      const response = yield* HttpClientRequest.post(url).pipe(
-        HttpClientRequest.bodyUrlParams(params),
-        httpClient.execute,
-      );
-      const body = yield* response.json;
-      if (response.status >= 200 && response.status < 300) return { _tag: "Ok", body } as const;
-      const error = yield* decodeOAuthError(body).pipe(
-        Effect.orElseSucceed(() => ({ error: `HTTP ${response.status}` })),
-      );
-      return { _tag: "Rejected", error: error.error } as const;
-    });
-  const postToken = (params: Record<string, string>) =>
-    Effect.gen(function* () {
-      const result = yield* postForm(TOKEN_URL, params);
-      if (result._tag === "Rejected") return result;
-      return { _tag: "Ok", token: yield* decodeTokenResponse(result.body) } as const;
-    });
+  const postForm = Effect.fn("postForm")(function* (url: string, params: Record<string, string>) {
+    const response = yield* HttpClientRequest.post(url).pipe(
+      HttpClientRequest.bodyUrlParams(params),
+      httpClient.execute,
+    );
+    const body = yield* response.json;
+    if (response.status >= 200 && response.status < 300) return { _tag: "Ok", body } as const;
+    const error = yield* decodeOAuthError(body).pipe(
+      Effect.orElseSucceed(() => ({ error: `HTTP ${response.status}` })),
+    );
+    return { _tag: "Rejected", error: error.error } as const;
+  });
+  const postToken = Effect.fn("postToken")(function* (params: Record<string, string>) {
+    const result = yield* postForm(TOKEN_URL, params);
+    if (result._tag === "Rejected") return result;
+    return { _tag: "Ok", token: yield* decodeTokenResponse(result.body) } as const;
+  });
 
   /**
    * Granola has no published client for third parties, so each environment registers its own
@@ -197,8 +195,8 @@ export const make = Effect.gen(function* () {
           ),
         );
 
-  const readAccount = (accessToken: string) =>
-    Effect.gen(function* () {
+  const readAccount = Effect.fn("readAccount")(
+    function* (accessToken: string) {
       const result = yield* callGranolaTool(httpClient, accessToken, "get_account_info", {});
       if (result._tag !== "Ok") return null;
       const info = yield* decodeAccountInfo(result.text);
@@ -206,17 +204,16 @@ export const make = Effect.gen(function* () {
         email: info.email,
         workspaceName: info.active_workspace?.display_name ?? null,
       } satisfies GranolaAccount;
-    }).pipe(
-      // The account only labels the connection; a reply in a new shape must not block it.
-      Effect.orElseSucceed(() => null),
-      Effect.map(
-        (account): GranolaAccount => account ?? { email: "Granola account", workspaceName: null },
-      ),
-    );
+    },
+    Effect.orElseSucceed(() => null),
+    Effect.map(
+      (account): GranolaAccount => account ?? { email: "Granola account", workspaceName: null },
+    ),
+  );
 
   /** Polls the token endpoint until the user approves, denies, or the code expires. */
-  const pollForToken = (flow: ActiveFlow, id: string, device: typeof DeviceAuthorization.Type) =>
-    Effect.gen(function* () {
+  const pollForToken = Effect.fn("GranolaAuth.pollForToken")(
+    function* (flow: ActiveFlow, id: string, device: typeof DeviceAuthorization.Type) {
       let interval = Math.max(device.interval ?? 5, 1);
       const deadline = (yield* Clock.currentTimeMillis) + device.expires_in * 1000;
       while ((yield* Clock.currentTimeMillis) < deadline) {
@@ -249,16 +246,19 @@ export const make = Effect.gen(function* () {
         );
       }
       return yield* loginError("The Granola code expired. Start again.");
-    }).pipe(
-      Effect.matchEffect({
-        onSuccess: (account) =>
-          SubscriptionRef.set(state, { ...emptyState, phase: "connected", account }),
-        onFailure: (error) => fail(error.detail),
-      }),
-      Effect.ensuring(
-        Ref.update(activeFlow, (current) => (current?.flowId === flow.flowId ? null : current)),
+    },
+    (effect, flow) =>
+      effect.pipe(
+        Effect.matchEffect({
+          onSuccess: (account) =>
+            SubscriptionRef.set(state, { ...emptyState, phase: "connected", account }),
+          onFailure: (error) => fail(error.detail),
+        }),
+        Effect.ensuring(
+          Ref.update(activeFlow, (current) => (current?.flowId === flow.flowId ? null : current)),
+        ),
       ),
-    );
+  );
 
   const clearFlow = Effect.gen(function* () {
     const flow = yield* Ref.getAndSet(activeFlow, null);
@@ -266,8 +266,8 @@ export const make = Effect.gen(function* () {
     return flow;
   });
 
-  const requestDeviceCode = (id: string) =>
-    Effect.gen(function* () {
+  const requestDeviceCode = Effect.fn("requestDeviceCode")(
+    function* (id: string) {
       const result = yield* postForm(DEVICE_URL, {
         client_id: id,
         scope: SCOPE,
@@ -275,7 +275,9 @@ export const make = Effect.gen(function* () {
       });
       if (result._tag === "Rejected") return result;
       return { _tag: "Ok", value: yield* decodeDeviceAuthorization(result.body) } as const;
-    }).pipe(Effect.mapError(() => loginError("Could not reach Granola to start sign-in.")));
+    },
+    Effect.mapError(() => loginError("Could not reach Granola to start sign-in.")),
+  );
 
   const startLogin = Effect.gen(function* () {
     const interrupted = yield* clearFlow;

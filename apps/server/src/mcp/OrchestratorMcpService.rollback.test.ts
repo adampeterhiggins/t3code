@@ -114,7 +114,12 @@ const harness = (input: {
             getTimelinePage: () => Effect.succeed({ items: [], totalItems: 0, hasMore: false }),
             getThreadRecords: (threadId) => Effect.succeed(byId(threadId)) as never,
             getProjectThreadRecords: ({ threadId }) => Effect.succeed(byId(threadId)) as never,
-            getThreadShell: (threadId) => Effect.succeed(liveThreadShell(threadId)),
+            getThreadShell: (threadId) =>
+              Effect.succeed(
+                liveThreadShell(threadId, {
+                  activeRunId: ThreadManagementService.latestActiveRun(byId(threadId))?.id ?? null,
+                }),
+              ),
             dispatch: (command) =>
               Ref.update(dispatched, (commands) => [...commands, command as never]).pipe(
                 Effect.as({ sequence: 1 } as never),

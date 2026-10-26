@@ -1,29 +1,4 @@
-/**
- * CliProviderAuth — a generic `ProviderAuthController` for providers whose
- * credentials are owned by an external CLI (its keychain entries, credential
- * files, or an instance-level API key environment variable).
- *
- * Each driver advertises a list of `CliAuthMethodSpec`s on its snapshot's
- * `setup.authMethods`; the controller runs them:
- *
- *   - `saved-credentials` re-probes the provider so credentials the CLI
- *     already holds (a previous `devin auth login`, a macOS Keychain entry,
- *     `~/.codex/auth.json`, …) are picked up without a sign-in flow.
- *   - `paste-credential` stores a pasted key — usually a sensitive provider
- *     environment variable (`XAI_API_KEY`, `WINDSURF_API_KEY`, …) — then
- *     re-probes.
- *   - `cli` spawns the provider's own login command (`codex login
- *     --device-auth`, `cursor-agent login`, …), surfaces the URL / device
- *     code it prints, and optionally pipes a pasted response to its stdin.
- *   - `effect` runs an arbitrary scoped effect — used for Devin's ACP
- *     `authenticate` browser flow.
- *
- * Sign-in is always explicit: sessions never invoke these methods, and ACP
- * session runtimes are built without `authMethodId` so every new thread no
- * longer triggers a login.
- *
- * @module provider-core/server/cliAuth
- */
+// Sign-in is explicit; provider sessions never trigger authentication.
 import {
   type ProviderSetupAuthMethod,
   type ProviderAuthState,
@@ -58,7 +33,6 @@ import type { ProviderHost } from "./ProviderHost.ts";
 const AUTH_TIMEOUT = Duration.minutes(5);
 const OUTPUT_TAIL_CHARS = 8_192;
 
-// eslint-disable-next-line no-control-regex -- CLI output carries ANSI escape sequences to strip
 const ANSI_ESCAPE = /\x1b\[[0-9;]*[A-Za-z]|\x1b\].*?(?:\x07|\x1b\\)|\x1b\[\?[0-9;]*[a-zA-Z]/g;
 const stripAnsi = (text: string) => text.replace(ANSI_ESCAPE, "");
 const isSetupError = Schema.is(ProviderSetupError);
@@ -186,13 +160,7 @@ export interface CliProviderAuthOptions {
   readonly methods: ReadonlyArray<CliAuthMethodSpec>;
   /** Re-probe the provider and return the auth block it will publish. */
   readonly probeAuth: Effect.Effect<ServerProviderAuth>;
-  /**
-   * Records which method produced the current credential (the method id on
-   * success, `undefined` on sign-out) so probes can stamp
-   * `auth.methodId`. Drivers wire this to
-   * `providerAuthMethodPersistence.record`. Best-effort: a failure is
-   * logged, it never fails the flow.
-   */
+  // Best-effort provenance: recording failure must not fail sign-in.
   readonly recordAuthMethod?: (
     methodId: string | undefined,
   ) => Effect.Effect<void, ProviderSetupError>;
@@ -250,31 +218,34 @@ export const makeCliProviderAuth = Effect.fn("makeCliProviderAuth")(function* (
     Effect.map((auth) => auth.status === "authenticated"),
     Effect.orElseSucceed(() => false),
   );
-  const verifyNow = (flow: CliAuthFlow, missingMessage?: string, detect = defaultDetect) =>
-    Effect.gen(function* () {
-      yield* publishUpdate(flow, {
-        phase: "verifying",
-        authorizationUrl: null,
-        inputPrompt: undefined,
-        message: `Checking ${options.providerLabel} credentials.`,
-      });
-      if (yield* detect) {
-        yield* recordAuthMethod(flow.method.id);
-        yield* publishUpdate(flow, {
-          phase: "succeeded",
-          expiresAt: null,
-          message: `${options.providerLabel} is signed in.`,
-        });
-        return;
-      }
-      yield* publishUpdate(flow, {
-        phase: "failed",
-        expiresAt: null,
-        message:
-          missingMessage ??
-          `${options.providerLabel} still reports no credentials on this environment.`,
-      });
+  const verifyNow = Effect.fn("verifyNow")(function* (
+    flow: CliAuthFlow,
+    missingMessage?: string,
+    detect: Effect.Effect<boolean> = defaultDetect,
+  ) {
+    yield* publishUpdate(flow, {
+      phase: "verifying",
+      authorizationUrl: null,
+      inputPrompt: undefined,
+      message: `Checking ${options.providerLabel} credentials.`,
     });
+    if (yield* detect) {
+      yield* recordAuthMethod(flow.method.id);
+      yield* publishUpdate(flow, {
+        phase: "succeeded",
+        expiresAt: null,
+        message: `${options.providerLabel} is signed in.`,
+      });
+      return;
+    }
+    yield* publishUpdate(flow, {
+      phase: "failed",
+      expiresAt: null,
+      message:
+        missingMessage ??
+        `${options.providerLabel} still reports no credentials on this environment.`,
+    });
+  });
 
   const runCliFlow = (flow: CliAuthFlow, spec: CliAuthMethodSpec & { kind: "cli" }) =>
     Effect.scoped(
@@ -361,61 +332,60 @@ export const makeCliProviderAuth = Effect.fn("makeCliProviderAuth")(function* (
       }),
     );
 
-  const runMethod = (
+  const runMethod = Effect.fn("runMethod")(function* (
     flow: CliAuthFlow,
     method: CliAuthMethodSpec,
     credential: string | undefined,
-  ) =>
-    Effect.gen(function* () {
-      switch (method.kind) {
-        case "saved-credentials":
-          yield* verifyNow(flow, method.missingMessage, method.probe ?? defaultDetect);
-          return;
-        case "paste-credential": {
-          if (!credential) {
-            return yield* setupError("start", `Paste ${method.credentialLabel} first.`);
-          }
+  ) {
+    switch (method.kind) {
+      case "saved-credentials":
+        yield* verifyNow(flow, method.missingMessage, method.probe ?? defaultDetect);
+        return;
+      case "paste-credential": {
+        if (!credential) {
+          return yield* setupError("start", `Paste ${method.credentialLabel} first.`);
+        }
+        yield* publishUpdate(flow, {
+          phase: "verifying",
+          message: `Saving ${method.credentialLabel}.`,
+        });
+        yield* method.apply(credential);
+        if (method.probeAfterApply === false) {
+          yield* recordAuthMethod(method.id);
           yield* publishUpdate(flow, {
-            phase: "verifying",
-            message: `Saving ${method.credentialLabel}.`,
+            phase: "succeeded",
+            expiresAt: null,
+            message:
+              method.appliedMessage ??
+              `${method.credentialLabel} saved. ${options.providerLabel} re-checks its credentials next.`,
           });
-          yield* method.apply(credential);
-          if (method.probeAfterApply === false) {
-            yield* recordAuthMethod(method.id);
-            yield* publishUpdate(flow, {
-              phase: "succeeded",
-              expiresAt: null,
-              message:
-                method.appliedMessage ??
-                `${method.credentialLabel} saved. ${options.providerLabel} re-checks its credentials next.`,
-            });
-            return;
-          }
-          yield* verifyNow(flow);
           return;
         }
-        case "cli":
-          yield* runCliFlow(flow, method);
-          yield* verifyNow(flow);
-          return;
-        case "effect":
-          yield* publishUpdate(flow, {
-            phase: "waiting",
-            message:
-              method.waitingMessage ??
-              method.description ??
-              `Complete the ${options.providerLabel} sign-in.`,
-          });
-          yield* Effect.scoped(
-            method.run({
-              publishAuthorizationUrl: (url) =>
-                publishUpdate(flow, { phase: "waiting", authorizationUrl: url }),
-            }),
-          );
-          yield* verifyNow(flow);
-          return;
+        yield* verifyNow(flow);
+        return;
       }
-    });
+      case "cli":
+        yield* runCliFlow(flow, method);
+        yield* verifyNow(flow);
+        return;
+      case "effect":
+        yield* publishUpdate(flow, {
+          phase: "waiting",
+          message:
+            method.waitingMessage ??
+            method.description ??
+            `Complete the ${options.providerLabel} sign-in.`,
+        });
+        yield* Effect.scoped(
+          method.run({
+            publishAuthorizationUrl: (url) =>
+              publishUpdate(flow, { phase: "waiting", authorizationUrl: url }),
+          }),
+        );
+        yield* verifyNow(flow);
+        return;
+    }
+  });
 
   const runFlow = (flow: CliAuthFlow, method: CliAuthMethodSpec, credential: string | undefined) =>
     runMethod(flow, method, credential).pipe(
@@ -484,18 +454,21 @@ export const makeCliProviderAuth = Effect.fn("makeCliProviderAuth")(function* (
       }),
     );
 
-  const requireFlow = (ownerSessionId: string, flowId: string, name: string) =>
-    Effect.gen(function* () {
-      const flow = activeFlow;
-      if (!flow || flow.id !== flowId || flow.ownerSessionId !== ownerSessionId) {
-        return yield* setupError(name, "This sign-in is no longer active in this client.");
-      }
-      const now = yield* Clock.currentTimeMillis;
-      if (now >= flow.expiresAtMillis) {
-        return yield* setupError(name, `${options.providerLabel} sign-in expired. Start again.`);
-      }
-      return flow;
-    });
+  const requireFlow = Effect.fn("requireFlow")(function* (
+    ownerSessionId: string,
+    flowId: string,
+    name: string,
+  ) {
+    const flow = activeFlow;
+    if (!flow || flow.id !== flowId || flow.ownerSessionId !== ownerSessionId) {
+      return yield* setupError(name, "This sign-in is no longer active in this client.");
+    }
+    const now = yield* Clock.currentTimeMillis;
+    if (now >= flow.expiresAtMillis) {
+      return yield* setupError(name, `${options.providerLabel} sign-in expired. Start again.`);
+    }
+    return flow;
+  });
 
   const defaultMethod = () =>
     options.methods.find((method) => method.kind === "cli" || method.kind === "effect") ??
@@ -696,14 +669,14 @@ export const makeCliProviderAuth = Effect.fn("makeCliProviderAuth")(function* (
  * `opencode auth list`). Runs the command, strips ANSI, and reports whether
  * `match` appears in the output.
  */
-export function cliOutputProbe(input: {
-  readonly spawner: ChildProcessSpawner.ChildProcessSpawner["Service"];
-  readonly command: string;
-  readonly args: ReadonlyArray<string>;
-  readonly processEnv: NodeJS.ProcessEnv;
-  readonly match: RegExp;
-}): Effect.Effect<boolean> {
-  return Effect.gen(function* () {
+export const cliOutputProbe = Effect.fn("cliOutputProbe")(
+  function* (input: {
+    readonly spawner: ChildProcessSpawner.ChildProcessSpawner["Service"];
+    readonly command: string;
+    readonly args: ReadonlyArray<string>;
+    readonly processEnv: NodeJS.ProcessEnv;
+    readonly match: RegExp;
+  }) {
     const resolved = yield* resolveSpawnCommand(input.command, input.args, {
       env: input.processEnv,
     });
@@ -725,19 +698,12 @@ export function cliOutputProbe(input: {
       Effect.map(stripAnsi),
     );
     return input.match.test(output);
-  }).pipe(
-    Effect.scoped,
-    Effect.orElseSucceed(() => false),
-  );
-}
+  },
+  Effect.scoped,
+  Effect.orElseSucceed(() => false),
+);
 
-/**
- * `paste-credential` `apply` for CLIs that ingest a key on stdin (e.g.
- * `codex login --with-api-key`). The secret streams to stdin with
- * `endOnDone`, the process exits, and the CLI's own credential store is
- * written — nothing is persisted by T3. Pair with `probeAfterApply: true`
- * (the default) so the post-apply probe verifies the stored credential.
- */
+// Send secrets only on stdin; the CLI owns their persistence.
 export function stdinCredentialApply(input: {
   readonly spawner: ChildProcessSpawner.ChildProcessSpawner["Service"];
   readonly instanceId: ProviderInstanceId;
@@ -789,15 +755,7 @@ export function stdinCredentialApply(input: {
 const EXTERNAL_CREDENTIAL_TYPES = new Set(["bedrock", "amazonBedrock", "environment"]);
 const isApiKeyCredentialType = (type: string) => /^api[-_]?key$/i.test(type);
 
-/**
- * Whether a recorded method could have produced a credential the probe now
- * reports as `type`. `paste-credential` only ever produces an API key, and
- * `cli`/`saved-credentials` flows surface account credentials — only
- * `effect` may mint a key (Devin's browser sign-in provisions one). When
- * they disagree, the credential was replaced out-of-band (e.g.
- * `cursor-agent login` in a terminal) and the record is dropped rather
- * than republished stale.
- */
+// Drop provenance if an out-of-band credential replacement changed its type.
 const recordedMethodMatchesAuthType = (
   method: CliAuthMethodSpec,
   type: string | undefined,
@@ -809,13 +767,7 @@ const recordedMethodMatchesAuthType = (
   return method.kind !== "paste-credential";
 };
 
-/**
- * ServerSettings-backed provenance for which sign-in method produced an
- * instance's current credential. The controller calls `record` with the
- * method id on sign-in success and `undefined` on sign-out; drivers apply
- * `stamp` inside `checkProvider` so published snapshots carry
- * `auth.methodId` while the record still matches the probed credential.
- */
+// Stamp a sign-in method only while it still matches the current credential.
 export function providerAuthMethodPersistence(input: {
   readonly serverSettings: ProviderHost["Service"]["settings"];
   readonly instanceId: ProviderInstanceId;
@@ -826,38 +778,39 @@ export function providerAuthMethodPersistence(input: {
     provider: T,
   ) => Effect.Effect<T>;
 } {
-  const record = (methodId: string | undefined) =>
-    Effect.gen(function* () {
+  const record = Effect.fn("record")(
+    function* (methodId: string | undefined) {
       const settings = yield* input.serverSettings.get;
       if (settings.providerAuthMethods[input.instanceId] === methodId) return;
       yield* input.serverSettings.update({
         providerAuthMethods: { [input.instanceId]: methodId ?? null },
       });
-    }).pipe(
-      Effect.mapError(
-        (cause) =>
-          new ProviderSetupError({
-            instanceId: input.instanceId,
-            operation: "record",
-            detail: "Could not record the sign-in method for this provider instance.",
-            cause: cause as Error,
-          }),
-      ),
-    );
+    },
+    Effect.mapError(
+      (cause) =>
+        new ProviderSetupError({
+          instanceId: input.instanceId,
+          operation: "record",
+          detail: "Could not record the sign-in method for this provider instance.",
+          cause: cause as Error,
+        }),
+    ),
+  );
 
-  const stamp = <T extends { readonly auth: ServerProviderAuth }>(provider: T) =>
-    Effect.gen(function* () {
-      if (provider.auth.status !== "authenticated" || provider.auth.external === true)
-        return provider;
-      const settings = yield* input.serverSettings.get.pipe(Effect.orElseSucceed(() => undefined));
-      const methodId = settings?.providerAuthMethods[input.instanceId];
-      if (methodId === undefined) return provider;
-      const method = input.methods.find((candidate) => candidate.id === methodId);
-      if (method === undefined || !recordedMethodMatchesAuthType(method, provider.auth.type)) {
-        return provider;
-      }
-      return { ...provider, auth: { ...provider.auth, methodId } };
-    });
+  const stamp = Effect.fn("stamp")(function* <T extends { readonly auth: ServerProviderAuth }>(
+    provider: T,
+  ) {
+    if (provider.auth.status !== "authenticated" || provider.auth.external === true)
+      return provider;
+    const settings = yield* input.serverSettings.get.pipe(Effect.orElseSucceed(() => undefined));
+    const methodId = settings?.providerAuthMethods[input.instanceId];
+    if (methodId === undefined) return provider;
+    const method = input.methods.find((candidate) => candidate.id === methodId);
+    if (method === undefined || !recordedMethodMatchesAuthType(method, provider.auth.type)) {
+      return provider;
+    }
+    return { ...provider, auth: { ...provider.auth, methodId } };
+  });
 
   return { record, stamp };
 }
@@ -876,8 +829,8 @@ export function providerEnvVarCredential(input: {
   readonly apply: (secret: string) => Effect.Effect<void, ProviderSetupError>;
   readonly remove: Effect.Effect<void, ProviderSetupError>;
 } {
-  const write = (value: string | undefined) =>
-    Effect.gen(function* () {
+  const write = Effect.fn("write")(
+    function* (value: string | undefined) {
       const settings = yield* input.serverSettings.get;
       const entry = settings.providerInstances[input.instanceId] ?? { driver: input.driverKind };
       const environment = (entry.environment ?? []).filter(
@@ -896,17 +849,17 @@ export function providerEnvVarCredential(input: {
           [input.instanceId]: { ...entry, environment },
         },
       });
-    }).pipe(
-      Effect.mapError(
-        (cause) =>
-          new ProviderSetupError({
-            instanceId: input.instanceId,
-            operation: "credential",
-            detail: `Could not save ${input.envName} for this provider instance.`,
-            cause: cause as Error,
-          }),
-      ),
-    );
+    },
+    Effect.mapError(
+      (cause) =>
+        new ProviderSetupError({
+          instanceId: input.instanceId,
+          operation: "credential",
+          detail: `Could not save ${input.envName} for this provider instance.`,
+          cause: cause as Error,
+        }),
+    ),
+  );
   return {
     apply: (secret) => write(secret),
     remove: write(undefined),

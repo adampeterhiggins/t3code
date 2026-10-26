@@ -147,7 +147,7 @@ const layerTest = (main: { webContents: FakeWebContents } | null, revealed: Arra
     Layer.succeed(
       DesktopClientSettings.DesktopClientSettings,
       DesktopClientSettings.DesktopClientSettings.of({
-        get: Effect.succeed(Option.some(enabled)),
+        get: Effect.succeedSome(enabled),
         set: () => Effect.void,
       }),
     ),

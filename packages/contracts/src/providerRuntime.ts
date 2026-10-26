@@ -559,8 +559,6 @@ const taskAgentLinkageFields = {
 
 export const TaskAgentLinkage = Schema.Struct(taskAgentLinkageFields);
 
-/** Upper bound for TaskStartedPayload.prompt, applied by adapters. */
-export const SUBAGENT_PROMPT_CHAR_LIMIT = 4000;
 export type TaskAgentLinkage = typeof TaskAgentLinkage.Type;
 
 const TaskStartedPayload = Schema.Struct({

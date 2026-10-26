@@ -92,7 +92,7 @@ export function gitHubIssueContextRecord(issue: GitHubIssueContext): GitHubIssue
 }
 
 /** `repo@v1.2.0`, `repo@main`, or `repo@abc1234`: the label a ref's chip shows. */
-export function gitHubRefLabel(ref: {
+function gitHubRefLabel(ref: {
   readonly repository: string;
   readonly refType: GitHubRefContext["refType"];
   readonly ref: string;

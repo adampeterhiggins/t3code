@@ -98,7 +98,7 @@ export function useAttachGranolaNote() {
 }
 
 /** Links a note to the thread's tab group, replacing the one it had. */
-export function useLinkGranolaNote() {
+function useLinkGranolaNote() {
   const linkThread = useAtomCommand(granolaEnvironment.linkThread, { reportFailure: false });
   return async (threadRef: ScopedThreadRef, noteId: string): Promise<boolean> => {
     const result = await linkThread({

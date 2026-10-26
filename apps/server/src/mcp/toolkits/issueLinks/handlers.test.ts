@@ -118,7 +118,9 @@ const makeHarness = (settings: Parameters<typeof ServerSettings.layerTest>[0] = 
           };
         }),
     }),
-    Layer.mock(GoogleThreadLinks.GoogleThreadLinks)({ forThread: () => Effect.succeed(undefined) }),
+    Layer.mock(GoogleThreadLinks.GoogleThreadLinks)({
+      forThread: () => Effect.sync(() => undefined),
+    }),
     Layer.mock(SlackApi.SlackApi)({
       searchMessages: ({ query }) =>
         Effect.sync(() => {
@@ -133,9 +135,11 @@ const makeHarness = (settings: Parameters<typeof ServerSettings.layerTest>[0] = 
           return { pages: [], hasMore: false };
         }),
     }),
-    Layer.mock(SlackThreadLinks.SlackThreadLinks)({ forThread: () => Effect.succeed(undefined) }),
+    Layer.mock(SlackThreadLinks.SlackThreadLinks)({
+      forThread: () => Effect.sync(() => undefined),
+    }),
     Layer.mock(DiscordThreadLinks.DiscordThreadLinks)({
-      forThread: () => Effect.succeed(undefined),
+      forThread: () => Effect.sync(() => undefined),
     }),
     Layer.mock(NotionThreadLinks.NotionThreadLinks)({
       forThread: (threadId) => Effect.sync(() => notion.get(threadId)),
@@ -155,7 +159,7 @@ const makeHarness = (settings: Parameters<typeof ServerSettings.layerTest>[0] = 
       unlink: ({ threadId }) => Effect.sync(() => void notion.delete(threadId)),
     }),
     Layer.mock(GranolaThreadLinks.GranolaThreadLinks)({
-      forThread: () => Effect.succeed(undefined),
+      forThread: () => Effect.sync(() => undefined),
     }),
     Layer.mock(McpContextLinks.McpContextLinks)({
       read: (url) =>

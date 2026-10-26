@@ -114,12 +114,14 @@ export function useThreadTabGroup(environmentId: EnvironmentId, threadId: Thread
   const prepared = usePreparedConnection(environmentId);
   const [group, setGroup] = useState(() => lastLoadedThreadTabGroup);
   const [nameRevision, setNameRevision] = useState(0);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Subscribes to group renames made elsewhere.
   useEffect(() => subscribeThreadTabGroupNames(() => setNameRevision((value) => value + 1)), []);
   const shell = useThreadShell(threadId === null ? null : scopeThreadRef(environmentId, threadId));
   const projectShells = useThreadShellsForProjectRefs(
     shell ? [scopeProjectRef(environmentId, shell.projectId)] : [],
   );
 
+  // oxlint-disable-next-line t3code/react-effect-budget -- Loads the tab group over RPC whenever the open thread changes.
   useEffect(() => {
     if (threadId === null || Option.isNone(prepared)) return;
     let active = true;
@@ -180,6 +182,7 @@ export function useRightPanelFollowsTabSwitch(
   threadId: ThreadId | null,
   group: ThreadTabGroup | null,
 ) {
+  // oxlint-disable-next-line t3code/react-effect-budget -- Carries right-panel visibility from the previously shown tab before paint.
   useLayoutEffect(() => {
     const previous = lastShownTab;
     if (
@@ -194,6 +197,7 @@ export function useRightPanelFollowsTabSwitch(
     carryRightPanelVisibility(previous.ref, scopeThreadRef(environmentId, threadId));
   }, [environmentId, threadId]);
 
+  // oxlint-disable-next-line t3code/react-effect-budget -- Records the shown tab after commit for the next switch to compare against.
   useLayoutEffect(() => {
     lastShownTab =
       threadId !== null && group
@@ -206,7 +210,7 @@ export function useRightPanelFollowsTabSwitch(
 }
 
 /** The tab that takes over when `threadId` closes: the next one, else the previous. */
-export function threadTabNeighbour(
+function threadTabNeighbour(
   group: Pick<ThreadTabGroup, "tabs">,
   threadId: ThreadId,
 ): ThreadId | null {
@@ -581,11 +585,9 @@ async function fetchThreadTabSummary(
 }
 
 /**
- * Captures a sibling tab's transcript summary into the draft of `threadId` and resolves to the
- * chip reference for the composer to place. With `beforeMessageId`, only the history before
- * that user message of the source is summarized; `afterMessageId` includes the assistant response.
- * A `summary` already fetched for a preview is
- * used as is.
+ * Captures a sibling tab's transcript summary into `threadId`'s draft and resolves to its chip
+ * reference. `beforeMessageId` summarizes only earlier history; `afterMessageId` includes that
+ * response. A `summary` already fetched for a preview is used as is.
  */
 async function captureThreadTabContext(
   connection: PreparedConnection,
@@ -782,6 +784,7 @@ function useSidebarSiblingTabs(
         supportsSnooze: capabilities?.threadSnooze === true,
         supportsSettlement: capabilities?.threadSettlement === true,
         workingShelfEnabled,
+        // oxlint-disable-next-line react/purity -- Matches the sidebar, which samples the clock each render.
         now: new Date().toISOString(),
         groupsShownInThreads,
       })

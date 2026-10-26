@@ -58,12 +58,12 @@ export const importForkPullRequestWatches = Effect.gen(function* () {
   );
   yield* sql`DROP TABLE fork_pull_request_watches`;
 }).pipe(
-  Effect.catchCause((cause) =>
-    Cause.hasInterruptsOnly(cause)
-      ? Effect.failCause(cause)
-      : Effect.logWarning("importing fork pull request watches failed", {
-          cause: Cause.pretty(cause),
-        }),
+  Effect.catchCauseIf(
+    (cause) => !Cause.hasInterruptsOnly(cause),
+    (cause) =>
+      Effect.logWarning("importing fork pull request watches failed", {
+        cause: Cause.pretty(cause),
+      }),
   ),
   Effect.withSpan("importForkPullRequestWatches"),
 );

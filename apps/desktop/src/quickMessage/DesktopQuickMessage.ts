@@ -63,8 +63,9 @@ export class DesktopQuickMessage extends Context.Service<
   }
 >()("@t3tools/desktop/quickMessage/DesktopQuickMessage") {}
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
+  const context = yield* Effect.context<never>();
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
   const clientSettings = yield* DesktopClientSettings.DesktopClientSettings;
   const electronWindow = yield* ElectronWindow.ElectronWindow;
@@ -160,7 +161,7 @@ export const make = Effect.gen(function* () {
     if (!isMac) {
       // Elsewhere the app quits once its last window closes, and a hidden panel would keep it
       // running after the main window is gone.
-      const main = Effect.runSync(electronWindow.main);
+      const main = Effect.runSyncWith(context)(electronWindow.main);
       if (Option.isSome(main)) main.value.once("closed", destroyPanel);
     }
     void window
@@ -300,7 +301,9 @@ export const make = Effect.gen(function* () {
         else applyShortcut();
       });
     }),
-    isPanel: (webContentsId) => Effect.sync(() => livePanel()?.webContents.id === webContentsId),
+    isPanel: Effect.fn("DesktopQuickMessage.isPanel")((webContentsId) =>
+      Effect.sync(() => livePanel()?.webContents.id === webContentsId),
+    ),
     setPanelReady: Effect.sync(() => {
       const window = livePanel();
       if (window === null) return;

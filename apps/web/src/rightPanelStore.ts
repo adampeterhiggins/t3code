@@ -303,7 +303,7 @@ export function pullRequestSurface(target: {
   };
 }
 
-export const agentSurface = (agent: {
+const agentSurface = (agent: {
   childThreadId: ThreadId;
   title: string;
 }): Extract<RightPanelSurface, { kind: "agent" }> => ({

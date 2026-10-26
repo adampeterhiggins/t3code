@@ -7,7 +7,6 @@ import {
   type ChangeRequestTerminology,
 } from "@t3tools/client-runtime/source-control-clients";
 import * as Schema from "effect/Schema";
-
 import {
   GitCommandError,
   PullRequestDetail,
@@ -16,7 +15,6 @@ import {
   type PullRequestActor,
   type PullRequestBaseComparison,
   type PullRequestCheck,
-  type PullRequestChecks,
   type PullRequestChecksState as ContractPullRequestChecksState,
   type PullRequestComment,
   type PullRequestCommit,
@@ -1112,15 +1110,7 @@ export function buildResolveConflictsPrompt(input: {
   ].join("\n");
 }
 
-/**
- * Everything the agent needs to know about which pull request this is, as the same annotation
- * chip a marked line arrives as.
- *
- * It goes in the chip rather than in the composer because the composer is where the reader
- * writes. A page of preamble sitting in the field is something to scroll past and delete before
- * they can type their own sentence. It rides as the chip's `instructions`, which only the agent
- * reads: the chip itself shows the pull request, not prose addressed to somebody else.
- */
+/** Everything the agent needs to know about which pull request this is, as the same annotation chip a marked line arrives as. */
 function pullRequestContextComment(
   input: {
     readonly number: number;
@@ -1437,13 +1427,7 @@ export function buildExplainPullRequestHandoff(input: {
 
 let selectionChipSequence = 0;
 
-/**
- * A remark on selected lines, handed to the agent as one chip: which pull request, which lines,
- * and what the reader said about them. The remark is the question, so the composer prompt stays
- * the reader's own. The chip is theirs too: it is named outside the `pull-request-` namespace, so
- * a later hand-off does not sweep it away, and each one is new, so remarks on the same lines
- * stack instead of replacing each other.
- */
+/** A remark on selected lines, handed to the agent as one chip: which pull request, which lines, and what the reader said about them. */
 export function buildAddSelectionToAgentHandoff(input: {
   readonly number: number;
   readonly title: string;

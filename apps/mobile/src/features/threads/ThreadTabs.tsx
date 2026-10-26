@@ -22,11 +22,10 @@ import {
   formatComposerContextReference,
   sanitizeComposerContextLabel,
 } from "@t3tools/shared/composerContextReferences";
-import { useNavigation } from "@react-navigation/native";
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 
 import * as Dialog from "../../components/ui/Dialog";
 import { SymbolView } from "../../components/ui/AppSymbol";
@@ -55,6 +54,7 @@ import {
   useThreadSlackNotionLinks,
 } from "./ThreadSlackNotionLinks";
 import { ThreadStartedByChip } from "./ThreadStartedByChip";
+import { useSelectWorkspaceDetail } from "../workspace/useSelectWorkspaceDetail";
 
 const NEW_TAB_ACTION = "tab:new";
 const CLOSE_TAB_ACTION = "tab:close";
@@ -75,12 +75,26 @@ export function clearSelectedThreadTabSources(threadId: ThreadId): void {
   selectedSources.delete(threadId);
 }
 
+// Outside the component: React Compiler cannot lower try/finally. A null title rethrows.
+async function runBusyTabAction(
+  setBusy: (busy: boolean) => void,
+  failureTitle: string | null,
+  work: () => Promise<void>,
+): Promise<void> {
+  setBusy(true);
+  try {
+    await work();
+  } catch (cause) {
+    if (failureTitle === null) throw cause;
+    Dialog.alert(failureTitle, cause instanceof Error ? cause.message : undefined);
+  } finally {
+    setBusy(false);
+  }
+}
+
 /**
- * Switches, opens, and closes a thread's chat tabs, and restarts the open tab's agent session;
- * empty tabs also include a sibling's summary or continue its conversation in their place. A
- * started chat can hand off to any model: a new tab on that model whose draft starts with a
- * summary of this chat, followed by this chat's unsent draft. The group's linked Linear and
- * GitHub issues sit beside the switcher.
+ * Switches, opens and closes a thread's chat tabs and restarts the open tab's session. Empty tabs
+ * can include or continue a sibling; a started chat can hand off to another model in a new tab.
  */
 export function ThreadTabs({
   environmentId,
@@ -107,11 +121,12 @@ export function ThreadTabs({
   working: boolean;
 }) {
   const prepared = usePreparedConnection(environmentId);
-  const navigation = useNavigation();
+  const selectDetail = useSelectWorkspaceDetail();
   const canNameGroup = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
   const archive = useAtomCommand(threadEnvironment.archive, { reportFailure: false });
   const stopSession = useAtomCommand(threadEnvironment.stopSession, { reportFailure: false });
   const [nameRevision, setNameRevision] = useState(0);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Subscribes to group renames made elsewhere.
   useEffect(() => subscribeThreadTabGroupNames(() => setNameRevision((value) => value + 1)), []);
   const [group, setGroup] = useState<ThreadTabGroup | null>(null);
   const [selected, setSelected] = useState<ReadonlyArray<ThreadId>>(() =>
@@ -147,6 +162,7 @@ export function ThreadTabs({
     [modelSelection, projectId, serverConfig],
   );
 
+  // oxlint-disable-next-line t3code/react-effect-budget -- Loads the tab group over RPC when the thread or a group name changes.
   useEffect(() => {
     if (Option.isNone(prepared)) return;
     let active = true;
@@ -161,19 +177,19 @@ export function ThreadTabs({
     return () => {
       active = false;
     };
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- nameRevision refetches after a rename.
   }, [prepared, threadId, nameRevision]);
 
   if (!group || Option.isNone(prepared)) return null;
 
   const navigateTo = (target: ThreadId) => {
-    navigation.navigate("Thread", {
-      environmentId: String(environmentId),
-      threadId: String(target),
+    selectDetail({
+      name: "Thread",
+      params: { environmentId: String(environmentId), threadId: String(target) },
     });
   };
   const create = async () => {
-    setBusy(true);
-    try {
+    await runBusyTabAction(setBusy, "Could not create tab", async () => {
       const next = ThreadId.make(uuidv4());
       await runtime.runPromise(
         createThreadTab(prepared.value, threadId, {
@@ -183,15 +199,10 @@ export function ThreadTabs({
         }),
       );
       navigateTo(next);
-    } catch (cause) {
-      Dialog.alert("Could not create tab", cause instanceof Error ? cause.message : undefined);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
   const handOff = async (option: ModelOption) => {
-    setBusy(true);
-    try {
+    await runBusyTabAction(setBusy, "Could not hand off", async () => {
       const next = ThreadId.make(uuidv4());
       // A native fork carries the conversation itself; with no finished response to fork
       // from, the new tab starts with a summary of this one.
@@ -242,18 +253,13 @@ export function ThreadTabs({
         });
       }
       navigateTo(next);
-    } catch (cause) {
-      Dialog.alert("Could not hand off", cause instanceof Error ? cause.message : undefined);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
   // From an empty tab: a sibling's conversation continues in a native fork that takes this tab's
   // place, on the sibling's own model and with this tab's draft. This tab is archived, so it can
   // be reopened.
   const continueFrom = async (sourceThreadId: ThreadId, sourceTitle: string) => {
-    setBusy(true);
-    try {
+    await runBusyTabAction(setBusy, "Could not continue that chat", async () => {
       const next = ThreadId.make(uuidv4());
       await runtime.runPromise(
         forkThreadTabFromRun(prepared.value, threadId, {
@@ -274,14 +280,7 @@ export function ThreadTabs({
       const archived = await archive({ environmentId, input: { threadId } });
       if (archived._tag === "Success") refreshArchivedThreadsForEnvironment(environmentId);
       navigateTo(next);
-    } catch (cause) {
-      Dialog.alert(
-        "Could not continue that chat",
-        cause instanceof Error ? cause.message : undefined,
-      );
-    } finally {
-      setBusy(false);
-    }
+    });
   };
   // Closing archives the tab's thread, so the archived-threads list can reopen it.
   const close = async () => {
@@ -295,8 +294,7 @@ export function ThreadTabs({
       );
       return;
     }
-    setBusy(true);
-    try {
+    await runBusyTabAction(setBusy, null, async () => {
       const result = await archive({ environmentId, input: { threadId } });
       if (result._tag === "Failure") {
         const error = Cause.squash(result.cause);
@@ -305,15 +303,12 @@ export function ThreadTabs({
       }
       refreshArchivedThreadsForEnvironment(environmentId);
       navigateTo(next.threadId);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
   // Stopping the provider process keeps the conversation; the next message resumes it in a fresh
   // one that reloads skills, plugins, and MCP servers.
   const restartSession = async () => {
-    setBusy(true);
-    try {
+    await runBusyTabAction(setBusy, null, async () => {
       const result = await stopSession({ environmentId, input: { threadId } });
       if (result._tag === "Failure") {
         const error = Cause.squash(result.cause);
@@ -324,9 +319,7 @@ export function ThreadTabs({
         return;
       }
       Dialog.alert("Agent session will restart", "Your next message starts a fresh session.");
-    } finally {
-      setBusy(false);
-    }
+    });
   };
   const onMenuAction = (id: string) => {
     if (id === NEW_TAB_ACTION) void create();
@@ -336,23 +329,13 @@ export function ThreadTabs({
         initialValue: group.name ?? "",
         confirmText: "Save",
         onConfirm: (value) => {
-          void (async () => {
-            setBusy(true);
-            try {
-              setGroup(
-                await runtime.runPromise(
-                  setThreadTabGroupName(prepared.value, threadId, value.trim() || null),
-                ),
-              );
-            } catch (cause) {
-              Dialog.alert(
-                "Could not name thread group",
-                cause instanceof Error ? cause.message : undefined,
-              );
-            } finally {
-              setBusy(false);
-            }
-          })();
+          void runBusyTabAction(setBusy, "Could not name thread group", async () => {
+            setGroup(
+              await runtime.runPromise(
+                setThreadTabGroupName(prepared.value, threadId, value.trim() || null),
+              ),
+            );
+          });
         },
       });
     else if (id === CLOSE_TAB_ACTION) void close();

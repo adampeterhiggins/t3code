@@ -62,7 +62,9 @@ const windowOf = Effect.fn("QueryToolkit.windowOf")(function* (
 });
 
 const optionalWindowOf = (since: string | undefined, until: string | undefined) =>
-  since === undefined && until === undefined ? Effect.succeed(undefined) : windowOf(since, until);
+  since === undefined && until === undefined
+    ? Effect.sync(() => undefined)
+    : windowOf(since, until);
 
 const CursorJson = Schema.fromJsonString(
   Schema.Array(Schema.Union([Schema.String, Schema.Number])),

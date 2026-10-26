@@ -19,6 +19,7 @@ import {
   SourceControlCloneRepositoryResult,
 } from "@t3tools/contracts";
 import * as FileSystem from "effect/FileSystem";
+import * as DocumentText from "../../../provider/DocumentText.ts";
 import * as ServerConfig from "../../../config.ts";
 import * as ServerSettings from "../../../serverSettings.ts";
 import * as ThreadLaunchService from "../../../orchestration-v2/ThreadLaunchService.ts";
@@ -46,8 +47,7 @@ const shared = {
 };
 const ProjectListTool = Tool.make("t3_project_list", {
   ...shared,
-  description:
-    "List registered projects in this environment. Pages use the current project snapshot and may shift between calls.",
+  description: "List projects. Pages can shift.",
   parameters: Schema.Struct({
     cursor: Schema.optional(NonNegativeInt),
     limit: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100 }))),
@@ -61,8 +61,7 @@ const ProjectListTool = Tool.make("t3_project_list", {
   .annotate(Tool.Destructive, false);
 const ProjectReadTool = Tool.make("t3_project_read", {
   ...shared,
-  description:
-    "Read a registered project in this environment, including its workspace and saved scripts.",
+  description: "Read one project: workspace and saved scripts.",
   parameters: Schema.Struct({ projectId: ProjectId }),
 })
   .annotate(Tool.Readonly, true)
@@ -70,7 +69,7 @@ const ProjectReadTool = Tool.make("t3_project_read", {
 const ProjectCreateTool = Tool.make("t3_project_create", {
   ...shared,
   description:
-    "Register a project directory through the existing project service. Set createWorkspaceRootIfMissing to create a directory. Omit workspaceRoot to start a new project from just its title: the app makes a Git repository for it in its own projects folder, with a README, an icon, and a first commit (commitError says why a commit failed; the project exists either way). Each call creates a new request; an existing registered workspace is rejected. Clone separately with t3_project_clone when needed.",
+    "Register a project folder. `createWorkspaceRootIfMissing` creates it; a registered folder is rejected. No `workspaceRoot`: makes a git repo from `title` with README, icon, first commit (`commitError` on failure; project still exists). Clone first with `t3_project_clone` if needed.",
   parameters: Schema.Struct({
     ...ProjectCreatePayload.fields,
     workspaceRoot: Schema.optional(ProjectCreatePayload.fields.workspaceRoot),
@@ -80,20 +79,18 @@ const ProjectCreateTool = Tool.make("t3_project_create", {
 }).annotate(Tool.Destructive, true);
 const ProjectUpdateTool = Tool.make("t3_project_update", {
   ...shared,
-  description:
-    "Update a registered project's settings. Omitted fields are preserved. Uses the same project service as the app.",
+  description: "Update one project's settings. Omitted fields are unchanged.",
   parameters: Schema.Struct({ projectId: ProjectId, ...ProjectUpdatePayload.fields }),
 }).annotate(Tool.Destructive, true);
 const ProjectDeleteTool = Tool.make("t3_project_delete", {
   ...shared,
-  description:
-    "Delete a project using the existing project deletion lifecycle. Nonempty projects require force=true. This does not delete the repository directory or promise a deleted-thread count.",
+  description: "Delete one project. Nonempty needs `force: true`. Folder on disk stays.",
   parameters: Schema.Struct({ projectId: ProjectId, force: Schema.optionalKey(Schema.Boolean) }),
 }).annotate(Tool.Destructive, true);
 const ProjectCloneTool = Tool.make("t3_project_clone", {
   ...shared,
   description:
-    "Clone a repository using the app's source-control service. This only clones; register the returned cwd with t3_project_create. An existing destination is not adopted or removed on failure.",
+    "Clone a repository (`destinationPath` new or empty). Register after with `t3_project_create`.",
   parameters: SourceControlCloneRepositoryInput,
   success: SourceControlCloneRepositoryResult,
   dependencies: [
@@ -112,7 +109,7 @@ const ThreadLaunchTool = Tool.make("t3_thread_launch", {
     scratch: Schema.optional(
       Schema.Boolean.annotate({
         description:
-          "Launch without a project, in its own folder under the environment's Scratch project. Not with projectId or workspaceStrategy.",
+          "No project: a new Scratch folder. Not with `projectId` or `workspaceStrategy`.",
       }),
     ),
     title: TrimmedNonEmptyString,
@@ -127,8 +124,7 @@ const ThreadLaunchTool = Tool.make("t3_thread_launch", {
     ),
     message: Schema.optional(
       Schema.String.check(Schema.isMaxLength(120000)).annotate({
-        description:
-          "First task prompt, delivered after workspace preparation. Omit message and attachments to create an idle thread.",
+        description: "First prompt. Omit it and `attachments` for idle.",
       }),
     ),
     attachments: Schema.optional(Schema.Array(McpAttachmentInput).check(Schema.isMaxLength(8))),
@@ -151,6 +147,7 @@ const ThreadLaunchTool = Tool.make("t3_thread_launch", {
     FileSystem.FileSystem,
     ServerConfig.ServerConfig,
     ServerSettings.ServerSettingsService,
+    DocumentText.DocumentText,
   ],
 })
   .annotate(Tool.Destructive, true)

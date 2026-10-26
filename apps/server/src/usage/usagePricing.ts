@@ -231,7 +231,7 @@ function bareModelName(key: string): string {
  * Strips a `provider/` prefix and lowercases, since transcripts are
  * inconsistent about casing.
  */
-export function normalizeModelName(model: string): string {
+function normalizeModelName(model: string): string {
   return bareModelName(normalizeRateKey(model));
 }
 

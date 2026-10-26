@@ -4,10 +4,10 @@ import * as Schema from "effect/Schema";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 
-export const DISCORD_API_URL = "https://discord.com/api/v10";
+const DISCORD_API_URL = "https://discord.com/api/v10";
 
 /** Search answers 202 with no results while Discord builds a server's index. */
-export const DISCORD_INDEXING_DETAIL = "Discord is still indexing this server. Try again shortly.";
+const DISCORD_INDEXING_DETAIL = "Discord is still indexing this server. Try again shortly.";
 
 const ErrorBody = Schema.Struct({
   code: Schema.optional(Schema.Number),
@@ -76,7 +76,7 @@ export const discordApiRequest = Effect.fn("discord.rest_api")(function* <S exte
         : `Discord returned an error (${message}).`,
     );
   }
-  return yield* Schema.decodeUnknownEffect(data)(json).pipe(
+  return yield* Schema.decodeEffect(data)(json).pipe(
     Effect.mapError((cause) => apiError("Discord returned an unexpected response shape.", cause)),
   );
 });

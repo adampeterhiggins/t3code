@@ -1,19 +1,4 @@
-/**
- * devinModelCatalog — pure parsing/grouping helpers for Devin's model surface.
- *
- * Devin's CLI encodes reasoning effort, speed tier, and context window in the
- * model uid itself (`claude-opus-5-high-fast`, `glm-5-2-max-1m`,
- * `MODEL_GPT_5_2_LOW`). The picker should still present one row per family
- * with option descriptors, matching how Codex/Claude expose effort and fast
- * mode. This module owns both directions:
- *
- * - `devinModelsFromCatalog` groups `devin models list --format json` into
- *   per-family rows with `effort` / `speed` / `context` option descriptors.
- * - `resolveDevinModelUid` turns `{ model: <family>, options }` back into a
- *   concrete advertised uid for `session/set_config_option`.
- *
- * @module devinModelCatalog
- */
+/** Devin encodes effort, speed, and context in model UIDs; selections resolve back to advertised variants. */
 import type {
   ModelPricing,
   ProviderOptionChoice,
@@ -81,8 +66,8 @@ export function parseDevinModelUid(uid: string): DevinModelDims {
 
 // ── picker rows ──────────────────────────────────────────────────────────
 
-export const DEVIN_EFFORT_OPTION_ID = "effort";
-export const DEVIN_SPEED_OPTION_ID = "speed";
+const DEVIN_EFFORT_OPTION_ID = "effort";
+const DEVIN_SPEED_OPTION_ID = "speed";
 export const DEVIN_CONTEXT_OPTION_ID = "context";
 
 /** Selection values that mean "the provider default" for an axis. */
@@ -160,7 +145,7 @@ const DEVIN_PRICING_SOURCE = "devin-cli models list";
  * USD rates. Unrecognized segments are skipped; the record is only emitted
  * when both input and output rates are present.
  */
-export function parseDevinCostSummary(costSummary: string | undefined): ModelPricing | undefined {
+function parseDevinCostSummary(costSummary: string | undefined): ModelPricing | undefined {
   if (!costSummary) return undefined;
   let input: number | undefined;
   let cachedInput: number | undefined;
@@ -265,14 +250,8 @@ function effortRank(effort: string): number {
   return index === -1 ? EFFORT_ORDER.length : index;
 }
 
-/**
- * Label-derived dims for families whose variant uids are opaque
- * (`MODEL_PRIVATE_*`): the variant label minus the family label carries the
- * effort words — "GPT-5.1 Low Thinking" → `low`, "… No Thinking" → `none`,
- * "… Thinking" → `thinking`. Returns `undefined` when the label does not
- * extend the family label so callers fall back to uid parsing.
- */
-export function parseDevinVariantLabel(
+/** Opaque private UIDs encode effort in the label; absent label suffixes fall back to UID parsing. */
+function parseDevinVariantLabel(
   familyLabel: string | undefined,
   variantLabel: string | undefined,
 ): DevinModelDims | undefined {
@@ -327,21 +306,13 @@ function effortChoice(effort: string, isDefault: boolean): ProviderOptionChoice 
   };
 }
 
-// ── Fusion (lead + sidekick pairs) ───────────────────────────────────────
-//
-// Fusion uids pair a lead and a sidekick model:
-// `fusion-<lead uid>-sidekick-<sidekick uid>`. `models list` enumerates every
-// effort/speed permutation (hundreds), but an ACP session only accepts a
-// small advertised subset: each lead at one Devin-chosen effort. The picker
-// therefore offers Lead and Sidekick by family, a read-only lead effort, and
-// the sidekick's effort, with each effort choice `requires`-bound to the
-// models that offer it. Resolution picks whichever advertised uid matches.
+// ACP accepts only a subset of Fusion permutations; match advertised pairs rather than constructing UIDs.
 
-export const DEVIN_FUSION_SLUG = "fusion";
-export const DEVIN_FUSION_LEAD_OPTION_ID = "lead";
-export const DEVIN_FUSION_SIDEKICK_OPTION_ID = "sidekick";
-export const DEVIN_FUSION_LEAD_EFFORT_OPTION_ID = "leadEffort";
-export const DEVIN_FUSION_SIDEKICK_EFFORT_OPTION_ID = "sidekickEffort";
+const DEVIN_FUSION_SLUG = "fusion";
+const DEVIN_FUSION_LEAD_OPTION_ID = "lead";
+const DEVIN_FUSION_SIDEKICK_OPTION_ID = "sidekick";
+const DEVIN_FUSION_LEAD_EFFORT_OPTION_ID = "leadEffort";
+const DEVIN_FUSION_SIDEKICK_EFFORT_OPTION_ID = "sidekickEffort";
 
 const FUSION_UID_PATTERN = /^fusion-(.+)-sidekick-(.+)$/;
 
@@ -359,7 +330,7 @@ interface FusionPair {
   readonly sidekickHasSpeed: boolean;
 }
 
-export function parseDevinFusionUid(uid: string): FusionPair | undefined {
+function parseDevinFusionUid(uid: string): FusionPair | undefined {
   const match = FUSION_UID_PATTERN.exec(normalizeDevinModelId(uid));
   if (!match) return undefined;
   const lead = parseDevinModelUid(match[1]!);
@@ -529,15 +500,7 @@ function isFusionFamily(family: DevinModelFamily): boolean {
   );
 }
 
-/**
- * One row per family. Variants sharing a uid base become `effort`/`speed`/
- * `context` option descriptors (token-valued choices resolved by dims match);
- * families whose uids share no base (`MODEL_PRIVATE_*` under gpt-5.1) emit a
- * single effort select whose choices carry the concrete uid, which
- * `resolveDevinModelUid` passes through. Variant uids land in `aliases` so
- * stored flat selections like `swe-2-high` still resolve to the family row.
- * The Fusion family becomes a single Lead + Sidekick row instead.
- */
+/** Preserve variant UIDs as aliases so stored flat selections resolve to grouped families. */
 export function devinModelsFromCatalog(
   parsed: DevinModelsListJson | undefined,
 ): ReadonlyArray<ServerProviderModel> {
@@ -799,7 +762,7 @@ const DEVIN_DIM_OPTION_IDS = new Set([
 ]);
 
 /** Option ids that fold into the model uid rather than a config option. */
-export function isDevinModelDimOptionId(id: string): boolean {
+function isDevinModelDimOptionId(id: string): boolean {
   return DEVIN_DIM_OPTION_IDS.has(id);
 }
 
@@ -829,13 +792,7 @@ function wantedDims(selections: ReadonlyArray<ProviderOptionSelection> | null | 
   };
 }
 
-/**
- * Resolve a grouped selection (`model` = base id + effort/speed/context
- * options) to a concrete advertised uid. Resolution matches on parsed dims
- * rather than string composition so irregular uids (`MODEL_GPT_5_2_LOW`,
- * `claude-5-fable-*`) still land. Exact uid matches and unknown models pass
- * through untouched.
- */
+/** Match parsed dimensions for irregular UIDs; exact UIDs and unknown models pass through. */
 export function resolveDevinModelUid(input: {
   readonly model: string;
   readonly selections?: ReadonlyArray<ProviderOptionSelection> | null | undefined;
@@ -908,14 +865,7 @@ export function resolveDevinModelUid(input: {
   return bare ?? candidates[0]!;
 }
 
-/**
- * Fusion selections name a lead family, a sidekick family and a sidekick
- * effort; pick the advertised pair that matches, relaxing effort, then
- * sidekick, then lead. Devin fixes the lead's effort per pair, so there is no
- * lead effort to match. A pre-split sidekick selection (`swe-2-medium`) still
- * carries its effort. Returns `fusion` untouched
- * when the session advertises no Fusion uids, letting the set fail loudly.
- */
+/** Match advertised Fusion pairs, relaxing effort, sidekick, then lead; absent pairs pass through to fail visibly. */
 function resolveDevinFusionUid(input: {
   readonly model: string;
   readonly selections?: ReadonlyArray<ProviderOptionSelection> | null | undefined;

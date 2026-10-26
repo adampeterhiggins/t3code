@@ -59,7 +59,7 @@ export const resolveProviderHomePath = Effect.fn("resolveProviderHomePath")(func
  * second account never signs in over the first. The default instance keeps
  * the CLI's own location (the user's existing login) and gets `""`.
  */
-export function defaultInstanceHomePath(
+function defaultInstanceHomePath(
   path: Path.Path,
   stateDir: string,
   driver: ProviderDriverKind,
