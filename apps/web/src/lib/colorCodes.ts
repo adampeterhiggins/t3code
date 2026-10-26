@@ -29,12 +29,8 @@ export function wholeColorCode(text: string): string | null {
 const IGNORED_TYPES = new Set(["link", "linkReference"]);
 
 /**
- * Fork: wraps colour codes in prose so the renderer can draw them as swatch chips. A code that
- * may be an issue or pull request number depends on `repositoryUrl`, the thread's GitHub
- * repository: given one, the code carries its URL there and the renderer shows the colour only
- * once neither exists; null means the project is not on GitHub, so it is a colour; undefined
- * means there is no thread to ask, so it stays text. `#123` links made by
- * `remarkGitHubIssueReferences` are marked for the same check.
+ * Numeric colours need the thread's repository to distinguish them from issue references.
+ * Null means no GitHub repository; undefined means no thread to check. Existing links win.
  */
 export function remarkColorCodes(repositoryUrl: string | null | undefined) {
   return (tree: MarkdownNode) => {
@@ -51,7 +47,6 @@ export function remarkColorCodes(repositoryUrl: string | null | undefined) {
       },
       IGNORED_TYPES,
     );
-    markIssueReferenceLinks(tree);
   };
 }
 
@@ -64,19 +59,6 @@ function colorCodeNode(code: string, reference?: string | null): MarkdownNode {
       hProperties: { dataColorCode: code, ...(reference ? { dataColorReference: reference } : {}) },
     },
   };
-}
-
-function markIssueReferenceLinks(node: MarkdownNode): void {
-  for (const child of node.children ?? []) {
-    const text = child.children?.length === 1 ? child.children[0] : undefined;
-    const code = text?.type === "text" ? wholeColorCode(text.value ?? "") : null;
-    const isIssueLink = child.type === "link" && /\/issues\/\d+$/u.test(child.url ?? "");
-    if (isIssueLink && code !== null && mayBeIssueReference(code)) {
-      child.data = { hProperties: { dataColorCode: code } };
-    } else {
-      markIssueReferenceLinks(child);
-    }
-  }
 }
 
 export interface ColorFacts {

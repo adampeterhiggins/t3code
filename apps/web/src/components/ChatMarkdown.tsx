@@ -1340,21 +1340,6 @@ const CHAT_MARKDOWN_COMPONENTS = {
     );
   },
   a: function MarkdownAnchor({ node, href, children, title: _title, ...props }) {
-    const colorCode = node?.properties?.dataColorCode;
-    if (typeof colorCode === "string" && href && node) {
-      const { dataColorCode: _colorCode, ...properties } = node.properties;
-      return (
-        <MarkdownColorCodeReference
-          code={colorCode}
-          url={href}
-          reference={
-            <CHAT_MARKDOWN_COMPONENTS.a node={{ ...node, properties }} href={href} {...props}>
-              {children}
-            </CHAT_MARKDOWN_COMPONENTS.a>
-          }
-        />
-      );
-    }
     const {
       canOperateHost,
       canOperatePreview,
