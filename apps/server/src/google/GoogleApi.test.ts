@@ -20,6 +20,7 @@ function harness(
     commentsForbidden?: boolean;
     noDirectory?: boolean;
     noGmail?: boolean;
+    gmailDisabled?: boolean;
     mailReply?: boolean;
   } = {},
 ) {
@@ -179,7 +180,7 @@ function harness(
       }
       const status =
         options.missing ||
-        (options.noGmail && url.hostname === "gmail.googleapis.com") ||
+        ((options.noGmail || options.gmailDisabled) && url.hostname === "gmail.googleapis.com") ||
         (options.commentsForbidden && url.pathname.endsWith("/comments")) ||
         url.pathname.includes("nobody%40example.com") ||
         (options.noDirectory && url.hostname === "people.googleapis.com")
@@ -196,6 +197,13 @@ function harness(
             code: 403,
             status: "PERMISSION_DENIED",
             details: [{ reason: "ACCESS_TOKEN_SCOPE_INSUFFICIENT" }],
+          },
+        };
+      if (options.gmailDisabled && url.hostname === "gmail.googleapis.com")
+        body = {
+          error: {
+            message: "Gmail API has not been used in project 42 before or it is disabled.",
+            details: [{ reason: "SERVICE_DISABLED" }],
           },
         };
       return HttpClientResponse.fromWeb(
@@ -469,6 +477,17 @@ it.effect("keeps Drive and Calendar searchable before Gmail permission is grante
     const error = yield* api.searchFiles({ source: "gmail", query: "Launch" }).pipe(Effect.flip);
     assert.equal(error.reason, "permission");
     assert.include(error.message, "Reconnect Google");
+  }).pipe(Effect.provide(h.layer));
+});
+it.effect("explains when the Gmail API is not enabled", () => {
+  const h = harness({ gmailDisabled: true });
+  return Effect.gen(function* () {
+    const api = yield* GoogleApi.GoogleApi;
+    const error = yield* api.searchFiles({ source: "gmail", query: "Launch" }).pipe(Effect.flip);
+    assert.equal(error.reason, "permission");
+    assert.include(error.message, "Gmail API has not been used");
+    const all = yield* api.searchFiles({ source: "all", query: "Launch" });
+    assert.lengthOf(all.files, 2);
   }).pipe(Effect.provide(h.layer));
 });
 it.effect("includes replies in Gmail snapshots and watch revisions", () => {

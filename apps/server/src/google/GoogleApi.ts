@@ -180,6 +180,17 @@ export class GoogleApi extends Context.Service<
   }
 >()("t3/google/GoogleApi") {}
 
+const GoogleFailure = Schema.fromJsonString(
+  Schema.Struct({
+    error: Schema.Struct({
+      message: Schema.optional(Schema.String),
+      details: Schema.optional(
+        Schema.Array(Schema.Struct({ reason: Schema.optional(Schema.String) })),
+      ),
+    }),
+  }),
+);
+
 const make = Effect.gen(function* () {
   const auth = yield* GoogleAuth.GoogleAuth;
   const client = yield* HttpClient.HttpClient;
@@ -207,17 +218,24 @@ const make = Effect.gen(function* () {
         reason: "rate-limited",
         detail: "Google's rate limit was reached. Try again shortly.",
       });
-    if (
-      response.status === 403 &&
-      (yield* response.text.pipe(Effect.orElseSucceed(() => ""))).includes(
-        "ACCESS_TOKEN_SCOPE_INSUFFICIENT",
-      )
-    )
-      return yield* new GoogleError({
-        reason: "permission",
-        detail:
-          "Google has not granted access to this source. Reconnect Google in Settings → Integrations to grant it.",
-      });
+    if (response.status === 403) {
+      const failure = yield* response.text.pipe(
+        Effect.flatMap(Schema.decodeUnknownEffect(GoogleFailure)),
+        Effect.orElseSucceed(() => undefined),
+      );
+      const reasons = failure?.error.details?.map((detail) => detail.reason) ?? [];
+      if (reasons.includes("ACCESS_TOKEN_SCOPE_INSUFFICIENT"))
+        return yield* new GoogleError({
+          reason: "permission",
+          detail:
+            "Google has not granted access to this source. Reconnect Google in Settings → Integrations to grant it.",
+        });
+      if (reasons.includes("SERVICE_DISABLED"))
+        return yield* new GoogleError({
+          reason: "permission",
+          detail: failure?.error.message ?? "Enable this Google API in Google Cloud.",
+        });
+    }
     if (response.status === 403 || response.status === 404)
       return yield* new GoogleError({
         reason: "not-found",
