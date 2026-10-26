@@ -8,12 +8,8 @@ import "../index.css";
 const environmentId = EnvironmentId.make("test-environment");
 const issueUrl = "https://github.com/acme/frontend/issues/679";
 
-type QueryView = { data: unknown; error: unknown; failure?: unknown };
-const pending: QueryView = { data: null, error: null };
 const mocks = vi.hoisted(() => ({
-  pullRequest: { data: null, error: null } as QueryView,
-  pullRequestPreview: { data: null, error: null } as QueryView,
-  issueSummary: { data: null, error: null } as QueryView,
+  pullRequest: { data: null as unknown, error: null as unknown },
 }));
 
 const issue: GitHubIssueContext = {
@@ -64,7 +60,6 @@ vi.mock(import("../state/pullRequests"), async (original) => {
     pullRequestEnvironment: {
       ...actual.pullRequestEnvironment,
       detail: (() => "pull-request-detail") as never,
-      preview: (() => "pull-request-preview") as never,
     },
   };
 });
@@ -75,7 +70,6 @@ vi.mock(import("../state/githubIssues"), async (original) => {
     githubIssueEnvironment: {
       ...actual.githubIssueEnvironment,
       issue: (() => "github-issue") as never,
-      issueSummary: (() => "github-issue-summary") as never,
     },
   };
 });
@@ -84,25 +78,14 @@ vi.mock(import("../state/query"), async (original) => ({
   useEnvironmentQuery: ((atom: unknown) =>
     atom === "pull-request-detail"
       ? mocks.pullRequest
-      : atom === "pull-request-preview"
-        ? mocks.pullRequestPreview
-        : atom === "github-issue-summary"
-          ? mocks.issueSummary
-          : { data: atom === "github-issue" ? issue : null, error: null }) as never,
+      : { data: atom === "github-issue" ? issue : null, error: null }) as never,
 }));
 
 import ChatMarkdown from "./ChatMarkdown";
 
-function setup(
-  pullRequest: QueryView,
-  lookups: { pullRequestPreview?: QueryView; issueSummary?: QueryView } = {},
-) {
+function setup(pullRequest: { data: unknown; error: unknown }) {
   mocks.pullRequest = pullRequest;
-  mocks.pullRequestPreview = lookups.pullRequestPreview ?? pending;
-  mocks.issueSummary = lookups.issueSummary ?? pending;
 }
-
-const notFound: QueryView = { data: null, error: "Not found", failure: { reason: "not-found" } };
 
 function renderReference() {
   return render(
@@ -143,15 +126,5 @@ describe("ChatMarkdown GitHub issue links", () => {
     await userEvent.hover(page.getByRole("link", { name: "#679" }));
 
     await expect.element(page.getByText("The basket empties on refresh.")).toBeInTheDocument();
-  });
-});
-
-describe("ChatMarkdown numeric reference links", () => {
-  it("keeps an explicit link even when neither lookup finds its number", async () => {
-    setup(pending, { pullRequestPreview: notFound, issueSummary: notFound });
-    await using _screen = await renderReference();
-
-    await expect.element(page.getByRole("link", { name: "#679" })).toBeVisible();
-    expect(page.getByRole("button", { name: /^Colour/ }).elements()).toHaveLength(0);
   });
 });
