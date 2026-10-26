@@ -155,6 +155,7 @@ export class GoogleError extends Schema.TaggedError<GoogleError>()("GoogleError"
     "revoked",
     "rate-limited",
     "not-found",
+    "permission",
     "login",
     "api",
   ]),

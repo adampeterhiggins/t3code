@@ -207,6 +207,17 @@ const make = Effect.gen(function* () {
         reason: "rate-limited",
         detail: "Google's rate limit was reached. Try again shortly.",
       });
+    if (
+      response.status === 403 &&
+      (yield* response.text.pipe(Effect.orElseSucceed(() => ""))).includes(
+        "ACCESS_TOKEN_SCOPE_INSUFFICIENT",
+      )
+    )
+      return yield* new GoogleError({
+        reason: "permission",
+        detail:
+          "Google has not granted access to this source. Reconnect Google in Settings → Integrations to grant it.",
+      });
     if (response.status === 403 || response.status === 404)
       return yield* new GoogleError({
         reason: "not-found",
@@ -338,7 +349,7 @@ const make = Effect.gen(function* () {
       // Connections made before directory access, or a Workspace that hides its directory.
       Effect.catchTags({
         GoogleError: (error) =>
-          error.reason === "not-found"
+          error.reason === "not-found" || error.reason === "permission"
             ? Effect.succeed({ found: { people: [] }, directoryAvailable: false })
             : Effect.fail(error),
       }),
@@ -714,7 +725,7 @@ const make = Effect.gen(function* () {
         ? yield* searchMail(input).pipe(
             Effect.catchTags({
               GoogleError: (error) =>
-                error.reason === "not-found"
+                error.reason === "not-found" || error.reason === "permission"
                   ? Effect.succeed({ files: [], hasMore: false })
                   : Effect.fail(error),
             }),

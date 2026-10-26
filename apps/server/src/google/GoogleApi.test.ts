@@ -187,6 +187,17 @@ function harness(
           : options.reject && request.headers.authorization === "Bearer old"
             ? 401
             : 200;
+      if (
+        (options.noGmail && url.hostname === "gmail.googleapis.com") ||
+        (options.noDirectory && url.hostname === "people.googleapis.com")
+      )
+        body = {
+          error: {
+            code: 403,
+            status: "PERMISSION_DENIED",
+            details: [{ reason: "ACCESS_TOKEN_SCOPE_INSUFFICIENT" }],
+          },
+        };
       return HttpClientResponse.fromWeb(
         request,
         new Response(encode(body), { status, headers: { "content-type": "application/json" } }),
@@ -456,8 +467,8 @@ it.effect("keeps Drive and Calendar searchable before Gmail permission is grante
       ["doc", "event"],
     );
     const error = yield* api.searchFiles({ source: "gmail", query: "Launch" }).pipe(Effect.flip);
-    assert.equal(error.reason, "not-found");
-    assert.include(error.message, "Gmail permission");
+    assert.equal(error.reason, "permission");
+    assert.include(error.message, "Reconnect Google");
   }).pipe(Effect.provide(h.layer));
 });
 it.effect("includes replies in Gmail snapshots and watch revisions", () => {
