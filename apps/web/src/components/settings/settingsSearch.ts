@@ -866,10 +866,10 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "google",
-    title: "Google Drive & Calendar",
+    title: "Google Drive, Calendar & Gmail",
     to: "/settings/integrations",
     searchTerms: [
-      "google files documents connect account sign in oauth client id client secret attach context enable disable integration pasted links setup prompts",
+      "google gmail email mail calendar drive files documents connect account sign in oauth client id client secret attach context enable disable integration pasted links setup prompts",
     ],
     environmentOnly: true,
     scope: "environment-defaults",

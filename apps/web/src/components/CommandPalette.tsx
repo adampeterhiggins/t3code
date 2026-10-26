@@ -1723,8 +1723,17 @@ function OpenCommandPaletteDialog(props: {
       actionItems.push({
         kind: "action",
         value: "action:attach-google-file",
-        searchTerms: ["google", "page", "document", "attach", "context"],
-        title: "Attach Google page",
+        searchTerms: [
+          "google",
+          "gmail",
+          "email",
+          "calendar",
+          "page",
+          "document",
+          "attach",
+          "context",
+        ],
+        title: "Attach Google file, event or email",
         icon: <GoogleIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
           openGoogleFilePicker(composerThreadRef);
@@ -1908,10 +1917,10 @@ function OpenCommandPaletteDialog(props: {
       actionItems.push({
         kind: "action",
         value: "action:link-google-file",
-        searchTerms: ["google", "page", "document", "link"],
+        searchTerms: ["google", "gmail", "email", "calendar", "page", "document", "link"],
         title: activeGoogleLink
-          ? `Change linked Google page (${activeGoogleLink.title})`
-          : "Link Google page",
+          ? `Change linked Google source (${activeGoogleLink.title})`
+          : "Link Google file, event or email",
         icon: <GoogleIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
           openGoogleFilePicker(composerThreadRef, "link");
@@ -1934,8 +1943,17 @@ function OpenCommandPaletteDialog(props: {
       actionItems.push({
         kind: "action",
         value: "action:unlink-google-file",
-        searchTerms: ["google", "page", "document", "unlink", "remove"],
-        title: `Unlink Google page ${activeGoogleLink.title}`,
+        searchTerms: [
+          "google",
+          "gmail",
+          "email",
+          "calendar",
+          "page",
+          "document",
+          "unlink",
+          "remove",
+        ],
+        title: `Unlink Google source ${activeGoogleLink.title}`,
         icon: <GoogleIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
           await unlinkGoogleFile(composerThreadRef);

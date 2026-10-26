@@ -205,7 +205,7 @@ const make = Effect.gen(function* () {
       default:
         return yield* new OrchestratorMcpFailure({
           code: "invalid_request",
-          message: `Cannot link ${url}. Use a Slack or Discord message, Notion page, Google file or event, Granola note, Linear issue, or GitHub issue link; for pull requests use link_pull_request.`,
+          message: `Cannot link ${url}. Use a Slack or Discord message, Notion page, Google file, event or email, Granola note, Linear issue, or GitHub issue link; for pull requests use link_pull_request.`,
         });
     }
   });

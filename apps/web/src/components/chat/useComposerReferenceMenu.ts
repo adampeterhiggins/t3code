@@ -194,7 +194,7 @@ export function useComposerReferenceMenu(input: {
         return {
           items: googleMenu.items,
           isPending: googleMenu.isPending,
-          emptyState: googleMenu.error ?? "No Google files found. Try searching by title.",
+          emptyState: googleMenu.error ?? "No Google sources found. Try another search.",
         };
       case "granola-notes":
         return {

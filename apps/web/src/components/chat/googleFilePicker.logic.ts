@@ -5,7 +5,7 @@ import {
   filterFacets,
 } from "@t3tools/shared/filterFacets";
 
-export type GoogleFilePickerSource = "drive" | "calendar";
+export type GoogleFilePickerSource = "drive" | "calendar" | "gmail";
 export type GoogleFileType = GoogleFileSummary["fileType"];
 
 export interface GoogleFilePickerView {
@@ -20,6 +20,7 @@ export interface GoogleFilePickerView {
 
 export const DEFAULT_GOOGLE_FILE_PICKER_VIEWS = {
   drive: { types: [], owners: [], range: "all", sort: "newest" },
+  gmail: { types: [], owners: [], range: "all", sort: "newest" },
   calendar: { types: [], owners: [], range: "all", sort: "oldest" },
 } as const satisfies Record<GoogleFilePickerSource, GoogleFilePickerView>;
 
@@ -30,6 +31,7 @@ export const GOOGLE_FILE_TYPE_LABELS = {
   folder: "Folders",
   drive: "Other files",
   event: "Events",
+  email: "Gmail conversations",
 } as const satisfies Record<GoogleFileType, string>;
 
 const DAY_MS = 24 * 60 * 60 * 1000;

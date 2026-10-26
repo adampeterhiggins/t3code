@@ -95,7 +95,7 @@ function useLinkGoogleFile() {
         const failure = squashAtomCommandFailure(result);
         toastManager.add({
           type: "error",
-          title: "Could not link the Google file or event",
+          title: "Could not link the Google file, event or email",
           description: failure instanceof Error ? failure.message : undefined,
         });
       }
@@ -253,7 +253,7 @@ function GoogleFilePickerDialog({
               ? selectedDay === null
                 ? "No events this week."
                 : `No events on ${dayHeading(selectedDay, openedAt)}.`
-              : "No matching files or events. Search by title or paste a Google link."
+              : "No matching sources. Search or paste a Google link."
           : null);
   if (!googleEnabled) return null;
   return (
@@ -264,23 +264,30 @@ function GoogleFilePickerDialog({
       }}
     >
       <CommandDialogPopup
-        aria-label={mode === "link" ? "Link Google file or event" : "Attach Google file or event"}
+        aria-label={
+          mode === "link"
+            ? "Link Google file, event or email"
+            : "Attach Google file, event or email"
+        }
         className="overflow-hidden"
       >
         {connected || connection.data === null ? (
           <CommandPaletteContent
             inputProps={{
-              placeholder: "Search Google Drive files and Calendar events or paste a document link",
+              placeholder:
+                source === "gmail"
+                  ? "Search Gmail (from:, subject:, is:unread) or paste a conversation link"
+                  : "Search Google or paste a source link",
               startAddon: <GoogleIcon />,
             }}
             footerActionLabel={
               mode === "link"
                 ? attaching
                   ? "Linking…"
-                  : "Link document"
+                  : "Link source"
                 : attaching
                   ? "Attaching…"
-                  : "Attach document"
+                  : "Attach source"
             }
             inputAccessory={
               <>
@@ -289,6 +296,7 @@ function GoogleFilePickerDialog({
                   options={[
                     { id: "drive", label: "Drive" },
                     { id: "calendar", label: "Calendar" },
+                    { id: "gmail", label: "Gmail" },
                   ]}
                   activeId={source}
                   onSelect={setSource}
@@ -357,8 +365,8 @@ function GoogleFilePickerDialog({
           <div className="flex flex-col items-center gap-3 px-6 py-10 text-center text-sm">
             <p className="text-muted-foreground">
               {mode === "link"
-                ? "Connect Google to link a Drive file or Calendar event."
-                : "Connect Google to attach Drive files and Calendar events."}
+                ? "Connect Google to link a Drive file, Calendar event or Gmail conversation."
+                : "Connect Google to attach Drive files, Calendar events and Gmail conversations."}
             </p>
             <Button
               size="sm"

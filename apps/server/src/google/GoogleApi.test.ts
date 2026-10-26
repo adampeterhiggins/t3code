@@ -19,6 +19,8 @@ function harness(
     commentAt?: string;
     commentsForbidden?: boolean;
     noDirectory?: boolean;
+    noGmail?: boolean;
+    mailReply?: boolean;
   } = {},
 ) {
   const urls: string[] = [];
@@ -133,8 +135,51 @@ function harness(
       if (url.pathname.endsWith("/events/event123")) body = event;
       if (url.searchParams.get("alt") === "media" || url.pathname.endsWith("/export"))
         return HttpClientResponse.fromWeb(request, new Response("A plain text source"));
+      if (url.hostname === "gmail.googleapis.com") {
+        body = url.pathname.endsWith("/threads")
+          ? { threads: [{ id: "18abcdef12345678" }], nextPageToken: "more" }
+          : {
+              id: "18abcdef12345678",
+              historyId: options.mailReply ? "102" : "101",
+              messages: [
+                {
+                  id: "m1",
+                  internalDate: "1790812800000",
+                  labelIds: ["INBOX"],
+                  payload: {
+                    mimeType: "multipart/alternative",
+                    headers: [
+                      { name: "Subject", value: "Launch mail" },
+                      { name: "From", value: "Ada <ada@example.com>" },
+                    ],
+                    parts: [
+                      {
+                        mimeType: "text/plain",
+                        body: { data: Buffer.from("Hello £18 per seat").toString("base64url") },
+                      },
+                      {
+                        mimeType: "text/html",
+                        body: { data: Buffer.from("<b>Duplicate HTML</b>").toString("base64url") },
+                      },
+                    ],
+                  },
+                },
+                ...(options.mailReply
+                  ? [
+                      {
+                        id: "m2",
+                        internalDate: "1790899200000",
+                        snippet: "Approved",
+                        payload: { headers: [{ name: "From", value: "Priya" }] },
+                      },
+                    ]
+                  : []),
+              ],
+            };
+      }
       const status =
         options.missing ||
+        (options.noGmail && url.hostname === "gmail.googleapis.com") ||
         (options.commentsForbidden && url.pathname.endsWith("/comments")) ||
         url.pathname.includes("nobody%40example.com") ||
         (options.noDirectory && url.hostname === "people.googleapis.com")
@@ -369,5 +414,61 @@ it.effect("makes all-day event cancellation visible to a linked-source watch", (
     assert.ok(after.markdown.includes("Status: cancelled"));
     assert.ok(after.markdown.includes("Start: 2026-10-26"));
     assert.notStrictEqual(before.markdown, after.markdown);
+  }).pipe(Effect.provide(h.layer));
+});
+
+it.effect("searches Gmail with native queries and reads a bounded conversation snapshot", () => {
+  const h = harness();
+  return Effect.gen(function* () {
+    const api = yield* GoogleApi.GoogleApi;
+    const result = yield* api.searchFiles({
+      source: "gmail",
+      query: "from:ada@example.com is:unread",
+    });
+    assert.equal(result.files[0]?.fileType, "email");
+    assert.equal(result.files[0]?.title, "Launch mail");
+    assert.notProperty(result.files[0], "markdown");
+    assert.equal(result.hasMore, true);
+    assert.equal(new URL(h.urls[0]!).searchParams.get("q"), "from:ada@example.com is:unread");
+    assert.include(h.urls[1], "format=metadata");
+    const file = yield* api.getFile({ id: result.files[0]!.url });
+    assert.include(file.markdown, "Hello £18 per seat");
+    assert.notInclude(file.markdown, "Duplicate HTML");
+    assert.equal(file.revision, "101");
+    assert.equal(file.updatedAt, "2026-10-01T00:00:00.000Z");
+    assert.isFalse(h.urls.some((url) => url.includes("/drive/")));
+    const pasted = yield* api.searchFiles({ query: file.url });
+    assert.equal(pasted.files[0]?.fileType, "email");
+    const mixed = yield* api.searchFiles({ source: "all", query: "Launch" });
+    assert.deepEqual(
+      mixed.files.map((f) => f.fileType),
+      ["doc", "event", "email"],
+    );
+  }).pipe(Effect.provide(h.layer));
+});
+it.effect("keeps Drive and Calendar searchable before Gmail permission is granted", () => {
+  const h = harness({ noGmail: true });
+  return Effect.gen(function* () {
+    const api = yield* GoogleApi.GoogleApi;
+    const result = yield* api.searchFiles({ source: "all", query: "Launch" });
+    assert.deepEqual(
+      result.files.map((f) => f.fileType),
+      ["doc", "event"],
+    );
+    const error = yield* api.searchFiles({ source: "gmail", query: "Launch" }).pipe(Effect.flip);
+    assert.equal(error.reason, "not-found");
+    assert.include(error.message, "Gmail permission");
+  }).pipe(Effect.provide(h.layer));
+});
+it.effect("includes replies in Gmail snapshots and watch revisions", () => {
+  const h = harness({ mailReply: true });
+  return Effect.gen(function* () {
+    const file = yield* (yield* GoogleApi.GoogleApi).getFile({
+      id: "https://mail.google.com/mail/u/1/#inbox/18abcdef12345678",
+    });
+    assert.include(file.markdown, "Approved");
+    assert.equal(file.owner, "Priya");
+    assert.equal(file.revision, "102");
+    assert.equal(file.updatedAt, "2026-10-02T00:00:00.000Z");
   }).pipe(Effect.provide(h.layer));
 });
