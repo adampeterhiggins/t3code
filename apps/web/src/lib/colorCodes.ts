@@ -1,5 +1,3 @@
-import { githubIssueReferenceUrl } from "@t3tools/shared/githubIssueReferences";
-
 import { findAndReplaceText, type MarkdownNode } from "~/vendor/mdast-find-and-replace";
 
 /**
@@ -8,7 +6,7 @@ import { findAndReplaceText, type MarkdownNode } from "~/vendor/mdast-find-and-r
  */
 export const COLOR_CODE = /(?<![\w/&#-])#(?:[\da-f]{8}|[\da-f]{6}|[\da-f]{3,4})(?![\w-])/giu;
 
-/** All digits without a leading zero, so it may also be an issue or pull request number. */
+/** All digits without a leading zero, so it is read as an issue or pull request number. */
 export function mayBeIssueReference(code: string): boolean {
   return /^#[1-9]\d*$/u.test(code);
 }
@@ -23,41 +21,30 @@ export function mayHaveColorCode(text: string): boolean {
 /** `text` when it is exactly one colour code, ignoring surrounding whitespace. */
 export function wholeColorCode(text: string): string | null {
   const trimmed = text.trim();
-  return WHOLE_COLOR_CODE.test(trimmed) ? trimmed : null;
+  return WHOLE_COLOR_CODE.test(trimmed) && !mayBeIssueReference(trimmed) ? trimmed : null;
 }
 
 const IGNORED_TYPES = new Set(["link", "linkReference"]);
 
 /**
- * Numeric colours need the thread's repository to distinguish them from issue references.
- * Null means no GitHub repository; undefined means no thread to check. Existing links win.
+ * Fork: wraps colour codes in prose so the renderer can draw them as swatch chips. All-digit
+ * codes stay text: `#403` is far more often a pull request, from any repository, than a colour.
  */
-export function remarkColorCodes(repositoryUrl: string | null | undefined) {
+export function remarkColorCodes() {
   return (tree: MarkdownNode) => {
     findAndReplaceText(
       tree,
       COLOR_CODE,
-      (code) => {
-        if (!mayBeIssueReference(code) || repositoryUrl === null) return colorCodeNode(code);
-        if (repositoryUrl === undefined) return false;
-        return colorCodeNode(
-          code,
-          githubIssueReferenceUrl(undefined, code.slice(1), repositoryUrl),
-        );
-      },
+      (code) =>
+        mayBeIssueReference(code)
+          ? false
+          : {
+              type: "text",
+              value: code,
+              data: { hName: "span", hProperties: { dataColorCode: code } },
+            },
       IGNORED_TYPES,
     );
-  };
-}
-
-function colorCodeNode(code: string, reference?: string | null): MarkdownNode {
-  return {
-    type: "text",
-    value: code,
-    data: {
-      hName: "span",
-      hProperties: { dataColorCode: code, ...(reference ? { dataColorReference: reference } : {}) },
-    },
   };
 }
 

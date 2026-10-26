@@ -12,8 +12,6 @@ import { Popover, PopoverPopup, PopoverTitle } from "./ui/popover";
 /**
  * Fork: draws colour codes in the composer with a swatch, the way sent messages show them.
  * A decoration rather than a chip node, so the prompt stays plain text the user can edit.
- * `#123`-shaped codes are left plain: only the sent message checks whether an issue or pull
- * request has that number.
  */
 function colorCodeDecorations(doc: ProseMirrorNode): DecorationSet {
   const decorations: Decoration[] = [];
