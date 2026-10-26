@@ -2365,10 +2365,19 @@ const make = Effect.gen(function* () {
         parent.thread.interactionMode,
         input.interactionMode,
       );
+      if (input.projectId !== undefined && input.workspaceStrategy?.type !== "worktree") {
+        return yield* failure(
+          "invalid_request",
+          'projectId applies only to workspaceStrategy {type:"worktree"}. existing_worktree takes its project from worktreePath.',
+        );
+      }
       const childProjectId =
         input.workspaceStrategy?.type === "existing_worktree"
           ? yield* worktreeProjectId(parent.thread.projectId, input.workspaceStrategy.worktreePath)
-          : parent.thread.projectId;
+          : (input.projectId ?? parent.thread.projectId);
+      if (input.projectId !== undefined && input.projectId !== parent.thread.projectId) {
+        yield* requireProject(input.projectId);
+      }
       let workspaceStrategy: OrchestrationV2DelegatedTaskWorkspaceStrategy | undefined;
       if (input.isolation === "worktree" && !isRetryOfAcceptedDelegation) {
         const project = yield* requireProject(parent.thread.projectId);
