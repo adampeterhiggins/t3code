@@ -573,11 +573,15 @@ editable. Names are stored by the [ThreadTabs service](../apps/server/src/thread
   server's tab positions also pick the group's row. The row's tab count opens or folds just that
   group; those choices stay in the browser and reset when the setting changes. While folded,
   hovering the count lists the group's tabs in that order, and clicking one opens it. The row's hover
-  actions add a **+** that opens a new tab, and each listed tab has a hover **×** that closes it.
+  actions add a **+** that opens a new tab, and each listed tab has a hover **×** that closes it
+  ([tab rows and previews](../apps/web/src/components/sidebar/SidebarTabRows.tsx),
+  [tab preferences and ordering](../apps/web/src/components/sidebar/useSidebarTabs.ts),
+  [group disclosure](../apps/web/src/components/sidebar/SidebarTabDisclosure.tsx)).
 - **Menus.** The thread right-click menu in both sidebars and the header's thread menu offer
   **New tab**. Link actions sit under one **Link** submenu in both sidebars, the header,
   and the mobile tab menu, with only the available integrations listed
-  ([menu builder](../apps/web/src/components/threadActionMenu.logic.ts)). The sidebar's menu also offers **Close tab** on a thread that has a sibling tab.
+  ([menu builder](../apps/web/src/components/threadActionMenu.logic.ts),
+  [sidebar link actions](../apps/web/src/components/sidebar/integrationLinks.ts)). The sidebar's menu also offers **Close tab** on a thread that has a sibling tab.
   Closing archives the tab's thread and lands on its neighbour (`useThreadTabActions` in
   `apps/web/src/components/chat/ThreadTabs.tsx`). Upstream restarts an agent session only from
   the command palette, for the open chat; the tab crumb's menu and both sidebars' right-click

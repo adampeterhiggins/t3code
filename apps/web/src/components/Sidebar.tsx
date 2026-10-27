@@ -1,3 +1,11 @@
+import { openSidebarIntegrationLink } from "./sidebar/integrationLinks";
+import { useSidebarTabs } from "./sidebar/useSidebarTabs";
+import {
+  SidebarTabList,
+  SidebarTabGroupPreview,
+  SidebarTabOverflowRow,
+  SidebarTabRow,
+} from "./sidebar/SidebarTabRows";
 import { groupSidebarThreadsByName, projectSidebarPages } from "./sidebar/pageProjection";
 import {
   sidebarThreadView,
@@ -19,9 +27,7 @@ import {
   type ScopedThreadRef,
   type ThreadId,
 } from "@t3tools/contracts";
-import { ContextPreviewHover } from "./contextPreviewRegistry";
 import { CollapsibleSectionHeader } from "./ui/collapsible-section-header";
-import { terminalStatusFromRunningIds } from "./ThreadStatusIndicators";
 import { ThreadContextDragGhost } from "./chat/ThreadContextDragGhost";
 import {
   dropThreadContext,
@@ -33,23 +39,16 @@ import { requestCustomSnooze } from "./CustomSnoozeDialog";
 import { useAtomValue } from "@effect/atom-react";
 import * as Schema from "effect/Schema";
 import {
-  closestCenter,
   DndContext,
   useSensor,
   useSensors,
-  type CollisionDetection,
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent,
   type Modifier,
 } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import {
-  restrictToFirstScrollableAncestor,
-  restrictToParentElement,
-  restrictToVerticalAxis,
-} from "@dnd-kit/modifiers";
-import { CSS } from "@dnd-kit/utilities";
+import { SortableContext } from "@dnd-kit/sortable";
+import { restrictToFirstScrollableAncestor, restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import {
   canSnooze,
   effectiveSnoozed,
@@ -69,9 +68,7 @@ import {
   threadRuntimeCanArchive,
   type EnvironmentThreadShell,
 } from "@t3tools/client-runtime/state/models";
-import { requestThreadTabGroupName } from "./ThreadTabGroupNameDialog";
 import {
-  setThreadTabGroupName,
   threadTabGroupHeaderTarget,
   threadTabGroupTarget,
 } from "@t3tools/client-runtime/thread-tabs";
@@ -83,18 +80,10 @@ import {
   scopeThreadRef,
   scopedThreadKey,
 } from "@t3tools/client-runtime/environment";
-import {
-  type SidebarTabSortDirection,
-  type SidebarTabSortOrder,
-} from "@t3tools/contracts/settings";
 import type { OlderSettledScope } from "@t3tools/client-runtime/state/threads";
 
 import { ChevronDownIcon, PlusIcon } from "lucide-react";
-import { ChevronUpIcon, TerminalIcon, XIcon } from "lucide-react";
 import {
-  createContext,
-  memo,
-  useContext,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -126,7 +115,6 @@ import { isTerminalFocused } from "../lib/terminalFocus";
 import { isModelPickerOpen } from "../modelPickerVisibility";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
 import { isMacPlatform, cn } from "~/lib/utils";
-import { textDirection } from "~/textDirection";
 import { readLocalApi } from "../localApi";
 import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
 import { selectProjectGroupingSettings } from "../logicalProject";
@@ -135,7 +123,6 @@ import {
   getSidebarProjectSettingsKey,
   type SidebarProjectSnapshot,
 } from "../sidebarProjectGrouping";
-import { useUiStateStore } from "../uiStateStore";
 import {
   getThreadKeysToDeselectAfterDelete,
   useThreadSelectionStore,
@@ -152,11 +139,7 @@ import { useTerminalFocus } from "../hooks/useTerminalFocus";
 import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
 import { registerSettleAndAdvance } from "../settleAndAdvance";
 import { startNewThreadFromContext } from "../lib/chatThreadActions";
-import {
-  useClientSettings,
-  useClientSettingsHydrated,
-  updateClientSettings,
-} from "../hooks/useSettings";
+import { useClientSettings, updateClientSettings } from "../hooks/useSettings";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { useNowMinute } from "../hooks/useNowMinute";
@@ -185,8 +168,7 @@ import { threadEnvironment } from "../state/threads";
 import { useOlderSettledShelf, useOlderSettledShelfGrowth } from "../state/olderSettledShelf";
 import { useThreadSearch } from "../state/queries";
 import { useOrchestrationCommand } from "../state/use-orchestration-command";
-import { runtime } from "../lib/runtime";
-import { readPreparedConnection, readEnvironmentScope } from "../state/session";
+import { readEnvironmentScope } from "../state/session";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { canShareWithGuestAtom } from "./chat/guestShareAvailability";
 import { openGuestShareDialog } from "./chat/guestShareDialogState";
@@ -195,8 +177,7 @@ import {
   resolveActiveThreadRouteRef,
   resolveThreadRouteTarget,
 } from "../threadRoutes";
-import { resolveSidebarTopStatus, SidebarTopStatusIcon } from "./sidebar/SidebarTopStatus";
-import { SidebarTabSummary, tabSortTimeLabel, threadTimeLabel } from "./sidebar/SidebarTabSummary";
+import { tabSortTimeLabel } from "./sidebar/SidebarTabSummary";
 import type { SidebarThreadSummary } from "../types";
 import { isScratchProject, threadMoveTargets } from "@t3tools/client-runtime/state/projects";
 import { ProjectEnvironmentBadge } from "./ProjectEnvironmentBadge";
@@ -209,13 +190,6 @@ import {
   resolveThreadProjectMenuPick,
 } from "./threadActionMenu.logic";
 import { isGitHubProject } from "@t3tools/client-runtime/state/github-issues";
-import { openGitHubIssuePicker } from "./chat/GitHubIssuePicker";
-import { openLinearIssuePicker } from "./chat/LinearIssuePicker";
-import { openNotionPagePicker } from "./chat/NotionPagePicker";
-import { openGoogleFilePicker } from "./chat/GoogleFilePicker";
-import { openGranolaNotePicker } from "./chat/GranolaNotePicker";
-import { openSlackMessagePicker } from "./chat/SlackMessagePicker";
-import { openDiscordMessagePicker } from "./chat/DiscordMessagePicker";
 import { openTranscriptExportDialog } from "./TranscriptExportDialog";
 import {
   applySidebarThreadDrop,
@@ -226,19 +200,9 @@ import {
   foldedSidebarTabThreads,
   groupSidebarTabThreads,
   isSidebarTabGroupOpen,
-  setSidebarTabGroupOverride,
-  type SidebarTabGroupOverrides,
-  hasUnseenCompletion,
-  holdSidebarTabOrder,
-  layoutSidebarTabs,
-  sortSidebarTabs,
-  resolveSidebarTabPairTarget,
   sidebarTabToggleCount,
-  moveSidebarTab,
   sidebarTabGroupRowKey,
   sidebarTabNeighbourKey,
-  sidebarTabSortTimestamp,
-  withSidebarTabRanks,
   isSidebarNestedLinkClick,
   isTrailingDoubleClick,
   planSidebarThreadDrop,
@@ -246,18 +210,12 @@ import {
   resolveSidebarSweepKeys,
   resolveSidebarDropTarget,
   resolveSidebarDropVerb,
-  resolveSidebarRowAccessibility,
-  resolveSidebarThreadStatus,
   searchSidebarThreads,
   shouldCreateNewThreadInCurrentProject,
   shouldNavigateAfterThreadPark,
-  shouldRecedeSidebarThread,
   sidebarListItemId,
   sidebarThreadKeyAtY,
   sortInboxThreadsByReturn,
-  NO_SIDEBAR_TAB_MANUAL_RANKS,
-  SIDEBAR_TAB_MANUAL_RANKS_KEY,
-  SidebarTabManualRanksSchema,
   withSidebarTabThreads,
   useThreadJumpHintsVisible,
   type SidebarListItem,
@@ -271,7 +229,6 @@ import {
 import { SidebarPointerSensor } from "./Sidebar.pointer";
 import { createSidebarListMotion } from "./Sidebar.motion";
 import { resolveSnoozePresets, snoozeWakeLabel, type SnoozePreset } from "./Sidebar.snooze";
-import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
 import { useThreadTabActions } from "./chat/ThreadTabs";
 import {
   SPLIT_VIEW_HIDDEN_MEDIA_QUERY,
@@ -280,10 +237,6 @@ import {
 } from "./chat/splitPane";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { splitMenuAction, useSplitViewStore } from "../splitViewStore";
-import { ProviderInstanceIcon } from "./chat/ProviderInstanceIcon";
-import { getTriggerDisplayModelLabel } from "./chat/providerIconUtils";
-import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../providerInstances";
-import { useThreadRunningTerminalIds } from "../state/terminalSessions";
 import { useStableCallback } from "../hooks/useStableCallback";
 import {
   pendingSidebarRouteReveal,
@@ -302,29 +255,13 @@ import {
 } from "./sidebar/SidebarFilterMenu";
 import { requestThreadGroup } from "./ThreadGroupDialog";
 
-import {
-  SIDEBAR_TAB_SORT_ORDER_LABELS,
-  sidebarTabSortDirectionLabel,
-  SidebarTabsMenu,
-} from "./sidebar/SidebarTabsMenu";
-import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "./ui/preview-card";
+import { SidebarTabsMenu } from "./sidebar/SidebarTabsMenu";
 import { TooltipProvider } from "./ui/tooltip";
+import { composerDraftHasUserContent, DraftId, useComposerDraftStore } from "../composerDraftStore";
 import {
-  composerDraftHasUserContent,
-  DraftId,
-  useComposerDraftStore,
-  useComposerDraftActiveModelSelection,
-} from "../composerDraftStore";
-import {
-  SIDEBAR_THREAD_PREVIEW_PLACEMENT,
-  JumpHintBadge,
-  terminalProcessLabel,
-  type SortableThreadRowBag,
   SortableTabThreadRow,
   SortableThreadRow,
   type SidebarSweepAction,
-  SidebarSplitIndicator,
-  SidebarRenameInput,
   SidebarSearchResultRow,
 } from "./sidebar/SidebarThreadRow";
 import { SidebarDraftBlock } from "./sidebar/SidebarDraftBlock";
@@ -347,19 +284,6 @@ const SIDEBAR_PAGE_BY_MARKER = {
 } as const;
 const SETTLED_TAIL_INITIAL_COUNT = 10;
 const SETTLED_TAIL_PAGE_COUNT = 25;
-// Per-group exceptions to Show tabs. Client-local, like the shelves: a view preference.
-// Stored with the Show tabs value they were made under, so changing that setting from
-// anywhere (header, Settings, palette, keybinding) resets every group to it.
-const TAB_GROUP_OVERRIDES_KEY = "t3code:sidebar:tab-group-overrides";
-const TabGroupOverridesSchema = Schema.Struct({
-  showTabs: Schema.Boolean,
-  groups: Schema.Record(Schema.String, Schema.Boolean),
-});
-const NO_TAB_GROUP_OVERRIDES: SidebarTabGroupOverrides = {};
-const INITIAL_TAB_GROUP_OVERRIDES = {
-  showTabs: false,
-  groups: NO_TAB_GROUP_OVERRIDES,
-};
 const WORKING_SHELF_EXPANDED_KEY = "t3code:sidebar:working-expanded";
 const inboxReturns = createInboxReturnTracker();
 function canOperateThreads(
@@ -386,673 +310,6 @@ function sidebarThreadKey(thread: EnvironmentThreadShell): string {
 }
 const SIDEBAR_DRAG_DISTANCE = 6;
 const SIDEBAR_DRAG_LABEL_HEIGHT = 24;
-/**
- * A group's tabs under its header, including the thread the row stands for. Tabs drag within
- * the list in their own drag context, so picking one up never drags the whole group, and they
- * move with the thread list's motion when a sort, the limit or a drop changes their order.
- */
-/** How long a dragged tab rests on another before releasing it pairs them in split view. */
-const SIDEBAR_TAB_PAIR_HOLD_MS = 500;
-/** The tab a dragged tab pairs with if released now; that row lights up. */
-const SidebarTabPairTargetContext = createContext<string | null>(null);
-function SidebarTabList(props: {
-  /** Sortable ids of the rendered tabs, in display order. */
-  tabKeys: readonly string[];
-  /** Changes when the "more" row appears, disappears or flips, so its move animates too. */
-  overflowKey: string;
-  onReorder: (activeKey: string, overKey: string) => void;
-  /** A dragged tab was held on another and released there: show the two side by side. */
-  onPair: (draggedKey: string, targetKey: string) => void;
-  /** The pointer entered or left the list; a live sort holds still while it rests here. */
-  onPointerRestChange: (resting: boolean) => void;
-  /** The list's height may have changed; rows below it re-measure and glide. */
-  onLayoutChange: () => void;
-  children: ReactNode;
-}) {
-  const { onLayoutChange, onReorder, onPair, tabKeys } = props;
-  const motionRef = useRef<ReturnType<typeof createSidebarListMotion> | null>(null);
-  const attachMotionRef = (node: HTMLUListElement | null) => {
-    motionRef.current?.dispose();
-    motionRef.current = node === null ? null : createSidebarListMotion(node);
-    motionRef.current?.update(false);
-  };
-  const [dragging, setDragging] = useState(false);
-  const sensorRef = useRef<SidebarPointerSensor | null>(null);
-  const finishDrag = (started: boolean) => {
-    sensorRef.current = null;
-    if (!started) return;
-    // Rows glide from where the drag left them into their committed slots.
-    motionRef.current?.release();
-    setDragging(false);
-  };
-  const attachSensor = (sensor: SidebarPointerSensor) => {
-    sensorRef.current = sensor;
-  };
-  useEffect(() => () => sensorRef.current?.cancel(), []);
-  const sensors = useSensors(
-    useSensor(SidebarPointerSensor, {
-      distance: 6,
-      onAttach: attachSensor,
-      onFinish: finishDrag,
-    }),
-  );
-  // Resting a dragged tab on another row, iOS home-screen style, aims to pair the two. Aiming
-  // holds the list still; after a short hold the row lights up and releasing pairs them.
-  const overKeyRef = useRef<string | null>(null);
-  const aimRef = useRef<{
-    key: string | null;
-    timer: number | null;
-  }>({ key: null, timer: null });
-  const pairTargetRef = useRef<string | null>(null);
-  const [pairTarget, setPairTarget] = useState<string | null>(null);
-  const resetPairAim = () => {
-    if (aimRef.current.timer !== null) window.clearTimeout(aimRef.current.timer);
-    aimRef.current = { key: null, timer: null };
-    pairTargetRef.current = null;
-    setPairTarget(null);
-  };
-  useEffect(() => resetPairAim, [resetPairAim]);
-  const collisionDetection: CollisionDetection = (args) => {
-    const activeKey = String(args.active.id);
-    const target = resolveSidebarTabPairTarget({
-      keys: tabKeys,
-      slots: tabKeys.map((key) => args.droppableRects.get(key)),
-      activeKey,
-      overKey: overKeyRef.current,
-      centerY: args.collisionRect.top + args.collisionRect.height / 2,
-    });
-    // dnd-kit runs this during render, so it only starts and stops the hold timer.
-    const aim = aimRef.current;
-    if (target !== aim.key) {
-      if (aim.timer !== null) window.clearTimeout(aim.timer);
-      if (pairTargetRef.current !== null) {
-        pairTargetRef.current = null;
-        queueMicrotask(() => setPairTarget(pairTargetRef.current));
-      }
-      aimRef.current = {
-        key: target,
-        timer:
-          target === null
-            ? null
-            : window.setTimeout(() => {
-                aimRef.current.timer = null;
-                pairTargetRef.current = target;
-                setPairTarget(target);
-              }, SIDEBAR_TAB_PAIR_HOLD_MS),
-      };
-    }
-    if (target === null) return closestCenter(args);
-    return [{ id: overKeyRef.current ?? activeKey }];
-  };
-  const orderKey = `${props.tabKeys.join("\0")}\0${props.overflowKey}`;
-  // A list that just mounted is opening inside its disclosure, which owns that height change.
-  const mountedRef = useRef(false);
-  const tabMotionPass = { orderKey, dragging };
-  useLayoutEffect(() => {
-    if (tabMotionPass.dragging) return;
-    motionRef.current?.update(true);
-    if (mountedRef.current) onLayoutChange();
-    mountedRef.current = true;
-  }, [tabMotionPass, onLayoutChange]);
-  return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={collisionDetection}
-      modifiers={[restrictToVerticalAxis, restrictToParentElement]}
-      onDragStart={(event) => {
-        overKeyRef.current = String(event.active.id);
-        motionRef.current?.suspend();
-        setDragging(true);
-      }}
-      onDragOver={(event) => {
-        overKeyRef.current = event.over === null ? null : String(event.over.id);
-      }}
-      onDragEnd={(event) => {
-        const target = pairTargetRef.current;
-        resetPairAim();
-        if (target !== null) {
-          onPair(String(event.active.id), target);
-        } else if (event.over !== null && event.over.id !== event.active.id) {
-          onReorder(String(event.active.id), String(event.over.id));
-        }
-      }}
-      onDragCancel={resetPairAim}
-    >
-      <SortableContext items={[...tabKeys]} strategy={verticalListSortingStrategy}>
-        <SidebarTabPairTargetContext.Provider value={pairTarget}>
-          <ul
-            ref={attachMotionRef}
-            role="presentation"
-            onPointerEnter={() => props.onPointerRestChange(true)}
-            onPointerLeave={() => props.onPointerRestChange(false)}
-            className="relative ms-[calc(var(--sidebar-row-content-inset)+0.4375rem)] flex flex-col gap-px border-s border-sidebar-border ps-1 pb-0.5"
-          >
-            {props.children}
-          </ul>
-        </SidebarTabPairTargetContext.Provider>
-      </SortableContext>
-    </DndContext>
-  );
-}
-/**
- * Tabs listed in a hover card, with the same title, status, time, and provider as the sidebar's
- * tab rows. Clicking one opens it; `activeKey` marks the tab already open. Hovering one shows
- * the same details card as a tab row.
- */
-function SidebarTabPreviewList(props: {
-  tabs: readonly SidebarThreadSummary[];
-  label: string;
-  testId: string;
-  activeKey?: string | null | undefined;
-  providerEntriesByEnvironment: ReadonlyMap<string, ReadonlyMap<string, ProviderEntrySummary>>;
-  tabSortOrder: SidebarTabSortOrder;
-  openedAtByThreadKey: Readonly<Record<string, number>>;
-  onOpenTab: (threadRef: ScopedThreadRef) => void;
-}) {
-  return (
-    <ul
-      aria-label={props.label}
-      data-testid={props.testId}
-      className="flex max-h-80 flex-col gap-px overflow-y-auto overscroll-contain"
-    >
-      {props.tabs.map((thread) => {
-        const threadKey = sidebarThreadKey(thread);
-        const active = threadKey === props.activeKey;
-        const providerEntries = props.providerEntriesByEnvironment.get(thread.environmentId);
-        return (
-          <li key={threadKey} className="list-none">
-            <ContextPreviewHover
-              kind="thread"
-              accessibleLabel={`Thread, ${thread.title}`}
-              preview={{
-                record: {
-                  environmentId: thread.environmentId,
-                  threadId: thread.id,
-                  title: thread.title,
-                },
-              }}
-              placement={SIDEBAR_THREAD_PREVIEW_PLACEMENT}
-              trigger={
-                <button
-                  type="button"
-                  aria-current={active ? "page" : undefined}
-                  onClick={() => props.onOpenTab(scopeThreadRef(thread.environmentId, thread.id))}
-                  className={cn(
-                    "flex h-8 w-full cursor-pointer items-center gap-2 rounded-md px-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                    active ? "bg-sidebar-row-active" : "hover:bg-sidebar-row-hover",
-                  )}
-                >
-                  <SidebarTabSummary
-                    thread={thread}
-                    providerEntries={providerEntries}
-                    tabSortOrder={props.tabSortOrder}
-                    openedAt={props.openedAtByThreadKey[threadKey]}
-                  />
-                </button>
-              }
-            />
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-/**
- * Every tab in a folded group, in the order its open list would show them. The order holds
- * while the card is open, so a live sort never moves a tab out from under the pointer.
- */
-function SidebarTabGroupPreview(props: {
-  tabs: readonly SidebarThreadSummary[];
-  activeKey: string | null;
-  providerEntriesByEnvironment: ReadonlyMap<string, ReadonlyMap<string, ProviderEntrySummary>>;
-  tabSortOrder: SidebarTabSortOrder;
-  tabSortDirection: SidebarTabSortDirection;
-  tabManualRanks: Readonly<Record<string, number>>;
-  openedAtByThreadKey: Readonly<Record<string, number>>;
-  onOpenTab: (threadRef: ScopedThreadRef) => void;
-}) {
-  const { openedAtByThreadKey } = props;
-  const sorted = sortSidebarTabs(props.tabs, {
-    order: props.tabSortOrder,
-    direction: props.tabSortDirection,
-    getKey: sidebarThreadKey,
-    getTimestamp: (tab, order) =>
-      sidebarTabSortTimestamp(tab, order, openedAtByThreadKey[sidebarThreadKey(tab)]),
-    manualRanks: props.tabManualRanks,
-  });
-  const [heldKeys] = useState(() => sorted.map(sidebarThreadKey));
-  return (
-    <SidebarTabPreviewList
-      tabs={holdSidebarTabOrder(sorted, heldKeys, sidebarThreadKey)}
-      label={`${props.tabs.length} tabs`}
-      testId="sidebar-tab-group-preview"
-      activeKey={props.activeKey}
-      providerEntriesByEnvironment={props.providerEntriesByEnvironment}
-      tabSortOrder={props.tabSortOrder}
-      openedAtByThreadKey={openedAtByThreadKey}
-      onOpenTab={props.onOpenTab}
-    />
-  );
-}
-/**
- * Stands in for a group's tabs past the limit. It names what it hides that needs you, and the
- * providers behind them, so folding tabs away never hides work in progress. Hovering the
- * collapsed row lists those tabs.
- */
-function SidebarTabOverflowRow(props: {
-  hidden: readonly SidebarThreadSummary[];
-  expanded: boolean;
-  providerEntriesByEnvironment: ReadonlyMap<string, ReadonlyMap<string, ProviderEntrySummary>>;
-  tabSortOrder: SidebarTabSortOrder;
-  openedAtByThreadKey: Readonly<Record<string, number>>;
-  onToggle: () => void;
-  onOpenTab: (threadRef: ScopedThreadRef) => void;
-  onPreviewOpenChange?: ((open: boolean) => void) | undefined;
-}) {
-  const { hidden, providerEntriesByEnvironment } = props;
-  const summary = (() => {
-    // Most urgent first, the same precedence as a row's own status.
-    const precedence = ["approval", "input", "failed", "limited", "working", "waiting"] as const;
-    const counts = new Map<string, number>();
-    for (const thread of hidden) {
-      const status = resolveSidebarThreadStatus(thread);
-      counts.set(status, (counts.get(status) ?? 0) + 1);
-    }
-    const status = precedence.find((candidate) => counts.has(candidate)) ?? null;
-    const topStatus = status === null ? null : resolveSidebarTopStatus(status, false, false);
-    const providers = new Map<
-      string,
-      {
-        driverKind: ProviderInstanceEntry["driverKind"];
-        displayName: string;
-      }
-    >();
-    for (const thread of hidden) {
-      const instanceId = thread.runtime?.providerInstanceId ?? thread.modelSelection.instanceId;
-      const entry = providerEntriesByEnvironment.get(thread.environmentId)?.get(instanceId);
-      if (entry && !providers.has(entry.driverKind)) {
-        providers.set(entry.driverKind, {
-          driverKind: entry.driverKind,
-          displayName: entry.displayName,
-        });
-      }
-    }
-    return {
-      topStatus,
-      statusCount: status === null ? 0 : (counts.get(status) ?? 0),
-      providers: [...providers.values()].slice(0, 3),
-    };
-  })();
-  const label = props.expanded ? "Show less" : `${hidden.length} more`;
-  const onPreviewOpenChangeRef = useRef(props.onPreviewOpenChange);
-
-  useLayoutEffect(() => {
-    onPreviewOpenChangeRef.current = props.onPreviewOpenChange;
-  });
-
-  const previewOpenRef = useRef(false);
-  // The card unmounts when the row expands or the group leaves the list. Release the sort hold
-  // if that happens while the preview is open and the pointer is no longer over the list.
-  useEffect(() => {
-    if (props.expanded && previewOpenRef.current) {
-      previewOpenRef.current = false;
-      onPreviewOpenChangeRef.current?.(false);
-    }
-  }, [props.expanded]);
-  useEffect(
-    () => () => {
-      if (!previewOpenRef.current) return;
-      previewOpenRef.current = false;
-      onPreviewOpenChangeRef.current?.(false);
-    },
-    [],
-  );
-  const buttonClassName =
-    "flex h-7 w-full cursor-pointer items-center gap-1.5 rounded-md px-2 text-left text-secondary-label text-xs outline-none hover:bg-sidebar-row-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
-  const buttonBody = (
-    <>
-      {props.expanded ? (
-        <ChevronUpIcon aria-hidden className="size-3 shrink-0" />
-      ) : (
-        <ChevronDownIcon aria-hidden className="size-3 shrink-0" />
-      )}
-      <span className="shrink-0">{label}</span>
-      {!props.expanded && summary.topStatus ? (
-        <span
-          className={cn(
-            "inline-flex min-w-0 items-center gap-1 truncate font-medium",
-            summary.topStatus.className,
-          )}
-        >
-          <SidebarTopStatusIcon icon={summary.topStatus.icon} className="size-3 shrink-0" />
-          {summary.statusCount} {summary.topStatus.label.toLowerCase()}
-        </span>
-      ) : null}
-      {!props.expanded && summary.providers.length > 0 ? (
-        <span aria-hidden className="ml-auto inline-flex shrink-0 items-center gap-1">
-          {summary.providers.map((provider) => (
-            <ProviderInstanceIcon
-              key={provider.driverKind}
-              driverKind={provider.driverKind}
-              displayName={provider.displayName}
-              showBadge={false}
-              iconClassName="size-3 opacity-45"
-            />
-          ))}
-        </span>
-      ) : null}
-    </>
-  );
-  const showPreview = !props.expanded && hidden.length > 0;
-  return (
-    <li className="list-none">
-      {showPreview ? (
-        <PreviewCard
-          onOpenChange={(open) => {
-            previewOpenRef.current = open;
-            props.onPreviewOpenChange?.(open);
-          }}
-        >
-          <PreviewCardTrigger
-            delay={400}
-            closeDelay={150}
-            render={
-              <button
-                type="button"
-                data-testid="sidebar-tab-overflow"
-                aria-expanded={false}
-                onClick={props.onToggle}
-                className={buttonClassName}
-              />
-            }
-          >
-            {buttonBody}
-          </PreviewCardTrigger>
-          <PreviewCardPopup
-            side="right"
-            align="start"
-            sideOffset={4}
-            className="w-80 max-w-[calc(100vw-2rem)]"
-          >
-            <div className="p-1">
-              <SidebarTabPreviewList
-                tabs={hidden}
-                label={`${hidden.length} more tabs`}
-                testId="sidebar-tab-overflow-preview"
-                providerEntriesByEnvironment={providerEntriesByEnvironment}
-                tabSortOrder={props.tabSortOrder}
-                openedAtByThreadKey={props.openedAtByThreadKey}
-                onOpenTab={props.onOpenTab}
-              />
-            </div>
-          </PreviewCardPopup>
-        </PreviewCard>
-      ) : (
-        <button
-          type="button"
-          data-testid="sidebar-tab-overflow"
-          aria-expanded={props.expanded}
-          onClick={props.onToggle}
-          className={buttonClassName}
-        >
-          {buttonBody}
-        </button>
-      )}
-    </li>
-  );
-}
-/**
- * One chat tab listed under its group's row: title, live status, time since your last
- * message, and the provider it runs on. Lifecycle actions stay on the group's row.
- */
-const SidebarTabRow = memo(function SidebarTabRow(props: {
-  thread: SidebarThreadSummary;
-  isActive: boolean;
-  /** One side of the split view on screen: the routed chat or the one beside it. */
-  inSplit: boolean;
-  jumpLabel: string | null;
-  projectDisplayName: string | null;
-  providerEntryByInstanceId: ReadonlyMap<string, ProviderEntrySummary>;
-  isRenaming: boolean;
-  renamingTitle: string;
-  onThreadClick: (event: ReactMouseEvent, threadRef: ScopedThreadRef) => void;
-  onThreadActivate: (threadRef: ScopedThreadRef) => void;
-  onStartRename: (threadRef: ScopedThreadRef, title: string) => void;
-  onRenameTitleChange: (title: string) => void;
-  onCommitRename: (threadRef: ScopedThreadRef, title: string, originalTitle: string) => void;
-  onCancelRename: () => void;
-  onContextMenu: (
-    threadRef: ScopedThreadRef,
-    position: {
-      x: number;
-      y: number;
-    },
-  ) => void;
-  onFileDropThreads: (threadRef: ScopedThreadRef, files: File[]) => void;
-  /** Closes this tab; its hover control stands in for the time label. */
-  onCloseTab: (threadRef: ScopedThreadRef) => void;
-  /** The sorted-by time, so labels read in the list's order. Defaults to your last message. */
-  timeLabel?: string | undefined;
-  sortable?: SortableThreadRowBag | undefined;
-}) {
-  const { thread, onFileDropThreads, sortable } = props;
-  const threadRef = scopeThreadRef(thread.environmentId, thread.id);
-  const threadKey = scopedThreadKey(threadRef);
-  const isPairTarget = useContext(SidebarTabPairTargetContext) === threadKey;
-  const lastVisitedAt = useUiStateStore((state) => state.threadLastVisitedAtById[threadKey]);
-  const isSelected = useThreadSelectionStore((state) => state.selectedThreadKeys.has(threadKey));
-  const runningTerminalIds = useThreadRunningTerminalIds({
-    environmentId: thread.environmentId,
-    threadId: thread.id,
-  });
-  const terminalStatus = terminalStatusFromRunningIds(runningTerminalIds);
-  const isUnread = hasUnseenCompletion({ ...thread, lastVisitedAt });
-  const status = resolveSidebarThreadStatus(thread);
-  const topStatus = resolveSidebarTopStatus(status, false, isUnread);
-  const shouldRecede = shouldRecedeSidebarThread({
-    status,
-    isUnread,
-    isWoke: false,
-    isActive: props.isActive,
-    isSelected,
-  });
-  const { modelInstanceId, providerEntry, driverKind, showInstanceBadge } = useSidebarTabProvider(
-    thread,
-    threadRef,
-    props.providerEntryByInstanceId,
-  );
-  const [isFileDragOver, setIsFileDragOver] = useState(false);
-  const fileDropHandlers = makeWorkspaceFileDropHandlers({
-    setDragActive: setIsFileDragOver,
-    addFiles: (files) => onFileDropThreads(threadRef, files),
-    addFolders: () => {},
-  });
-  useEffect(() => {
-    if (!isFileDragOver) return;
-    const clearFileDrag = () => setIsFileDragOver(false);
-    window.addEventListener("dragend", clearFileDrag);
-    return () => window.removeEventListener("dragend", clearFileDrag);
-  }, [isFileDragOver]);
-  const accessibility = resolveSidebarRowAccessibility({
-    title: thread.title,
-    statusLabel: topStatus?.label ?? null,
-    projectDisplayName: props.projectDisplayName,
-    isActive: props.isActive,
-  });
-  return (
-    <li
-      ref={sortable?.setNodeRef}
-      style={
-        sortable
-          ? {
-              transform: CSS.Translate.toString(sortable.transform),
-              transition: sortable.transition,
-            }
-          : undefined
-      }
-      {...sortable?.listeners}
-      className={cn("list-none", sortable?.isDragging && "relative z-20")}
-    >
-      <ContextPreviewHover
-        kind="thread"
-        accessibleLabel={`Thread, ${thread.title}`}
-        preview={{
-          record: { environmentId: thread.environmentId, threadId: thread.id, title: thread.title },
-        }}
-        placement={SIDEBAR_THREAD_PREVIEW_PLACEMENT}
-        disabled={sortable?.isDragging}
-        trigger={
-          <div
-            role="button"
-            tabIndex={0}
-            aria-label={accessibility.label}
-            aria-current={accessibility.current}
-            data-testid="sidebar-row-tab"
-            {...fileDropHandlers}
-            className={cn(
-              "group/sidebar-row relative flex h-8 w-full cursor-pointer items-center gap-2 overflow-hidden rounded-md px-2 text-left outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-              props.isActive
-                ? "bg-sidebar-row-active text-sidebar-foreground"
-                : props.inSplit
-                  ? "bg-sidebar-row-active/50 text-sidebar-foreground"
-                  : isSelected
-                    ? "bg-sidebar-row-selected text-sidebar-foreground"
-                    : "text-sidebar-foreground hover:bg-sidebar-row-hover",
-              isFileDragOver && "ring-1 ring-inset ring-primary/70",
-              isFileDragOver && !props.isActive && !isSelected && "bg-sidebar-row-hover",
-              isPairTarget && "bg-primary/10 ring-2 ring-inset ring-primary",
-              // Lifted like a dragged thread: an opaque card over the rows beneath.
-              sortable?.isDragging &&
-                "bg-sidebar bg-linear-to-b from-sidebar-row-active to-sidebar-row-active text-sidebar-foreground shadow-lg",
-            )}
-            onClick={(event) => props.onThreadClick(event, threadRef)}
-            onDoubleClick={(event) => {
-              if (props.isRenaming || event.metaKey || event.ctrlKey || event.shiftKey) return;
-              event.preventDefault();
-              props.onStartRename(threadRef, thread.title);
-            }}
-            onKeyDown={(event) => {
-              if (event.target !== event.currentTarget) return;
-              if (event.key !== "Enter" && event.key !== " ") return;
-              event.preventDefault();
-              props.onThreadActivate(threadRef);
-            }}
-            onContextMenu={(event) => {
-              event.preventDefault();
-              props.onContextMenu(threadRef, {
-                x: event.clientX,
-                y: event.clientY,
-              });
-            }}
-          >
-            {props.isRenaming ? (
-              <SidebarRenameInput
-                threadRef={threadRef}
-                originalTitle={thread.title}
-                value={props.renamingTitle}
-                onChange={props.onRenameTitleChange}
-                onCommit={props.onCommitRename}
-                onCancel={props.onCancelRename}
-              />
-            ) : (
-              <span
-                className={cn(
-                  "min-w-0 flex-1 truncate text-start text-sm",
-                  shouldRecede
-                    ? "text-secondary-label"
-                    : props.isActive || isUnread || status === "input"
-                      ? "text-foreground"
-                      : "text-foreground/85",
-                )}
-                dir={textDirection(thread.title)}
-              >
-                {thread.title}
-              </span>
-            )}
-            {props.inSplit || isPairTarget ? <SidebarSplitIndicator /> : null}
-            {terminalStatus ? (
-              <TerminalIcon
-                aria-label={terminalProcessLabel(runningTerminalIds.length)}
-                role="img"
-                className={cn("size-3.5 shrink-0", terminalStatus.colorClass)}
-              />
-            ) : null}
-            {topStatus ? (
-              <span
-                className={cn(
-                  "inline-flex shrink-0 items-center gap-1 text-xs font-medium",
-                  topStatus.className,
-                )}
-              >
-                <SidebarTopStatusIcon icon={topStatus.icon} className="size-3.5 shrink-0" />
-                <span role="status">{topStatus.label}</span>
-              </span>
-            ) : null}
-            {/* Time and close share one grid cell so swapping them on hover keeps the row width stable. */}
-            <span className="grid shrink-0 items-center justify-items-end">
-              <span className="col-start-1 row-start-1 text-xs tabular-nums text-secondary-label group-hover/sidebar-row:invisible group-focus-visible/sidebar-row:invisible group-has-[:focus-visible]/sidebar-row:invisible">
-                {props.timeLabel ?? threadTimeLabel(thread)}
-              </span>
-              <button
-                type="button"
-                aria-label="Close tab"
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  props.onCloseTab(threadRef);
-                }}
-                onDoubleClick={(event) => event.stopPropagation()}
-                className="invisible col-start-1 row-start-1 -mx-1 inline-flex size-5 cursor-pointer items-center justify-center rounded-sm text-muted-foreground outline-none hover:bg-foreground/10 hover:text-foreground focus-visible:visible focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring group-hover/sidebar-row:visible group-focus-visible/sidebar-row:visible"
-              >
-                <XIcon className="size-3.5" />
-              </button>
-            </span>
-            {driverKind ? (
-              <span aria-hidden className="inline-flex shrink-0 items-center">
-                <ProviderInstanceIcon
-                  driverKind={driverKind}
-                  displayName={
-                    providerEntry?.displayName ?? thread.runtime?.providerName ?? modelInstanceId
-                  }
-                  accentColor={providerEntry?.accentColor}
-                  showBadge={showInstanceBadge}
-                  iconClassName="size-3.5 opacity-60"
-                  badgeClassName="right-[-0.1875rem] bottom-[-0.1875rem] h-3 min-w-3 px-0.5 text-5xs"
-                />
-              </span>
-            ) : null}
-            {props.jumpLabel ? <JumpHintBadge label={props.jumpLabel} /> : null}
-          </div>
-        }
-      />
-    </li>
-  );
-});
-/** The provider and model a tab runs on. An unsent composer pick wins, so the icon follows the composer before the next turn. */
-function useSidebarTabProvider(
-  thread: SidebarThreadSummary,
-  threadRef: ScopedThreadRef,
-  providerEntryByInstanceId: ReadonlyMap<string, ProviderEntrySummary>,
-) {
-  const draftModelSelection = useComposerDraftActiveModelSelection(threadRef);
-  const modelSelection = draftModelSelection ?? thread.modelSelection;
-  const modelInstanceId =
-    draftModelSelection?.instanceId ??
-    thread.runtime?.providerInstanceId ??
-    thread.modelSelection.instanceId;
-  const providerEntry = providerEntryByInstanceId.get(modelInstanceId) ?? null;
-  const showInstanceBadge =
-    providerEntry !== null &&
-    shouldShowInstanceBadge(providerEntry, providerEntryByInstanceId.values());
-  const selectedModel = providerEntry?.models.find((model) => model.slug === modelSelection.model);
-  return {
-    modelInstanceId,
-    providerEntry,
-    driverKind: providerEntry?.driverKind ?? null,
-    showInstanceBadge,
-    modelLabel: selectedModel ? getTriggerDisplayModelLabel(selectedModel) : modelSelection.model,
-  };
-}
 function olderSettledScopes(
   environmentIds: ReadonlyArray<EnvironmentId>,
   scopedProjectKeys: ReadonlySet<string> | null,
@@ -1096,47 +353,29 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const restartAgentSession = useRestartAgentSessionWithToast();
   const splitViewActions = useSplitViewActions();
   const threadViews = useClientSettings((s) => s.sidebarThreadViews);
-  const showTabs = useClientSettings((s) => s.sidebarShowTabs);
-  const tabLimit = useClientSettings((s) => s.sidebarTabLimit);
-  const tabSortOrder = useClientSettings((s) => s.sidebarTabSortOrder);
-  const tabSortDirection = useClientSettings((s) => s.sidebarTabSortDirection);
-  const [tabManualRanks, setTabManualRanks] = useLocalStorage(
-    SIDEBAR_TAB_MANUAL_RANKS_KEY,
-    NO_SIDEBAR_TAB_MANUAL_RANKS,
-    SidebarTabManualRanksSchema,
-  );
-  // The group whose tabs past the limit are showing. Any click into a tab or thread folds it.
-  const [expandedTabRowKey, setExpandedTabRowKey] = useState<string | null>(null);
-  // The order a resting pointer holds, so a live sort cannot move a tab out from under it.
-  const [heldTabOrder, setHeldTabOrder] = useState<{
-    readonly rowKey: string;
-    readonly keys: readonly string[];
-  } | null>(null);
-  const openedAtByThreadKey = useThreadTabRecencyStore((s) => s.openedAtByThreadKey);
-  const [storedTabGroupOverrides, setStoredTabGroupOverrides] = useLocalStorage(
-    TAB_GROUP_OVERRIDES_KEY,
-    INITIAL_TAB_GROUP_OVERRIDES,
-    TabGroupOverridesSchema,
-  );
-  const tabGroupOverrides =
-    storedTabGroupOverrides.showTabs === showTabs
-      ? storedTabGroupOverrides.groups
-      : NO_TAB_GROUP_OVERRIDES;
-  // Changing Show tabs from anywhere overrides every group's own choice for good: dropped here,
-  // a toggle back would otherwise revive them. Only once settings load, so a page load that
-  // briefly reads the default never wipes them.
-  const clientSettingsHydrated = useClientSettingsHydrated();
-  useEffect(() => {
-    if (!clientSettingsHydrated || storedTabGroupOverrides.showTabs === showTabs) return;
-    setStoredTabGroupOverrides({ showTabs, groups: NO_TAB_GROUP_OVERRIDES });
-  }, [
-    clientSettingsHydrated,
-    setStoredTabGroupOverrides,
+  const {
     showTabs,
-    storedTabGroupOverrides.showTabs,
-  ]);
-  // Listed tabs open themselves; hidden tabs fold into their group's row, which reopens the
-  // tab you last had open. Each group follows Show tabs unless its badge was toggled.
+    tabLimit,
+    tabSortOrder,
+    tabSortDirection,
+    tabManualRanks,
+    expandedTabRowKey,
+    setExpandedTabRowKey,
+    openedAtByThreadKey,
+    tabGroupOverrides,
+    layoutTabGroups,
+    toggleTabGroup,
+    nameTabGroup,
+    tabLayoutByRowKeyRef,
+    commitTabLayout,
+    toggleTabOverflow,
+    handleTabPointerRest,
+    handleTabOverflowPreview,
+    handleTabReorder,
+    handleTabsShownChange,
+    handleTabSortOrderChange,
+    handleTabSortDirectionChange,
+  } = useSidebarTabs(threads, tabGroupNames);
   const hiddenTabThreads = foldedSidebarTabThreads(tabThreadGroups, tabGroupOverrides, showTabs);
   const router = useRouter();
   const { isMobile, setOpenMobile } = useSidebar();
@@ -1678,59 +917,27 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     setExpandedForRouteKey(routeThreadKey);
     setExpandedTabRowKey(null);
   }
-  // Each listed group's tabs as the sidebar shows them: sorted, held still under a resting
-  // pointer, then cut to the limit. A card lists its own thread among its tabs; a slim row
-  // stands for its thread and lists only the others.
-  const tabLayoutByRowKey = (() => {
-    const layouts = new Map<
-      string,
-      {
-        readonly ordered: readonly EnvironmentThreadShell[];
-        readonly shown: readonly EnvironmentThreadShell[];
-        readonly hidden: readonly EnvironmentThreadShell[];
-        /** Past the limit and showing everything; the "more" row reads Show less. */
-        readonly expanded: boolean;
-        /** A card lists its own thread as a tab, so the list stands in for the row. */
-        readonly listsRow: boolean;
-      }
-    >();
-    if (listedTabsByRowKey.size === 0) return layouts;
-    const cardByKey = new Map(
-      [
-        ...(threadViews.pinned === "card" ? pinnedThreads : []),
-        ...(threadViews.active === "card" ? activeThreads : []),
-        ...(threadViews.working === "card" ? workingThreads : []),
-        ...visibleGroups.flatMap((group) =>
-          sidebarThreadView("grouped", group.name, threadGroups, threadViews) === "card"
-            ? group.threads
-            : [],
-        ),
-        // Automations is a built-in group, so it takes the groups' view.
-        ...(threadViews.grouped === "card" ? visibleAutomationThreads : []),
-        ...(threadViews.hidden === "card" ? visibleHiddenThreads : []),
-        ...(threadViews.snoozed === "card" ? visibleSnoozedThreads : []),
-        ...(threadViews.settled === "card" ? renderedSettledThreads : []),
-      ].map((thread) => [sidebarThreadKey(thread), thread]),
-    );
-    for (const [rowKey, rowTabs] of listedTabsByRowKey) {
-      const card = cardByKey.get(rowKey);
-      const layout = layoutSidebarTabs(card ? [card, ...rowTabs] : rowTabs, {
-        order: tabSortOrder,
-        direction: tabSortDirection,
-        getKey: sidebarThreadKey,
-        getTimestamp: (tab, order) =>
-          sidebarTabSortTimestamp(tab, order, openedAtByThreadKey[sidebarThreadKey(tab)]),
-        manualRanks: tabManualRanks,
-        heldKeys: heldTabOrder?.rowKey === rowKey ? heldTabOrder.keys : null,
-        limit: tabLimit,
-        openKeys: openRowKeys,
-        expanded: expandedTabRowKey === rowKey,
-      });
-      layouts.set(rowKey, { ...layout, listsRow: card !== undefined });
-    }
-    return layouts;
-  })();
-  const tabLayoutByRowKeyRef = useRef(tabLayoutByRowKey);
+  const tabLayoutByRowKey = layoutTabGroups(
+    listedTabsByRowKey,
+    listedTabsByRowKey.size === 0
+      ? EMPTY_THREADS
+      : [
+          ...(threadViews.pinned === "card" ? pinnedThreads : []),
+          ...(threadViews.active === "card" ? activeThreads : []),
+          ...(threadViews.working === "card" ? workingThreads : []),
+          ...visibleGroups.flatMap((group) =>
+            sidebarThreadView("grouped", group.name, threadGroups, threadViews) === "card"
+              ? group.threads
+              : [],
+          ),
+          // Automations is a built-in group, so it takes the groups' view.
+          ...(threadViews.grouped === "card" ? visibleAutomationThreads : []),
+          ...(threadViews.hidden === "card" ? visibleHiddenThreads : []),
+          ...(threadViews.snoozed === "card" ? visibleSnoozedThreads : []),
+          ...(threadViews.settled === "card" ? renderedSettledThreads : []),
+        ],
+    openRowKeys,
+  );
 
   const shownTabsByRowKey =
     tabLayoutByRowKey.size === 0
@@ -1934,25 +1141,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       const result = threadSearchResults[activeSearchResultIndex];
       if (result) selectThreadSearchResult(result);
     }
-  };
-  const nameTabGroup = (threadRef: ScopedThreadRef) => {
-    void (async () => {
-      if (!readEnvironmentScope(threadRef.environmentId, AuthOrchestrationOperateScope)) return;
-      const name = await requestThreadTabGroupName(
-        tabGroupNames.get(scopedThreadKey(threadRef)) ?? null,
-      );
-      if (name === undefined) return;
-      const prepared = readPreparedConnection(threadRef.environmentId);
-      if (!prepared) return;
-      try {
-        await runtime.runPromise(setThreadTabGroupName(prepared, threadRef.threadId, name));
-      } catch {
-        toastManager.add({
-          type: "error",
-          title: "Could not name thread group",
-        });
-      }
-    })();
   };
   const [renamingThreadRef, setRenamingThreadRef] = useState<ScopedThreadRef | null>(null);
   const renamingThreadKey = renamingThreadRef ? scopedThreadKey(renamingThreadRef) : null;
@@ -3362,6 +2550,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           attemptMoveToProject(threadRef, ProjectId.make(projectPick));
           return;
         }
+        if (openSidebarIntegrationLink(clicked.value, threadRef)) return;
         switch (clicked.value) {
           case "filter-by-project":
             // This item is the only scope control here, so it narrows the
@@ -3532,27 +2721,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           case "export-transcript":
             openTranscriptExportDialog(threadRef);
             return;
-          case "link-linear-issue":
-            openLinearIssuePicker(threadRef, "link");
-            return;
-          case "link-slack-thread":
-            openSlackMessagePicker(threadRef, "link");
-            return;
-          case "link-discord-thread":
-            openDiscordMessagePicker(threadRef, "link");
-            return;
-          case "link-notion-page":
-            openNotionPagePicker(threadRef, "link");
-            return;
-          case "link-google-file":
-            openGoogleFilePicker(threadRef, "link");
-            return;
-          case "link-granola-note":
-            openGranolaNotePicker(threadRef, "link");
-            return;
-          case "link-github-issue":
-            openGitHubIssuePicker(threadRef, "link");
-            return;
           case "archive": {
             if (confirmThreadArchive) {
               const confirmed = await settlePromise(() =>
@@ -3617,56 +2785,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const toggleShowTabs = () => {
     void updateClientSettings({ sidebarShowTabs: !showTabs });
   };
-  const toggleTabGroup = (rowKey: string) =>
-    setStoredTabGroupOverrides((stored) => {
-      const overrides = stored.showTabs === showTabs ? stored.groups : NO_TAB_GROUP_OVERRIDES;
-      const open = !isSidebarTabGroupOpen(rowKey, overrides, showTabs);
-      return {
-        showTabs,
-        groups: setSidebarTabGroupOverride(overrides, rowKey, open, showTabs),
-      };
-    });
   const toggleTabsShortcutLabel = shortcutLabelForCommand(keybindings, "sidebar.toggleTabs");
-  const toggleTabOverflow = (rowKey: string) => {
-    setExpandedTabRowKey((current) => (current === rowKey ? null : rowKey));
-  };
-  const tabSortOrderRef = useRef(tabSortOrder);
-
-  // The list's pointer and the portaled "n more" preview both count as resting, so a live
-  // sort does not reshuffle the tabs while you are reading or clicking the preview.
-  const tabListPointerRowRef = useRef<string | null>(null);
-  const tabOverflowPreviewRowRef = useRef<string | null>(null);
-  const syncTabOrderHold = (rowKey: string) => {
-    const holding =
-      tabListPointerRowRef.current === rowKey || tabOverflowPreviewRowRef.current === rowKey;
-    if (!holding) {
-      setHeldTabOrder((held) => (held?.rowKey === rowKey ? null : held));
-      return;
-    }
-    // Manual order only changes when you drop a tab, so there is nothing to hold.
-    if (tabSortOrderRef.current === "manual") return;
-    const ordered = tabLayoutByRowKeyRef.current.get(rowKey)?.ordered;
-    if (ordered) setHeldTabOrder({ rowKey, keys: ordered.map(sidebarThreadKey) });
-  };
-  const handleTabPointerRest = (rowKey: string, resting: boolean) => {
-    if (resting) tabListPointerRowRef.current = rowKey;
-    else if (tabListPointerRowRef.current === rowKey) tabListPointerRowRef.current = null;
-    syncTabOrderHold(rowKey);
-  };
-  const handleTabOverflowPreview = (rowKey: string, open: boolean) => {
-    const previous = tabOverflowPreviewRowRef.current;
-    if (open) tabOverflowPreviewRowRef.current = rowKey;
-    else if (previous === rowKey) tabOverflowPreviewRowRef.current = null;
-    if (previous !== null && previous !== rowKey) syncTabOrderHold(previous);
-    syncTabOrderHold(rowKey);
-  };
-
   // oxlint-disable-next-line t3code/react-effect-budget -- Publish committed row snapshots to asynchronous drag and menu callbacks.
   useLayoutEffect(() => {
     routeTargetRef.current = routeTarget;
     routeThreadKeyRef.current = routeThreadKey;
     projectGroupsRef.current = projectGroups;
-    tabLayoutByRowKeyRef.current = tabLayoutByRowKey;
+    commitTabLayout(tabLayoutByRowKey);
     orderedThreadKeysRef.current = orderedThreadKeys;
     threadByKeyRef.current = threadByKey;
     handleNewThreadRef.current = newThreadContext.handleNewThread;
@@ -3675,10 +2800,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     tabThreadGroupsRef.current = tabThreadGroups;
     sectionByThreadKeyRef.current = sectionByThreadKey;
     listMotionPausedRef.current = listMotionPaused;
-    tabSortOrderRef.current = tabSortOrder;
   });
 
-  // A drop in a timed order switches to Manual, starting from the order you were looking at.
   // A tab held on another pairs them in split view. The routed chat keeps focus when it is one of
   // the two; otherwise the dragged tab opens with the other beside it.
   const handleTabPair = (draggedKey: string, targetKey: string) => {
@@ -3689,49 +2812,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     splitViewActions.openBeside(keepTarget ? target : dragged, keepTarget ? dragged : target);
     if (!keepTarget && routeThreadKeyRef.current !== draggedKey) void navigateToThread(dragged);
   };
-  const handleTabReorder = (rowKey: string, activeKey: string, overKey: string) => {
-    const layout = tabLayoutByRowKeyRef.current.get(rowKey);
-    if (!layout) return;
-    const orderedKeys = moveSidebarTab(
-      layout.ordered.map(sidebarThreadKey),
-      layout.shown.map(sidebarThreadKey),
-      activeKey,
-      overKey,
-    );
-    const liveKeys = new Set(threads.map(sidebarThreadKey));
-    setTabManualRanks((ranks) => withSidebarTabRanks(ranks, orderedKeys, liveKeys));
-    setHeldTabOrder(null);
-    if (tabSortOrder === "manual") return;
-    const previous = {
-      sidebarTabSortOrder: tabSortOrder,
-      sidebarTabSortDirection: tabSortDirection,
-    };
-    void updateClientSettings({ sidebarTabSortOrder: "manual" });
-    const toastId = toastManager.add(
-      stackedThreadToast({
-        type: "info",
-        title: "Tab order set to Manual",
-        description: `Was ${SIDEBAR_TAB_SORT_ORDER_LABELS[tabSortOrder]}, ${sidebarTabSortDirectionLabel(tabSortOrder, tabSortDirection).toLowerCase()}.`,
-        actionProps: {
-          children: "Undo",
-          onClick: () => {
-            toastManager.close(toastId);
-            void updateClientSettings(previous);
-          },
-        },
-      }),
-    );
-  };
-  const handleTabsShownChange = (shown: boolean, limit: number | null) => {
-    void updateClientSettings({
-      sidebarShowTabs: shown,
-      sidebarTabLimit: limit,
-    });
-  };
-  const handleTabSortOrderChange = (order: SidebarTabSortOrder) =>
-    void updateClientSettings({ sidebarTabSortOrder: order });
-  const handleTabSortDirectionChange = (direction: SidebarTabSortDirection) =>
-    void updateClientSettings({ sidebarTabSortDirection: direction });
   const routeTerminalOpen = useTerminalUiStateStore((state) =>
     routeThreadRef
       ? selectThreadTerminalUiState(state.terminalUiStateByThreadKey, routeThreadRef).terminalOpen
