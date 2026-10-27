@@ -64,9 +64,16 @@ export const NotionGetPageInput = Schema.Struct({
   id: TrimmedNonEmptyString.check(Schema.isMaxLength(2048)),
 });
 export type NotionGetPageInput = typeof NotionGetPageInput.Type;
+/** The block a pasted link's `#<block id>` points at, and its text. */
+export const NotionLinkedBlock = Schema.Struct({
+  id: Schema.String,
+  text: Schema.String.check(Schema.isMaxLength(2048)),
+});
+export type NotionLinkedBlock = typeof NotionLinkedBlock.Type;
 export const NotionPageContext = Schema.Struct({
   ...NotionPageSummary.fields,
   markdown: Schema.String.check(Schema.isMaxLength(NOTION_PAGE_MARKDOWN_MAX_CHARS)),
+  block: Schema.optional(NotionLinkedBlock),
 });
 export type NotionPageContext = typeof NotionPageContext.Type;
 /**
@@ -110,39 +117,53 @@ export class NotionError extends Schema.TaggedError<NotionError>()("NotionError"
   }
 }
 
+const NOTION_UUID =
+  /^(?:[a-f0-9]{32}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/iu;
+
+function hyphenateNotionId(id: string): string {
+  const compact = id.replaceAll("-", "").toLowerCase();
+  return `${compact.slice(0, 8)}-${compact.slice(8, 12)}-${compact.slice(12, 16)}-${compact.slice(16, 20)}-${compact.slice(20)}`;
+}
+
+function parseNotionUrl(value: string): URL | null {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+  const host = url.hostname.toLowerCase();
+  return url.protocol === "https:" &&
+    !url.username &&
+    !url.password &&
+    (host === "notion.so" ||
+      host.endsWith(".notion.so") ||
+      host === "notion.com" ||
+      host.endsWith(".notion.com") ||
+      host === "notion.site" ||
+      host.endsWith(".notion.site"))
+    ? url
+    : null;
+}
+
 /** Notion page URLs end in a UUID, with or without a title slug and UUID hyphens. */
 export function parseNotionPageId(value: string): string | null {
-  const uuid = /^(?:[a-f0-9]{32}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/iu;
   let id = value;
-  if (!uuid.test(id)) {
-    let url: URL;
-    try {
-      url = new URL(value);
-    } catch {
-      return null;
-    }
-    const host = url.hostname.toLowerCase();
-    if (
-      url.protocol !== "https:" ||
-      url.username ||
-      url.password ||
-      !(
-        host === "notion.so" ||
-        host.endsWith(".notion.so") ||
-        host === "notion.com" ||
-        host.endsWith(".notion.com") ||
-        host === "notion.site" ||
-        host.endsWith(".notion.site")
-      )
-    )
-      return null;
+  if (!NOTION_UUID.test(id)) {
+    const url = parseNotionUrl(value);
+    if (url === null) return null;
     const segment = url.pathname.split("/").findLast(Boolean) ?? "";
     id =
       segment.match(
         /(?:^|-)([a-f0-9]{32}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/iu,
       )?.[1] ?? "";
   }
-  if (!uuid.test(id)) return null;
-  const compact = id.replaceAll("-", "").toLowerCase();
-  return `${compact.slice(0, 8)}-${compact.slice(8, 12)}-${compact.slice(12, 16)}-${compact.slice(16, 20)}-${compact.slice(20)}`;
+  return NOTION_UUID.test(id) ? hyphenateNotionId(id) : null;
+}
+
+/** The block a Notion page link points at (`…-<page id>#<block id>`), or null. */
+export function parseNotionBlockId(value: string): string | null {
+  if (parseNotionPageId(value) === null) return null;
+  const block = parseNotionUrl(value)?.hash.slice(1) ?? "";
+  return NOTION_UUID.test(block) ? hyphenateNotionId(block) : null;
 }

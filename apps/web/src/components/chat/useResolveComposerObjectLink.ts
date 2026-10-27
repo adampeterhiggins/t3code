@@ -293,7 +293,7 @@ export function useResolveComposerObjectLink(input: {
     switch (link.kind) {
       case "notion-page": {
         if (!notionEnabled) return "skipped";
-        const result = await getNotionPage({ environmentId, input: { id: link.pageId } });
+        const result = await getNotionPage({ environmentId, input: { id: link.url } });
         if (result._tag === "Failure") {
           if (!isAtomCommandInterrupted(result))
             reportUnreadableNotionLink(squashAtomCommandFailure(result), link.url, options?.retry);

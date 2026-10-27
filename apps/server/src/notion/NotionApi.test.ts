@@ -14,6 +14,7 @@ const decodeSearchBody = Schema.decodeUnknownSync(
   ),
 );
 const id = "914a8531-daa8-4753-aacd-f01274df8ec5";
+const blockId = "2e004379-8baf-4ca5-931f-ba9b654e6fa1";
 const page = {
   id,
   url: `https://notion.so/${id}`,
@@ -46,14 +47,21 @@ function harness(
         options.rejectOldToken && request.headers.authorization === "Bearer old"
           ? 401
           : (options.status ?? 200);
-      const body = request.url.endsWith("/search")
-        ? { results: [page], has_more: true }
-        : request.url.endsWith("/markdown")
-          ? {
-              markdown: options.markdown ?? "# Design\n\nNested content",
-              truncated: options.truncated ?? false,
-            }
-          : page;
+      const body = request.url.includes("/blocks/")
+        ? {
+            object: "block",
+            id: blockId,
+            type: "heading_2",
+            heading_2: { rich_text: [{ plain_text: "Canary " }, { plain_text: "rollout" }] },
+          }
+        : request.url.endsWith("/search")
+          ? { results: [page], has_more: true }
+          : request.url.endsWith("/markdown")
+            ? {
+                markdown: options.markdown ?? "# Design\n\nNested content",
+                truncated: options.truncated ?? false,
+              }
+            : page;
       return HttpClientResponse.fromWeb(
         request,
         new Response(encodeJson(body), {
@@ -106,6 +114,19 @@ it.effect("snapshots markdown, refreshes a rejected token and bounds incomplete 
     assert.include(result.markdown, "incomplete or truncated");
     assert.strictEqual(h.refreshes(), 2);
     assert.strictEqual(h.requests[1]?.authorization, "Bearer new");
+  }).pipe(Effect.provide(h.layer));
+});
+it.effect("keeps the block a pasted link points at", () => {
+  const h = harness();
+  return Effect.gen(function* () {
+    const api = yield* NotionApi.NotionApi;
+    const result = yield* api.getPage({
+      id: `https://app.notion.com/p/acme/Design-${id.replaceAll("-", "")}?source=copy_link#${blockId.replaceAll("-", "")}`,
+    });
+    assert.strictEqual(h.requests[2]?.url, `https://api.notion.com/v1/blocks/${blockId}`);
+    assert.strictEqual(result.url, `${page.url}#${blockId.replaceAll("-", "")}`);
+    assert.deepStrictEqual(result.block, { id: blockId, text: "Canary rollout" });
+    assert.include(result.markdown, "Nested content");
   }).pipe(Effect.provide(h.layer));
 });
 it.effect("marks incomplete Notion responses even below the snapshot size cap", () => {
