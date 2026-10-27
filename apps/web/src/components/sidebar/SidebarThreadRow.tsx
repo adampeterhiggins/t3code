@@ -1,3 +1,6 @@
+import { SidebarRenameInput } from "./SidebarRenameInput";
+import { SidebarSavedDraftsIndicator, SidebarSplitIndicator } from "./SidebarRowDecorations";
+import { useSidebarRowTabs, SidebarDisclosure } from "./SidebarTabDisclosure";
 import {
   type EnvironmentId,
   AuthOrchestrationOperateScope,
@@ -40,12 +43,8 @@ import {
   EyeIcon,
   BotIcon,
   CheckIcon,
-  ChevronDownIcon,
   CircleCheckIcon,
   ClockIcon,
-  Columns2Icon,
-  FileTextIcon,
-  LayersIcon,
   PinIcon,
   PinOffIcon,
   PlusIcon,
@@ -56,15 +55,12 @@ import {
 import {
   memo,
   useEffect,
-  useLayoutEffect,
-  useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
-import { flushSync } from "react-dom";
 import { useRightPanelStore } from "../../rightPanelStore";
 import { cn } from "~/lib/utils";
 import { textDirection } from "~/textDirection";
@@ -85,7 +81,6 @@ import {
   animateSidebarLayoutChanges,
   formatWorkingDurationLabel,
   hasUnseenCompletion,
-  sidebarTabToggleLabel,
   resolveSidebarRowAccessibility,
   type SidebarDropVerb,
   resolveSidebarThreadStatus,
@@ -95,7 +90,6 @@ import {
   useSidebarRowSubscriptionLease,
   setFileDragActive,
 } from "../Sidebar.logic";
-import { animateSidebarDisclosure } from "../Sidebar.motion";
 import { resolveSnoozePresets, type SnoozePreset } from "../Sidebar.snooze";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { ThreadSearchMatchExcerpt } from "../ThreadSearchMatch";
@@ -105,7 +99,6 @@ import { shouldShowInstanceBadge } from "../../providerInstances";
 import { useThreadRunningTerminalIds } from "../../state/terminalSessions";
 import { InlineButton } from "../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuShortcut, MenuTrigger } from "../ui/menu";
-import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MiddleTruncate } from "../ui/middle-truncate";
 import {
@@ -396,18 +389,6 @@ const dropVerbBadge: Record<SidebarDropVerb, ReactNode> = {
     </>
   ),
 };
-/** Marks a row whose chat is one side of the split view on screen. */
-export function SidebarSplitIndicator() {
-  return (
-    <span
-      role="img"
-      aria-label="Shown side by side"
-      className="inline-flex shrink-0 items-center text-muted-foreground"
-    >
-      <Columns2Icon className="size-3.5" />
-    </span>
-  );
-}
 type SidebarThreadRowProps = {
   thread: SidebarThreadSummary;
   /** The tab the hidden-tabs row opens; the group thread still owns ordering and selection. */
@@ -938,51 +919,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       <TooltipPopup side="top">Unsent draft</TooltipPopup>
     </Tooltip>
   ) : null;
-  const savedDraftsLabel = `${savedDraftCount} draft${savedDraftCount === 1 ? "" : "s"}`;
-  const savedDraftsIndicator =
-    savedDraftCount > 0 ? (
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <span
-              role="img"
-              aria-label={savedDraftsLabel}
-              className="inline-flex shrink-0 items-center gap-0.5 text-muted-foreground/60 tabular-nums"
-            />
-          }
-        >
-          <FileTextIcon aria-hidden className="size-3" />
-          {savedDraftCount}
-        </TooltipTrigger>
-        <TooltipPopup side="top">{savedDraftsLabel}</TooltipPopup>
-      </Tooltip>
-    ) : null;
-  const onToggleTabs = props.onToggleTabs;
-  const handleToggleTabsClick = (event: ReactMouseEvent) => {
-    event.preventDefault();
-    event.stopPropagation();
-    onToggleTabs?.(rowThreadKey);
-  };
-  // The row's own tooltip would cover the badge's tab list, so it stays shut while that is open.
-  const [tabPreviewOpenRaw, setTabPreviewOpen] = useState(false);
-  const tabPreviewOpen = tabPreviewOpenRaw && !props.tabsOpen && props.tabCount > 1;
-  const tabCountBadge =
-    props.tabCount > 1 ? (
-      <SidebarTabCountBadge
-        count={props.tabCount}
-        toggleCount={props.tabToggleCount}
-        open={props.tabsOpen}
-        onToggle={onToggleTabs ? handleToggleTabsClick : undefined}
-        preview={props.tabPreview}
-        onPreviewOpenChange={setTabPreviewOpen}
-      />
-    ) : null;
-  const tabList =
-    props.tabs != null ? (
-      <SidebarDisclosure open={props.tabsOpen} onSettled={props.onTabsResized}>
-        {props.tabs}
-      </SidebarDisclosure>
-    ) : null;
+  const savedDraftsIndicator = <SidebarSavedDraftsIndicator savedDraftCount={savedDraftCount} />;
+  const { tabPreviewOpen, tabCountBadge, tabList } = useSidebarRowTabs(props, rowThreadKey);
   const showPin =
     props.isPinned && (!sortable?.isDragging || (props.dragOverPinned && props.dropVerb === null));
   // Unpinned rows offer pin beside the other hover actions. Pinned rows keep
@@ -1555,196 +1493,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     </li>
   );
 });
-/** Inline title editor, mounted only while a row is being renamed. */
-export function SidebarRenameInput(props: {
-  threadRef: ScopedThreadRef;
-  originalTitle: string;
-  value: string;
-  onChange: (title: string) => void;
-  onCommit: (threadRef: ScopedThreadRef, title: string, originalTitle: string) => void;
-  onCancel: () => void;
-}) {
-  // Enter and Escape unmount the field, which blurs it; the blur must not commit a second time.
-  const finishedRef = useRef(false);
-  return (
-    <input
-      autoFocus
-      value={props.value}
-      dir="auto"
-      aria-label="Thread title"
-      onChange={(event) => props.onChange(event.target.value)}
-      onFocus={(event) => event.currentTarget.select()}
-      onKeyDown={(event) => {
-        event.stopPropagation();
-        if (event.nativeEvent.isComposing || event.keyCode === 229) return;
-        if (event.key === "Enter") {
-          event.preventDefault();
-          finishedRef.current = true;
-          props.onCommit(props.threadRef, props.value, props.originalTitle);
-        } else if (event.key === "Escape") {
-          event.preventDefault();
-          finishedRef.current = true;
-          props.onCancel();
-        }
-      }}
-      onBlur={() => {
-        if (!finishedRef.current) props.onCommit(props.threadRef, props.value, props.originalTitle);
-      }}
-      onClick={(event) => event.stopPropagation()}
-      onDoubleClick={(event) => event.stopPropagation()}
-      className="min-w-0 flex-1 rounded-sm border border-input bg-card px-1 text-sm font-medium text-card-foreground outline-none focus:border-foreground"
-    />
-  );
-}
-/**
- * The group's tab count. With `onToggle`, it opens and folds that group's tabs. While folded,
- * hovering it shows `preview`, a list to switch tabs from without opening the group.
- */
-function SidebarTabCountBadge(props: {
-  count: number;
-  toggleCount: number;
-  open: boolean;
-  onToggle?: ((event: ReactMouseEvent) => void) | undefined;
-  preview?: ReactNode;
-  onPreviewOpenChange?: ((open: boolean) => void) | undefined;
-}) {
-  const { onPreviewOpenChange } = props;
-  const [previewOpen, setPreviewOpenState] = useState(false);
-  const setPreviewOpen = (open: boolean) => {
-    setPreviewOpenState(open);
-    onPreviewOpenChange?.(open);
-  };
-  const className =
-    "inline-flex shrink-0 items-center gap-0.5 text-xs tabular-nums text-muted-foreground/70";
-  if (!props.onToggle) {
-    return props.open ? null : (
-      <span className={className}>
-        <LayersIcon aria-hidden className="size-3" />
-        {props.count}
-        <span className="sr-only"> tabs</span>
-      </span>
-    );
-  }
-  const label = sidebarTabToggleLabel(props.open, props.toggleCount);
-  const button = (
-    <button
-      type="button"
-      aria-label={label}
-      aria-expanded={props.open}
-      data-testid="sidebar-tab-group-toggle"
-      onClick={(event) => {
-        setPreviewOpen(false);
-        props.onToggle?.(event);
-      }}
-      onDoubleClick={(event) => event.stopPropagation()}
-      className={cn(
-        className,
-        "-mx-1 cursor-pointer rounded-sm px-1 outline-none transition-colors hover:bg-sidebar-row-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-      )}
-    />
-  );
-  const body = (
-    <>
-      <LayersIcon aria-hidden className="size-3" />
-      {props.count}
-      {/* The chevron marks the badge as a control: always while open, on hover while folded. */}
-      <ChevronDownIcon
-        aria-hidden
-        className={cn(
-          "size-3 transition-[rotate,opacity] motion-reduce:transition-none",
-          props.open
-            ? "rotate-180"
-            : "opacity-0 group-hover/sidebar-row:opacity-100 group-has-[:focus-visible]/sidebar-row:opacity-100",
-        )}
-      />
-    </>
-  );
-  if (!props.open && props.preview != null) {
-    // The card renders in a portal but its events still bubble through the row in React, which
-    // would open the row's thread, start a row drag, or open its context menu.
-    const stop = (event: { stopPropagation: () => void }) => event.stopPropagation();
-    return (
-      <PreviewCard open={previewOpen} onOpenChange={setPreviewOpen}>
-        <PreviewCardTrigger delay={300} closeDelay={150} render={button}>
-          {body}
-        </PreviewCardTrigger>
-        <PreviewCardPopup
-          side="right"
-          align="start"
-          sideOffset={8}
-          className="w-80 max-w-[calc(100vw-2rem)]"
-        >
-          <div
-            className="p-1"
-            onClick={(event) => {
-              stop(event);
-              // Every control in the list opens a tab, so a click there is done with the card.
-              if (event.target instanceof Element && event.target.closest("button")) {
-                setPreviewOpen(false);
-              }
-            }}
-            onDoubleClick={stop}
-            onPointerDown={stop}
-            onKeyDown={stop}
-            onContextMenu={stop}
-          >
-            {props.preview}
-          </div>
-        </PreviewCardPopup>
-      </PreviewCard>
-    );
-  }
-  return (
-    <Tooltip>
-      <TooltipTrigger render={button}>{body}</TooltipTrigger>
-      <TooltipPopup side="top">{label}</TooltipPopup>
-    </Tooltip>
-  );
-}
-/**
- * Mounts `children` while open and animates its height on the way in and out.
- * The first render never animates, so a page load or remount lands in place.
- */
-function SidebarDisclosure(props: {
-  open: boolean;
-  children: ReactNode;
-  onSettled?: (() => void) | undefined;
-}) {
-  const { open, onSettled } = props;
-  const [mounted, setMounted] = useState(open);
-  if (open && !mounted) setMounted(true);
-  const ref = useRef<HTMLDivElement>(null);
-  const animationRef = useRef<Animation | null>(null);
-  const settledOpenRef = useRef(open);
-  useLayoutEffect(() => {
-    const node = ref.current;
-    if (settledOpenRef.current === open || node === null) return;
-    settledOpenRef.current = open;
-    const animation = animateSidebarDisclosure(node, open, animationRef.current);
-    animationRef.current = animation;
-    const settle = () => {
-      if (animationRef.current !== animation) return;
-      animationRef.current = null;
-      if (!open) setMounted(false);
-      onSettled?.();
-    };
-    if (animation === null) settle();
-    // A finished animation stops holding the collapsed height, so the unmount
-    // must commit before the next paint or the full list flashes back for a
-    // frame. Committing first also lets onSettled measure the settled layout.
-    else
-      animation.addEventListener("finish", () => flushSync(settle), {
-        once: true,
-      });
-  }, [open, onSettled]);
-  useEffect(() => () => animationRef.current?.cancel(), []);
-  if (!mounted) return null;
-  return (
-    <div ref={ref} className="overflow-hidden">
-      {props.children}
-    </div>
-  );
-}
 function latestRunDiff(thread: SidebarThreadSummary): {
   insertions: number;
   deletions: number;
