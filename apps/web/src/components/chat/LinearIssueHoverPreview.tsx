@@ -4,7 +4,7 @@ import type { ReactElement } from "react";
 import { useLinearLinkClickHandler } from "~/browser/useLinearLinkClickHandler";
 import { linearEnvironment } from "~/state/linear";
 import { useEnvironmentQuery } from "~/state/query";
-import { LinearIssueMarkdown } from "../contextChipParts";
+import { LinearIssueMarkdown } from "../integrationContextDetails";
 import { CursorPreviewCard } from "./CursorPreviewCard";
 
 const keepAnchorDefault = () => {};

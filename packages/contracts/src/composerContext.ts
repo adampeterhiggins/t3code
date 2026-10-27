@@ -22,6 +22,7 @@ import { NOTION_PAGE_MARKDOWN_MAX_CHARS, NotionLinkedBlock } from "./notion.ts";
 import { GOOGLE_FILE_MARKDOWN_MAX_CHARS } from "./google.ts";
 import { SLACK_THREAD_MARKDOWN_MAX_CHARS } from "./slack.ts";
 import { DISCORD_THREAD_MARKDOWN_MAX_CHARS } from "./discord.ts";
+import { INTEGRATION_CONTEXT_KINDS } from "./composerContextIntegrations.ts";
 import { GUEST_MESSAGE_MAX_LENGTH, GUEST_NAME_MAX_LENGTH } from "./guestShare.ts";
 
 /** Image and file records reference `ChatAttachment` ids, never bytes. */
@@ -35,23 +36,8 @@ export const COMPOSER_CONTEXT_KINDS = [
   "review-comment",
   "mention",
   "skill",
-  "thread-tab",
-  "linear-issue",
-  "linear-object",
-  "github-issue",
-  "repository",
-  "checkout",
-  "slack-thread",
-  "discord-thread",
-  "notion-page",
-  "google-file",
-  "granola-note",
   "thread",
-  "subagent",
-  "prompt-link",
-  "github-ref",
-  "unread-link",
-  "model",
+  ...INTEGRATION_CONTEXT_KINDS,
 ] as const;
 export type KnownComposerContextKind = (typeof COMPOSER_CONTEXT_KINDS)[number];
 

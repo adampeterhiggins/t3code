@@ -4,6 +4,7 @@ import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { useRightPanelStore } from "~/rightPanelStore";
 import {
   COMPOSER_CONTEXT_KINDS,
+  INTEGRATION_CONTEXT_KINDS,
   type ComposerContextId,
   type KnownComposerContextKind,
   type KnownComposerContextRecord,
@@ -24,32 +25,20 @@ import {
   isVideoAttachment,
 } from "../../types";
 import { ThreadChipTrigger } from "../ThreadContextChip";
-import { ModelChipTrigger, modelChipAccessibleLabel } from "./ModelContextChip";
-import {
-  FolderIcon,
-  MessageCircleIcon,
-  MessagesSquareIcon,
-  MousePointerClickIcon,
-} from "lucide-react";
+import { MessageCircleIcon, MousePointerClickIcon } from "lucide-react";
 import { buildExpandedImagePreview } from "./ExpandedImagePreview";
 import { WorkspaceEntryIcon } from "./WorkspaceEntryIcon";
 import { TerminalChipTrigger } from "./TerminalContextPreview";
 import { useLinkClickHandler } from "~/browser/useOpenLink";
-import { useOpenInPreferredEditor } from "~/editorPreferences";
-import { primaryServerAvailableEditorsAtom } from "~/state/server";
-import { threadEnvironment } from "~/state/threads";
-import { useAtomCommand } from "~/state/use-atom-command";
-import { useAtomValue } from "@effect/atom-react";
 import {
   ContextChipButton,
   FileChip,
   ImageChipButton,
   PULL_REQUEST_CHIP_KINDS,
   PullRequestChipTrigger,
-  UnreadLinkChipTrigger,
-  unreadLinkAccessibleLabel,
   UnresolvedChip,
 } from "../contextChipParts";
+import { integrationUserMessageChips, useCheckoutContextActions } from "../integrationContextChips";
 import {
   isPullRequestSummaryContext,
   pullRequestContextDisplayState,
@@ -60,20 +49,12 @@ import { formatComposerContextReference } from "@t3tools/shared/composerContextR
 import { ContextChip, ContextChipLabel } from "../ContextChip";
 import { createContextPresentationRegistry } from "../contextPresentationRegistry";
 import { buttonContextChip, ContextPreviewHover } from "../contextPreviewRegistry";
-import {
-  isLinkedObjectContextRecord,
-  LINKED_OBJECT_CONTEXT_KINDS,
-  linkedObjectIcon,
-  linkedObjectKindLabel,
-  type LinkedObjectContextKind,
-} from "../linkedObjectPresentation";
-import { SubagentChipTrigger, subagentChipAccessibleLabel } from "./SubagentContextChip";
 import type { ChatMarkdownContextReference } from "../ChatMarkdown";
 import { messageSkillByName, messageSkillChip } from "./SkillInlineText";
 import { type ReviewCommentContext } from "../../reviewCommentContext";
 import { TimelineRowCtx, type TimelineRowSharedState } from "./timelineRowContext";
 
-interface UserMessageContextRenderContext {
+export interface UserMessageContextRenderContext {
   environmentId: import("@t3tools/contracts").EnvironmentId;
   reference: ChatMarkdownContextReference;
   annotationImage: ChatImageAttachment | null;
@@ -145,20 +126,6 @@ function previewChip<K extends KnownComposerContextKind>(
   };
 }
 
-function linkedObjectChip<K extends LinkedObjectContextKind>(kind: K) {
-  return (record: KnownComposerContextRecord, context: UserMessageContextRenderContext) =>
-    record.kind === kind && isLinkedObjectContextRecord(record)
-      ? buttonContextChip({
-          kind,
-          icon: linkedObjectIcon(record),
-          label: record.label,
-          kindLabel: linkedObjectKindLabel(record),
-          copyMarkdown: context.copyMarkdown,
-          preview: { record, onOpenLink: context.onOpenLink },
-        })
-      : null;
-}
-
 const userMessageContextPresentationRegistry = createContextPresentationRegistry<
   KnownComposerContextRecord,
   UserMessageContextRenderContext,
@@ -213,15 +180,6 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
         ? {
             trigger: <ThreadChipTrigger record={record} copyMarkdown={context.copyMarkdown} />,
             accessibleLabel: `Thread, ${record.title}`,
-            preview: { record },
-          }
-        : null,
-    ),
-    previewChip("model", (record, context) =>
-      record.kind === "model"
-        ? {
-            trigger: <ModelChipTrigger record={record} copyMarkdown={context.copyMarkdown} />,
-            accessibleLabel: modelChipAccessibleLabel(record),
             preview: { record },
           }
         : null,
@@ -393,48 +351,8 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
         preview,
       };
     }),
-    previewChip("thread-tab", (record, context) =>
-      record.kind === "thread-tab"
-        ? buttonContextChip({
-            kind: "thread-tab",
-            icon: <MessagesSquareIcon />,
-            label: record.label,
-            kindLabel: "Chat summary",
-            copyMarkdown: context.copyMarkdown,
-            preview: { summary: record.summary },
-          })
-        : null,
-    ),
-    ...LINKED_OBJECT_CONTEXT_KINDS.map((kind) => previewChip(kind, linkedObjectChip(kind))),
-    previewChip("checkout", (record, context) =>
-      record.kind === "checkout"
-        ? buttonContextChip({
-            kind: "checkout",
-            icon: <FolderIcon />,
-            label: record.label,
-            kindLabel: "Checkout",
-            copyMarkdown: context.copyMarkdown,
-            preview: { record, ...context.checkoutActions },
-          })
-        : null,
-    ),
-    previewChip("subagent", (record, context) =>
-      record.kind === "subagent"
-        ? {
-            trigger: <SubagentChipTrigger record={record} copyMarkdown={context.copyMarkdown} />,
-            accessibleLabel: subagentChipAccessibleLabel(record),
-            preview: { record },
-          }
-        : null,
-    ),
-    previewChip("unread-link", (record, context) =>
-      record.kind === "unread-link"
-        ? {
-            trigger: <UnreadLinkChipTrigger record={record} copyMarkdown={context.copyMarkdown} />,
-            accessibleLabel: unreadLinkAccessibleLabel(record),
-            preview: { record, onOpenLink: context.onOpenLink },
-          }
-        : null,
+    ...INTEGRATION_CONTEXT_KINDS.map((kind) =>
+      previewChip(kind, integrationUserMessageChips[kind]),
     ),
   ],
   fallback: (_kind, _record, context) => <UnavailableUserMessageContextChip {...context} />,
@@ -451,10 +369,7 @@ export function UserMessageContextReferenceChip(props: {
 }) {
   const row = use(TimelineRowCtx);
   const onOpenLink = useLinkClickHandler(row.threadRef);
-  const checkout = props.record?.kind === "checkout" ? props.record : null;
-  const editors = useAtomValue(primaryServerAvailableEditorsAtom);
-  const openInEditor = useOpenInPreferredEditor(checkout?.environmentId ?? null, editors);
-  const linkCheckout = useAtomCommand(threadEnvironment.linkCheckout, { reportFailure: true });
+  const checkoutActions = useCheckoutContextActions(props.record, row.threadRef);
   const copyMarkdown = formatComposerContextReference({
     kind: props.reference.kind,
     contextId: props.reference.contextId as ComposerContextId,
@@ -471,28 +386,6 @@ export function UserMessageContextReferenceChip(props: {
     onExpandVideo: props.onExpandVideo,
     onOpenFile: props.onOpenFile,
     onOpenLink,
-    ...(checkout === null
-      ? {}
-      : {
-          checkoutActions: {
-            onOpen: () => {
-              void openInEditor(checkout.path);
-            },
-            ...(row.threadRef === null
-              ? {}
-              : {
-                  onLink: () => {
-                    void linkCheckout({
-                      environmentId: row.threadRef!.environmentId,
-                      input: {
-                        threadId: row.threadRef!.threadId,
-                        path: checkout.path,
-                        name: checkout.label,
-                      },
-                    });
-                  },
-                }),
-          },
-        }),
+    ...(checkoutActions === undefined ? {} : { checkoutActions }),
   });
 }

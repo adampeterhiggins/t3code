@@ -5,7 +5,7 @@ import type { ReactElement } from "react";
 import { useLinkClickHandler } from "~/browser/useOpenLink";
 import { githubIssueEnvironment } from "~/state/githubIssues";
 import { useEnvironmentQuery } from "~/state/query";
-import { GitHubIssueDetails } from "../contextChipParts";
+import { GitHubIssueDetails } from "../integrationContextDetails";
 import { CursorPreviewCard } from "./CursorPreviewCard";
 import { ThreadsInUse } from "./StartFromPreviews";
 

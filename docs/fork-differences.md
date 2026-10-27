@@ -474,7 +474,7 @@ an agent's own thread show it.
   `t3_thread_send` instructions, a Claude subagent its `SendMessage` agent id, and other native
   subagents are marked as unable to take messages. Each also carries its task and its outcome at
   the time it was attached (`formatSubagentPayload` in
-  [`composerContextReferences.ts`](../packages/shared/src/composerContextReferences.ts)). An agent
+  [`composerContextIntegrationPayloads.ts`](../packages/shared/src/composerContextIntegrationPayloads.ts)). An agent
   whose record the client has not loaded (an older run's) is attached by its child thread alone.
   Chip payloads live in memory like issue chips, so a reloaded draft shows them as unavailable.
 - **Other ways in.** **Attach to chat** and **Copy @handle** in the agent right-click menu,
@@ -503,7 +503,7 @@ a record of what was asked: a sent chip is never updated. See the
   card in the composer and in sent messages: the options as written and when.
 - **Agent payload.** The provider receives the choice as a `delegate_task` target
   (`formatModelPayload` in
-  [`composerContextReferences.ts`](../packages/shared/src/composerContextReferences.ts)).
+  [`composerContextIntegrationPayloads.ts`](../packages/shared/src/composerContextIntegrationPayloads.ts)).
 - **Mobile.** Sent chips render with their details sheet; the mobile composer has no Models tab.
 
 ## Monochrome activity icons
@@ -614,9 +614,10 @@ editable. Names are stored by the [ThreadTabs service](../apps/server/src/thread
   pill per pick, and sorting by updated time, creation time, or title. Hovering a row previews how the chat
   started, the latest exchange, and changed files; attaching reuses that snapshot
   ([`ThreadAttachPicker.tsx`](../apps/web/src/components/chat/ThreadAttachPicker.tsx)). These paths insert a `thread-tab`
-  context chip at the caret, which can be moved like any other chip. The kind lives in
-  `packages/contracts/src/composerContext.ts` and is formatted for providers in
-  `packages/shared/src/composerContextReferences.ts`. The summary covers the recent conversation,
+  context chip at the caret, which can be moved like any other chip. The kind is listed in
+  `packages/contracts/src/composerContextIntegrations.ts`, its schema is in
+  `packages/contracts/src/composerContext.ts`, and it is formatted for providers in
+  `packages/shared/src/composerContextIntegrationPayloads.ts`. The summary covers the recent conversation,
   tools, reasoning, errors, changed files, and the latest plan (`apps/server/src/threadTabs/summary.ts`).
   It is captured when chosen (or when first previewed), so later changes in that chat do not
   change it.
@@ -1672,6 +1673,9 @@ hover.
 
 Code: [`contextPreviewRegistry.tsx`](../apps/web/src/components/contextPreviewRegistry.tsx)
 and the preview bodies in [`contextPreviews.tsx`](../apps/web/src/components/contextPreviews.tsx).
+Chips and preview bodies for kinds upstream does not have live in
+[`integrationContextChips.tsx`](../apps/web/src/components/integrationContextChips.tsx) and
+[`integrationContextDetails.tsx`](../apps/web/src/components/integrationContextDetails.tsx).
 
 ## Terminal excerpts keep their colors
 

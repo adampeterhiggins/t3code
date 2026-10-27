@@ -6,14 +6,12 @@ import { preloadGhosttyTerminal } from "~/terminal/ghostty/surface";
 import { ModelPreview, type ModelPreviewProps } from "./chat/ModelContextChip";
 import { TerminalPreview, type TerminalPreviewProps } from "./chat/TerminalContextPreview";
 import type { ContextChipKind } from "./ContextChip";
+import { ContextChipButton, HoverPopover, PullRequestSummaryHover } from "./contextChipParts";
 import {
   CheckoutDetails,
-  ContextChipButton,
-  HoverPopover,
-  PullRequestSummaryHover,
   ThreadTabSummaryDetails,
   UnreadLinkDetails,
-} from "./contextChipParts";
+} from "./integrationContextDetails";
 import {
   ElementPreview,
   FilePreview,
@@ -182,6 +180,10 @@ export const CONTEXT_PRESENTATION_DEFINITIONS: ContextPresentationDefinitions = 
     preview: { details: "tooltip", Body: MentionPreview, variant: "code" },
   },
   skill: { capabilities: COMPACT, preview: { details: "popover", Body: SkillPreview } },
+  thread: {
+    capabilities: COMPACT,
+    preview: { details: "tooltip", Body: ThreadPreview, Popup: ThreadHoverCardPopup },
+  },
   "thread-tab": {
     capabilities: COMPACT,
     preview: { details: "popover", Body: ThreadTabSummaryDetails },
@@ -196,10 +198,6 @@ export const CONTEXT_PRESENTATION_DEFINITIONS: ContextPresentationDefinitions = 
   "notion-page": { capabilities: COMPACT, preview: linkedObjectPreview },
   "google-file": { capabilities: COMPACT, preview: linkedObjectPreview },
   "granola-note": { capabilities: COMPACT, preview: linkedObjectPreview },
-  thread: {
-    capabilities: COMPACT,
-    preview: { details: "tooltip", Body: ThreadPreview, Popup: ThreadHoverCardPopup },
-  },
   subagent: { capabilities: COMPACT, preview: { details: "card", Body: SubagentPreview } },
   "prompt-link": { capabilities: COMPACT, preview: linkedObjectPreview },
   "github-ref": { capabilities: COMPACT, preview: linkedObjectPreview },
