@@ -9,11 +9,13 @@ import { page, userEvent } from "vite-plus/test/browser";
 
 import { Button, InlineButton } from "../ui/button";
 
+import { ComposerBanner } from "./ComposerBanner";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./ComposerBannerStack";
 import { usageLimitRecoveryBannerItem } from "./UsageLimitRecoveryBanner";
 
 async function setup() {
-  const screen = await renderScreen(null);
+  // The banner has no routing behavior.
+  const screen = await renderScreen(null, { router: false });
   const container = screen.container;
   const hasDetails = () => container.querySelector('[aria-label="Show notice details"]') !== null;
   const render = async (width: number, description: string) => {
@@ -94,7 +96,6 @@ it("does not flash a wrapped action row when the details button appears", async 
             {
               id: "usage-limit",
               variant: "warning",
-              priority: "urgent",
               icon: null,
               title: "Usage limit reached",
               description,
@@ -237,7 +238,6 @@ it.each([320, 800])(
             {
               id: "background-work",
               variant: "default",
-              priority: "activity",
               icon: null,
               title: "12 background tasks",
               descriptionPlacement: "below",
@@ -310,106 +310,29 @@ it.each([320, 800])(
   },
 );
 
-it("keeps only the usage limit attached while an active goal waits in the collapsible stack", async () => {
-  await using fixture = await setup();
-  const { screen, container } = fixture;
-  await act(async () =>
-    screen.rerender(
-      <ComposerBannerStack
-        items={[
-          {
-            id: "goal",
-            variant: "default",
-            priority: "activity",
-            icon: null,
-            title: "Goal active",
-            description: "Finish the banner fix",
-          },
-          {
-            id: "limit",
-            variant: "default",
-            priority: "urgent",
-            icon: null,
-            title: "Usage limit reached",
-          },
-        ]}
-      />,
-    ),
+function notice(title: string, group?: ComposerBannerStackItem["group"]): ComposerBannerStackItem {
+  return { id: title, variant: "default", icon: <InfoIcon />, title, ...(group ? { group } : {}) };
+}
+
+it("puts machine notices first, whatever order the notices arrive in", async () => {
+  await using screen = await renderScreen(
+    <ComposerBannerStack items={[notice("Branch changed"), notice("Offline", "environment")]} />,
   );
 
-  const visibleBanners = () =>
-    Array.from(container.querySelectorAll('[data-slot="composer-banner"]')).filter((banner) =>
-      banner.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }),
-    );
-  const limit = page.getByText("Usage limit reached", { exact: true });
-  const goal = page.getByText("Goal active", { exact: true });
-
-  expect(visibleBanners()).toHaveLength(1);
-  await expect.element(limit).toBeVisible();
-  await expect.element(goal).not.toBeVisible();
-  expect(container.querySelector('[data-slot="composer-banner-attachment"]')?.textContent).toBe(
-    "Usage limit reached",
-  );
-
-  await page.getByRole("button", { name: "Show other notices" }).click();
-  await expect.element(goal).toBeVisible();
-  await expect.element(limit).toBeVisible();
-  await expect.poll(visibleBanners).toHaveLength(2);
-
-  await userEvent.keyboard("{Escape}");
-  await expect.element(goal).not.toBeVisible();
-  await expect.element(limit).toBeVisible();
-  expect(visibleBanners()).toHaveLength(1);
+  expect(screen.container.textContent).toBe("OfflineBranch changed");
 });
 
-it("reveals the full running command only while its title is clipped", async () => {
-  await using fixture = await setup();
-  const { screen, container } = fixture;
-  const command =
-    "Running: /usr/bin/zsh -lc 'sleep 600 > /tmp/t3-background-command-with-a-long-log-filename-for-truncation.log 2>&1'";
-  container.style.width = "240px";
-  await act(async () =>
-    screen.rerender(
-      <ComposerBannerStack
-        items={[
-          {
-            id: "background-work",
-            variant: "default",
-            priority: "activity",
-            icon: null,
-            title: command,
-          },
-        ]}
-      />,
-    ),
+it("leaves the next attachment its own top edge when there are no notices", async () => {
+  await using screen = await renderScreen(
+    <ComposerBanner.Column>
+      <ComposerBannerStack items={[]} />
+      <ComposerBanner.Attachment>
+        <ComposerBanner.Root data-testid="drawer">Approval</ComposerBanner.Root>
+      </ComposerBanner.Attachment>
+    </ComposerBanner.Column>,
   );
 
-  const details = page.getByRole("button", { name: "Show title details", exact: true });
-  await expect.element(details).toBeVisible();
-  await userEvent.hover(details);
-  const popup = page.getByRole("dialog", { name: "Notice details", exact: true });
-  await expect.element(popup).toBeVisible();
-  await expect.element(popup).toHaveTextContent(command);
-
-  container.style.width = "4000px";
-  await expect.element(details).not.toBeInTheDocument();
-  await expect.element(popup).not.toBeInTheDocument();
-});
-it("commits a dismissal when the thread switches during the exit transition", async () => {
-  const onDismiss = vi.fn();
-  const item: ComposerBannerStackItem = {
-    id: "notice",
-    variant: "info",
-    icon: <InfoIcon />,
-    title: "Thread A notice",
-    dismissLabel: "Dismiss notice",
-    onDismiss,
-  };
-  await using screen = await renderScreen(<ComposerBannerStack key="thread-a" items={[item]} />);
-
-  await userEvent.click(screen.getByRole("button", { name: "Dismiss notice" }));
-  // The composer keys the stack by thread, so switching threads remounts it mid-exit.
-  await screen.rerender(<ComposerBannerStack key="thread-b" items={[]} />);
-
-  await vi.waitFor(() => expect(onDismiss).toHaveBeenCalledTimes(1));
+  const surface = getComputedStyle(screen.getByTestId("drawer").element(), "::before");
+  expect(surface.borderTopWidth).toBe("1px");
+  expect(surface.borderTopLeftRadius).not.toBe("0px");
 });

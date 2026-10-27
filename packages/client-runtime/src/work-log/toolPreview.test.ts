@@ -52,6 +52,44 @@ const threadRead = {
 };
 
 describe("resolveToolPreview", () => {
+  it("keeps rich previews when tools consolidate actions", () => {
+    for (const [name, action, input, output] of [
+      ["preview_press", "press", { key: "Enter" }, {}],
+      ["preview_type", "type", { text: "hello" }, {}],
+      ["t3_thread_fork", "fork", { title: "Fork" }, { targetThreadId: "child" }],
+      ["t3_thread_merge_back", "merge_back", {}, { targetThreadId: "parent" }],
+      ["t3_thread_transfers", "status", {}, { transfers: [] }],
+      ["t3_queue_list", "list", {}, { items: [{ text: "next" }] }],
+      ["t3_queue_edit", "edit", { text: "changed" }, {}],
+      ["t3_pending_request_read", "read", {}, { questions: [{ question: "Which?" }] }],
+      ["t3_pending_request_respond", "respond", { answers: { q: "Yes" } }, {}],
+    ] as const) {
+      const consolidated = name.startsWith("preview_")
+        ? "preview_act"
+        : name.startsWith("t3_thread_")
+          ? "t3_thread_transfer"
+          : name.startsWith("t3_queue_")
+            ? "t3_queue"
+            : "t3_pending_request";
+      const legacy = resolveToolPreview(tool(name, input, output));
+      expect(legacy, name).not.toBeNull();
+      expect(resolveToolPreview(tool(consolidated, { ...input, action }, output)), name).toEqual(
+        legacy,
+      );
+    }
+    expect(
+      resolveToolPreview(
+        tool(
+          "t3_thread_configure",
+          {},
+          {
+            modelSelection: { instanceId: "codex", model: "gpt-6.1-sol" },
+          },
+        ),
+      ),
+    ).toMatchObject({ kind: "thread-action", headline: "gpt-6.1-sol" });
+  });
+
   it("reads a thread from each provider's result shape", () => {
     const json = JSON.stringify(threadRead);
     const codex = tool("t3-code.t3_thread_read", { threadId: "child-thread" }, threadRead);

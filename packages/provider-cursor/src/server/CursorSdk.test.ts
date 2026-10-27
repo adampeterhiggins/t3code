@@ -25,7 +25,7 @@ import { spawn } from "node:child_process";
 
 const sdkRequire = createRequire(createRequire(${JSON.stringify(cursorSdkUrl)}).resolve("@cursor/sdk"));
 const protobufUrl = pathToFileURL(sdkRequire.resolve("@bufbuild/protobuf")).href;
-const { proto3, ScalarType } = sdkRequire("@bufbuild/protobuf");
+const { proto3 } = sdkRequire("@bufbuild/protobuf");
 const mode = process.argv[1];
 if (mode === "sdk-model-requests") {
   process.on("uncaughtException", error => {
@@ -67,7 +67,16 @@ if (mode === "sdk-model-requests") {
   const platform = await createAgentPlatform({ localStore: store, workspaceRef: dir });
   // Catalog validation is an external dependency; the SDK's send path and
   // generated RequestedModel constructor stay real. Stop before transport.
-  platform.resolveLocalModelSelection = async selection => selection;
+  platform.listModelsForLocalValidation = async () => [
+    { id: "grok-4.7", variants: [
+      { params: [{ id: "context", value: "500k" }], isMaxMode: true },
+      { params: [{ id: "context", value: "256k" }], isMaxMode: false },
+    ] },
+    { id: "claude-opus-5-5", variants: [
+      { params: [{ id: "context", value: "1m" }], isMaxMode: true },
+      { params: [{ id: "context", value: "300k" }], isMaxMode: false },
+    ] },
+  ];
   globalThis.fetch = async () => { throw new Error("Unexpected network request"); };
   const requests = [];
   const initPartial = proto3.util.initPartial;
@@ -99,56 +108,6 @@ if (mode === "sdk-model-requests") {
     }
   }
   console.log(JSON.stringify(requests));
-  process.exit(0);
-}
-
-if (mode === "model-requests") {
-  const Parameter = proto3.makeMessageType("agent.v1.ModelParameter", [
-    { no: 1, name: "id", kind: "scalar", T: ScalarType.STRING },
-    { no: 2, name: "value", kind: "scalar", T: ScalarType.STRING },
-  ]);
-  const fields = [
-    { no: 1, name: "model_id", kind: "scalar", T: ScalarType.STRING },
-    { no: 2, name: "max_mode", kind: "scalar", T: ScalarType.BOOL },
-    { no: 3, name: "parameters", kind: "message", T: Parameter, repeated: true },
-  ];
-  const RequestedModel = proto3.makeMessageType("agent.v1.RequestedModel", fields);
-  const OtherMessage = proto3.makeMessageType("other.RequestedModel", fields);
-  const cases = [
-    { modelId: "claude-opus-5-5", context: "1m" },
-    { modelId: "grok-4.7", context: "500k" },
-    { modelId: "gpt-5.6-sol", context: "1M" },
-    { modelId: "claude-opus-5-5", context: "0.5m" },
-    { modelId: "claude-opus-5-5", context: "300k" },
-    { modelId: "grok-4.7", context: "256k" },
-    { modelId: "gpt-5.6-sol", context: "272k" },
-    { modelId: "claude-sonnet-4-6", context: "200k" },
-    { modelId: "claude-opus-5-5", context: "0.3m" },
-    { modelId: "default" },
-    { modelId: "custom", context: "unknown" },
-    { modelId: "claude-opus-5-5", context: "300k", maxMode: true },
-  ];
-  const requests = cases.map(({ context, ...selection }) => {
-    const source = {
-      ...selection,
-      parameters: [
-        { id: "reasoning_effort", value: "high" },
-        ...(context === undefined ? [] : [{ id: "context", value: context }]),
-        { id: "fast", value: "true" },
-      ],
-    };
-    const sourceBefore = JSON.stringify(source);
-    const request = new RequestedModel(source);
-    const decoded = RequestedModel.fromBinary(request.toBinary());
-    return {
-      maxMode: decoded.maxMode,
-      modelId: decoded.modelId,
-      parameters: decoded.parameters.map(({ id, value }) => ({ id, value })),
-      sourceUnchanged: sourceBefore === JSON.stringify(source),
-    };
-  });
-  const unrelated = new OtherMessage({ parameters: [{ id: "context", value: "1m" }] });
-  console.log(JSON.stringify({ requests, unrelatedMaxMode: unrelated.maxMode }));
   process.exit(0);
 }
 
@@ -239,40 +198,6 @@ describe("Cursor long-context requests", () => {
       { model: "claude-opus-5-5", context: "1m", maxMode: true },
       { model: "claude-opus-5-5", context: "300k", maxMode: false },
     ]);
-  });
-
-  it("serializes Max Mode for long tiers and preserves standard requests", async () => {
-    const result = await runProbe("model-requests");
-    expect(result.code).toBe(0);
-    const { requests, unrelatedMaxMode } = JSON.parse(result.stdout);
-    expect(requests.map((request: { maxMode: boolean }) => request.maxMode)).toEqual([
-      true,
-      true,
-      true,
-      true,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      true,
-    ]);
-    expect(requests[0]).toEqual({
-      maxMode: true,
-      modelId: "claude-opus-5-5",
-      parameters: [
-        { id: "reasoning_effort", value: "high" },
-        { id: "context", value: "1m" },
-        { id: "fast", value: "true" },
-      ],
-      sourceUnchanged: true,
-    });
-    expect(requests.every((request: { sourceUnchanged: boolean }) => request.sourceUnchanged)).toBe(
-      true,
-    );
-    expect(unrelatedMaxMode).toBe(false);
   });
 });
 

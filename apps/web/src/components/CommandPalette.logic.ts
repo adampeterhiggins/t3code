@@ -91,7 +91,10 @@ export type CommandPaletteOpenIntent =
 export interface CommandPaletteUiState {
   readonly open: boolean;
   readonly mode: SearchOverlayMode;
+  /** What the current palette session opened to; read once when the palette view mounts. */
   readonly openIntent: CommandPaletteOpenIntent | null;
+  /** Bumped by every intent so an open palette starts over from the new one. */
+  readonly session: number;
   readonly parentSearch?: CommandPaletteReturnContext;
   readonly restoredSearch?: CommandPaletteReturnContext;
 }
@@ -123,56 +126,82 @@ export function reduceCommandPaletteUiState(
   state: CommandPaletteUiState,
   action: CommandPaletteUiAction,
 ): CommandPaletteUiState {
+  const { session } = state;
+  const openWithIntent = (openIntent: CommandPaletteOpenIntent): CommandPaletteUiState => ({
+    open: true,
+    mode: "command",
+    openIntent,
+    session: session + 1,
+  });
   switch (action._tag) {
     case "SetOpen":
       return action.open
-        ? { open: true, mode: "command", openIntent: state.openIntent }
-        : { open: false, mode: state.mode, openIntent: null };
+        ? { open: true, mode: "command", openIntent: state.openIntent, session }
+        : { open: false, mode: state.mode, openIntent: null, session };
     case "ToggleMode":
       return state.open && state.mode === action.mode
-        ? { open: false, mode: state.mode, openIntent: null }
-        : { open: true, mode: action.mode, openIntent: null };
+        ? { open: false, mode: state.mode, openIntent: null, session }
+        : { open: true, mode: action.mode, openIntent: null, session };
     case "OpenChildSearch":
-      return { open: true, mode: action.mode, openIntent: null, parentSearch: action.context };
+      return {
+        open: true,
+        mode: action.mode,
+        openIntent: null,
+        session,
+        parentSearch: action.context,
+      };
     case "BackToCommand":
       return state.open && state.mode !== "command"
         ? {
             open: true,
             mode: "command",
             openIntent: null,
+            session,
             ...(state.parentSearch ? { restoredSearch: state.parentSearch } : {}),
           }
         : state;
     case "OpenSearch":
-      return {
-        open: true,
-        mode: "command",
-        openIntent: {
-          kind: "search",
-          query: action.query,
-          ...(action.linkedThreads ? { linkedThreads: action.linkedThreads } : {}),
-          ...(action.fromFilePicker ? { fromFilePicker: true } : {}),
-        },
-      };
+      return openWithIntent({
+        kind: "search",
+        query: action.query,
+        ...(action.fromFilePicker ? { fromFilePicker: true } : {}),
+        ...(action.linkedThreads ? { linkedThreads: action.linkedThreads } : {}),
+      });
     case "OpenFileSearch":
       return {
         open: true,
         mode: "files",
         openIntent: { kind: "file-search", query: action.query },
+        session: session + 1,
       };
     case "OpenAddProject":
-      return { open: true, mode: "command", openIntent: { kind: "add-project" } };
+      return openWithIntent({ kind: "add-project" });
     case "OpenNewThreadIn":
-      return { open: true, mode: "command", openIntent: { kind: "new-thread-in" } };
+      return openWithIntent({ kind: "new-thread-in" });
     case "OpenChangeTheme":
-      return { open: true, mode: "command", openIntent: { kind: "change-theme" } };
+      return openWithIntent({ kind: "change-theme" });
     case "OpenAttentionInbox":
-      return { open: true, mode: "command", openIntent: { kind: "attention-inbox" } };
+      return openWithIntent({ kind: "attention-inbox" });
     case "OpenRunScheduledTask":
-      return { open: true, mode: "command", openIntent: { kind: "run-scheduled-task" } };
+      return openWithIntent({ kind: "run-scheduled-task" });
     case "ClearOpenIntent":
       return state.openIntent ? { ...state, openIntent: null } : state;
   }
+}
+
+/** Where "Add project" starts, given the environments that can take a new project. */
+export type AddProjectEntry =
+  | { readonly kind: "connect-environment" }
+  | { readonly kind: "choose-environment" }
+  | { readonly kind: "choose-source"; readonly environmentId: EnvironmentId };
+
+export function resolveAddProjectEntry(
+  options: ReadonlyArray<Pick<AddProjectEnvironmentOption, "environmentId">>,
+  defaultEnvironmentId: EnvironmentId | null,
+): AddProjectEntry {
+  if (options.length === 0) return { kind: "connect-environment" };
+  if (options.length > 1 || defaultEnvironmentId === null) return { kind: "choose-environment" };
+  return { kind: "choose-source", environmentId: defaultEnvironmentId };
 }
 
 export interface CommandPaletteThreadContentMatch {

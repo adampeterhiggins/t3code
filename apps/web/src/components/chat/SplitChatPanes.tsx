@@ -135,6 +135,7 @@ function SplitDivider({ containerRef }: { containerRef: RefObject<HTMLDivElement
     const minWidth = Math.min(MIN_PANE_WIDTH, available / 2);
     return {
       width: startPane.getBoundingClientRect().width,
+      bounds: { min: minWidth, max: available - minWidth },
       edge: "right",
       resize: (width) => {
         const clamped = Math.min(Math.max(width, minWidth), available - minWidth);

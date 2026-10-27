@@ -50,7 +50,6 @@ export function usageLimitRecoveryBannerItem(props: RecoveryProps): ComposerBann
   return {
     id: `usage-limit-recovery:${runId}`,
     variant: "warning",
-    priority: "urgent",
     icon: <GaugeIcon />,
     title: "Usage limit reached",
     // The action buttons take the rest of the row. Stacking the reset time

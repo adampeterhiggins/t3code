@@ -48,7 +48,6 @@ import {
   shortcutLabelForCommand,
 } from "../../keybindings";
 import {
-  useClientSettings,
   useEnvironmentModelPreferences,
   useToggleEnvironmentModelFavorite,
 } from "~/hooks/useSettings";
@@ -171,7 +170,7 @@ const EMPTY_MODEL_JUMP_LABELS = new Map<string, string>();
 const MODEL_LIST_ESTIMATED_ITEM_SIZE = 52;
 // Rendered heights in `--spacing` units. Chrome is the search box and list padding, plus a 1px border.
 const ONE_LINE_ROW_UNITS = 8;
-const TWO_LINE_ROW_UNITS = { classic: 11.25, redesign: 12 };
+const TWO_LINE_ROW_UNITS = 12;
 const ROW_SEPARATOR_UNITS = 0.5;
 const LIST_CHROME_UNITS = 15.5;
 
@@ -399,16 +398,6 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   const activeModelKey = activeModelSlug
     ? modelPickerModelKey(props.activeInstanceId, activeModelSlug)
     : null;
-  const selectedModelKeys = (() =>
-    props.selectedModels?.map((selection) => {
-      const entry = instanceEntries.find((entry) => entry.instanceId === selection.instanceId);
-      const model = resolveModelPickerSelectedModel({
-        driverKind: entry?.driverKind,
-        model: selection.model,
-        options: modelOptionsByInstance.get(selection.instanceId) ?? [],
-      });
-      return modelPickerModelKey(selection.instanceId, model?.slug ?? selection.model);
-    }))();
   const isCollapsedModelSelected = (
     model: Pick<ModelPickerItem, "driverKind" | "slug" | "instanceId">,
   ) => {
@@ -573,15 +562,12 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     (!matchesLockedProvider(model) || modelRequiresFork?.(model.instanceId, model.slug) === true);
   const isSearching = searchQuery.trim().length > 0;
   // Inside one provider's tab the provider line repeats the selected rail icon on every row.
-  const redesign = useClientSettings((s) => s.redesignEnabled);
-  const rowsMixProviders = !redesign || isSearching || selectedDriverKind === "favorites";
+  const rowsMixProviders = isSearching || selectedDriverKind === "favorites";
   // Fit the tallest tab so switching tabs never resizes the popup and moves the rail under the cursor.
   const tallestTabUnits = (() => {
     const unitsByTab = new Map<ProviderInstanceId | "favorites", number>();
     const addRow = (tab: ProviderInstanceId | "favorites", twoLine: boolean) => {
-      const rowUnits = twoLine
-        ? TWO_LINE_ROW_UNITS[redesign ? "redesign" : "classic"]
-        : ONE_LINE_ROW_UNITS;
+      const rowUnits = twoLine ? TWO_LINE_ROW_UNITS : ONE_LINE_ROW_UNITS;
       const previous = unitsByTab.get(tab);
       unitsByTab.set(
         tab,
@@ -596,7 +582,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       if (model.isLegacy && !isFavorite) {
         tabsWithLegacyRow.add(model.instanceId);
       } else {
-        addRow(model.instanceId, !redesign || Boolean(model.subProvider));
+        addRow(model.instanceId, Boolean(model.subProvider));
       }
     }
     for (const instanceId of tabsWithLegacyRow) addRow(instanceId, true);
@@ -1125,10 +1111,8 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                       className="group w-full cursor-pointer"
                     >
                       <div className="min-w-0 flex-1 text-left">
-                        <div className="text-xs font-medium leading-snug redesign:text-sm redesign:font-normal">
-                          Legacy models
-                        </div>
-                        <div className="mt-1 text-xs font-normal leading-snug text-muted-foreground/70 redesign:text-muted-foreground">
+                        <div className="text-sm font-normal leading-snug">Legacy models</div>
+                        <div className="mt-1 text-xs font-normal leading-snug text-muted-foreground">
                           {legacySection.legacyModels.length} models
                         </div>
                       </div>
@@ -1162,7 +1146,6 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                     index={index}
                     slug={model.slug}
                     name={model.name}
-                    shortName={model.shortName}
                     subProvider={model.subProvider}
                     instanceId={model.instanceId}
                     driverKind={model.driverKind}
@@ -1172,10 +1155,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                     acpRegistryIconUrl={model.acpRegistryIconUrl}
                     isFavorite={isFavorite}
                     isSelected={isSelected}
-                    showSelection={selectedModelKeys !== undefined || redesign}
                     showProvider={rowsMixProviders && showProvider}
-                    preferShortName={!isLocked}
-                    useTriggerLabel={false}
                     showNewBadge={model.badge === "new"}
                     unavailable={model.isUnavailable === true}
                     jumpLabel={modelJumpLabelByKey.get(modelKey) ?? null}

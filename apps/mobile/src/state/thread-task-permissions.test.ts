@@ -48,6 +48,7 @@ const state = vi.hoisted(() => ({
   },
   thread: {
     id: "thread",
+    updatedAt: "2026-09-05T00:00:00.000Z",
     environmentId: "secondary",
     projectId: "project",
     modelSelection: { instanceId: "codex", model: "gpt-5.4" },
@@ -69,6 +70,7 @@ vi.mock("react", () => ({
     vi.fn(),
   ],
 }));
+vi.mock("../lib/clock", () => ({ useNowMinuteMs: () => 0 }));
 vi.mock("expo-crypto", () => ({ randomUUID: () => "uuid" }));
 vi.mock("../lib/attachmentUpload", () => ({ prepareTurnAttachments: vi.fn() }));
 vi.mock("../lib/uuid", () => ({ uuidv4: () => "uuid" }));
@@ -114,6 +116,7 @@ vi.mock("./threads", async () => {
     environmentThreadDetails: {
       queueWorkflowAtom: () => Atom.make(null),
       checkpointSummariesAtom: () => Atom.make([]),
+      pendingRequestsAtom: () => Atom.make(state.pendingRequests),
     },
     threadEnvironment: {
       respondToApproval: state.approve,

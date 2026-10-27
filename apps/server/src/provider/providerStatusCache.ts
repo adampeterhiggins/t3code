@@ -36,6 +36,7 @@ const BUILT_IN_DRIVER_ORDER: ReadonlyArray<string> = [
   "opencode",
   "antigravity",
   "customAcp",
+  "fx",
 ];
 
 const driverRank = (driver: string): number => {
@@ -61,13 +62,7 @@ export const isCachedProviderCorrelated = (input: {
   input.cachedProvider.instanceId === input.fallbackProvider.instanceId &&
   input.cachedProvider.driver === input.fallbackProvider.driver;
 
-/**
- * A provider may change the shape of its model inventory without changing its
- * instance identity. When the live fallback advertises a catalog version,
- * cached snapshots must carry the same version before their models can be
- * hydrated. Missing versions are intentionally rejected so snapshots written
- * before versioning was introduced cannot reintroduce stale model entries.
- */
+// Cached snapshots need the live catalog version so old inventories cannot reappear.
 export const isCachedProviderCatalogCompatible = (input: {
   readonly cachedProvider: ServerProvider;
   readonly fallbackProvider: ServerProvider;
