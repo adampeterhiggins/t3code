@@ -601,7 +601,8 @@ editable. Names are stored by the [ThreadTabs service](../apps/server/src/thread
   (`apps/web/src/components/sidebar/SidebarTabSummary.tsx`). A pill's menu attaches the summary
   or continues the conversation: a native fork from the sibling's latest finished response,
   resolved by the server when the tab fork omits `runId`, replaces the empty tab and takes its
-  draft (`onContinueFromTab` in `ChatView.tsx`, `continueFrom` in
+  draft (`onContinueFromTab` in
+  [`useChatViewTabForks.ts`](../apps/web/src/components/chat/useChatViewTabForks.ts), `continueFrom` in
   `apps/mobile/src/features/threads/ThreadTabs.tsx`).
   The **Chats** tab also lists other unarchived threads in the environment, newest first and
   matched by title
