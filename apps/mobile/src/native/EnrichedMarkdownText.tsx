@@ -8,6 +8,8 @@ import {
   markdownForNativeRendering,
   markdownWithFileEmbeds,
   markdownWithObjectLinkLabels,
+  markdownForNativeParsing,
+  markdownWithInlineFileLinks,
   markdownWithTableBreaks,
 } from "../lib/markdownDocument";
 import { isValidElement, useCallback, useMemo, useState, type ReactNode } from "react";
@@ -161,11 +163,16 @@ export function MobileEnrichedMarkdownText(props: SelectableMarkdownTextProps) {
     fileHrefs,
     urls: objectLinkUrls,
   } = useMemo(() => {
-    const content = markdownForNativeRendering(
-      props.markdown,
-      ENRICHED_INLINE_FILE_LINK_REGEX,
-      themeAppearance,
-    );
+    const content = fileEmbedLabel
+      ? markdownWithInlineFileLinks(
+          markdownForNativeParsing(props.markdown, themeAppearance),
+          ENRICHED_INLINE_FILE_LINK_REGEX,
+        )
+      : markdownForNativeRendering(
+          props.markdown,
+          ENRICHED_INLINE_FILE_LINK_REGEX,
+          themeAppearance,
+        );
     const files = fileEmbedLabel
       ? markdownWithFileEmbeds(content, fileEmbedLabel)
       : { markdown: content, fileHrefs: new Set<string>() };

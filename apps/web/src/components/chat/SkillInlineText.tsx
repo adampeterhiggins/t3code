@@ -13,7 +13,7 @@ import { SkillChipIcon } from "./SkillChipIcon";
 
 /** What a skill chip in message text reads: the provider's skill, as the timeline holds it. */
 export type MessageSkill = Pick<ServerProviderSkill, "name" | "displayName"> &
-  Partial<Pick<ServerProviderSkill, "description" | "shortDescription" | "path">>;
+  Partial<Pick<ServerProviderSkill, "description" | "shortDescription" | "path" | "enabled">>;
 
 const skillIndexes = new WeakMap<ReadonlyArray<MessageSkill>, ReadonlyMap<string, MessageSkill>>();
 

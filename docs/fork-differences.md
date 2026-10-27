@@ -62,7 +62,7 @@ User guide: [updating.md](./user/updating.md).
 
 ## Custom file applications
 
-Settings → Integrations → Open in can add, edit, and remove applications for one environment,
+Settings → Browser → Open in can add, edit, and remove applications for one environment,
 choose a default for chat file links, and override it by file extension. Each custom application
 can use an application logo or a general icon in the workspace Open button and picker. Custom applications
 appear in the workspace Open in picker and file Open with menus, and can run through the user's
@@ -236,24 +236,12 @@ Code: `apps/web/src/components/chat/ProviderAccountPicker.tsx` and
 `apps/web/src/components/chat/providerAccountSelection.ts`. User guide:
 [providers-codex.md](./user/providers-codex.md#switch-accounts-in-an-existing-thread).
 
-## Cursor long-context tiers use Max Mode
-
-Choosing a Cursor context tier above 300K (Grok 4.7 at 500K, or 1M on other models) turns on
-Cursor's Max Mode for the request, as Cursor's own CLI does. Upstream sends these tiers without
-Max Mode, so Grok 4.7 at 500K fails with "Invalid parameters for registry model" and 1M tiers
-silently run at about 300K. Max Mode is billed per token on usage-based Cursor plans.
-
-This is a port of upstream PR [#15884](https://github.com/pingdotgg/t3code/pull/15884) for
-[#15788](https://github.com/pingdotgg/t3code/issues/15788). Remove this section when upstream merges
-it. Code: `packages/provider-cursor/src/server/sdk.ts`.
-
 ## Cursor turns send the picker's defaults
 
 Cursor gets every model option the picker shows, not only the ones the user changed. Cursor treats
 an omitted option as the model's standard tier, so upstream runs an untouched composer, a delegated
 task, a launched thread, or a scheduled task at about 300K while the picker shows 1M (500K for
-Grok 4.7). Fast is the exception: it stays off unless chosen, as in the composer. With the
-long-context change above, these defaults run in Max Mode.
+Grok 4.7). Fast is the exception: it stays off unless chosen, as in the composer. The SDK runs these long-context defaults in Max Mode.
 
 Fixes upstream [#16149](https://github.com/pingdotgg/t3code/issues/16149); remove this section when
 upstream fixes it. Code: `withCursorDefaultParameters` in
@@ -700,7 +688,7 @@ User guide: [thread-sidebar.md](./user/thread-sidebar.md#view-two-chats-side-by-
 
 ## Open the thread's pull request in the browser
 
-On web and desktop, **Settings → General → Open pull requests in** chooses where the thread's own
+On web and desktop, **Settings → Diffs & pull requests → Open pull requests in** chooses where the thread's own
 pull request opens: the thread details panel's pull request rows, the composer's pull request badge,
 and the **View PR** button on the toast after a pull request is created. **Side panel** (the
 default) is upstream's behaviour, where Cmd/Ctrl-click opens the browser. **Browser** swaps them: a
@@ -715,7 +703,7 @@ Code: `usePreferredOpenPrLink` in
 ## Pull request host links follow Open links in
 
 Upstream's pull request panel always sends its links to the system browser. In the fork, those
-links follow **Settings → Integrations → Browser → Open links in** when the panel is next to a
+links follow **Settings → Browser → Open links in** when the panel is next to a
 thread. That covers "Open on GitHub", the PR number, the repository name, author profiles, comment
 timestamps, activity links, attachments, and the "Open on GitHub" button on the load-error
 screen. Cmd/Ctrl-click still opens the system browser. The pull requests page has no thread, so
@@ -756,7 +744,7 @@ and `buildPullRequestQuoteContext` in
 
 With **Keep worktrees with local changes** set to **Any local files**, upstream keeps a worktree
 for any ignored file except `node_modules`. In the fork, regenerable caches such as virtualenvs and
-`__pycache__` don't keep it either, and **Settings → Storage → Ignored names that do not block
+`__pycache__` don't keep it either, and **Settings → Worktrees → Ignored names that do not block
 cleanup** adds more file and directory names, applied to every project on that machine. **Suggest from projects** asks the selected model,
 or the environment's text-generation model when that control is off, to propose ignored directories
 that appear in more than one project. Credential paths such as `.env` and `.ssh` stay blocking.
@@ -1506,10 +1494,10 @@ before the message is recorded, with a one-step setup card showing progress. Eac
 outcome and git status are written back onto the message. The chip shows them, and the agent's prompt includes them, so the
 agent knows what is there. A failed clone is a warning and the agent still starts. The server adds
 the folder to the repository's `info/exclude` so checkpoints and diffs ignore the clones. The
-owners and the folder are server settings in **Settings > General**. Mobile's attach menu
+owners and the folder are server settings in **Settings > Threads**. Mobile's attach menu
 has the same picker, without the recently attached ranking.
 
-A project's **Settings > Storage** lists the clones in each of its checkouts' context folder, with
+A project's **Settings > Worktrees** lists the clones in each of its checkouts' context folder, with
 their remote and git status, and removes one after a confirmation that names any unpushed commits
 or changed files it throws away. The server refuses a name that is not one folder, a folder that is
 not a git repository, one that resolves outside the context folder through a symlink, and any
@@ -2168,7 +2156,7 @@ guide: [usage.md](./user/usage.md#track-subscription-limits).
 
 **Stop at subscription limit** stops Claude, Codex, and Cursor threads at their
 subscription allowance instead of letting them continue on paid usage (Claude extra
-usage, Codex credits, Cursor on-demand usage). **Settings > General** (mobile:
+usage, Codex credits, Cursor on-demand usage). **Settings > Threads** (mobile:
 **Settings > Threads > Usage limits**) protects every such thread on the selected
 environments, including delegated work, overrides a thread's Off option, and
 rechecks running sessions when enabled. With it off, threads opt in through the
@@ -2393,7 +2381,7 @@ entry.
 
 ## Managed worktree storage
 
-**Settings → Storage → Managed worktrees** inventories managed checkouts per selected environment in a table of branch, linked threads, project, pull request, thread state, checkout state, created and updated dates, and size. Columns sort from their headers, the Filters menu narrows by state, checkout, pull request and project, and the date columns can show relative, date, or date and time. Sizes are measured on demand, one at a time or all at once. Individual and bulk removal rechecks local changes and running work under the workspace lease, refuses project checkouts and unmanaged paths, and keeps branches and thread history. Mobile offers the same inventory and safe cleanup in each environment’s Settings page.
+**Settings → Worktrees → Managed worktrees** inventories managed checkouts per selected environment in a table of branch, linked threads, project, pull request, thread state, checkout state, created and updated dates, and size. Columns sort from their headers, the Filters menu narrows by state, checkout, pull request and project, and the date columns can show relative, date, or date and time. Sizes are measured on demand, one at a time or all at once. Individual and bulk removal rechecks local changes and running work under the workspace lease, refuses project checkouts and unmanaged paths, and keeps branches and thread history. Mobile offers the same inventory and safe cleanup in each environment’s Settings page.
 
 Code: [`WorktreeInventory.ts`](../apps/server/src/git/WorktreeInventory.ts) and [`WorktreeInventory.tsx`](../apps/web/src/components/settings/WorktreeInventory.tsx). User guide: [Review worktree storage](user/project-settings.md#review-worktree-storage).
 

@@ -240,7 +240,7 @@ it.effect("authenticates /mcp/query and /mcp/operate by the token's scopes", () 
         "t3_thread_usage_limit_resume",
         "t3_thread_rollback",
         "t3_thread_organize",
-        "t3_pending_request_respond",
+        "t3_pending_request",
         "t3_project_create",
         "t3_environment_read",
         "t3_approval_respond",

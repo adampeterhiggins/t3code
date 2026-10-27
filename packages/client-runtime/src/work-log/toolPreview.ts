@@ -1004,6 +1004,14 @@ function t3ToolPreview(tool: string, input: Record_, result: Record_ | null): To
         status: str(result?.status),
         details: [],
       });
+    case "t3_thread_configure":
+      if (input.modelSelection !== undefined) {
+        const { model, details } = modelSelectionDetails(input.modelSelection);
+        return model
+          ? threadAction(`Switched to ${model}`, { threadId: str(input.threadId), details })
+          : null;
+      }
+    // fall through
     case "t3_thread_configuration": {
       if (!result) return null;
       const { model, details } = modelSelectionDetails(result.modelSelection);
@@ -1016,12 +1024,6 @@ function t3ToolPreview(tool: string, input: Record_, result: Record_ | null): To
             .join(" · "),
         ].filter((detail) => detail.length > 0),
       });
-    }
-    case "t3_thread_configure": {
-      const { model, details } = modelSelectionDetails(input.modelSelection);
-      return model
-        ? threadAction(`Switched to ${model}`, { threadId: str(input.threadId), details })
-        : null;
     }
     case "t3_thread_fork": {
       const title = str(input.title);
@@ -1153,7 +1155,7 @@ export function resolveToolPreview(item: OrchestrationV2TurnItem): ToolPreview |
   const text = item.outputOmitted === true ? null : toolResultText(item.output);
   const oversized = oversizedResultPreview(text);
   if (oversized) return oversized;
-  const t3Tool = resolveT3McpToolId(item.toolName);
+  const t3Tool = resolveT3McpToolId(item.toolName, input);
   // T3 tools without their own card still show their result as one.
   if (t3Tool) {
     return (

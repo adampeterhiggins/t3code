@@ -121,6 +121,7 @@ export interface ThreadFeedActivity {
     | "eye"
     | "globe"
     | "search"
+    | "stop"
     | "hammer"
     | "lock"
     | "message"
@@ -656,6 +657,7 @@ function itemIcon(item: OrchestrationV2TurnItem): ThreadFeedActivity["icon"] {
       return "hammer";
     case "run_interrupt_request":
     case "run_interrupt_result":
+      return "stop";
     case "system_notice":
       return "warning";
     case "error":
@@ -683,7 +685,10 @@ function itemToolPresentation(item: OrchestrationV2TurnItem): T3McpToolPresentat
   if (item.type !== "dynamic_tool") {
     return null;
   }
-  return resolveT3McpToolPresentation(item.toolName) ?? resolveT3McpToolPresentation(item.title);
+  return (
+    resolveT3McpToolPresentation(item.toolName, item.input) ??
+    resolveT3McpToolPresentation(item.title, item.input)
+  );
 }
 
 function itemSummary(

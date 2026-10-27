@@ -5,7 +5,6 @@ import { subscribeComposerDraftModelReconciliation } from "./composerDraftStore"
 import { environmentThreadShells } from "./state/threads";
 import { environmentShell } from "./state/shell";
 
-import { BrowserProfileReporter } from "./browser/BrowserProfileReporter";
 import { ElectronBrowserHost } from "./browser/ElectronBrowserHost";
 import { QuitHoldOverlay } from "./components/QuitHoldOverlay";
 import { isQuickMessageWindow } from "./components/quickMessage/quickMessageWindow";
@@ -32,7 +31,6 @@ export function AppRoot({ router }: { readonly router: AppRouter }) {
       {isQuickMessageWindow ? null : (
         <>
           <ElectronBrowserHost />
-          <BrowserProfileReporter />
           <QuitHoldOverlay />
         </>
       )}

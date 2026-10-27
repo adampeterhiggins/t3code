@@ -1,3 +1,4 @@
+import type { MessageSkill } from "./chat/SkillInlineText";
 import { buildFileLinkParentSuffixByPath, fileLinkLabel } from "@t3tools/shared/fileLinks";
 import {
   isWindowsDrivePathHref,
@@ -260,7 +261,7 @@ interface ChatMarkdownProps {
   environmentId?: EnvironmentId | undefined;
   onTaskListChange?: ((input: { markerOffset: number; checked: boolean }) => void) | undefined;
   isStreaming?: boolean;
-  skills?: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
+  skills?: ReadonlyArray<MessageSkill>;
   className?: string;
   lineBreaks?: boolean;
   parseRawHtml?: boolean;
@@ -286,7 +287,7 @@ export interface ChatMarkdownContextReference {
   label: string;
 }
 
-const EMPTY_MARKDOWN_SKILLS: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">> = [];
+const EMPTY_MARKDOWN_SKILLS: ReadonlyArray<ServerProviderSkill> = [];
 const EMPTY_REMARK_PLUGINS: NonNullable<ReactMarkdownOptions["remarkPlugins"]> = [];
 const NO_LINEAR_ISSUE_REFERENCES_ATOM = Atom.make<LinearIssueReferences | null>(null).pipe(
   Atom.withLabel("chat-markdown:no-linear-issue-references"),

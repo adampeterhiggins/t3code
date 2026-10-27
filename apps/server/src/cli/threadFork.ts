@@ -232,8 +232,9 @@ const threadForkCommand = Command.make("fork", {
         flags,
         Effect.fn("cli.thread.fork")(function* (tools) {
           const forked = yield* tools.call(
-            "t3_thread_fork",
+            "t3_thread_transfer",
             {
+              action: "fork",
               threadId,
               sourcePoint: Option.match(flags.run, {
                 onNone: () => ({ type: "latest_stable" }),
@@ -487,12 +488,16 @@ const threadAnswerCommand = Command.make("answer", {
             PendingApprovals,
           );
           const { requestIds } = yield* tools.call(
-            "t3_pending_request_list",
-            { threadId },
+            "t3_pending_request",
+            { action: "list", threadId },
             Schema.Struct({ requestIds: Schema.Array(RuntimeRequestId) }),
           );
           const questions = yield* Effect.forEach(requestIds, (requestId) =>
-            tools.call("t3_pending_request_read", { threadId, requestId }, PendingQuestion),
+            tools.call(
+              "t3_pending_request",
+              { action: "read", threadId, requestId },
+              PendingQuestion,
+            ),
           );
 
           let runId: string | null = null;
@@ -527,8 +532,8 @@ const threadAnswerCommand = Command.make("answer", {
             }
             const answers = yield* pendingAnswers(pending.questions, flags.answer);
             const result = yield* tools.call(
-              "t3_pending_request_respond",
-              { threadId, requestId: pending.requestId, answers },
+              "t3_pending_request",
+              { action: "respond", threadId, requestId: pending.requestId, answers },
               Schema.Unknown,
             );
             if (!flags.wait) {
@@ -552,7 +557,7 @@ const threadAnswerCommand = Command.make("answer", {
                 yield* Console.log(`  ${question.header}: ${question.question}`);
                 for (const [index, option] of question.options.entries()) {
                   yield* Console.log(
-                    `    ${index + 1}) ${option.label}${option.description ? ` — ${option.description}` : ""}`,
+                    `    ${index + 1}) ${option.label}${option.description ? `: ${option.description}` : ""}`,
                   );
                 }
               }
@@ -604,7 +609,7 @@ const workLine = (item: Pick<OrchestratorMcpThreadTimelineItem, "type" | "title"
     return `- **${label}**: ${inlineCode(firstLine)}`;
   }
   const single = item.text !== null && !item.text.includes("\n") && item.text.length <= 200;
-  return single && item.text !== label ? `- **${label}** — ${item.text}` : `- **${label}**`;
+  return single && item.text !== label ? `- **${label}**: ${item.text}` : `- **${label}**`;
 };
 
 export interface TranscriptEntry {

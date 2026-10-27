@@ -1,23 +1,31 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
 import { resolveQuickMessageAppearance } from "./quickMessageAppearance";
-import {
-  getDefaultThemeColors,
-  getEnvironmentThemes,
-  setEnvironmentThemes,
-  GROVE_THEME,
-} from "./themePalette";
+import { getDefaultThemeColors, GROVE_THEME } from "./themePalette";
 
+const publishedThemes = vi.hoisted(() => ({
+  atom: null as unknown as import("effect/reactivity").Atom.Writable<
+    ReadonlyArray<import("@t3tools/contracts").EnvironmentTheme>
+  >,
+}));
+vi.mock(import("./state/server"), async () => {
+  const { Atom } = await import("effect/reactivity");
+  publishedThemes.atom = Atom.make<ReadonlyArray<import("@t3tools/contracts").EnvironmentTheme>>(
+    [],
+  );
+  return { primaryServerEnvironmentThemesAtom: publishedThemes.atom } as never;
+});
+import { appAtomRegistry } from "./rpc/atomRegistry";
 const app = { theme: "light", appearance: "light" as const, halves: null };
 
 describe("quick message appearance", () => {
   it("respects a single-mode theme when the other appearance is requested", () => {
-    const previous = getEnvironmentThemes();
+    const previous = appAtomRegistry.get(publishedThemes.atom);
     try {
-      setEnvironmentThemes([
+      appAtomRegistry.set(publishedThemes.atom, [
         {
           id: "quick-single-dark",
-          label: "Single dark",
+          name: "Single dark",
           appearance: "dark",
           colors: getDefaultThemeColors("dark"),
         },
@@ -35,7 +43,7 @@ describe("quick message appearance", () => {
         ),
       ).toEqual({ theme: "quick-single-dark", appearance: "dark", contrast: 100 });
     } finally {
-      setEnvironmentThemes(previous);
+      appAtomRegistry.set(publishedThemes.atom, previous);
     }
   });
   it("follows the app by default and ignores inactive overrides", () => {

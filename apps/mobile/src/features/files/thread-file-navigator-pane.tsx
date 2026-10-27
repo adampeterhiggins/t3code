@@ -3,7 +3,7 @@ import { environmentSession } from "../../state/session";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { ScreenContent } from "../../components/ui/ScreenContent";
-import { useCallback, useMemo, useState, type ComponentProps } from "react";
+import { useState, type ComponentProps } from "react";
 import { Platform, Pressable, View, type NativeSyntheticEvent } from "react-native";
 import {
   Screen,
@@ -81,6 +81,9 @@ export function ThreadFileNavigatorPane(props: {
   const fileTree = (
     <FileTreeBrowser
       key={JSON.stringify([props.environmentId, props.cwd])}
+      revealSelection={entriesQuery.revealSelection}
+      expandedPaths={entriesQuery.expandedPaths}
+      setExpandedPaths={entriesQuery.setExpandedPaths}
       entries={entriesQuery.entries}
       loadingDirectories={entriesQuery.loadingDirectories}
       onLoadDirectory={entriesQuery.loadDirectory}
@@ -96,10 +99,13 @@ export function ThreadFileNavigatorPane(props: {
       searchQuery={searchQuery}
       searchResultPaths={entriesQuery.searchResultPaths}
       searchTruncated={entriesQuery.searchTruncated}
-      selectedPath={props.selectedPath}
+      selectedPath={props.selectedPath ?? entriesQuery.selectedPath}
       onPreviewFile={handlePreviewFile}
       onRefresh={entriesQuery.refresh}
-      onSelectFile={props.onSelectFile}
+      onSelectFile={(path) => {
+        entriesQuery.selectPath(path);
+        props.onSelectFile(path);
+      }}
     />
   );
 

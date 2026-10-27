@@ -1,5 +1,7 @@
 import { assert, describe, expect, it } from "@effect/vitest";
 import { Tool } from "effect/ai";
+import * as Schema from "effect/Schema";
+import { T3_CODE_ORCHESTRATION_INSTRUCTIONS } from "@t3tools/provider-core/server/orchestrationInstructions";
 
 import { OrchestratorToolkit } from "./tools.ts";
 const {
@@ -11,15 +13,12 @@ const {
 
 describe("orchestrator MCP tool guidance", () => {
   it("directs subagent requests to delegation instead of ordinary threads", () => {
-    assert.include(DelegateTaskTool.description ?? "", "child agent/subagent");
-    assert.include(DelegateTaskTool.description ?? "", "cross-provider");
+    assert.include(DelegateTaskTool.description ?? "", "Start one child agent");
     assert.include(CreateThreadsTool.description ?? "", "not delegation");
     assert.include(CreateThreadsTool.description ?? "", "call delegate_task");
-    assert.include(DelegateTaskTool.description ?? "", "waitTimedOut");
-    assert.include(DelegateTaskTool.description ?? "", "does not cancel the child");
-    assert.include(DelegateTaskTool.description ?? "", "keep that taskId");
-    assert.include(DelegateTaskTool.description ?? "", "call delegate_task again");
-    assert.include(DelegateTaskTool.description ?? "", "childThreadId is backing storage");
+    assert.include(T3_CODE_ORCHESTRATION_INSTRUCTIONS, "another provider's model");
+    assert.include(T3_CODE_ORCHESTRATION_INSTRUCTIONS, "Every new delegate review or re-check");
+    assert.include(T3_CODE_ORCHESTRATION_INSTRUCTIONS, "never a `t3_thread_send`");
     // Subagents can get their own worktree without leaving the caller's lineage.
     assert.include(DelegateTaskTool.description ?? "", "workspaceStrategy");
     assert.include(
@@ -68,16 +67,16 @@ describe("orchestrator MCP tool guidance", () => {
   });
 
   it("publishes an actionable schedule schema and compatibility string branch", () => {
-    const schema = Tool.getJsonSchema(ScheduleTaskTool) as {
-      readonly type?: unknown;
-      readonly properties?: Readonly<
-        Record<string, { readonly description?: unknown; readonly anyOf?: ReadonlyArray<unknown> }>
-      >;
-    };
-
-    assert.equal(schema.type, "object");
-    assert.isString(schema.properties?.schedule?.description);
-    assert.isAtLeast(schema.properties?.schedule?.anyOf?.length ?? 0, 2);
+    const decode = Schema.decodeUnknownSync(ScheduleTaskTool.parametersSchema);
+    const schedule = { type: "interval", everyMs: 60_000 } as const;
+    assert.deepEqual(decode({ prompt: "Check upstream", schedule }).schedule, schedule);
+    assert.deepEqual(
+      decode({ prompt: "Check upstream", schedule: JSON.stringify(schedule) }).schedule,
+      schedule,
+    );
+    const update = decode({ scheduledTaskId: "task-1", enabled: false });
+    assert.equal(update.scheduledTaskId, "task-1");
+    assert.isFalse(update.enabled);
     assert.include(ScheduleTaskTool.description ?? "", "`schedule` is an object, not text");
     assert.include(ScheduleTaskTool.description ?? "", "next run time");
   });
@@ -89,13 +88,7 @@ describe("orchestrator MCP tool guidance", () => {
     };
 
     assert.equal(schema.type, "object");
-    assert.hasAllKeys(schema.properties ?? {}, [
-      "threadId",
-      "action",
-      "title",
-      "pullRequest",
-      "clientRequestId",
-    ]);
+    assert.hasAllKeys(schema.properties ?? {}, ["threadId", "action", "title", "clientRequestId"]);
     assert.include(ThreadUpdateTool.description ?? "", "Workspace and branch cannot change here");
   });
 });

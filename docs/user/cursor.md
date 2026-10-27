@@ -28,7 +28,7 @@ The Cursor card has a sign-in method picker.
   instance.
 - **Paste an API key** stores a `CURSOR_API_KEY` on this instance.
 
-On mobile, use **Settings > Provider accounts** for an already configured Cursor instance.
+On mobile, use **Settings > Providers** for an already configured Cursor instance.
 
 Each provider instance keeps its own login on the environment that runs it. Your Cursor editor and
 CLI login are separate. A configured `CURSOR_API_KEY` overrides browser sign-in; remove that override

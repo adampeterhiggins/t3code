@@ -104,7 +104,9 @@ export function CitationDestinationPicker({
     model,
     options: modelOptionsByInstance.get(instanceId) ?? [],
   });
-  const modelName = resolvedModel ? getTriggerDisplayModelName(resolvedModel) : model;
+  const modelName = resolvedModel
+    ? getTriggerDisplayModelName(resolvedModel, modelEntry?.driverKind)
+    : model;
   const projectTitle = newThreadProject?.title ?? "Unknown project";
 
   const candidates =
