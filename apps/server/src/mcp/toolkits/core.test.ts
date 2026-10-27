@@ -978,9 +978,8 @@ it.effect("only the caller that prepared a pending upload can discard it", () =>
   ),
 );
 
-it.effect("a thread's agent opens chat tabs as itself, within its spawn limit", () => {
+it.effect("a thread's agent opens chat tabs as itself", () => {
   const opened: Array<ThreadTabs.OpenThreadTabInput> = [];
-  let liveChildren = 5;
   return Effect.gen(function* () {
     const server = yield* McpServer.McpServer;
     const open = (args: Record<string, unknown>) =>
@@ -991,11 +990,6 @@ it.effect("a thread's agent opens chat tabs as itself, within its spawn limit", 
           Effect.provideService(McpSchema.McpServerClient, client),
         );
 
-    const refused = yield* open({ message: "Review the diff" });
-    expect(declaredFailure(refused)).toMatchObject({ code: "capability_denied" });
-    expect(opened).toEqual([]);
-
-    liveChildren = 4;
     const forked = yield* open({ fork: {}, message: "Review the diff" });
     expect(forked.isError).toBe(false);
     expect(opened[0]).toMatchObject({
@@ -1026,13 +1020,6 @@ it.effect("a thread's agent opens chat tabs as itself, within its spawn limit", 
             getProjectThreadRecords: () =>
               Effect.succeed({
                 thread: McpToolAccessTestkit.liveThreadShell(threadId),
-              } as never),
-            getShellSnapshot: () =>
-              Effect.succeed({
-                threads: Array.from({ length: liveChildren }, (_, index) => ({
-                  ...McpToolAccessTestkit.liveThreadShell(ThreadId.make(`child-${index}`)),
-                  startedBy: { kind: "thread" as const, threadId },
-                })),
               } as never),
           }),
         ),

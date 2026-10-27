@@ -28,7 +28,6 @@ import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import type { McpInvocationScope } from "./McpInvocationContext.ts";
 import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
-import { MAX_LIVE_CHILDREN } from "./spawnPolicy.ts";
 
 const parentThreadId = ThreadId.make("thread:spawn-parent");
 const projectId = ProjectId.make("project:spawn");
@@ -89,7 +88,6 @@ const shell = (id: ThreadId, startedByParent: boolean) =>
   }) as unknown as OrchestrationV2ThreadShell;
 
 const run = <A, E>(
-  liveChildren: number,
   body: (
     service: OrchestratorMcpService.OrchestratorMcpService["Service"],
     dispatched: Ref.Ref<ReadonlyArray<OrchestrationV2Command>>,
@@ -97,9 +95,6 @@ const run = <A, E>(
 ) =>
   Effect.gen(function* () {
     const dispatched = yield* Ref.make<ReadonlyArray<OrchestrationV2Command>>([]);
-    const children = Array.from({ length: liveChildren }, (_, index) =>
-      shell(ThreadId.make(`thread:spawn-child-${index}`), true),
-    );
     const dependencies = Layer.mergeAll(
       NodeServices.layer,
       Layer.mock(ThreadManagementService.ThreadManagementService)({
@@ -109,7 +104,7 @@ const run = <A, E>(
           Effect.succeed({
             schemaVersion: 1,
             snapshotSequence: 0,
-            threads: [shell(parentThreadId, false), ...children],
+            threads: [shell(parentThreadId, false)],
             archivedThreads: [],
           }),
         getThreadRecords: (threadId) =>
@@ -176,7 +171,7 @@ const run = <A, E>(
   });
 
 it.effect("records the calling thread on the threads create_threads starts", () =>
-  run(0, (service, dispatched) =>
+  run((service, dispatched) =>
     Effect.gen(function* () {
       yield* service.createThreads(scope, {
         threads: [{ title: "Split work" }],
@@ -193,24 +188,8 @@ it.effect("records the calling thread on the threads create_threads starts", () 
   ),
 );
 
-it.effect("refuses create_threads and delegate_task past five live started threads", () =>
-  run(MAX_LIVE_CHILDREN, (service, dispatched) =>
-    Effect.gen(function* () {
-      const created = yield* service
-        .createThreads(scope, { threads: [{ title: "One more" }], clientRequestId: "spawn-full" })
-        .pipe(Effect.flip);
-      assert.equal(created.code, "capability_denied");
-      const delegated = yield* service
-        .delegateTask(scope, { task: "One more", mode: "async", clientRequestId: "spawn-full" })
-        .pipe(Effect.flip);
-      assert.equal(delegated.code, "capability_denied");
-      assert.deepEqual(yield* Ref.get(dispatched), []);
-    }),
-  ),
-);
-
 it.effect("refuses sending to, waiting on, or interrupting the caller's own thread", () =>
-  run(0, (service, dispatched) =>
+  run((service, dispatched) =>
     Effect.gen(function* () {
       const sent = yield* service
         .sendToThread(scope, { threadId: parentThreadId, message: "Hello me" })

@@ -80,9 +80,7 @@ ask for one.
 
 Threads and tabs an agent starts appear in your sidebar with a bot icon, and their header shows which
 thread started them; click it to open that thread. An agent cannot give a thread more freedom
-than its own permission mode allows. It can start threads two levels deep, and keep at most five
-of its own going at once: a thread or tab it started counts until it settles or you archive it, a
-delegated task until it finishes. It cannot message, wait on, stop, or roll back its own thread with these
+than its own permission mode allows. It cannot message, wait on, stop, or roll back its own thread with these
 tools, and it cannot answer another thread's approvals; those still come to you. It can archive
 threads but never delete them.
 

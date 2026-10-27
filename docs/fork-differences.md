@@ -642,8 +642,7 @@ editable. Names are stored by the [ThreadTabs service](../apps/server/src/thread
   tab in it: empty, or a native fork of a tab's latest (or chosen) response, on any model, with an
   optional first message. One service call, `ThreadTabs.open`, does what **New tab** or a
   model-picker fork does, then sends the message. The tab inherits its group's modes, so its group
-  (and fork source) must sit within the caller's, and it records `startedBy` and counts toward the
-  caller's spawn limits like a launched thread
+  (and fork source) must sit within the caller's, and it records `startedBy` like a launched thread
   ([`toolkits/thread/handlers.ts`](../apps/server/src/mcp/toolkits/thread/handlers.ts)).
 - **Mobile.** A switcher menu switches, creates, and closes tabs, and restarts the open tab's
   agent session (`apps/mobile/src/features/threads/ThreadTabs.tsx`). An empty tab can attach sibling context when
@@ -1865,7 +1864,7 @@ It reads the orchestration v2 projections; threads imported from before v2 carry
 messages. `/mcp/operate` adds upstream's orchestrator, thread, project, and environment tools,
 acting as a client caller labelled with the token's name, plus `t3_approval_respond` for
 answering a thread's approvals (upstream's `t3_pending_request_respond` answers questions but
-refuses approvals) and `t3_thread_delete`, which sends the app's own `thread.delete` command. It acts as the user, in any permission mode, without the spawn limits, and
+refuses approvals) and `t3_thread_delete`, which sends the app's own `thread.delete` command. It acts as the user, in any permission mode, and
 threads it starts with `t3_thread_launch` record the token's label.
 Both authenticate with an environment bearer token, never a cookie: `/mcp/query` needs
 `orchestration:read`, `/mcp/operate` also `orchestration:operate`.
@@ -1886,11 +1885,8 @@ User guide: [agent-access.md](./user/agent-access.md).
 ## Agents start and drive threads
 
 Upstream gives every thread's agent its orchestration tools (`create_threads`, `delegate_task`,
-`t3_thread_launch`, `t3_thread_send`, and the rest). The fork adds limits for an agent inside a
-thread: chains of agent-started threads stop two levels deep, a thread keeps at most five started
-threads going at once (a started thread counts until it settles or is archived, a delegated task
-while its child runs), and `t3_thread_send`, `t3_thread_wait`, and `t3_thread_interrupt` refuse
-the caller's own thread. Metadata tools such as `t3_thread_update` still default to the caller's
+`t3_thread_launch`, `t3_thread_send`, and the rest). The fork adds that `t3_thread_send`,
+`t3_thread_wait`, and `t3_thread_interrupt` refuse the caller's own thread. Metadata tools such as `t3_thread_update` still default to the caller's
 own thread, as upstream intends. A thread's agent never answers another thread's approvals and
 never deletes a thread; it archives instead. `t3_thread_organize` also takes `mark_read`, the
 reverse of upstream's `mark_unread`, which marks a thread read as opening it in the app does
@@ -1910,7 +1906,7 @@ records `startedBy` (the starting thread, or the agent access token's label). Th
 names the starting thread (and opens it) or the token, and web sidebar rows mark the thread with a
 bot icon. A client cannot set `startedBy`; only the server's MCP paths do.
 
-Code: [`spawnPolicy.ts`](../apps/server/src/mcp/spawnPolicy.ts), its callers in
+Code: [`selfTarget.ts`](../apps/server/src/mcp/selfTarget.ts), its callers in
 [`OrchestratorMcpService.ts`](../apps/server/src/mcp/OrchestratorMcpService.ts) (which also holds
 `rollbackThread`) and
 [`toolkits/project/handlers.ts`](../apps/server/src/mcp/toolkits/project/handlers.ts),
@@ -1972,7 +1968,7 @@ filed under the project that owns the worktree and prepared with that project's 
 project owns is refused. A new `worktree` can also name another T3 project with `projectId`, so a
 thread outside that repository (such as a Scratch thread) can still give a child a fresh worktree
 there; `baseRef` must resolve in that project. The child stays the caller's
-subagent (Lineage, the Agents panel, completion delivery, spawn limits, and usage are unchanged),
+subagent (Lineage, the Agents panel, completion delivery, and usage are unchanged),
 but its first run waits in preparing while the server prepares the workspace the way a launch does:
 worktree creation, the branch named before setup, Files to copy and the setup script, and setup
 progress on the child thread. The child thread is then bound to the worktree and its agent starts
