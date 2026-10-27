@@ -2749,19 +2749,19 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }
   };
   const openSendContextMenuStable = useStableCallback(openSendContextMenu);
-  // A surface beside the composer asked to send what it just wrote here. Wait out a connect,
-  // attachments it just handed over that are still uploading, and the git status of a draft that
-  // just opened (until it lands, a non-git folder reads as a repo and asks for a base branch),
-  // then send as Enter would; anything else that stops it leaves the draft in place to send by hand.
-  const submitRequested = useComposerSubmitRequestStore((state) =>
-    state.pending.has(composerDraftTargetKey),
+  // A surface beside the composer asked to send what it wrote here. Wait out a connect, uploads,
+  // a just-opened draft's git status (a non-git folder reads as a repo until it lands) and any
+  // disabled send, such as a new worktree's setup script, then send as Enter would.
+  const submitRequest = useComposerSubmitRequestStore(
+    (state) => state.pending.get(composerDraftTargetKey) ?? null,
   );
   const attachmentsUploading = attachmentUploadPendingReason !== null;
   useEffect(() => {
     if (
-      !submitRequested ||
+      submitRequest === null ||
       isConnecting ||
       isSendBusy ||
+      (submitRequest === "send" && isSendDisabled) ||
       attachmentsUploading ||
       checkoutKindPending
     ) {
@@ -2776,9 +2776,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     composerDraftTargetKey,
     isConnecting,
     isSendBusy,
+    isSendDisabled,
     saveMessageDraftStable,
     submitComposerStable,
-    submitRequested,
+    submitRequest,
   ]);
   const handleSubmitMessage = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();

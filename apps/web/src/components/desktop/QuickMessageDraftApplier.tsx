@@ -65,12 +65,25 @@ export function QuickMessageDraftApplier(props: {
   const apply = useEffectEvent(async (next: PendingQuickMessageDraft) => {
     appAtomRegistry.set(pendingQuickMessageDraftAtom, null);
     // A pull request is checked out first, so nothing is attached or sent in the old checkout.
-    let applied = next.startFrom === undefined || (await applyStartFrom(next.startFrom));
+    // That can take a while, and until it lands the draft still shows the project's checkout.
+    const checkoutToastId =
+      next.startFrom?.type === "pull-request"
+        ? toastManager.add({
+            type: "loading",
+            title: `Checking out #${next.startFrom.number}...`,
+          })
+        : null;
+    let applied =
+      next.startFrom === undefined ||
+      (await applyStartFrom(next.startFrom).finally(() => {
+        if (checkoutToastId !== null) toastManager.close(checkoutToastId);
+      }));
     for (const attachment of next.attachments) {
       if (!(await attach(attachment))) applied = false;
     }
     next.onApplied(applied);
   });
+  // oxlint-disable-next-line t3code/react-effect-budget -- runs the main window's handoff once this draft's view is mounted
   useEffect(() => {
     if (
       pending !== null &&
