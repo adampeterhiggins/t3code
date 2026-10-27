@@ -18,7 +18,7 @@ import { GITHUB_REF_MARKDOWN_MAX_CHARS, GitHubRefType } from "./githubRefs.ts";
 import { LINEAR_ISSUE_MARKDOWN_MAX_CHARS, LinearObjectType } from "./linear.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import { GRANOLA_NOTE_MARKDOWN_MAX_CHARS } from "./granola.ts";
-import { NOTION_PAGE_MARKDOWN_MAX_CHARS } from "./notion.ts";
+import { NOTION_PAGE_MARKDOWN_MAX_CHARS, NotionLinkedBlock } from "./notion.ts";
 import { GOOGLE_FILE_MARKDOWN_MAX_CHARS } from "./google.ts";
 import { SLACK_THREAD_MARKDOWN_MAX_CHARS } from "./slack.ts";
 import { DISCORD_THREAD_MARKDOWN_MAX_CHARS } from "./discord.ts";
@@ -475,6 +475,7 @@ export const NotionPageContextRecord = Schema.Struct({
   title: ShortString,
   url: ShortString,
   markdown: BoundedString(NOTION_PAGE_MARKDOWN_MAX_CHARS),
+  block: Schema.optional(NotionLinkedBlock),
 });
 export type NotionPageContextRecord = typeof NotionPageContextRecord.Type;
 export const GoogleFileContextRecord = Schema.Struct({

@@ -161,7 +161,7 @@ const make = Effect.gen(function* () {
               `Could not ${verb} ${url}: the Notion integration is turned off in Settings → Integrations.`,
             );
           const input = yield* decodeNotionGetPageInput({
-            id: link.pageId,
+            id: link.url,
           }).pipe(Effect.mapError(malformed(url)));
           const page = yield* notion
             .getPage(input)

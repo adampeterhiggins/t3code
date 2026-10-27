@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { parseNotionPageId } from "./notion.ts";
+import { parseNotionBlockId, parseNotionPageId } from "./notion.ts";
 const id = "914a8531-daa8-4753-aacd-f01274df8ec5";
 describe("Notion page references", () => {
   it("normalizes IDs and private or published page links", () => {
@@ -25,5 +25,18 @@ describe("Notion page references", () => {
       `https://user:password@notion.so/${id}`,
     ])
       expect(parseNotionPageId(value)).toBeNull();
+  });
+  it("reads the block a link points at", () => {
+    const link =
+      "https://app.notion.com/p/focaldata/Inventory-move-dev-to-staging-40699cd1efb781e9ac59e34f3d9ecea5?source=copy_link#2e0043798baf4ca5931fba9b654e6fa1";
+    expect(parseNotionPageId(link)).toBe("40699cd1-efb7-81e9-ac59-e34f3d9ecea5");
+    expect(parseNotionBlockId(link)).toBe("2e004379-8baf-4ca5-931f-ba9b654e6fa1");
+    for (const value of [
+      `https://www.notion.so/acme/Design-${id.replaceAll("-", "")}?pvs=4#block`,
+      `https://www.notion.so/acme/Design-${id.replaceAll("-", "")}`,
+      `https://evil.test/${id}#${id}`,
+      id,
+    ])
+      expect(parseNotionBlockId(value)).toBeNull();
   });
 });

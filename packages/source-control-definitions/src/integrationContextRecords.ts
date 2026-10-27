@@ -177,12 +177,14 @@ export function notionPageContextRecord(page: NotionPageContext): NotionPageCont
   return {
     version: 1,
     kind: "notion-page",
-    contextId: `notion-page_${page.id}` as ComposerContextId,
+    contextId:
+      `notion-page_${page.id}${page.block ? `_${page.block.id}` : ""}` as ComposerContextId,
     label: sanitizeComposerContextLabel(page.title, "notion-page"),
     pageId: page.id,
     title: page.title.slice(0, 2048),
     url: page.url.slice(0, 2048),
     markdown: page.markdown,
+    ...(page.block ? { block: page.block } : {}),
   };
 }
 

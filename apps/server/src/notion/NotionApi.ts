@@ -1,6 +1,7 @@
 import {
   NotionError,
   NOTION_PAGE_MARKDOWN_MAX_CHARS,
+  parseNotionBlockId,
   parseNotionPageId,
   type NotionGetPageInput,
   type NotionPageContext,
@@ -27,6 +28,16 @@ const Page = Schema.Struct({
 });
 const Search = Schema.Struct({ results: Schema.Array(Page), has_more: Schema.Boolean });
 const Markdown = Schema.Struct({ markdown: Schema.String, truncated: Schema.Boolean });
+// Every block type that holds text keeps it in `<type>.rich_text`.
+const Block = Schema.Record(Schema.String, Schema.Unknown);
+const decodeBlockText = Schema.decodeUnknownOption(
+  Schema.Struct({ rich_text: Schema.Array(RichText) }),
+);
+const blockText = (block: typeof Block.Type) => {
+  const type = typeof block.type === "string" ? block.type : "";
+  const text = decodeBlockText(block[type]);
+  return text._tag === "Some" ? text.value.rich_text.map((part) => part.plain_text).join("") : "";
+};
 const summary = (page: typeof Page.Type): NotionPageSummary => ({
   id: page.id,
   url: page.url,
@@ -126,11 +137,30 @@ export const make = Effect.gen(function* () {
     const id = yield* pageId(input.id);
     const page = yield* request(`pages/${id}`, Page);
     const content = yield* request(`pages/${id}/markdown`, Markdown);
+    const blockId = parseNotionBlockId(input.id);
+    // A block that cannot be read still leaves the page and the link's anchor.
+    const block =
+      blockId === null
+        ? undefined
+        : {
+            id: blockId,
+            text: yield* request(`blocks/${blockId}`, Block).pipe(
+              Effect.map((block) => blockText(block).slice(0, 2048)),
+              Effect.catchTags({
+                NotionError: (error) =>
+                  error.reason === "not-found" ? Effect.succeed("") : Effect.fail(error),
+              }),
+            ),
+          };
     const note = "\n\n[Notion page content is incomplete or truncated.]";
     const incomplete =
       content.truncated || content.markdown.length > NOTION_PAGE_MARKDOWN_MAX_CHARS;
+    const pageSummary = summary(page);
     return {
-      ...summary(page),
+      ...pageSummary,
+      ...(block === undefined
+        ? {}
+        : { url: `${pageSummary.url.split("#")[0]}#${block.id.replaceAll("-", "")}`, block }),
       markdown: incomplete
         ? content.markdown.slice(0, NOTION_PAGE_MARKDOWN_MAX_CHARS - note.length) + note
         : content.markdown,

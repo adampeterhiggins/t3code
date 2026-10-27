@@ -224,7 +224,7 @@ describe("Notion link attachments", () => {
     expect(attached?.reference.kind).toBe("notion-page");
     expect(mocks.getNotionPage).toHaveBeenCalledWith({
       environmentId: threadRef.environmentId,
-      input: { id: notionPage.id },
+      input: { id: notionUrl },
     });
   });
 
