@@ -12,13 +12,9 @@ import {
 } from "../../composerDraftStore";
 
 import { useComposerObjectLinks, type ComposerUnreadLinkActions } from "./useComposerObjectLinks";
-import { Button } from "../ui/button";
-import { ComposerAttachMenu, openComposerAttachPicker } from "./ComposerAttachMenu";
-import { ComposerModelChipPicker } from "./ComposerModelChipPicker";
-import { ComposerModelFilters } from "./ComposerModelFilters";
+import { useComposerAttachControls } from "./useComposerAttachControls";
+import { useComposerPathMenu } from "./useComposerPathMenu";
 import {
-  ContextMenuItem,
-  MessageDraft,
   MessageDraftId,
   ModelContextRecord,
   ThreadTabGroup,
@@ -48,16 +44,10 @@ import {
   type ComposerContextRecord,
   type ThreadPullRequestLink,
 } from "@t3tools/contracts";
-import { EllipsisIcon, PlayIcon, ShieldIcon } from "lucide-react";
-
-import {
-  SAVE_DRAFT_MENU_ITEM,
-  findComposerSendMenuAction,
-  resolveComposerSendMenu,
-} from "@t3tools/client-runtime/state/send-menu";
+import { PlayIcon, ShieldIcon } from "lucide-react";
 
 import { ThreadUsageSummary } from "@t3tools/client-runtime/thread-usage";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { ComposerStartFromButton } from "./ComposerStartFromButton";
 
 import { agentReferenceTargetOf, attachAgentToChat } from "./agentReferences";
 
@@ -65,24 +55,18 @@ import { attachModelToChat } from "./modelReferences";
 import { attachRepository } from "./RepositoryAttachPicker";
 import {
   collectComposerContextReferences,
-  replaceComposerContextReferences,
   toKindScopedComposerContextId,
 } from "@t3tools/shared/composerContextReferences";
-import { deriveComposerModelItems } from "./composerModelItems";
 
 import {
   isComposerReferenceItem as isReferenceMenuItem,
   type ComposerReferenceItem as ReferenceMenuItem,
 } from "./composerReferenceMenu.logic";
-import { messageDraftComposerRecords } from "./messageDraftComposer";
-import { messageDraftEnvironment, useThreadMessageDrafts } from "../../state/messageDrafts";
 
 import {
   pastedFilePathsAsComposerFileLinks,
   serializeComposerFileLink,
 } from "@t3tools/shared/composerTrigger";
-import { providerModelKey } from "~/modelOrdering";
-import { readLocalApi } from "../../localApi";
 import { recordComposerReferenceRecents } from "./composerReferenceRecents";
 
 import { resolveComposerSnapshot, type ComposerSnapshot } from "./composerPendingSnapshot";
@@ -94,22 +78,18 @@ import {
   ComposerPromptEditor,
 } from "../ComposerPromptEditor";
 
-import { type ComposerSendSurface, ComposerPrimaryActions } from "./ComposerPrimaryActions";
+import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
 
-import { useAtomValue } from "@effect/atom-react";
-import { useAttachCheckout, useComposerCheckoutItems } from "./useComposerCheckoutItems";
+import { useAttachCheckout } from "./useComposerCheckoutItems";
 
 import { useCaptureThreadTabContext } from "./ThreadTabs";
 import { useCheckoutContextRecords } from "~/checkoutContextStore";
-import { useComposerAgentItems } from "./useComposerAgentItems";
 
 import { useComposerReferenceMenu } from "./useComposerReferenceMenu";
-import { useComposerSubmitRequestStore } from "../../composerSubmitRequestStore";
-import { useEnvironmentModelPreferences } from "~/hooks/useSettings";
+import { useComposerDraftActions } from "./useComposerDraftActions";
 import { useIssueContextRecords, useIssueContextStore } from "~/issueContextStore";
 
 import { useLinkClickHandler } from "~/browser/useOpenLink";
-import { useMessageDraftActions } from "./useMessageDraftActions";
 import { useRepositoryContextRecords } from "~/repositoryContextStore";
 
 import { useSplitPaneFocus } from "./splitPane";
@@ -620,15 +600,6 @@ export interface ChatComposerProps {
   onCancelQueuedEdit: () => void;
 }
 
-type ComposerPathTab = "files" | "chats" | "agents" | "models";
-/** Fork: the `@` menu's tabs. Agents shows only when the thread has agents. */
-const PATH_MENU_TABS: ReadonlyArray<{ id: ComposerPathTab; label: string }> = [
-  { id: "files", label: "Files" },
-  { id: "chats", label: "Chats" },
-  { id: "agents", label: "Agents" },
-  { id: "models", label: "Models" },
-];
-
 const NO_PROVIDER_SKILLS: ServerProvider["skills"] = [];
 const NO_PROVIDER_SLASH_COMMANDS: ServerProvider["slashCommands"] = [];
 
@@ -751,7 +722,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onCancelQueuedEdit,
   } = props;
   const primaryEnvironmentId = usePrimaryEnvironmentId();
-  const attachCheckouts = useComposerCheckoutItems(environmentId, { enabled: true, query: "" });
   const composerDraftTargetKey = composerTargetKey(composerDraftTarget);
   const {
     heldRequestIds,
@@ -1237,7 +1207,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerEditorRef = useRef<ComposerPromptEditorHandle>(null);
   const pasteAsTextShortcutUntilRef = useRef(0);
   const composerFormRef = useRef<HTMLFormElement>(null);
-  const attachmentInputRef = useRef<HTMLInputElement>(null);
   const composerSurfaceRef = useRef<HTMLDivElement>(null);
   const providerInputRejectedRef = useRef(false);
   const composerSelectLockRef = useRef(false);
@@ -1385,98 +1354,22 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerMenuEmptyState = referenceMenu.open
     ? referenceMenu.emptyState
     : triggerMenuEmptyState;
-  const isPathTrigger = composerTrigger?.kind === "path";
-  const pathTriggerQuery = isPathTrigger ? composerTrigger.query : "";
-  // Fork: the `@` menu splits files from chats. Files lists workspace paths only; Chats lists
-  // this thread's other chat tabs, then other threads by recency.
-  const fileMenuItems = isPathTrigger
-    ? composerMenuItemsFromTrigger.filter((item) => item.type === "path")
-    : [];
-  const chatMenuItems = ((): ComposerCommandItem[] => {
-    if (!isPathTrigger) return [];
-    const tabQuery = pathTriggerQuery.trim().toLowerCase();
-    const tabs = threadTabGroup?.tabs ?? [];
-    const tabThreadIds = new Set(tabs.map((tab) => tab.threadId));
-    return [
-      ...tabs
-        .filter(
-          (tab) => tab.threadId !== activeThreadId && tab.title.toLowerCase().includes(tabQuery),
-        )
-        .map((tab) => ({
-          id: `thread-tab:${tab.threadId}`,
-          type: "thread-tab" as const,
-          threadId: tab.threadId,
-          label: tab.title,
-          description: "Chat tab",
-        })),
-      ...composerMenuItemsFromTrigger.filter(
-        (item) => item.type === "thread" && !tabThreadIds.has(item.thread.threadId),
-      ),
-    ];
-  })();
-  // A draft has no agents, and its thread does not exist on the server yet.
-  const agentMenu = useComposerAgentItems(
+  const pathMenu = useComposerPathMenu({
+    environmentId,
     routeThreadRef,
-    isPathTrigger && isServerThread,
-    pathTriggerQuery,
+    activeThreadId,
+    threadTabGroup,
+    isServerThread,
     gitCwd,
-  );
-  const { favorites: favoriteModels } = useEnvironmentModelPreferences(environmentId);
-  const [modelFilterChoice, setModelFilterChoice] = useState<{
-    rangeStart: number;
-    instanceId: ProviderInstanceId | null;
-  } | null>(null);
-  const modelInstanceFilter =
-    isPathTrigger && modelFilterChoice?.rangeStart === composerTrigger.rangeStart
-      ? modelFilterChoice.instanceId
-      : null;
-  const modelMenu = deriveComposerModelItems({
-    enabled: isPathTrigger,
-    query: pathTriggerQuery,
-    entries: providerInstanceEntries,
+    composerTrigger,
+    composerMenuItemsFromTrigger,
+    isTriggerMenuLoading,
+    providerInstanceEntries,
     modelOptionsByInstance,
-    favoriteKeys: new Set(
-      favoriteModels.map((favorite) => providerModelKey(favorite.provider, favorite.model)),
-    ),
-    instanceFilter: modelInstanceFilter,
+    emptyState: composerMenuEmptyState,
   });
-  // A tab picked by hand holds until this `@` token closes; otherwise the query picks it:
-  // Agents for a handle, Models for a model name, Chats when only chats match, else Files.
-  const [pathTabChoice, setPathTabChoice] = useState<{
-    rangeStart: number;
-    tab: ComposerPathTab;
-  } | null>(null);
-  const [isModelChipPickerOpen, setIsModelChipPickerOpen] = useState(false);
-  const [attachMenuAnchor, setAttachMenuAnchor] = useState<HTMLSpanElement | null>(null);
-  const pathTab: ComposerPathTab =
-    isPathTrigger &&
-    pathTabChoice?.rangeStart === composerTrigger.rangeStart &&
-    (pathTabChoice.tab !== "agents" || agentMenu.available)
-      ? pathTabChoice.tab
-      : agentMenu.prefersAgents
-        ? "agents"
-        : modelMenu.prefersModels
-          ? "models"
-          : pathTriggerQuery.trim().length > 0 &&
-              chatMenuItems.length > 0 &&
-              !isTriggerMenuLoading &&
-              fileMenuItems.length === 0
-            ? "chats"
-            : "files";
-  const isComposerMenuLoading = referenceMenu.open
-    ? referenceMenu.isLoading
-    : isTriggerMenuLoading && (!isPathTrigger || pathTab === "files");
-  const composerMenuItems = referenceMenu.open
-    ? [...referenceMenu.items]
-    : !isPathTrigger
-      ? composerMenuItemsFromTrigger
-      : pathTab === "models"
-        ? [...modelMenu.items]
-        : pathTab === "agents"
-          ? [...agentMenu.items]
-          : pathTab === "chats"
-            ? chatMenuItems
-            : fileMenuItems;
+  const isComposerMenuLoading = referenceMenu.open ? referenceMenu.isLoading : pathMenu.isLoading;
+  const composerMenuItems = referenceMenu.open ? [...referenceMenu.items] : pathMenu.items;
 
   const composerMenuOpen = Boolean(composerTrigger);
   const composerMenuSearchKey = composerTrigger
@@ -2561,226 +2454,48 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }
   };
   const submitComposerStable = useStableCallback(submitComposer);
-  const messageDraftActions = useMessageDraftActions();
-  const canWriteMessageDrafts = useAtomValue(
-    messageDraftEnvironment.save.permissionAtom(environmentId),
-  );
-  const canSaveMessageDraft = onSaveMessageDraft !== null && canWriteMessageDrafts;
-  const threadMessageDrafts = useThreadMessageDrafts(
-    onSaveMessageDraft === null ? null : routeThreadRef,
-  );
-  const saveMessageDraft = async (): Promise<boolean> => {
-    if (
-      onSaveMessageDraft === null ||
-      !canWriteMessageDrafts ||
-      isComposerApprovalState ||
-      activePendingProgress !== null ||
-      isRevertingCheckpointRef.current
-    ) {
-      return false;
-    }
-    if (countPreparingComposerImages(attachmentTargetKey) > 0) {
-      toastManager.add({
-        type: "info",
-        title: "Still compressing a pasted image.",
-        description: "Save again once its thumbnail appears.",
-      });
-      return false;
-    }
-    if (pendingDraftWork.has(attachmentTargetKey)) {
-      toastManager.add({
-        type: "info",
-        title: "Still bringing attached context into this message.",
-        description: "Save again once its chip resolves.",
-      });
-      return false;
-    }
-    return onSaveMessageDraft();
-  };
-  const saveMessageDraftStable = useStableCallback(saveMessageDraft);
-  const saveCitationAsDraftStable = useStableCallback(() => {
-    void saveMessageDraft();
-  });
-  const loadMessageDraft = (draft: MessageDraft) => {
-    const rewrittenContextIds = importContextRecords(
-      messageDraftComposerRecords(draft),
-      environmentId,
-      composerDraftTarget,
-    );
-    const restoredPrompt = replaceComposerContextReferences(draft.text, (reference) => {
-      const contextId = rewrittenContextIds.get(reference.contextId);
-      return contextId
-        ? formatInlineContextReference({
-            ...reference,
-            contextId,
-            kind: reference.kind === "element" ? "preview-annotation" : reference.kind,
-          })
-        : reference.source;
-    });
-    promptRef.current = restoredPrompt;
-    setComposerDraftPrompt(composerDraftTarget, restoredPrompt);
-    setComposerCursor(collapseExpandedComposerCursor(restoredPrompt, restoredPrompt.length));
-    setComposerTrigger(null);
-    window.requestAnimationFrame(() => {
-      composerEditorRef.current?.focusAtEnd();
-    });
-  };
-  const loadMessageDraftStable = useStableCallback(loadMessageDraft);
-  const openMessageDraft = async (draftId: MessageDraftId) => {
-    if (isEditingQueuedMessage) {
-      toastManager.add({
-        type: "info",
-        title: "Finish editing the queued message first",
-        description: "Update it, move it to drafts, or cancel the edit, then open the draft.",
-      });
-      return;
-    }
-    if (isComposerApprovalState || activePendingProgress !== null) return;
-    const targetKey = composerDraftTargetKey;
-    const draft = await messageDraftActions.take(environmentId, draftId);
-    if (draft === null) return;
-    const putBack = () =>
-      messageDraftActions.save(environmentId, {
-        threadId: draft.threadId,
-        text: draft.text,
-        attachments: draft.attachments,
-        context: draft.context,
-      });
-    if (composerDraftTargetKeyRef.current !== targetKey) {
-      await putBack();
-      return;
-    }
-    const holdsContent =
-      promptRef.current.trim().length > 0 ||
-      composerDraftHasUserContent(getComposerDraft(composerDraftTarget));
-    if (holdsContent) {
-      if (!(await saveMessageDraftStable()) || promptRef.current.trim().length > 0) {
-        await putBack();
-        return;
-      }
-      await new Promise((resolve) => window.requestAnimationFrame(resolve));
-    }
-    loadMessageDraftStable(draft);
-  };
-  const openMessageDraftStable = useStableCallback(openMessageDraft);
-  const openSendContextMenu = async (
-    event: React.MouseEvent<HTMLElement>,
-    surface: ComposerSendSurface,
-  ) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const api = readLocalApi();
-    if (!api || isComposerApprovalState || activePendingProgress !== null) return;
-    const running = phase === "running";
-    const sendDisabled =
-      !canOperateThread ||
-      isSendBusy ||
-      isSendDisabled ||
-      isConnecting ||
-      noProviderAvailable ||
-      projectSelectionRequired ||
-      environmentUnavailable !== null;
-    const defaultDispatchMode = resolveComposerDispatchMode({
-      running,
-      alternateModifier: false,
-      activeTurnDefault: followUpBehavior,
-      canSteer: !isCompacting,
-    });
-    const position = { x: event.clientX, y: event.clientY };
-    if (surface !== "send") {
-      const items: ContextMenuItem[] =
-        surface === "plan-refine"
-          ? [
-              { id: "send", label: "Refine", icon: "arrow-up", disabled: sendDisabled },
-              ...(canSaveMessageDraft ? [{ ...SAVE_DRAFT_MENU_ITEM, separatorBefore: true }] : []),
-            ]
-          : [
-              { id: "send", label: "Implement", icon: "arrow-up", disabled: sendDisabled },
-              {
-                id: "implement-in-new-thread",
-                label: "Implement in a new thread",
-                icon: "message-square-plus",
-                disabled: sendDisabled,
-              },
-            ];
-      const selected = await api.contextMenu.show(items, position);
-      if (selected === "send") submitComposer(undefined, defaultDispatchMode);
-      else if (selected === "implement-in-new-thread") onImplementPlanInNewThread();
-      else if (selected === SAVE_DRAFT_MENU_ITEM.id) void saveMessageDraft();
-      return;
-    }
-    const items = resolveComposerSendMenu({
-      hasContent: composerSendState.hasSendableContent,
-      running,
-      canSteer: !isCompacting,
-      activeTurnDefault: followUpBehavior,
-      canSendInNewThread: routeKind !== "draft",
-      canSaveDraft: canSaveMessageDraft,
-      isEditingQueuedMessage,
-      sendDisabled,
-      drafts: canSaveMessageDraft ? threadMessageDrafts : [],
-    });
-    if (items.length === 0) return;
-    const action = findComposerSendMenuAction(items, await api.contextMenu.show(items, position));
-    switch (action?.type) {
-      case "send":
-      case "update-queued":
-        submitComposer(undefined, defaultDispatchMode);
-        return;
-      case "queue":
-      case "steer":
-        submitComposer(undefined, action.type);
-        return;
-      case "send-in-new-thread":
-        submitComposer(undefined, defaultDispatchMode, "background");
-        return;
-      case "save-draft":
-      case "move-to-drafts":
-        void saveMessageDraft();
-        return;
-      case "open-draft":
-        void openMessageDraft(MessageDraftId.make(action.draftId));
-        return;
-      case "cancel-edit":
-        onCancelQueuedEdit();
-        return;
-      case undefined:
-        return;
-    }
-  };
-  const openSendContextMenuStable = useStableCallback(openSendContextMenu);
-  // A surface beside the composer asked to send what it wrote here. Wait out a connect, uploads,
-  // a just-opened draft's git status (a non-git folder reads as a repo until it lands) and any
-  // disabled send, such as a new worktree's setup script, then send as Enter would.
-  const submitRequest = useComposerSubmitRequestStore(
-    (state) => state.pending.get(composerDraftTargetKey) ?? null,
-  );
-  const attachmentsUploading = attachmentUploadPendingReason !== null;
-  useEffect(() => {
-    if (
-      submitRequest === null ||
-      isConnecting ||
-      isSendBusy ||
-      (submitRequest === "send" && isSendDisabled) ||
-      attachmentsUploading ||
-      checkoutKindPending
-    ) {
-      return;
-    }
-    const intent = useComposerSubmitRequestStore.getState().take(composerDraftTargetKey);
-    if (intent === "save-draft") void saveMessageDraftStable();
-    else if (intent === "send") submitComposerStable();
-  }, [
-    attachmentsUploading,
+  const {
+    canSaveMessageDraft,
+    saveMessageDraftStable,
+    saveCitationAsDraftStable,
+    openMessageDraftStable,
+    openSendContextMenuStable,
+  } = useComposerDraftActions({
+    environmentId,
+    routeThreadRef,
+    routeKind,
+    composerDraftTarget,
+    promptRef,
+    onSaveMessageDraft,
+    canOperateThread,
+    isSendBusy,
+    isConnecting,
+    isCompacting,
+    projectSelectionRequired,
+    environmentUnavailable,
+    phase,
+    onImplementPlanInNewThread,
+    onCancelQueuedEdit,
     checkoutKindPending,
     composerDraftTargetKey,
-    isConnecting,
-    isSendBusy,
+    composerDraftTargetKeyRef,
+    attachmentTargetKey,
+    isComposerApprovalState,
+    activePendingProgress,
+    isRevertingCheckpointRef,
+    isEditingQueuedMessage,
+    importContextRecords,
+    setComposerCursor,
+    setComposerTrigger,
+    composerEditorRef,
     isSendDisabled,
-    saveMessageDraftStable,
+    noProviderAvailable,
+    followUpBehavior,
+    composerSendState,
+    attachmentUploadPendingReason,
+    submitComposer,
     submitComposerStable,
-    submitRequest,
-  ]);
+  });
   const handleSubmitMessage = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     submitComposer(
@@ -2990,11 +2705,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     providerInputSubmissionError !== null ||
     hasImageAttachmentAttention ||
     preparingComposerImages.length > 0;
-  const startFromShortcutLabel = onStartFrom
-    ? shortcutLabelForCommand(keybindings, "chat.startFrom", {
-        context: { terminalFocus: false, terminalOpen, modelPickerOpen: false },
-      })
-    : null;
   const isComposerResting = shouldUseRestingComposerLayout({
     isExistingThread: routeKind === "server" && activeThreadId !== null,
     isMobileViewport,
@@ -4041,63 +3751,22 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         onRemoveFile={removeComposerFileFromDraft}
       />
     ) : null;
-  const composerAttachButton = showComposerAttachAction ? (
-    <>
-      <input
-        ref={attachmentInputRef}
-        type="file"
-        multiple
-        className="hidden"
-        onChange={(event) => {
-          const files = Array.from(event.currentTarget.files ?? []);
-          event.currentTarget.value = "";
-          // Inserting a chip refocuses the editor after the draft renders;
-          // focusing synchronously here would report the editor's stale text
-          // over the prompt that was just written.
-          void addComposerAttachments(files).then((inserted) => {
-            if (!inserted) focusComposer();
-          });
-        }}
-      />
-      <span ref={setAttachMenuAnchor} className="inline-flex">
-        <ComposerAttachMenu
-          environmentId={environmentId}
-          pullRequestsAvailable={pullRequestProjectId !== null}
-          githubIssuesAvailable={githubIssueCwd !== null}
-          checkoutsAvailable={attachCheckouts.hasLocalCandidates}
-          onAttachFiles={() => attachmentInputRef.current?.click()}
-          onPick={(picker) => openComposerAttachPicker(picker, routeThreadRef)}
-          onPickModel={() => setIsModelChipPickerOpen(true)}
-        />
-      </span>
-      <ComposerModelChipPicker
-        open={isModelChipPickerOpen}
-        onOpenChange={setIsModelChipPickerOpen}
-        anchor={attachMenuAnchor}
-        environmentId={environmentId}
-        activeInstanceId={selectedInstanceId}
-        model={selectedModelForPickerWithCustomFallback}
-        instanceEntries={providerInstanceEntries}
-        modelOptionsByInstance={modelOptionsByInstance}
-        keybindings={keybindings}
-        terminalOpen={terminalOpen}
-        onPick={(instanceId, model) => {
-          const entry = providerInstanceEntries.find(
-            (candidate) => candidate.instanceId === instanceId,
-          );
-          if (!entry) return;
-          const option = modelOptionsByInstance
-            .get(instanceId)
-            ?.find((candidate) => candidate.slug === model);
-          attachModelToChat(routeThreadRef, {
-            entry,
-            slug: model,
-            name: option?.name ?? model,
-          });
-        }}
-      />
-    </>
-  ) : null;
+  const composerAttachButton = useComposerAttachControls({
+    environmentId,
+    routeThreadRef,
+    pullRequestProjectId,
+    githubIssueCwd,
+    keybindings,
+    terminalOpen,
+    focusComposer,
+    showComposerAttachAction,
+    addComposerAttachments,
+    selectedInstanceId,
+    selectedModelForPickerWithCustomFallback,
+    providerInstanceEntries,
+    modelOptionsByInstance,
+  });
+
   return (
     <form
       ref={composerFormRef}
@@ -4359,26 +4028,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               )}
             >
               {onStartFrom && !isComposerResting ? (
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        className="absolute end-2 top-2 z-10 sm:end-2.5 sm:top-2.5"
-                        aria-label="Start from a pull request, branch, issue, or automation"
-                        onClick={onStartFrom}
-                      />
-                    }
-                  >
-                    <EllipsisIcon />
-                  </TooltipTrigger>
-                  <TooltipPopup>
-                    Start from a PR, branch, issue, or automation
-                    {startFromShortcutLabel ? ` (${startFromShortcutLabel})` : null}
-                  </TooltipPopup>
-                </Tooltip>
+                <ComposerStartFromButton
+                  onStartFrom={onStartFrom}
+                  keybindings={keybindings}
+                  terminalOpen={terminalOpen}
+                />
               ) : null}
               {isStashMenuOpen && !composerMenuOpen && (
                 <ComposerCommandMenuLayer anchor={composerMenuAnchor}>
@@ -4416,21 +4070,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     resolvedTheme={resolvedTheme}
                     isLoading={isComposerMenuLoading}
                     triggerKind={composerTriggerKind}
-                    emptyStateText={
-                      isPathTrigger && pathTab === "agents"
-                        ? pathTriggerQuery
-                          ? `No agent matches ${pathTriggerQuery}.`
-                          : "This thread has no agents."
-                        : isPathTrigger && pathTab === "models"
-                          ? pathTriggerQuery
-                            ? `No model matches ${pathTriggerQuery}.`
-                            : "No models available."
-                          : isPathTrigger && pathTab === "chats"
-                            ? pathTriggerQuery
-                              ? `No chat matches ${pathTriggerQuery}.`
-                              : "No other chats yet."
-                            : composerMenuEmptyState
-                    }
                     activeItemId={activeComposerMenuItem?.id ?? null}
                     onHighlightedItemChange={onComposerMenuItemHighlightedStable}
                     onSelect={onSelectComposerItemStable}
@@ -4456,40 +4095,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                           },
                         }
                       : {})}
-                    {...(isPathTrigger
-                      ? {
-                          tabs: {
-                            options: agentMenu.available
-                              ? PATH_MENU_TABS
-                              : PATH_MENU_TABS.filter((tab) => tab.id !== "agents"),
-                            activeId: pathTab,
-                            onSelect: (id: string) => {
-                              const tab = PATH_MENU_TABS.find((option) => option.id === id);
-                              if (!tab) return;
-                              setPathTabChoice({
-                                rangeStart: composerTrigger.rangeStart,
-                                tab: tab.id,
-                              });
-                            },
-                          },
-                          ...(pathTab === "models"
-                            ? {
-                                filters: (
-                                  <ComposerModelFilters
-                                    instances={modelMenu.instances}
-                                    selected={modelInstanceFilter}
-                                    onSelect={(instanceId) =>
-                                      setModelFilterChoice({
-                                        rangeStart: composerTrigger.rangeStart,
-                                        instanceId,
-                                      })
-                                    }
-                                  />
-                                ),
-                              }
-                            : {}),
-                        }
-                      : {})}
+                    {...pathMenu.menuProps}
                   />
                 </ComposerCommandMenuLayer>
               )}

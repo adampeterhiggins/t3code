@@ -1251,7 +1251,7 @@ Code: `apps/web/src/components/chat/StartFromPicker.tsx`, `StartFromPicker.logic
 `StartFromAutomationSheet.tsx`, the
 `startFrom` targets in `apps/mobile/src/components/LinearIssuePickerSheet.tsx` and
 `GitHubIssuePickerSheet.tsx`, the button
-in `ChatComposer.tsx`, and `chat.startFrom` in `packages/contracts/src/keybindings.ts`. User guide:
+in `apps/web/src/components/chat/ComposerStartFromButton.tsx`, and `chat.startFrom` in `packages/contracts/src/keybindings.ts`. User guide:
 [source-control.md](./user/source-control.md#start-a-thread-from-a-pull-request-branch-or-issue).
 
 ## Open a GitHub pull request URL with the app scheme
@@ -1775,6 +1775,7 @@ menus; its prompt stash (`Cmd/Ctrl+S`) is unchanged.
 Code: [`messageDrafts/`](../apps/server/src/messageDrafts/),
 [`messageDrafts.ts`](../packages/contracts/src/messageDrafts.ts),
 [`sendMenu.ts`](../packages/client-runtime/src/state/sendMenu.ts),
+[`useComposerDraftActions.ts`](../apps/web/src/components/chat/useComposerDraftActions.ts),
 [`ThreadDraftsTray.tsx`](../apps/web/src/components/chat/ThreadDraftsTray.tsx) on web and
 [its mobile counterpart](../apps/mobile/src/features/threads/ThreadDraftsTray.tsx).
 User guide: [composer.md](user/composer.md#message-drafts).
