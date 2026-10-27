@@ -120,7 +120,7 @@ import * as ProjectService from "../project/ProjectService.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
 import type { AttachedContextLinks } from "./McpContextLinks.ts";
-import { assertMaySpawn, assertNotSelf } from "./spawnPolicy.ts";
+import { assertNotSelf } from "./selfTarget.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import {
   clientRuntimeModeCeiling,
@@ -2328,7 +2328,6 @@ const make = Effect.gen(function* () {
           "Choose isolation or workspaceStrategy, not both.",
         );
       }
-      yield* assertMaySpawn(threadManagement, scope.thread.threadId, 1);
       const parentRun = parent.runs
         .filter(ThreadManagementService.isActiveRun)
         .toSorted((left, right) => right.ordinal - left.ordinal)[0];
@@ -2721,7 +2720,6 @@ const make = Effect.gen(function* () {
     createThreads: Effect.fn("OrchestratorMcpService.createThreads")(
       function* (callerScope, input) {
         const { scope, parent } = yield* loadThreadCaller(callerScope, "create_threads");
-        yield* assertMaySpawn(threadManagement, scope.thread.threadId, input.threads.length);
         const parentRun = ThreadManagementService.latestActiveRun(parent);
         if (
           parentRun === undefined ||

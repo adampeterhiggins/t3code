@@ -1011,13 +1011,6 @@ describe("OrchestratorMcpService", () => {
   );
 });
 
-/** The reads delegate_task makes to check spawn limits, for a parent with no started threads. */
-const spawnPolicyReads = {
-  getThreadShell: () => Effect.succeed(null),
-  getShellSnapshot: () =>
-    Effect.succeed({ schemaVersion: 1, snapshotSequence: 0, threads: [], archivedThreads: [] }),
-};
-
 describe("OrchestratorMcpService provider resolution", () => {
   const parentThreadId = ThreadId.make("thread:mcp-providers-parent");
   const childThreadId = ThreadId.make("thread:mcp-providers-child");
@@ -1468,7 +1461,6 @@ describe("OrchestratorMcpService provider resolution", () => {
       const layerDependencies = Layer.mergeAll(
         NodeServices.layer,
         Layer.mock(ThreadManagementService.ThreadManagementService)({
-          ...spawnPolicyReads,
           hasReceipt: () => Effect.succeed(false),
           getThreadRecords: () => Effect.succeed(parentProjection([])),
         }),
@@ -1545,7 +1537,6 @@ describe("OrchestratorMcpService provider resolution", () => {
       const layerDependencies = Layer.mergeAll(
         NodeServices.layer,
         Layer.mock(ThreadManagementService.ThreadManagementService)({
-          ...spawnPolicyReads,
           hasReceipt: () => Effect.succeed(false),
           getThreadRecords: (threadId) =>
             Effect.succeed(
@@ -1656,7 +1647,6 @@ describe("OrchestratorMcpService provider resolution", () => {
       const layerDependencies = Layer.mergeAll(
         NodeServices.layer,
         Layer.mock(ThreadManagementService.ThreadManagementService)({
-          ...spawnPolicyReads,
           hasReceipt: () => Effect.succeed(false),
           getThreadRecords: (threadId) =>
             Ref.get(dispatched).pipe(
@@ -1835,7 +1825,6 @@ describe("OrchestratorMcpService provider resolution", () => {
                     : childProjection,
                 ),
               ),
-            ...spawnPolicyReads,
             hasReceipt: () => Ref.get(accepted),
             isProviderInstanceEnabledForProject: () =>
               Ref.get(everyCandidateDisabled).pipe(Effect.map((disabled) => !disabled)),
@@ -2184,7 +2173,6 @@ describe("OrchestratorMcpService provider resolution", () => {
           const layerDependencies = Layer.mergeAll(
             NodeServices.layer,
             Layer.mock(ThreadManagementService.ThreadManagementService)({
-              ...spawnPolicyReads,
               hasReceipt: () => Effect.succeed(false),
               assertProviderInstanceEnabled: () => Effect.void,
               isProviderInstanceEnabledForProject: () => Effect.succeed(true),
@@ -2378,7 +2366,6 @@ describe("OrchestratorMcpService provider resolution", () => {
         const dependencies = Layer.mergeAll(
           NodeServices.layer,
           Layer.mock(ThreadManagementService.ThreadManagementService)({
-            ...spawnPolicyReads,
             hasReceipt: () => Effect.succeed(false),
             getThreadRecords: (threadId) =>
               Effect.succeed(
@@ -2476,7 +2463,6 @@ describe("OrchestratorMcpService provider resolution", () => {
         const dependencies = Layer.mergeAll(
           NodeServices.layer,
           Layer.mock(ThreadManagementService.ThreadManagementService)({
-            ...spawnPolicyReads,
             hasReceipt: () => Effect.succeed(false),
             getThreadRecords: (threadId) =>
               Effect.succeed(
@@ -2969,7 +2955,6 @@ describe("OrchestratorMcpService provider resolution", () => {
           const dependencies = Layer.mergeAll(
             NodeServices.layer,
             Layer.mock(ThreadManagementService.ThreadManagementService)({
-              ...spawnPolicyReads,
               hasReceipt: () => Effect.succeed(false),
               assertProviderInstanceEnabled: () => Effect.void,
               getThreadRecords: (threadId) =>

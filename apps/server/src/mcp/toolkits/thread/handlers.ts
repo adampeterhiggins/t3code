@@ -32,7 +32,6 @@ import { assertProjectWorktree } from "../project/handlers.ts";
 import * as ThreadSearch from "../../../orchestration-v2/ThreadSearch.ts";
 import * as ScheduledTasks from "../../../scheduledTasks/ScheduledTaskService.ts";
 import { queuedRunsInDeliveryOrder } from "../../../orchestration-v2/QueuedRunOrder.ts";
-import { assertMaySpawn } from "../../spawnPolicy.ts";
 import { ThreadToolkit } from "./tools.ts";
 
 function queueEntry(
@@ -263,10 +262,8 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
     (input) => [input.threadId, input.fork?.sourceThreadId],
     (input) =>
       Effect.gen(function* () {
-        const { threads, projection, caller, scope } = yield* readThread(input.threadId);
+        const { projection, caller, scope } = yield* readThread(input.threadId);
         const tabs = yield* threadTabs;
-        // A tab is a new thread, so a thread's agent opens one under the same limits as a launch.
-        if (caller !== undefined) yield* assertMaySpawn(threads, caller.id, 1);
         const threadId = ThreadId.make(yield* newCommandId());
         const opened = yield* tabs
           .open(projection.thread.id, {
