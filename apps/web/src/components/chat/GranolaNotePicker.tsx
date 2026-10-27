@@ -23,7 +23,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { toastManager } from "../ui/toast";
-import { GranolaNoteDetails } from "../contextChipParts";
+import { GranolaNoteDetails } from "../integrationContextDetails";
 import { CursorPreviewCard } from "./CursorPreviewCard";
 import {
   DEFAULT_GRANOLA_NOTE_PICKER_VIEW,

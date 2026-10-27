@@ -29,7 +29,7 @@ import {
   PromptLinkDetails,
   RepositoryDetails,
   SlackThreadDetails,
-} from "./contextChipParts";
+} from "./integrationContextDetails";
 import { GitHubRefIcon, gitHubRefKindLabel } from "./gitHubRefPresentation";
 import { DiscordIcon, GitHubIcon, GranolaIcon, LinearIcon, NotionIcon, SlackIcon } from "./Icons";
 
@@ -53,7 +53,7 @@ export type LinkedObjectContextRecord =
 
 export type LinkedObjectContextKind = LinkedObjectContextRecord["kind"];
 
-export const LINKED_OBJECT_CONTEXT_KINDS = [
+const LINKED_OBJECT_CONTEXT_KINDS = [
   "linear-issue",
   "linear-object",
   "github-issue",

@@ -1,21 +1,9 @@
 import type {
   CheckoutContextRecord,
-  DiscordThreadContextRecord,
   ElementContextRecord,
   EnvironmentId,
-  GitHubIssueContextRecord,
-  GitHubRefContextRecord,
-  GranolaNoteContextRecord,
-  KnownComposerContextKind,
-  LinearIssueContextRecord,
-  LinearObjectContextRecord,
-  NotionPageContextRecord,
-  GoogleFileContextRecord,
   PreviewAnnotationPayload,
-  PromptLinkContextRecord,
   RepositoryContextRecord,
-  SlackThreadContextRecord,
-  SubagentContextRecord,
   ThreadContextRecord,
   ThreadTabContextRecord,
   UnreadLinkContextRecord,
@@ -23,12 +11,7 @@ import type {
 } from "@t3tools/contracts";
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
 import { videoMimeType } from "@t3tools/shared/video";
-import {
-  FolderIcon,
-  MessageCircleIcon,
-  MessagesSquareIcon,
-  MousePointerClickIcon,
-} from "lucide-react";
+import { MessageCircleIcon, MousePointerClickIcon } from "lucide-react";
 import { createContext, type MouseEvent, type ReactElement, use } from "react";
 
 import type { ComposerFileAttachment, ComposerImageAttachment } from "~/composerDraftStore";
@@ -63,8 +46,6 @@ import { basenameOfPath } from "~/pierre-icons";
 import type { ReviewCommentContext } from "~/reviewCommentContext";
 import { FileTagChipContent } from "./chat/FileTagChip";
 import { SkillChipIcon } from "./chat/SkillChipIcon";
-import { ComposerModelChip, modelChipAccessibleLabel } from "./chat/ModelContextChip";
-import { SubagentChipTrigger, subagentChipAccessibleLabel } from "./chat/SubagentContextChip";
 import { TerminalChipTrigger } from "./chat/TerminalContextPreview";
 import { ContextChip } from "./ContextChip";
 import {
@@ -73,21 +54,14 @@ import {
   ImageChipButton,
   PULL_REQUEST_CHIP_KINDS,
   PullRequestChipTrigger,
-  UnreadLinkChipTrigger,
-  unreadLinkAccessibleLabel,
   UnresolvedChip,
 } from "./contextChipParts";
 import {
-  buttonContextChip,
-  createContextPresentationRegistry,
-  type ContextPresentationHandler,
-} from "./contextPreviewRegistry";
-import {
-  isLinkedObjectContextKind,
-  linkedObjectIcon,
-  linkedObjectKindLabel,
-  type LinkedObjectContextKind,
-} from "./linkedObjectPresentation";
+  integrationComposerContextHandlers,
+  issueDraftContextRecord,
+  type IntegrationDraftContextRecord,
+} from "./integrationContextChips";
+import { buttonContextChip, createContextPresentationRegistry } from "./contextPreviewRegistry";
 import { ThreadChipTrigger } from "./ThreadContextChip";
 
 /** A `$skill` drawn in the prompt, as its chip reads it. */
@@ -100,9 +74,6 @@ export interface ComposerSkillChipRecord {
 }
 
 export type ComposerDraftContextRecord =
-  | { kind: "notion-page"; record: NotionPageContextRecord }
-  | { kind: "google-file"; record: GoogleFileContextRecord }
-  | { kind: "granola-note"; record: GranolaNoteContextRecord }
   | { kind: "terminal"; record: TerminalContextDraft }
   | { kind: "review-comment"; record: ReviewCommentContext }
   | {
@@ -110,22 +81,10 @@ export type ComposerDraftContextRecord =
       record: PreviewAnnotationPayload;
       screenshot?: ComposerImageAttachment | undefined;
     }
-  | { kind: "thread-tab"; record: ThreadTabContextRecord }
-  | { kind: "model"; record: ModelContextRecord }
-  | { kind: "linear-issue"; record: LinearIssueContextRecord }
-  | { kind: "linear-object"; record: LinearObjectContextRecord }
-  | { kind: "github-issue"; record: GitHubIssueContextRecord }
-  | { kind: "repository"; record: RepositoryContextRecord }
-  | { kind: "checkout"; record: CheckoutContextRecord }
-  | { kind: "slack-thread"; record: SlackThreadContextRecord }
-  | { kind: "discord-thread"; record: DiscordThreadContextRecord }
   | { kind: "image"; record: ComposerImageAttachment; upload?: AttachmentUploadState | undefined }
   | { kind: "file"; record: ComposerFileAttachment; upload?: AttachmentUploadState | undefined }
   | { kind: "thread"; record: ThreadContextRecord }
-  | { kind: "subagent"; record: SubagentContextRecord }
-  | { kind: "prompt-link"; record: PromptLinkContextRecord }
-  | { kind: "github-ref"; record: GitHubRefContextRecord }
-  | { kind: "unread-link"; record: UnreadLinkContextRecord };
+  | IntegrationDraftContextRecord;
 
 /**
  * What a composer chip can draw: a record the draft holds, or a prompt token the editor draws as
@@ -238,37 +197,6 @@ export function composerContextRecordsFromDraft(input: {
   return records;
 }
 
-function issueDraftContextRecord(record: IssueContextRecord): ComposerDraftContextRecord {
-  switch (record.kind) {
-    case "notion-page":
-      return { kind: "notion-page", record };
-    case "google-file":
-      return { kind: "google-file", record };
-    case "granola-note":
-      return { kind: "granola-note", record };
-    case "linear-issue":
-      return { kind: "linear-issue", record };
-    case "linear-object":
-      return { kind: "linear-object", record };
-    case "github-issue":
-      return { kind: "github-issue", record };
-    case "slack-thread":
-      return { kind: "slack-thread", record };
-    case "discord-thread":
-      return { kind: "discord-thread", record };
-    case "subagent":
-      return { kind: "subagent", record };
-    case "prompt-link":
-      return { kind: "prompt-link", record };
-    case "github-ref":
-      return { kind: "github-ref", record };
-    case "unread-link":
-      return { kind: "unread-link", record };
-    case "model":
-      return { kind: "model", record };
-  }
-}
-
 function uploadStatusSuffix(upload: AttachmentUploadState | undefined): string | null {
   if (upload?.status === "uploading") return formatAttachmentUploadProgress(upload.progress);
   if (upload?.status === "failed") return "upload failed";
@@ -284,37 +212,10 @@ function UnresolvedContextChip(props: { label: string }) {
   );
 }
 
-interface ComposerContextRenderContext {
+export interface ComposerContextRenderContext {
   label: string;
   actions: ComposerContextActions;
   resolvedTheme: "light" | "dark";
-}
-
-type ComposerHandler<K extends KnownComposerContextKind> = ContextPresentationHandler<
-  K,
-  ComposerContextChipEntry,
-  ComposerContextRenderContext
->;
-
-function linkedObjectHandler<K extends LinkedObjectContextKind>(kind: K): ComposerHandler<K> {
-  return {
-    chip: (entry, { actions }) =>
-      entry.kind === kind && isLinkedObjectEntry(entry)
-        ? buttonContextChip({
-            kind,
-            icon: linkedObjectIcon(entry.record),
-            label: entry.record.label,
-            kindLabel: linkedObjectKindLabel(entry.record),
-            preview: { record: entry.record, onOpenLink: actions.openLink },
-          })
-        : null,
-  };
-}
-
-function isLinkedObjectEntry(
-  entry: ComposerContextChipEntry,
-): entry is Extract<ComposerContextChipEntry, { kind: LinkedObjectContextKind }> {
-  return isLinkedObjectContextKind(entry.kind);
 }
 
 const composerContextPresentationRegistry = createContextPresentationRegistry<
@@ -522,39 +423,6 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
         });
       },
     },
-    "thread-tab": {
-      chip: (entry) =>
-        entry.kind === "thread-tab"
-          ? buttonContextChip({
-              kind: "thread-tab",
-              icon: <MessagesSquareIcon />,
-              label: entry.record.label,
-              kindLabel: "Chat summary",
-              preview: { summary: entry.record.summary },
-            })
-          : null,
-    },
-    "linear-issue": linkedObjectHandler("linear-issue"),
-    "linear-object": linkedObjectHandler("linear-object"),
-    "github-issue": linkedObjectHandler("github-issue"),
-    repository: linkedObjectHandler("repository"),
-    checkout: {
-      chip: (entry) =>
-        entry.kind === "checkout"
-          ? buttonContextChip({
-              kind: "checkout",
-              icon: <FolderIcon />,
-              label: entry.record.label,
-              kindLabel: "Checkout",
-              preview: { record: entry.record },
-            })
-          : null,
-    },
-    "slack-thread": linkedObjectHandler("slack-thread"),
-    "discord-thread": linkedObjectHandler("discord-thread"),
-    "notion-page": linkedObjectHandler("notion-page"),
-    "google-file": linkedObjectHandler("google-file"),
-    "granola-note": linkedObjectHandler("granola-note"),
     thread: {
       chip: (entry, { actions }) => {
         if (entry.kind !== "thread") return null;
@@ -567,46 +435,7 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
         };
       },
     },
-    subagent: {
-      chip: (entry) =>
-        entry.kind === "subagent"
-          ? {
-              trigger: <SubagentChipTrigger record={entry.record} />,
-              accessibleLabel: subagentChipAccessibleLabel(entry.record),
-              preview: { record: entry.record },
-            }
-          : null,
-    },
-    "prompt-link": linkedObjectHandler("prompt-link"),
-    "github-ref": linkedObjectHandler("github-ref"),
-    "unread-link": {
-      chip: (entry, { actions }) => {
-        if (entry.kind !== "unread-link") return null;
-        const { record } = entry;
-        return {
-          trigger: <UnreadLinkChipTrigger record={record} />,
-          accessibleLabel: unreadLinkAccessibleLabel(record),
-          preview: {
-            record,
-            onOpenLink: actions.openLink,
-            onRetry: () => actions.retryUnreadLink(record),
-            onKeepAsText: () => actions.keepUnreadLinkAsText(record),
-          },
-        };
-      },
-    },
-    model: {
-      chip: (entry, { actions }) =>
-        entry.kind === "model"
-          ? {
-              trigger: (
-                <ComposerModelChip record={entry.record} onRecordChange={actions.updateModelChip} />
-              ),
-              accessibleLabel: modelChipAccessibleLabel(entry.record),
-              preview: { record: entry.record },
-            }
-          : null,
-    },
+    ...integrationComposerContextHandlers,
   },
   fallback: (_kind, _entry, context) => <UnresolvedContextChip label={context.label} />,
 });
