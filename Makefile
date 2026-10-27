@@ -48,7 +48,7 @@ VP = $(if $(wildcard node_modules/.bin/vp),./node_modules/.bin/vp,vp)
 
 .DEFAULT_GOAL := help
 
-.PHONY: help deps phone update-cert update-next update-prune update-serve update-serve-stop update-status
+.PHONY: help deps phone update-cert update-install update-next update-prune update-serve update-serve-stop update-status
 
 ##@ Local update loop
 
@@ -70,7 +70,8 @@ help: ## Show the available targets
 	@printf "  make update-serve           start the feed on :3000\n"
 	@printf "\n\033[1mEvery update after that\033[0m\n"
 	@printf "  make update-next            build the next dated fork version\n"
-	@printf "  then click the rocket in the app\n\n"
+	@printf "  then click the rocket in the app\n"
+	@printf "  make update-install         or install it by hand if the app can't update itself\n\n"
 	@printf "  make phone                  rebuild and install the iPhone app (see apps/mobile/README.md)\n\n"
 
 phone: deps ## Build and install a self-contained Personal Team iPhone app
@@ -180,6 +181,15 @@ update-install-%: ## Install version % from release-mock into /Applications
 		exit 1; \
 	fi; \
 	echo "Installed $(APP_PATH) ($$INSTALLED)"
+
+update-install: ## Install the version release-mock/latest-mac.yml advertises
+	@set -e; \
+	CUR="$$(awk '/^version:/{print $$2; exit}' $(MANIFEST) 2>/dev/null || true)"; \
+	if [ -z "$$CUR" ]; then \
+		echo "No $(MANIFEST) — run 'make update-next' first."; \
+		exit 1; \
+	fi; \
+	$(MAKE) --no-print-directory update-install-$$CUR
 
 update-serve: ## Serve release-mock/ on :$(PORT) in the background
 	@if lsof -ti :$(PORT) -sTCP:LISTEN >/dev/null 2>&1; then \
