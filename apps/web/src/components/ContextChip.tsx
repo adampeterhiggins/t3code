@@ -12,8 +12,7 @@ const contextChipVariants = cva(
     variants: {
       kind: {
         neutral: "[--context-chip-accent:currentColor]",
-        image:
-          "rounded-lg border border-(--context-chip-accent)/30 bg-(--context-chip-accent)/10 px-1.5 [--context-chip-accent:var(--context-chip-image)]",
+        image: "[--context-chip-accent:var(--context-chip-image)]",
         video: "[--context-chip-accent:oklch(0.62_0.16_48)]",
         file: "[--context-chip-accent:oklch(0.62_0.136_237)]",
         mention: "[--context-chip-accent:oklch(0.62_0.11_215)]",

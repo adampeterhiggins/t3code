@@ -24,6 +24,7 @@ it("classifies groups and Automations while keeping unscoped threads in filter c
     scopedProjectKeys: new Set([`${environmentId}:${projectId}`]),
     optimisticDrop: null,
     workingShelfEnabled: false,
+    sortActiveBySend: false,
     clockKey: "fixture",
     inboxReturns: createInboxReturnTracker(),
   });

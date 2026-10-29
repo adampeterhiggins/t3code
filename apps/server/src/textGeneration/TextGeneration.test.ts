@@ -10,6 +10,7 @@ import { createModelSelection } from "@t3tools/shared/model";
 
 import type { ProviderInstance } from "@t3tools/provider-core/server/driver";
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import * as TextGeneration from "./TextGeneration.ts";
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
 import * as Layer from "effect/Layer";
@@ -43,7 +44,9 @@ const makeStubInstance = (
     },
     displayName: undefined,
     enabled: true,
-    snapshot: {} as ProviderInstance["snapshot"],
+    snapshot: {
+      getSnapshot: Effect.succeed({ instanceId }),
+    } as unknown as ProviderInstance["snapshot"],
     orchestrationAdapter: {} as ProviderInstance["orchestrationAdapter"],
     textGeneration,
   }) satisfies ProviderInstance;
@@ -87,6 +90,7 @@ describe("TextGeneration.make", () => {
             resolveLink: () => Effect.die("Supplied context must not be fetched again"),
           }),
         ),
+        Effect.provide(ServerSettings.layerTest()),
       );
       yield* generation.generateThreadTitle({
         cwd: process.cwd(),
@@ -131,6 +135,7 @@ describe("TextGeneration.make", () => {
             resolveLink: () => Effect.die("No link lookup expected"),
           }),
         ),
+        Effect.provide(ServerSettings.layerTest()),
       );
 
       const result = yield* tg.generateBranchName({
@@ -156,6 +161,7 @@ describe("TextGeneration.make", () => {
             resolveLink: () => Effect.die("No link lookup expected"),
           }),
         ),
+        Effect.provide(ServerSettings.layerTest()),
       );
 
       const result = yield* tg

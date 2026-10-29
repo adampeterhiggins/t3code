@@ -3,11 +3,7 @@ import { memo } from "react";
 import { CheckIcon, GitForkIcon } from "lucide-react";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import {
-  ComposerControl,
-  ComposerControlChevron,
-  type ComposerControlSize,
-} from "./ComposerControl";
+import { ComposerControl, type ComposerControlSize } from "./ComposerControl";
 import { useComposerMenuProps } from "./composerEventScope";
 import { useComposerMenuState } from "./useComposerMenuState";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
@@ -15,15 +11,9 @@ import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../provi
 import { cn } from "~/lib/utils";
 
 /**
- * Composer control for switching accounts of the active provider.
- * Rendered when that provider has more than one enabled account. With fewer
- * than two switchable `accounts` (a thread locked to one account's home) it
- * becomes a plain label — icon and name, no control chrome — so the thread
- * still shows which account it runs on.
- *
- * Once a thread has started, accounts it cannot switch to in place can still
- * be listed with `requiresFork`: choosing one calls `onAccountChange`, which
- * forks the chat into a new tab on that account.
+ * Switches accounts of the active provider. With fewer than two switchable accounts it is a
+ * plain label, so the thread still shows its account. `requiresFork` lists accounts a started
+ * thread cannot switch to in place; choosing one forks the chat into a new tab.
  */
 export const ProviderAccountPicker = memo(function ProviderAccountPicker(props: {
   activeInstanceId: ProviderInstanceId;
@@ -68,7 +58,6 @@ export const ProviderAccountPicker = memo(function ProviderAccountPicker(props: 
       <span data-composer-control-label className="min-w-0 truncate">
         {triggerLabel}
       </span>
-      {props.accounts.length > 1 ? <ComposerControlChevron size={size} /> : null}
     </span>
   );
 

@@ -79,6 +79,7 @@ import React, {
   Suspense,
   type ComponentProps,
   type ClipboardEvent as ReactClipboardEvent,
+  type MouseEvent as ReactMouseEvent,
   use,
   memo,
   useEffect,
@@ -1053,6 +1054,7 @@ function CopyableInlineCode({
             {...props}
             data-copyable-code=""
             data-copied={copied ? "" : undefined}
+            onDoubleClick={selectInlineCode}
             onClick={(event) => {
               if ((window.getSelection()?.toString() ?? "").length > 0) return;
               event.stopPropagation();
@@ -1202,6 +1204,11 @@ function GranolaLinkText({
       {url}
     </MarkdownExternalLinkContent>
   );
+}
+
+// Native word selection stops at hyphens and dots, so a double-click takes the whole span.
+function selectInlineCode(event: ReactMouseEvent<HTMLElement>) {
+  window.getSelection()?.selectAllChildren(event.currentTarget);
 }
 
 const CHAT_MARKDOWN_COMPONENTS = {
