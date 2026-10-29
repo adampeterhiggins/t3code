@@ -460,8 +460,8 @@ const QuickMessageThemeSource = Schema.Literals(["app", "adapt", "theme"]);
 const QuickMessageAppearance = Schema.Literals(["app", "system", "light", "dark"]);
 const QuickMessageExtraContrast = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 100 }));
 
-export const MIN_SIDEBAR_THREAD_PREVIEW_COUNT = 1;
-export const MAX_SIDEBAR_THREAD_PREVIEW_COUNT = 15;
+const MIN_SIDEBAR_THREAD_PREVIEW_COUNT = 1;
+const MAX_SIDEBAR_THREAD_PREVIEW_COUNT = 15;
 export const SidebarThreadPreviewCount = Schema.Int.check(
   Schema.isBetween({
     minimum: MIN_SIDEBAR_THREAD_PREVIEW_COUNT,

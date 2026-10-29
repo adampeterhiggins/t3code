@@ -1,7 +1,6 @@
 export { toolGroupAction } from "@t3tools/client-runtime/work-log/presentation";
 import { worktreeSetupAgentStarted } from "@t3tools/client-runtime/worktree-setup";
 import { toolReadRangeLabel } from "@t3tools/client-runtime/work-log/item-detail";
-export { worktreeSetupAgentStarted } from "@t3tools/client-runtime/worktree-setup";
 import { isLiveSubagentTurnItem } from "@t3tools/client-runtime/state/subagentRuntime";
 import * as DateTime from "effect/DateTime";
 import * as Equal from "effect/Equal";
