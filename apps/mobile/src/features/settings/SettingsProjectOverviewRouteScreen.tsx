@@ -35,7 +35,7 @@ import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsConductorSection } from "./components/SettingsConductorSection";
 import { SettingsSection } from "./components/SettingsSection";
 import { SettingsProjectThreadGroupSection } from "./components/SettingsProjectThreadGroupSection";
-import { SettingsActionRow } from "./components/SettingsActionRow";
+import { ListActionRow as SettingsActionRow } from "../../components/ui/ListActionRow";
 import {
   AndroidSettingsEnvironmentFilter,
   SettingsEnvironmentFilterHeader,

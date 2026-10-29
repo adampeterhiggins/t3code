@@ -24,6 +24,7 @@ export const CONTEXT_CHIP_ICON_SOURCES = {
   "message-circle": require("../../assets/context-chip-icons/message-circle.png"),
   "messages-square": require("../../assets/context-chip-icons/messages-square.png"),
   "mouse-pointer-click": require("../../assets/context-chip-icons/mouse-pointer-click.png"),
+  server: require("../../assets/context-chip-icons/server.png"),
   skill: require("../../assets/context-chip-icons/skill.png"),
   tag: require("../../assets/context-chip-icons/tag.png"),
   terminal: require("../../assets/context-chip-icons/terminal.png"),

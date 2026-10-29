@@ -25,10 +25,11 @@ import { ThreadAutomationsPanel } from "./ThreadAutomationsPanel";
 import { ThreadRelationshipsPanel } from "./ThreadRelationshipsControl";
 import { ThreadLinkedCheckouts } from "./ThreadLinkedCheckouts";
 import { ThreadLinks } from "./ThreadLinks";
+import { ThreadServersPanel } from "./ThreadServersPanel";
 
 const GitActionsControl = memo(BaseGitActionsControl);
 
-export interface ThreadDetailsPanelProps extends Pick<
+interface ThreadDetailsPanelProps extends Pick<
   ComponentProps<typeof ThreadDetailsCard>,
   "anchor" | "handle"
 > {
@@ -183,7 +184,6 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                 ) : null}
                 {props.activeProjectName ? (
                   <GitActionsControl
-                    displayMode="panel"
                     compact={density !== "full"}
                     gitCwd={props.gitCwd}
                     activeThreadRef={activeThreadRef}
@@ -196,7 +196,10 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
           ) : null}
 
           {density === "full" && !props.draftId ? (
-            <ThreadLinks threadRef={activeThreadRef} projectId={props.projectId} />
+            <>
+              <ThreadServersPanel environmentId={props.environmentId} threadId={props.threadId} />
+              <ThreadLinks threadRef={activeThreadRef} projectId={props.projectId} />
+            </>
           ) : null}
 
           {density === "full" && !props.draftId ? (

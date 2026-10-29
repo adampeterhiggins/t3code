@@ -1,6 +1,8 @@
+import { EnvironmentContextChip } from "./EnvironmentContextChip";
 import type {
   CheckoutContextRecord,
   ElementContextRecord,
+  EnvironmentContextRecord,
   EnvironmentId,
   PreviewAnnotationPayload,
   RepositoryContextRecord,
@@ -84,6 +86,7 @@ export type ComposerDraftContextRecord =
   | { kind: "image"; record: ComposerImageAttachment; upload?: AttachmentUploadState | undefined }
   | { kind: "file"; record: ComposerFileAttachment; upload?: AttachmentUploadState | undefined }
   | { kind: "thread"; record: ThreadContextRecord }
+  | { kind: "environment"; record: EnvironmentContextRecord }
   | IntegrationDraftContextRecord;
 
 /**
@@ -146,6 +149,7 @@ export function composerContextRecordsFromDraft(input: {
   repositories?: ReadonlyArray<RepositoryContextRecord>;
   checkouts?: ReadonlyArray<CheckoutContextRecord>;
   threadContexts?: ReadonlyArray<ThreadContextRecord>;
+  environmentContexts?: ReadonlyArray<EnvironmentContextRecord>;
   images?: ReadonlyArray<ComposerImageAttachment>;
   files?: ReadonlyArray<ComposerFileAttachment>;
   uploadsByImageId?: Readonly<Record<string, AttachmentUploadState>>;
@@ -193,6 +197,9 @@ export function composerContextRecordsFromDraft(input: {
   }
   for (const record of input.threadContexts ?? []) {
     records.set(record.contextId, { kind: "thread", record });
+  }
+  for (const record of input.environmentContexts ?? []) {
+    records.set(record.contextId, { kind: "environment", record });
   }
   return records;
 }
@@ -434,6 +441,16 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
           preview: { record: entry.record, unreadable },
         };
       },
+    },
+    environment: {
+      chip: (entry) =>
+        entry.kind === "environment"
+          ? {
+              trigger: <EnvironmentContextChip record={entry.record} />,
+              accessibleLabel: `Machine, ${entry.record.label}`,
+              preview: {},
+            }
+          : null,
     },
     ...integrationComposerContextHandlers,
   },

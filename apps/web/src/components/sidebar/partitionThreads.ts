@@ -44,6 +44,7 @@ export function partitionSidebarThreads(input: {
   optimisticDrop: SidebarOptimisticDrop | null;
   workingShelfEnabled: boolean;
   clockKey: string;
+  delegatedUnderParent?: ReadonlySet<string>;
   inboxReturns: ReturnType<typeof createInboxReturnTracker>;
 }) {
   const {
@@ -55,13 +56,14 @@ export function partitionSidebarThreads(input: {
     optimisticDrop,
     workingShelfEnabled,
     inboxReturns,
+    delegatedUnderParent,
   } = input;
   const preciseNow = new Date().toISOString();
   // sidebar roster (v2 models them as real threads with lineage). Chat tabs
   // list under their group's row instead of as rows of their own.
   // Every project's threads are classified, so the filter menu can count the ones outside
   // the current scope; only scoped threads reach the shelves.
-  const visible = filterSidebarV2VisibleThreads(threads, null).filter(
+  const visible = filterSidebarV2VisibleThreads(threads, null, delegatedUnderParent).filter(
     (thread) => !tabThreadGroups.has(`${thread.environmentId}:${thread.id}`),
   );
   const inboxObservation = inboxReturns.observe(workingShelfEnabled ? threads : null);

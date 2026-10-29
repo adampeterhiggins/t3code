@@ -5,6 +5,7 @@ import {
   composerPullRequestRepositories,
   composerPullRequestsFromLinks,
   filterComposerPullRequestMatches,
+  withLinkedComposerPullRequestsFirst,
 } from "./composerPullRequestMatches.ts";
 
 const entry = (number: number, updatedAt: string) => ({
@@ -157,5 +158,30 @@ describe("linked pull requests", () => {
         ProjectId.make("p1"),
       ),
     ).toEqual([]);
+  });
+  it("puts linked pull requests ahead of a text search, before and after it returns", () => {
+    const linked = composerPullRequestsFromLinks(
+      [
+        link("owner/repo", 7, {
+          snapshot: { ...link("owner/repo", 7).snapshot!, title: "Fix login" },
+        }),
+        link("owner/repo", 8),
+      ],
+      ProjectId.make("p1"),
+    );
+    const searching = withLinkedComposerPullRequestsFirst({
+      matches: [],
+      linked,
+      query: "fix",
+      limit: 10,
+    });
+    expect(searching.map((match) => match.number)).toEqual([7]);
+    const searched = withLinkedComposerPullRequestsFirst({
+      matches: [entry(9, "2026-01-05"), entry(8, "2026-01-03")],
+      linked,
+      query: "fix",
+      limit: 10,
+    });
+    expect(searched).toEqual([linked[0], entry(8, "2026-01-03"), entry(9, "2026-01-05")]);
   });
 });

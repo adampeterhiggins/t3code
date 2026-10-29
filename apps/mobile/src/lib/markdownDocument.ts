@@ -13,9 +13,10 @@ import {
   type LinearIssueReferences,
   linearIssueReferenceUrl,
 } from "@t3tools/shared/linearIssueReferences";
+import { remarkKeepWindowsProsePaths } from "@t3tools/shared/markdownWindowsPaths";
 import { isWindowsAbsolutePath } from "@t3tools/shared/path";
 
-const parser = unified().use(remarkParse).use(remarkGfm);
+const parser = unified().use(remarkParse).use(remarkGfm).use(remarkKeepWindowsProsePaths);
 export type MarkdownNode = Root | RootContent;
 
 interface MarkdownEdit {
@@ -173,8 +174,10 @@ function markdownHtmlTags(content: string): RegExpExecArray[] {
       }
     }
     if (closingIndex === -1) {
-      if (fenced) codeRanges.push({ start: opening.index, end: content.length });
-      continue;
+      if (!fenced) continue;
+      // An unclosed fence runs to the end of the content, so no later opener matters.
+      codeRanges.push({ start: opening.index, end: content.length });
+      break;
     }
     const closing = delimiters[closingIndex]!;
     codeRanges.push({ start: opening.index, end: closing.index + closing[0].length });

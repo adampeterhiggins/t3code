@@ -135,6 +135,7 @@ function fromGitHubApiError(
     case "GitHubNotSignedInError":
     case "GitHubHostDisabledError":
     case "GitHubApiAuthenticationError":
+    case "GitHubAppSessionError":
       return new GitHubCliAuthenticationError(context);
     case "GitHubCliFailedError":
       return new GitHubCliCommandError(context);

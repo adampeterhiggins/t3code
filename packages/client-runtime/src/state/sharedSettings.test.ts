@@ -26,7 +26,7 @@ const restartCapabilities = {
 };
 
 describe("supportsSharedSettingsSync", () => {
-  it("accepts only connected servers that advertise the shared-settings capability", () => {
+  it("accepts connected servers with a loaded config", () => {
     expect(
       supportsSharedSettingsSync({
         connection: { phase: "connected" },
@@ -36,7 +36,7 @@ describe("supportsSharedSettingsSync", () => {
     expect(
       supportsSharedSettingsSync({
         connection: { phase: "connected" },
-        serverConfig: { environment: { capabilities: {} } },
+        serverConfig: null,
       }),
     ).toBe(false);
     expect(
@@ -135,6 +135,7 @@ describe("pickSharedServerSettings", () => {
       "sidebarAutoSettleAfterDays",
       "sidebarAutoSettleOnMerge",
       "snoozeLimitedThreads",
+      "snoozePresets",
       "sourceControlWritingStyle",
       "stopAtSubscriptionLimit",
       "textGenerationModelSelection",
@@ -186,14 +187,15 @@ describe("filterSharedServerPatch", () => {
         continueThreadsAfterServerUpdate: true,
         sidebarAutoSettleAfterDays: 7,
       };
-      expect(filterSharedServerPatch(patch, undefined, settings, settings, targetIsSource)).toEqual(
-        {
-          ...(targetIsSource
-            ? { textGenerationModelSelection: DEFAULT_SERVER_SETTINGS.textGenerationModelSelection }
-            : {}),
-          sidebarAutoSettleAfterDays: 7,
-        },
-      );
+      expect(
+        filterSharedServerPatch(patch, restartCapabilities, settings, settings, targetIsSource),
+      ).toEqual({
+        ...(targetIsSource
+          ? { textGenerationModelSelection: DEFAULT_SERVER_SETTINGS.textGenerationModelSelection }
+          : {}),
+        continueThreadsAfterServerUpdate: true,
+        sidebarAutoSettleAfterDays: 7,
+      });
     },
   );
 
@@ -226,21 +228,6 @@ describe("filterSharedServerPatch", () => {
       };
       expect(filterSharedServerPatch(patch, restartCapabilities, settings, sourceSettings)).toEqual(
         availability === "enabled" ? patch : { sidebarAutoSettleAfterDays: 7 },
-      );
-    },
-  );
-
-  it.each([undefined, {}, { threadRestartContinuation: false }])(
-    "omits only the unsupported restart preference with capabilities %j",
-    (capabilities) => {
-      expect(
-        filterSharedServerPatch(
-          { continueThreadsAfterServerUpdate: true, sidebarAutoSettleAfterDays: 7 },
-          capabilities,
-        ),
-      ).toEqual({ sidebarAutoSettleAfterDays: 7 });
-      expect(pickSharedServerSettings(DEFAULT_SERVER_SETTINGS, capabilities)).not.toHaveProperty(
-        "continueThreadsAfterServerUpdate",
       );
     },
   );

@@ -7,7 +7,7 @@ import { type EnvironmentId, resolveEnvironmentMachineKind } from "@t3tools/cont
 import { useAtomValue } from "@effect/atom-react";
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/reactivity";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { Platform, Pressable, View } from "react-native";
 import Animated, { FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
 

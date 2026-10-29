@@ -13,7 +13,6 @@ import { StackActions, useNavigation, type StaticScreenProps } from "@react-navi
 import * as DateTime from "effect/DateTime";
 import { Atom } from "effect/reactivity";
 import * as Haptics from "expo-haptics";
-import { useEffect, useState } from "react";
 import { Platform, Pressable, ScrollView, View } from "react-native";
 import { ScreenStack } from "react-native-screens";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -32,9 +31,12 @@ import {
   type AgentReference,
 } from "./agent-references";
 import { NativeHeader, NativeScreen } from "../../native/ThemedScreenStack";
+import { useEnvironments } from "../../state/environments";
 import { SubagentRow } from "./SubagentRow";
+import { useVisibleSecondClock } from "./use-visible-second-clock";
 import { ScreenContent } from "../../components/ui/ScreenContent";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
+import { subagentThreadTarget } from "./threadAgentsPresentation";
 
 import { useOpenThreadInspector } from "./thread-inspector-navigation";
 
@@ -74,21 +76,21 @@ export function ThreadAgentsSheet({ route }: StaticScreenProps<AgentsTarget>) {
     useAtomValue(environmentThreadDetails.threadAtom(target), selectSubagents),
   );
 
-  const openChildThread = (childThreadId: ThreadId) => {
+  const openChildThread = (child: { environmentId: EnvironmentId; threadId: ThreadId }) => {
     void Haptics.selectionAsync();
     if (
       openInspector(target, {
         type: "thread",
-        environmentId: target.environmentId,
-        threadId: childThreadId,
+        environmentId: child.environmentId,
+        threadId: child.threadId,
       })
     )
       return;
     // Replace this leaf sheet so the child enters the workspace stack expected by Home's Back button.
     navigation.dispatch(
       StackActions.replace("Thread", {
-        environmentId: target.environmentId,
-        threadId: childThreadId,
+        environmentId: child.environmentId,
+        threadId: child.threadId,
       }),
     );
   };
@@ -176,11 +178,14 @@ function AgentRow(props: {
   readonly subagent: OrchestrationV2Subagent;
   readonly reference: AgentReference | null;
   readonly tickSeconds: boolean;
-  readonly onOpen: (childThreadId: ThreadId) => void;
+  readonly onOpen: (child: { environmentId: EnvironmentId; threadId: ThreadId }) => void;
   readonly onAttach: (subagent: OrchestrationV2Subagent, reference: AgentReference) => void;
 }) {
   const { subagent, reference } = props;
-  const childThreadId = subagent.childThreadId;
+  const { presentationById } = useEnvironments();
+  const target = subagentThreadTarget(subagent, props.environmentId, (id) =>
+    presentationById.has(id),
+  );
 
   const row = (
     <View className="border-b border-border py-3.5">
@@ -188,13 +193,14 @@ function AgentRow(props: {
         environmentId={props.environmentId}
         subagent={subagent}
         handle={reference?.handle ?? null}
+        canOpenRemote={target !== null}
         elapsed={<AgentElapsed subagent={subagent} tickSeconds={props.tickSeconds} />}
       />
     </View>
   );
 
   const pressable =
-    childThreadId === null ? (
+    target === null ? (
       <Pressable
         accessibilityHint={
           reference
@@ -212,7 +218,7 @@ function AgentRow(props: {
             ? "Opens this agent's thread. Long press for actions."
             : "Opens this agent's thread"
         }
-        onPress={() => props.onOpen(childThreadId)}
+        onPress={() => props.onOpen(target!)}
         className="active:opacity-70"
       >
         {row}
@@ -223,7 +229,7 @@ function AgentRow(props: {
   const actions = [
     { id: "attach", title: "Attach to chat" },
     { id: "copy-handle", title: "Copy handle" },
-    ...(childThreadId === null ? [] : [{ id: "open", title: "Open agent" }]),
+    ...(target === null ? [] : [{ id: "open", title: "Open agent" }]),
   ];
   return (
     <AgentRowMenu
@@ -234,8 +240,8 @@ function AgentRow(props: {
         if (nativeEvent.event === "attach") props.onAttach(subagent, reference);
         else if (nativeEvent.event === "copy-handle") {
           copyTextWithHaptic(`@${reference.handle}`, { target: "agent handle" });
-        } else if (nativeEvent.event === "open" && childThreadId !== null) {
-          props.onOpen(childThreadId);
+        } else if (nativeEvent.event === "open" && target !== null) {
+          props.onOpen(target!);
         }
       }}
     >
@@ -258,13 +264,8 @@ function useSubagentElapsed(
   subagent: Pick<OrchestrationV2Subagent, "status" | "startedAt" | "completedAt">,
   tickSeconds: boolean,
 ): string | null {
-  const [nowMs, setNowMs] = useState(() => Date.now());
   const running = isOrchestrationV2WorkActive(subagent.status);
-  useEffect(() => {
-    if (!tickSeconds || !running) return;
-    const intervalId = setInterval(() => setNowMs(Date.now()), 1_000);
-    return () => clearInterval(intervalId);
-  }, [running, tickSeconds]);
+  const nowMs = useVisibleSecondClock(tickSeconds && running);
   const elapsedMs = deriveSubagentElapsedMs(
     {
       status: subagent.status,

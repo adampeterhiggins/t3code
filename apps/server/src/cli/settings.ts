@@ -20,6 +20,7 @@ import {
   printJson,
   rpc,
   withLiveRpc,
+  loadLiveSettings,
   type LiveRpcClient,
 } from "./liveRpc.ts";
 
@@ -187,7 +188,7 @@ const validatePatch = (patch: JsonObject) =>
   );
 
 const readSettings = (client: LiveRpcClient) =>
-  rpc(client[WS_METHODS.serverGetSettings]({})).pipe(Effect.map(encodeSettings));
+  loadLiveSettings(client).pipe(Effect.map(encodeSettings));
 
 const resolveProjectId = Effect.fn("cli.settings.resolveProject")(function* (
   client: LiveRpcClient,

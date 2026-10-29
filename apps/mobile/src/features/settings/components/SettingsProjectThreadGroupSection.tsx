@@ -15,7 +15,7 @@ import {
   resolveMobileSettingsTargets,
   uniformMobileSetting,
 } from "../settings-scoped-server";
-import { SettingsChoiceRow } from "./SettingsChoiceRow";
+import { ListChoiceRow as SettingsChoiceRow } from "../../../components/ui/ListChoiceRow";
 import { SettingsSection } from "./SettingsSection";
 
 /**

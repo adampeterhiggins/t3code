@@ -38,7 +38,7 @@ import { toolGroupAction, workEntryReadRawPaths } from "./MessagesTimeline.logic
 /** Shared by chat, agent transcripts, and the agent Tools list. Details mount only while open. */
 export type ToolCallContext = Pick<
   ComponentProps<typeof V2ItemInspector>,
-  "onOpenThread" | "onOpenTurnDiff" | "onRollbackCheckpoint" | "onImageExpand"
+  "onOpenThread" | "onOpenToolDiff" | "onOpenTurnDiff" | "onRollbackCheckpoint" | "onImageExpand"
 > & {
   activeThreadEnvironmentId: ComponentProps<typeof V2ItemInspector>["environmentId"];
   markdownCwd: string | undefined;
@@ -157,6 +157,7 @@ function WorkEntryDetailBody(
         highlightSyntax={props.highlightSyntax}
         onOpenThread={ctx.onOpenThread}
         onOpenTurnDiff={ctx.onOpenTurnDiff}
+        onOpenToolDiff={ctx.onOpenToolDiff}
         {...(ctx.onRollbackCheckpoint ? { onRollbackCheckpoint: ctx.onRollbackCheckpoint } : {})}
         onImageExpand={ctx.onImageExpand}
         hidePreviewActions={ctx.hidePreviewActions}

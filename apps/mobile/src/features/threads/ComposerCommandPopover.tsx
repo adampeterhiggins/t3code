@@ -10,6 +10,8 @@ import {
   isActiveSubagentStatus,
 } from "@t3tools/client-runtime/state/subagentRuntime";
 import type {
+  EnvironmentId,
+  EnvironmentMachineKind,
   PullRequestContextMetadata,
   ScopedThreadRef,
   ServerProvider,
@@ -23,6 +25,7 @@ import { Pressable, ScrollView, StyleSheet, View, type ViewStyle } from "react-n
 
 import { SymbolView, type AppSymbolName } from "../../components/ui/AppSymbol";
 import { AppText as Text } from "../../components/ui/AppText";
+import { ENVIRONMENT_MACHINE_SYMBOLS } from "../../components/EnvironmentMachineSymbol";
 import { GlassSurface } from "../../components/ui/GlassSurface";
 import { PierreEntryIcon } from "../../components/PierreEntryIcon";
 import { ProviderIcon } from "../../components/ProviderIcon";
@@ -68,8 +71,16 @@ export type ComposerCommandItem =
   | {
       readonly id: string;
       readonly type: "subagent";
+      readonly label: string;
+      readonly description: string;
       readonly entry: AgentFleetEntry;
       readonly provider: ServerProvider | undefined;
+    }
+  | {
+      readonly type: "environment";
+      readonly id: string;
+      readonly environmentId: EnvironmentId;
+      readonly machine: EnvironmentMachineKind;
       readonly label: string;
       readonly description: string;
     }
@@ -162,6 +173,8 @@ function itemIcon(item: ComposerCommandItem): AppSymbolName | null {
       return "text.bubble";
     case "subagent":
       return null;
+    case "environment":
+      return ENVIRONMENT_MACHINE_SYMBOLS[item.machine];
   }
 }
 
@@ -207,6 +220,7 @@ function emptyText(
 /** Ticks once a second while the agent works, so a settled row never repaints. */
 function useAgentClock(live: boolean): number {
   const [nowMs, setNowMs] = useState(() => Date.now());
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- updates the visible agent duration while its row is live
   useEffect(() => {
     if (!live) return;
     const intervalId = setInterval(() => setNowMs(Date.now()), 1_000);

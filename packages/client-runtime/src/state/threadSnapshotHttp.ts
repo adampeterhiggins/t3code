@@ -1,6 +1,7 @@
 import type { OrchestrationV2ThreadDetailSnapshot, ThreadId } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+
 import * as Option from "effect/Option";
 
 import * as RemoteEnvironmentAuthorization from "../authorization/service.ts";
@@ -80,14 +81,6 @@ export const loadFullThreadSnapshot = Effect.fn("clientRuntime.state.loadFullThr
   },
 );
 
-/**
- * Loads a thread's detail snapshot over HTTP.
- *
- * Distinguishes a definitive missing thread (HTTP 404) from transient snapshot
- * unavailability so the thread state machine can mark the thread deleted without
- * opening a socket subscription, while still falling back to the socket when the
- * HTTP path is merely unavailable.
- */
 export class ThreadSnapshotLoader extends Context.Service<
   ThreadSnapshotLoader,
   {

@@ -137,6 +137,7 @@ export function useFollowLive(followLive: boolean) {
   const atLiveEdgeRef = useRef(true);
   // No deps: each streamed chunk re-renders the owner, and pinning before paint
   // shows the new text without a visible jump.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- pins the output scroller to its live edge after streamed chunks commit
   useLayoutEffect(() => {
     const scroller = ref.current;
     if (followLive && atLiveEdgeRef.current && scroller) {

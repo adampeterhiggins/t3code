@@ -1,3 +1,7 @@
+import * as PeerLinks from "../peer/PeerLinks.ts";
+import * as PeerLinkRequests from "../peer/PeerLinkRequests.ts";
+import * as PeerForwarding from "../peer/PeerForwarding.ts";
+import * as RemoteDelegation from "../peer/RemoteDelegation.ts";
 import * as DocumentText from "../provider/DocumentText.ts";
 import { NodeHttpServer } from "@effect/platform-node";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -102,7 +106,7 @@ const RoutesLive = Layer.mergeAll(AgentAccessMcpServer.layer, ThreadMcpLive).pip
       Layer.mock(ThreadManagementService.ThreadManagementService)({}),
       Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
       Layer.mock(ThreadSearch.ThreadSearch)({}),
-      Layer.mock(ProviderRegistry.ProviderRegistry)({}),
+      Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
       Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({}),
       Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
       Layer.mock(SecretRequests.SecretRequests)({}),
@@ -113,7 +117,14 @@ const RoutesLive = Layer.mergeAll(AgentAccessMcpServer.layer, ThreadMcpLive).pip
       Layer.mock(GitVcsDriver.GitVcsDriver)({}),
       Layer.mock(GitWorkflow.GitWorkflowService)({}),
       Layer.mock(ProjectSetupScriptRunner.ProjectSetupScriptRunner)({}),
-      Layer.mock(McpContextLinks.McpContextLinks)({}),
+      Layer.mock(McpContextLinks.McpContextLinks)({
+        attach: ({ text }) => Effect.succeed({ text, context: undefined }),
+      }),
+      Layer.mock(RemoteDelegation.RemoteDelegation)({}),
+      Layer.mock(PeerForwarding.PeerForwarding)({}),
+      Layer.mock(PeerLinkRequests.PeerLinkRequests)({}),
+      Layer.mock(PeerLinks.PeerLinks)({}),
+
       Layer.succeed(
         Crypto.Crypto,
         Crypto.make({

@@ -94,7 +94,7 @@ function formatSampleInterval(valueMs: number): string {
   }`;
 }
 
-function processIdentityKey(process: ResourceTelemetryProcess): string {
+function processIdentityKey(process: Pick<ResourceTelemetryProcess, "identity">): string {
   return `${process.identity.pid}:${process.identity.startTimeMs}`;
 }
 

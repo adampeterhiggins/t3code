@@ -42,7 +42,6 @@ export function useComposerDraftActions(
     | "onSaveMessageDraft"
     | "canOperateThread"
     | "isSendBusy"
-    | "isConnecting"
     | "isCompacting"
     | "projectSelectionRequired"
     | "environmentUnavailable"
@@ -88,7 +87,6 @@ export function useComposerDraftActions(
     onSaveMessageDraft,
     canOperateThread,
     isSendBusy,
-    isConnecting,
     isCompacting,
     projectSelectionRequired,
     environmentUnavailable,
@@ -228,7 +226,6 @@ export function useComposerDraftActions(
       !canOperateThread ||
       isSendBusy ||
       isSendDisabled ||
-      isConnecting ||
       noProviderAvailable ||
       projectSelectionRequired ||
       environmentUnavailable !== null;
@@ -308,11 +305,10 @@ export function useComposerDraftActions(
     (state) => state.pending.get(composerDraftTargetKey) ?? null,
   );
   const attachmentsUploading = attachmentUploadPendingReason !== null;
-  // oxlint-disable-next-line t3code/react-effect-budget -- Dispatch external submit requests once the composer can accept them.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Dispatch external submit requests once the composer can accept them.
   useEffect(() => {
     if (
       submitRequest === null ||
-      isConnecting ||
       isSendBusy ||
       (submitRequest === "send" && isSendDisabled) ||
       attachmentsUploading ||
@@ -327,7 +323,6 @@ export function useComposerDraftActions(
     attachmentsUploading,
     checkoutKindPending,
     composerDraftTargetKey,
-    isConnecting,
     isSendBusy,
     isSendDisabled,
     saveMessageDraftStable,

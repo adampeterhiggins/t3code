@@ -1,5 +1,4 @@
 import type { MenuAction } from "@react-native-menu/menu";
-import { useCallback, useMemo } from "react";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { ThreadListToolbar } from "./ThreadListToolbar";
 import type { HomeHeaderProps } from "./HomeHeader.types";
@@ -18,149 +17,131 @@ export function HomeHeader(props: HomeHeaderProps) {
     props.selectedProjectKey !== null ||
     props.organisationKeys.length > 0 ||
     !isDefaultThreadListPages(props.pages);
-  const menuActions = useMemo<MenuAction[]>(
-    () => [
-      {
-        id: "environment",
-        title: "Environment",
-        subactions: [
-          {
-            id: "environment:all",
-            title: "All environments",
-            state: checkedMenuState(props.selectedEnvironmentId === null),
-          },
-          ...props.environments.map((environment) => ({
-            id: `environment:${environment.environmentId}`,
-            title: filterChoiceTitle(environment.label, environment.count),
-            state: checkedMenuState(props.selectedEnvironmentId === environment.environmentId),
-          })),
-        ],
-      },
-      ...(props.organisations.length === 0
-        ? []
-        : ([
-            {
-              id: "organisation",
-              title: "Organisations",
-              subactions: [
-                {
-                  id: "organisation:all",
-                  title: "All organisations",
-                  state: checkedMenuState(props.organisationKeys.length === 0),
-                },
-                ...props.organisations.map((organisation) => ({
-                  id: `organisation:${organisation.key}`,
-                  title: filterChoiceTitle(organisation.label, organisation.count),
-                  state: checkedMenuState(props.organisationKeys.includes(organisation.key)),
-                })),
-              ],
-            },
-          ] satisfies MenuAction[])),
-      ...(props.projects.length === 0
-        ? []
-        : ([
-            {
-              id: "project",
-              title: "Project",
-              subactions: [
-                {
-                  id: "project:all",
-                  title: "All projects",
-                  state: checkedMenuState(props.selectedProjectKey === null),
-                },
-                ...props.projects.map((project) => ({
-                  id: `project:${project.key}`,
-                  title: filterChoiceTitle(project.label, project.count),
-                  state: checkedMenuState(props.selectedProjectKey === project.key),
-                })),
-              ],
-            },
-          ] satisfies MenuAction[])),
-      {
-        id: "page",
-        title: "Show",
-        subactions: [
-          ...props.availablePages.map((page) => ({
-            id: `page:${page}`,
-            title: filterChoiceTitle(
-              threadListPageLabel(page, props.groups),
-              props.pageCounts?.get(page),
-            ),
-            state: checkedMenuState(props.pages.includes(page)),
-          })),
-          ...(props.onCreateGroup ? [{ id: "new-group", title: "New group…" }] : []),
-        ],
-      },
-    ],
-    [
-      props.environments,
-      props.availablePages,
-      props.groups,
-      props.onCreateGroup,
-      props.organisationKeys,
-      props.organisations,
-      props.pageCounts,
-      props.pages,
-      props.projects,
-      props.selectedEnvironmentId,
-      props.selectedProjectKey,
-    ],
-  );
-  const handleMenuAction = useCallback(
-    (event: { nativeEvent: { event: string } }) => {
-      const id = event.nativeEvent.event;
-      if (id === "environment:all") {
-        props.onEnvironmentChange(null);
-        return;
-      }
-
-      if (id.startsWith("environment:")) {
-        const environmentId = id.slice("environment:".length);
-        const environment = props.environments.find(
-          (candidate) => candidate.environmentId === environmentId,
-        );
-        if (environment) {
-          props.onEnvironmentChange(environment.environmentId);
-        }
-        return;
-      }
-
-      if (id === "organisation:all") {
-        props.onClearOrganisations();
-        return;
-      }
-      if (id.startsWith("organisation:")) {
-        const key = id.slice("organisation:".length);
-        if (props.organisations.some((organisation) => organisation.key === key)) {
-          props.onToggleOrganisation(key);
-        }
-        return;
-      }
-      if (id === "new-group") {
-        props.onCreateGroup?.();
-        return;
-      }
-      const page = props.availablePages.find((candidate) => id === `page:${candidate}`);
-      if (page !== undefined) {
-        props.onTogglePage(page);
-        return;
-      }
-
-      if (id === "project:all") {
-        props.onProjectChange(null);
-        return;
-      }
-
-      if (id.startsWith("project:")) {
-        const projectKey = id.slice("project:".length);
-        if (props.projects.some((project) => project.key === projectKey)) {
-          props.onProjectChange(projectKey);
-        }
-        return;
-      }
+  const menuActions: MenuAction[] = [
+    {
+      id: "environment",
+      title: "Environment",
+      subactions: [
+        {
+          id: "environment:all",
+          title: "All environments",
+          state: checkedMenuState(props.selectedEnvironmentId === null),
+        },
+        ...props.environments.map((environment) => ({
+          id: `environment:${environment.environmentId}`,
+          title: filterChoiceTitle(environment.label, environment.count),
+          state: checkedMenuState(props.selectedEnvironmentId === environment.environmentId),
+        })),
+      ],
     },
-    [props],
-  );
+    ...(props.organisations.length === 0
+      ? []
+      : ([
+          {
+            id: "organisation",
+            title: "Organisations",
+            subactions: [
+              {
+                id: "organisation:all",
+                title: "All organisations",
+                state: checkedMenuState(props.organisationKeys.length === 0),
+              },
+              ...props.organisations.map((organisation) => ({
+                id: `organisation:${organisation.key}`,
+                title: filterChoiceTitle(organisation.label, organisation.count),
+                state: checkedMenuState(props.organisationKeys.includes(organisation.key)),
+              })),
+            ],
+          },
+        ] satisfies MenuAction[])),
+    ...(props.projects.length === 0
+      ? []
+      : ([
+          {
+            id: "project",
+            title: "Project",
+            subactions: [
+              {
+                id: "project:all",
+                title: "All projects",
+                state: checkedMenuState(props.selectedProjectKey === null),
+              },
+              ...props.projects.map((project) => ({
+                id: `project:${project.key}`,
+                title: filterChoiceTitle(project.label, project.count),
+                state: checkedMenuState(props.selectedProjectKey === project.key),
+              })),
+            ],
+          },
+        ] satisfies MenuAction[])),
+    {
+      id: "page",
+      title: "Show",
+      subactions: [
+        ...props.availablePages.map((page) => ({
+          id: `page:${page}`,
+          title: filterChoiceTitle(
+            threadListPageLabel(page, props.groups),
+            props.pageCounts?.get(page),
+          ),
+          state: checkedMenuState(props.pages.includes(page)),
+        })),
+        ...(props.onCreateGroup ? [{ id: "new-group", title: "New group…" }] : []),
+      ],
+    },
+  ];
+  const handleMenuAction = (event: { nativeEvent: { event: string } }) => {
+    const id = event.nativeEvent.event;
+    if (id === "environment:all") {
+      props.onEnvironmentChange(null);
+      return;
+    }
+
+    if (id.startsWith("environment:")) {
+      const environmentId = id.slice("environment:".length);
+      const environment = props.environments.find(
+        (candidate) => candidate.environmentId === environmentId,
+      );
+      if (environment) {
+        props.onEnvironmentChange(environment.environmentId);
+      }
+      return;
+    }
+
+    if (id === "organisation:all") {
+      props.onClearOrganisations();
+      return;
+    }
+    if (id.startsWith("organisation:")) {
+      const key = id.slice("organisation:".length);
+      if (props.organisations.some((organisation) => organisation.key === key)) {
+        props.onToggleOrganisation(key);
+      }
+      return;
+    }
+    if (id === "new-group") {
+      props.onCreateGroup?.();
+      return;
+    }
+    const page = props.availablePages.find((candidate) => id === `page:${candidate}`);
+    if (page !== undefined) {
+      props.onTogglePage(page);
+      return;
+    }
+
+    if (id === "project:all") {
+      props.onProjectChange(null);
+      return;
+    }
+
+    if (id.startsWith("project:")) {
+      const projectKey = id.slice("project:".length);
+      if (props.projects.some((project) => project.key === projectKey)) {
+        props.onProjectChange(projectKey);
+      }
+      return;
+    }
+  };
 
   return (
     <>

@@ -22,6 +22,7 @@ const CHIP_ACCENTS = [
         "pull-request",
         "skill",
         "thread",
+        "environment",
       ].map((kind) => contextChipPresentation(kind)),
       ...[
         { state: "open", isDraft: false },
@@ -143,5 +144,11 @@ describe("fork context chip assets", () => {
   ])("renders a GitHub %s with its own glyph", async (refType, icon) => {
     const { contextChipPresentation } = await import("./composerChipPresentation");
     expect(contextChipPresentation("github-ref", { refType }).icon).toBe(icon);
+  });
+});
+
+describe("contextChipPresentation", () => {
+  it("draws a mentioned machine as a machine, not the generic file chip", () => {
+    expect(contextChipPresentation("environment")).toEqual({ accent: "#3f9a4f", icon: "server" });
   });
 });

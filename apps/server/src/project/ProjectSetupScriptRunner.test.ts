@@ -9,6 +9,7 @@ import {
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Stream from "effect/Stream";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -19,6 +20,7 @@ import { TestClock } from "effect/testing";
 import * as ServerSettings from "../serverSettings.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
 import * as ConductorWorkspace from "./ConductorWorkspace.ts";
+import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import * as ProjectService from "./ProjectService.ts";
 import * as ProjectSetupScriptRunner from "./ProjectSetupScriptRunner.ts";
 
@@ -57,9 +59,9 @@ const makeTerminalManagerLayer = (overrides: TerminalOverrides) =>
     observeStream: () => Effect.die(new Error("unused")),
     resyncStream: () => Effect.die(new Error("unused")),
     attachStream: () => Effect.die(new Error("unused")),
+    attachOutputStream: () => Stream.die(new Error("unused")),
     resize: () => Effect.void,
     clear: () => Effect.void,
-    restart: () => Effect.die(new Error("unused")),
     close: () => Effect.void,
     closeIdle: () => Effect.void,
     subscribe: () => Effect.succeed(() => undefined),
@@ -74,6 +76,9 @@ const testLayer = (
   conductor = ConductorWorkspace.layerNoop,
 ) =>
   ProjectSetupScriptRunner.layer.pipe(
+    Layer.provide(
+      Layer.mock(ProjectionStore.ProjectionStoreV2)({ getThreadShell: () => Effect.succeed(null) }),
+    ),
     Layer.provideMerge(makeProjectServiceLayer(project)),
     Layer.provideMerge(makeTerminalManagerLayer(terminal)),
     Layer.provide(settings),
@@ -761,6 +766,9 @@ it.effect("resolves setup scripts through the standalone project service", () =>
   };
   const layer = ProjectSetupScriptRunner.layer.pipe(
     Layer.provide(
+      Layer.mock(ProjectionStore.ProjectionStoreV2)({ getThreadShell: () => Effect.succeed(null) }),
+    ),
+    Layer.provide(
       Layer.mergeAll(
         Layer.mock(ProjectService.ProjectService)({
           getById: () => Effect.succeedSome(project),
@@ -920,6 +928,9 @@ const makeHarness = Effect.fn(function* (options: {
       Layer.mergeAll(
         terminals,
         Layer.mock(ProjectService.ProjectService)({}),
+        Layer.mock(ProjectionStore.ProjectionStoreV2)({
+          getThreadShell: () => Effect.succeed(null),
+        }),
         ServerSettings.layerTest(),
         ConductorWorkspace.layerNoop,
         NodeCrypto.layer,

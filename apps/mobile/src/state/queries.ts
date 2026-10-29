@@ -3,6 +3,7 @@ import {
   composerPullRequestRepositories,
   composerPullRequestsFromLinks,
   filterComposerPullRequestMatches,
+  withLinkedComposerPullRequestsFirst,
 } from "@t3tools/source-control-definitions/composerPullRequestMatches";
 import { resolveFilesystemReadAccess } from "@t3tools/client-runtime/state/filesystem";
 import { environmentSession } from "./session";
@@ -32,7 +33,7 @@ import * as Cause from "effect/Cause";
 import { turnItemDetailRevision } from "@t3tools/client-runtime/work-log/item-detail";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/reactivity";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { appAtomRegistry } from "./atom-registry";
 import { orchestrationEnvironment } from "./orchestration";
@@ -91,6 +92,7 @@ export interface ComposerPathSearchTarget {
 export function useDebouncedValue<A>(value: A, delayMs: number): A {
   const [debounced, setDebounced] = useState(value);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- timer that publishes the value after the delay and clears on change
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebounced(value);
@@ -170,6 +172,12 @@ export function useComposerPullRequestSearch(input: {
           )
           .map((scope) => ({ environmentId: input.environmentId!, input: { ...scope, number } }))
       : [];
+  const linked = input.projectId
+    ? composerPullRequestsFromLinks(
+        input.threadPullRequests ?? input.pullRequests ?? [],
+        input.projectId,
+      )
+    : [];
   const exact = useAtomValue(exactLookup(JSON.stringify(targets)));
   const entries = (() => {
     if (!open) return [];
@@ -202,9 +210,14 @@ export function useComposerPullRequestSearch(input: {
     );
     const unique = new Map<number, (typeof found)[number]>();
     for (const entry of found) if (!unique.has(entry.number)) unique.set(entry.number, entry);
-    return [...unique.values()]
-      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-      .slice(0, 20);
+    return withLinkedComposerPullRequestsFirst({
+      matches: [...unique.values()].sort((left, right) =>
+        right.updatedAt.localeCompare(left.updatedAt),
+      ),
+      linked,
+      query: input.query ?? "",
+      limit: 20,
+    });
   })();
   return {
     entries,
@@ -265,6 +278,7 @@ export function useThreadSearch(
     : { query: "", matches: EMPTY_THREAD_SEARCH_MATCHES };
   // The shown results' rows stay mounted until newer results replace them.
   const shownKey = visible.query === "" ? null : searchKeyOf(visible.query);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- mounts the shown search results' rows into the shared thread registry until newer results replace them
   useEffect(() => {
     if (shownKey === null) return;
     const environments = (JSON.parse(shownKey) as [ReadonlyArray<EnvironmentId>])[0];
@@ -340,7 +354,7 @@ export function usePaginatedBranches(target: VcsRefTarget) {
   );
   const results = useAtomValue(pagesAtom);
   const values = results.flatMap((result) => {
-    const value = Option.getOrNull(AsyncResult.value(result));
+    const value = AsyncResult.getOrElse(result, () => null);
     return value === null ? [] : [value];
   });
   const refs = new Map<string, VcsRef>();
@@ -409,10 +423,7 @@ export function usePaginatedBranches(target: VcsRefTarget) {
 
 export function useComposerPathSearch(target: ComposerPathSearchTarget) {
   const query = normalizeComposerPathSearchQuery(target.query);
-  const normalizedTarget = useMemo(
-    () => ({ environmentId: target.environmentId, cwd: target.cwd, query }),
-    [target.environmentId, target.cwd, query],
-  );
+  const normalizedTarget = { environmentId: target.environmentId, cwd: target.cwd, query };
   const debouncedTarget = useDebouncedValue(normalizedTarget, COMPOSER_PATH_SEARCH_DEBOUNCE_MS);
   const fileAccessSession = useEnvironmentQuery(
     debouncedTarget.environmentId === null

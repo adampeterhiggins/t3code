@@ -65,6 +65,7 @@ export interface ContextPreviewPropsByKind {
   "google-file": LinkedObjectPreviewProps;
   "granola-note": LinkedObjectPreviewProps;
   thread: ThreadPreviewProps;
+  environment: Record<string, never>;
   subagent: SubagentPreviewProps;
   "prompt-link": LinkedObjectPreviewProps;
   "github-ref": LinkedObjectPreviewProps;
@@ -180,6 +181,7 @@ export const CONTEXT_PRESENTATION_DEFINITIONS: ContextPresentationDefinitions = 
     preview: { details: "tooltip", Body: MentionPreview, variant: "code" },
   },
   skill: { capabilities: COMPACT, preview: { details: "popover", Body: SkillPreview } },
+  environment: { capabilities: COMPACT, preview: { details: "none" } },
   thread: {
     capabilities: COMPACT,
     preview: { details: "tooltip", Body: ThreadPreview, Popup: ThreadHoverCardPopup },

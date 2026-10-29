@@ -31,7 +31,7 @@ import { type KeyboardEvent, type ReactNode, useState } from "react";
 
 import { useRunScheduledTask } from "~/hooks/useRunThreadScheduledTask";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
-import { usePreparePullRequestThreadAction } from "~/lib/sourceControlActions";
+import { usePreparePullRequestThreadAction } from "~/state/sourceControlActions";
 import { cn, isMacPlatform } from "~/lib/utils";
 import { useThreadShellsForProjectRefs } from "~/state/entities";
 import { linearEnvironment } from "~/state/linear";

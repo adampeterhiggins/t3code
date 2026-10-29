@@ -114,14 +114,14 @@ export function useThreadTabGroup(environmentId: EnvironmentId, threadId: Thread
   const prepared = usePreparedConnection(environmentId);
   const [group, setGroup] = useState(() => lastLoadedThreadTabGroup);
   const [nameRevision, setNameRevision] = useState(0);
-  // oxlint-disable-next-line t3code/react-effect-budget -- Subscribes to group renames made elsewhere.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Subscribes to group renames made elsewhere.
   useEffect(() => subscribeThreadTabGroupNames(() => setNameRevision((value) => value + 1)), []);
   const shell = useThreadShell(threadId === null ? null : scopeThreadRef(environmentId, threadId));
   const projectShells = useThreadShellsForProjectRefs(
     shell ? [scopeProjectRef(environmentId, shell.projectId)] : [],
   );
 
-  // oxlint-disable-next-line t3code/react-effect-budget -- Loads the tab group over RPC whenever the open thread changes.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Loads the tab group over RPC whenever the open thread changes.
   useEffect(() => {
     if (threadId === null || Option.isNone(prepared)) return;
     let active = true;
@@ -182,7 +182,7 @@ export function useRightPanelFollowsTabSwitch(
   threadId: ThreadId | null,
   group: ThreadTabGroup | null,
 ) {
-  // oxlint-disable-next-line t3code/react-effect-budget -- Carries right-panel visibility from the previously shown tab before paint.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Carries right-panel visibility from the previously shown tab before paint.
   useLayoutEffect(() => {
     const previous = lastShownTab;
     if (
@@ -197,7 +197,7 @@ export function useRightPanelFollowsTabSwitch(
     carryRightPanelVisibility(previous.ref, scopeThreadRef(environmentId, threadId));
   }, [environmentId, threadId]);
 
-  // oxlint-disable-next-line t3code/react-effect-budget -- Records the shown tab after commit for the next switch to compare against.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Records the shown tab after commit for the next switch to compare against.
   useLayoutEffect(() => {
     lastShownTab =
       threadId !== null && group

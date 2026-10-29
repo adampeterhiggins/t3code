@@ -8,7 +8,7 @@ import {
 import { useWorkspaceTabs } from "./WorkspaceTabsContext";
 import type { WorkspaceTab } from "./workspace-tabs-state";
 
-export function useWorkspaceListNavigation(tab: WorkspaceTab) {
+function useWorkspaceListNavigation(tab: WorkspaceTab) {
   const navigation = useNavigation();
   const dispatch = useWorkspaceTabs()?.dispatch;
   return () => {
@@ -24,11 +24,11 @@ export function useWorkspaceBackNavigation(tab: WorkspaceTab) {
   const navigation = useNavigation();
   const dispatch = useWorkspaceTabs()?.dispatch;
   const returnToList = useWorkspaceListNavigation(tab);
-  return useCallback(() => {
+  return () => {
     if (Platform.OS === "android") {
       returnToAndroidWorkspaceList(navigation, () => dispatch?.({ type: "select", tab }));
     } else returnToList();
-  }, [navigation, dispatch, tab, returnToList]);
+  };
 }
 
 export function useAndroidWorkspaceBack(tab: WorkspaceTab) {

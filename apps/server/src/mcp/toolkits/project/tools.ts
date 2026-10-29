@@ -5,6 +5,7 @@ import {
   TrimmedNonEmptyString,
   ThreadId,
   RunId,
+  OrchestrationV2DelegatedFrom,
   OrchestrationV2RunStatus,
   OrchestrationV2ThreadLaunchRequestWorkspaceStrategy,
   RuntimeMode,
@@ -14,6 +15,8 @@ import {
   ProjectUpdatePayload,
   ProjectId,
   OrchestratorMcpContextLinks,
+  OrchestratorMcpClientRequestId,
+  OrchestratorMcpEnvironmentTarget,
   OrchestratorMcpFailure,
   SourceControlCloneRepositoryInput,
   SourceControlCloneRepositoryResult,
@@ -49,6 +52,7 @@ const ProjectListTool = Tool.make("t3_project_list", {
   ...shared,
   description: "List projects. Pages can shift.",
   parameters: Schema.Struct({
+    environmentId: OrchestratorMcpEnvironmentTarget,
     cursor: Schema.optional(NonNegativeInt),
     limit: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100 }))),
   }),
@@ -62,7 +66,10 @@ const ProjectListTool = Tool.make("t3_project_list", {
 const ProjectReadTool = Tool.make("t3_project_read", {
   ...shared,
   description: "Read one project: workspace and saved scripts.",
-  parameters: Schema.Struct({ projectId: ProjectId }),
+  parameters: Schema.Struct({
+    environmentId: OrchestratorMcpEnvironmentTarget,
+    projectId: ProjectId,
+  }),
 })
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false);
@@ -71,6 +78,7 @@ const ProjectCreateTool = Tool.make("t3_project_create", {
   description:
     "Register a project folder. `createWorkspaceRootIfMissing` creates it; a registered folder is rejected. No `workspaceRoot`: makes a git repo from `title` with README, icon, first commit (`commitError` on failure; project still exists). Clone first with `t3_project_clone` if needed.",
   parameters: Schema.Struct({
+    environmentId: OrchestratorMcpEnvironmentTarget,
     ...ProjectCreatePayload.fields,
     workspaceRoot: Schema.optional(ProjectCreatePayload.fields.workspaceRoot),
   }),
@@ -80,18 +88,29 @@ const ProjectCreateTool = Tool.make("t3_project_create", {
 const ProjectUpdateTool = Tool.make("t3_project_update", {
   ...shared,
   description: "Update one project's settings. Omitted fields are unchanged.",
-  parameters: Schema.Struct({ projectId: ProjectId, ...ProjectUpdatePayload.fields }),
+  parameters: Schema.Struct({
+    environmentId: OrchestratorMcpEnvironmentTarget,
+    projectId: ProjectId,
+    ...ProjectUpdatePayload.fields,
+  }),
 }).annotate(Tool.Destructive, true);
 const ProjectDeleteTool = Tool.make("t3_project_delete", {
   ...shared,
   description: "Delete one project. Nonempty needs `force: true`. Folder on disk stays.",
-  parameters: Schema.Struct({ projectId: ProjectId, force: Schema.optionalKey(Schema.Boolean) }),
+  parameters: Schema.Struct({
+    environmentId: OrchestratorMcpEnvironmentTarget,
+    projectId: ProjectId,
+    force: Schema.optionalKey(Schema.Boolean),
+  }),
 }).annotate(Tool.Destructive, true);
 const ProjectCloneTool = Tool.make("t3_project_clone", {
   ...shared,
   description:
-    "Clone a repository (`destinationPath` new or empty). Register after with `t3_project_create`.",
-  parameters: SourceControlCloneRepositoryInput,
+    "Clone a repository (`destinationPath` new or empty). Register after with `t3_project_create`, with the same `environmentId`.",
+  parameters: Schema.Struct({
+    environmentId: OrchestratorMcpEnvironmentTarget,
+    ...SourceControlCloneRepositoryInput.fields,
+  }),
   success: SourceControlCloneRepositoryResult,
   dependencies: [
     ...shared.dependencies,
@@ -103,8 +122,9 @@ const ProjectCloneTool = Tool.make("t3_project_clone", {
 const ThreadLaunchTool = Tool.make("t3_thread_launch", {
   ...shared,
   description:
-    'Create an ordinary TOP-LEVEL thread with an explicit workspace binding before its agent starts. Use this when the user requests independent work, a new thread, or a PR stack in its own worktree; use delegate_task for child subagents, which takes the same worktree strategies. Set workspaceStrategy to {type:"worktree",baseRef:"parent-branch",branch:"new-branch",startFromOrigin:false} for a new worktree based on local commits, or {type:"existing_worktree",worktreePath:"/absolute/path",branch:"existing-branch"} to use an existing checkout. For upstream commits, set startFromOrigin:true. To start a thread from a pull request, as the composer\'s "start from PR" does, set {type:"pull_request",reference:"<PR URL or number>"}: the app fetches its head (fork PRs included), reuses a worktree that already has the branch or creates one, and runs project setup; do not fetch or check out PR branches yourself. Omitted workspaceStrategy means the project root, NOT the caller\'s worktree. Omit projectId/modelSelection/modes to inherit those settings from the calling thread; a caller outside a T3 thread must pass projectId and gets the project\'s default model. Set scratch:true instead of projectId for a thread without a project: it runs in a fresh folder of its own, outside any repository. Put the task in message. Do not ask the agent to create its own worktree via shell: that does not update the thread binding. Each call creates a new launch with no retry key; retain threadId and use t3_thread_read/t3_thread_wait to follow preparation. To link a thread for the user, write `[title](t3-thread://v1/<threadId>)` with the threadId exactly as returned, not URL-encoded; T3 Code shows the thread\'s current title. After errors or lost responses, inspect t3_thread_list before retrying. Attachments must be pending uploads. contextLinks attaches Slack threads, Notion pages, Granola notes, Linear issues, projects, documents, and initiatives, GitHub issues, GitHub releases, tags, branches, and commits, or repositories to the first message as context chips, as a user would. The new thread may not run with broader runtime or interaction modes than the caller: the calling T3 thread\'s own modes, or the permission mode an outside agent was approved with.',
+    'Create an ordinary TOP-LEVEL thread with an explicit workspace binding before its agent starts. Use this when the user requests independent work, a new thread, or a PR stack in its own worktree; use delegate_task for child subagents, which takes the same worktree strategies. Set workspaceStrategy to {type:"worktree",baseRef:"parent-branch",branch:"new-branch",startFromOrigin:false} for a new worktree based on local commits, or {type:"existing_worktree",worktreePath:"/absolute/path",branch:"existing-branch"} to use an existing checkout. For upstream commits, set startFromOrigin:true. To start a thread from a pull request, as the composer\'s "start from PR" does, set {type:"pull_request",reference:"<PR URL or number>"}: the app fetches its head (fork PRs included), reuses a worktree that already has the branch or creates one, and runs project setup; do not fetch or check out PR branches yourself. Omitted workspaceStrategy means the project root, NOT the caller\'s worktree. Omit projectId/modelSelection/modes to inherit those settings from the calling thread; a caller outside a T3 thread must pass projectId and gets the project\'s default model. Set scratch:true instead of projectId for a thread without a project: it runs in a fresh folder of its own, outside any repository. Put the task in message. Do not ask the agent to create its own worktree via shell: that does not update the thread binding. Retry a lost response with the same clientRequestId; retain threadId and use t3_thread_read/t3_thread_wait to follow preparation. Mention a thread with its returned link. After errors or lost responses, inspect t3_thread_list before retrying. Attachments must be pending uploads. contextLinks attaches Slack threads, Notion pages, Granola notes, Linear issues, projects, documents, and initiatives, GitHub issues, GitHub releases, tags, branches, and commits, or repositories to the first message as context chips, as a user would. The new thread may not run with broader runtime or interaction modes than the caller: the calling T3 thread\'s own modes, or the permission mode an outside agent was approved with.',
   parameters: Schema.Struct({
+    environmentId: OrchestratorMcpEnvironmentTarget,
     projectId: Schema.optional(ProjectId),
     scratch: Schema.optional(
       Schema.Boolean.annotate({
@@ -129,6 +149,9 @@ const ThreadLaunchTool = Tool.make("t3_thread_launch", {
     ),
     attachments: Schema.optional(Schema.Array(McpAttachmentInput).check(Schema.isMaxLength(8))),
     contextLinks: Schema.optional(OrchestratorMcpContextLinks),
+    clientRequestId: Schema.optional(OrchestratorMcpClientRequestId),
+    /** Set by a linked environment launching its agent's delegated task here; ignored otherwise. */
+    delegatedFrom: Schema.optional(OrchestrationV2DelegatedFrom),
   }),
   success: Schema.Struct({
     threadId: ThreadId,

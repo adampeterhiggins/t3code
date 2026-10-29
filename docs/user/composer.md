@@ -237,7 +237,7 @@ The list mixes kinds (built-in, other wired, other Bluetooth, CarPlay) with wire
 Bluetooth devices you have dictated with, listed by name. Drag to rank them together:
 for example, put **Other Bluetooth** above your AirPods so a new headset is preferred
 while the AirPods microphone stays low. By default, CarPlay comes after the built-in
-microphone.
+microphone. Swipe a device left to forget it.
 
 Transcription runs on your device. T3 Code deletes the temporary audio after
 transcription or cancellation; only the message text is sent when you submit.
@@ -408,7 +408,7 @@ picking it with `@`. This works for paths outside the project too, such as `/tmp
 paste that has other text around the path stays as text, as does one made with `Cmd+Shift+V`.
 
 Another thread can be context too. Type `@` and switch to the **Chats** tab to pick one from
-the same server, newest first, or type part of its title (the menu opens on Chats when no file
+the same server, newest first, or a linked machine, named in the list, or type part of its title (the menu opens on Chats when no file
 matches), or on web and desktop drag a thread out of the sidebar and drop it on the
 composer; a multi-selection drops together. The chip shows the thread's current title and
 opens it when selected. Your prompt only carries a reference: the agent reads the thread's
@@ -433,7 +433,7 @@ Hovering the chip shows exactly what you asked for and when, and it never change
 The agent receives the provider instance, model and options in the form T3 Code's `delegate_task`
 tool takes, so it can start subagents on that model directly.
 
-Dropping a thread from another environment attaches a saved transcript file. The source
+**Copy thread** puts a thread on the clipboard that pastes into a composer as its chip. A thread from a linked machine stays a reference read on that machine. Dropping a thread from any other environment attaches a saved transcript file. The source
 environment must be connected and up to date. The transcript includes the visible history and
 saved text context at the time of the drop; later messages and the contents of attached files
 are not copied. The agent can read the saved transcript after the source disconnects. Normal
@@ -469,7 +469,9 @@ file: a header row with the view toggle, **Copy contents** and **Save file**. On
 open in the same file screen as workspace files; its menu holds **Copy contents**, **Save or
 share** and **Open in file viewer**. Pictures, videos and PDFs keep their native viewers, and
 other document formats such as Word or Pages open in the device's own viewer when it has one.
-If nothing on the device can show a format, save or share it to open it elsewhere.
+If nothing on the device can show a format, save or share it to open it elsewhere. A ZIP up to
+50 MB opens as a folder list on every surface; on mobile, select a file inside it to preview,
+save, or add it to chat.
 
 ## Images and videos in messages
 
