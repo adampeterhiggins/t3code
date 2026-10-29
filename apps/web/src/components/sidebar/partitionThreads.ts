@@ -43,6 +43,8 @@ export function partitionSidebarThreads(input: {
   scopedProjectKeys: ReadonlySet<string> | null;
   optimisticDrop: SidebarOptimisticDrop | null;
   workingShelfEnabled: boolean;
+  /** Boring mode: folders list active threads by the user's latest message. */
+  sortActiveBySend: boolean;
   clockKey: string;
   delegatedUnderParent?: ReadonlySet<string>;
   inboxReturns: ReturnType<typeof createInboxReturnTracker>;
@@ -55,6 +57,7 @@ export function partitionSidebarThreads(input: {
     scopedProjectKeys,
     optimisticDrop,
     workingShelfEnabled,
+    sortActiveBySend,
     inboxReturns,
     delegatedUnderParent,
   } = input;
@@ -149,9 +152,11 @@ export function partitionSidebarThreads(input: {
   // sort, or mixed-version fleets would render different pinned orders on
   // web and mobile from the same data.
   const sortedPinned = sortPinnedThreadsForSidebar(pinned);
-  const sortedActive = workingShelfEnabled
-    ? sortInboxThreadsByReturn(active, inboxObservation.returnedAt)
-    : sortThreadsForSidebar(active);
+  const sortedActive = sortActiveBySend
+    ? sortWorkingThreadsBySend(active)
+    : workingShelfEnabled
+      ? sortInboxThreadsByReturn(active, inboxObservation.returnedAt)
+      : sortThreadsForSidebar(active);
   return {
     pinnedThreads:
       optimisticDrop?.section !== "pinned" || optimisticDrop.order === null

@@ -135,6 +135,7 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   threadProjectMove: Schema.optionalKey(Schema.Boolean),
   /** Server stores the `organisations` setting. */
   organisationStyles: Schema.optionalKey(Schema.Boolean),
+  threadProjectFromScratch: Schema.optionalKey(Schema.Boolean),
   /** Server understands regenerateTitle on thread.meta.update. Absent on
       older servers, so clients hide the action instead of sending it. */
   threadTitleRegeneration: Schema.optionalKey(Schema.Boolean),

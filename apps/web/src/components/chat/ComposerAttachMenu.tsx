@@ -71,7 +71,8 @@ export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
       <MenuTrigger
         render={<Button type="button" variant="ghost" size="icon-sm" aria-label="Attach" />}
       >
-        <PaperclipIcon />
+        {/* The clip's weight sits in its upper loop; 1px down reads as centered on the row. */}
+        <PaperclipIcon className="translate-y-px" />
       </MenuTrigger>
       <MenuPopup side="top" align="end" {...composerMenuProps}>
         <MenuItem onClick={props.onAttachFiles}>

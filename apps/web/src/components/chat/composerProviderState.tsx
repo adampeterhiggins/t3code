@@ -7,6 +7,7 @@ import {
   type ScopedThreadRef,
   type ServerProviderModel,
 } from "@t3tools/contracts";
+import type { EffortDisplay } from "@t3tools/contracts/settings";
 import {
   buildExplicitProviderOptionSelectionsFromDescriptors,
   getProviderOptionCurrentValue,
@@ -18,7 +19,7 @@ import { Fragment, type ReactNode } from "react";
 
 import type { DraftId } from "../../composerDraftStore";
 import { getProviderModelCapabilities } from "../../providerModels";
-import { ComposerControlSeparator, type ComposerControlSize } from "./ComposerControl";
+import { type ComposerControlSize } from "./ComposerControl";
 import {
   getReasoningTraitStep,
   shouldRenderTraitsControls,
@@ -63,6 +64,10 @@ type TraitsRenderInput = {
   hidden?: boolean;
   triggerClassName?: string;
   isComposerOwned?: boolean;
+  effortDisplay?: EffortDisplay;
+  extraMenuContent?: ReactNode;
+  extraMenuOwnsModeShortcut?: boolean;
+  extraMenuHint?: string;
 };
 
 export function getComposerPromptInjectionState(prompt: string): ComposerPromptInjectionState {
@@ -233,6 +238,10 @@ function renderTraitsControl(
     hidden,
     triggerClassName,
     isComposerOwned,
+    effortDisplay,
+    extraMenuContent,
+    extraMenuOwnsModeShortcut,
+    extraMenuHint,
   } = input;
   const hasTarget = threadRef !== undefined || draftId !== undefined;
   const { selections: resolvedModelOptions } = resolveComposerOptionSelections(
@@ -274,6 +283,10 @@ function renderTraitsControl(
       {...(hidden !== undefined ? { hidden } : {})}
       {...(triggerClassName !== undefined ? { triggerClassName } : {})}
       {...(isComposerOwned ? { isComposerOwned } : {})}
+      {...(effortDisplay ? { effortDisplay } : {})}
+      {...(extraMenuContent ? { extraMenuContent } : {})}
+      {...(extraMenuOwnsModeShortcut ? { extraMenuOwnsModeShortcut } : {})}
+      {...(extraMenuHint ? { extraMenuHint } : {})}
     />
   );
 }
@@ -307,10 +320,5 @@ export function renderProviderTraitsPicker(input: TraitsRenderInput): ReactNode 
     return control ? [{ key: ids.join(","), control }] : [];
   });
   if (controls.length === 0) return null;
-  return controls.map(({ key, control }, index) => (
-    <Fragment key={key}>
-      {index > 0 ? <ComposerControlSeparator size={input.size ?? "sm"} /> : null}
-      {control}
-    </Fragment>
-  ));
+  return controls.map(({ key, control }) => <Fragment key={key}>{control}</Fragment>);
 }

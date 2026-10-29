@@ -1,9 +1,12 @@
 import { ThreadId } from "@t3tools/contracts";
+import * as ProviderRegistry from "../../../provider/ProviderRegistry.ts";
 import { expect, it } from "@effect/vitest";
 import {
   EnvironmentId,
   ProjectId,
   ProviderInstanceId,
+  ProviderDriverKind,
+  type ServerProvider,
   type Project as ProjectRecord,
   type ModelSelection,
   type RuntimeMode,
@@ -71,6 +74,7 @@ it.effect("attributes a launched thread's first message to the calling thread", 
     const context = { version: 1, records: [] } as const;
     const layerDependencies = Layer.mergeAll(
       Layer.mock(DocumentText.DocumentText)({}),
+      Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
       ServerSettings.layerTest(),
       NodeCrypto.layer,
       Layer.mock(McpContextLinks.McpContextLinks)({
@@ -162,6 +166,7 @@ it.effect("launches a scratch thread into the Scratch project", () =>
     const launched: Array<ThreadLaunch.ThreadLaunchInput> = [];
     const layerDependencies = Layer.mergeAll(
       Layer.mock(DocumentText.DocumentText)({}),
+      Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
       ServerSettings.layerTest(),
       NodeCrypto.layer,
       noContextLinks,
@@ -269,6 +274,7 @@ it.effect("starts a project from just a title when workspaceRoot is omitted", ()
     };
     const layerDependencies = Layer.mergeAll(
       Layer.mock(DocumentText.DocumentText)({}),
+      Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
       ServerSettings.layerTest(),
       NodeCrypto.layer,
       noContextLinks,
@@ -355,12 +361,15 @@ it.effect("starts a project from just a title when workspaceRoot is omitted", ()
 const clientLaunchHarness = (input: {
   readonly runtimeModeCeiling: RuntimeMode;
   readonly defaultRuntimeMode?: RuntimeMode;
+  readonly fallbackModel?: ModelSelection;
+  readonly providers?: readonly ServerProvider[];
   /** Where Settings saves a project's model; the legacy project field stays null. */
   readonly overrideModel?: ModelSelection;
   readonly launched: Array<ThreadLaunch.ThreadLaunchInput>;
   readonly workspaceRoot?: string;
   readonly checkNewWorktree?: ThreadLaunch.ThreadLaunchService["Service"]["checkNewWorktree"];
   readonly launchError?: ThreadLaunch.ThreadLaunchPullRequestError;
+  readonly webOrigin?: string;
 }) => {
   const projectId = ProjectId.make("project:client-target");
   const modelSelection = {
@@ -372,7 +381,11 @@ const clientLaunchHarness = (input: {
     model: input.overrideModel === undefined ? modelSelection : null,
   };
   const layerDependencies = Layer.mergeAll(
+    Layer.mock(ProviderRegistry.ProviderRegistry)({
+      getProviders: Effect.succeed(input.providers ?? []),
+    }),
     ServerSettings.layerTest({
+      fallbackModelSelection: input.fallbackModel ?? null,
       ...(input.defaultRuntimeMode === undefined
         ? {}
         : { defaultRuntimeMode: input.defaultRuntimeMode }),
@@ -395,6 +408,7 @@ const clientLaunchHarness = (input: {
         sessionId: "session-1",
         label: "Claude Code",
         access: input.runtimeModeCeiling,
+        webOrigin: input.webOrigin,
       },
       issuedAt: 0,
       capabilities: new Set(["orchestration" as const]),
@@ -476,15 +490,17 @@ it.effect(
           readonly runtimeMode?: RuntimeMode;
           readonly targeted?: false;
           readonly overrideModel?: ModelSelection;
+          readonly webOrigin?: string;
         },
       ) {
-        const { targeted, overrideModel, ...input } = params;
+        const { targeted, overrideModel, webOrigin, ...input } = params;
         const launched: Array<ThreadLaunch.ThreadLaunchInput> = [];
         const { projectId, modelSelection, dependencies } = clientLaunchHarness({
           runtimeModeCeiling,
           defaultRuntimeMode,
           launched,
           ...(overrideModel === undefined ? {} : { overrideModel }),
+          ...(webOrigin === undefined ? {} : { webOrigin }),
         });
         const toolkit = yield* ProjectToolkit.pipe(
           Effect.provide(
@@ -515,8 +531,14 @@ it.effect(
         label: "Claude Code",
       });
 
-      const aboveCeiling = yield* launchWith("auto-accept-edits", "full-access", { title: "Fix" });
+      const aboveCeiling = yield* launchWith("auto-accept-edits", "full-access", {
+        title: "Fix",
+        webOrigin: "https://box.example.ts.net",
+      });
       expect(aboveCeiling.launched[0]?.runtimeMode).toBe("auto-accept-edits");
+      expect(aboveCeiling.result).toMatchObject({
+        link: `https://box.example.ts.net/environment/${encodeURIComponent(aboveCeiling.launched[0]?.threadId ?? "")}`,
+      });
 
       const requested = yield* launchWith("full-access", "approval-required", {
         title: "Fix",
@@ -869,5 +891,54 @@ it.effect("a retried worktree launch replays after its base ref is gone", () =>
       launched[0]?.threadId,
       launched[0]?.threadId,
     ]);
+  }),
+);
+
+it.effect("a client launches with the fallback for an exhausted default", () =>
+  Effect.gen(function* () {
+    const launched: ThreadLaunch.ThreadLaunchInput[] = [];
+    const fallbackModel = { instanceId: ProviderInstanceId.make("codex"), model: "gpt-6.1-sol" };
+    const providers: ServerProvider[] = ["claudeAgent", "codex"].map((driver) => ({
+      instanceId: ProviderInstanceId.make(driver),
+      driver: ProviderDriverKind.make(driver),
+      enabled: true,
+      installed: true,
+      status: "ready",
+      version: null,
+      auth: { status: "authenticated" },
+      checkedAt: "2026-01-01T00:00:00Z",
+      models: [],
+      slashCommands: [],
+      skills: [],
+      ...(driver === "claudeAgent"
+        ? {
+            usageLimits: {
+              checkedAt: "2026-01-01T00:00:00Z",
+              windows: [{ id: "session", kind: "session", label: "Session", usedPercent: 100 }],
+            },
+          }
+        : {}),
+    }));
+    const { projectId, dependencies } = clientLaunchHarness({
+      runtimeModeCeiling: "full-access",
+      launched,
+      fallbackModel,
+      providers,
+    });
+    const toolkit = yield* ProjectToolkit.pipe(
+      Effect.provide(
+        McpToolAccess.HandlersLayer.layer(ProjectHandlers.layer).pipe(Layer.provide(dependencies)),
+      ),
+    );
+    const result = yield* toolkit
+      .handle("t3_thread_launch", {
+        projectId,
+        title: "Fallback",
+      })
+      .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
+    expect(result.at(-1)?.result).toMatchObject({
+      modelSelection: fallbackModel,
+    });
+    expect(launched[0]?.modelSelection).toEqual(fallbackModel);
   }),
 );

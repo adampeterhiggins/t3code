@@ -136,6 +136,7 @@ import {
   useThreadSelectionStore,
 } from "../threadSelectionStore";
 import {
+  canTurnThreadIntoProject,
   readThreadSubscriptionLimitGuard,
   useAcknowledgeThreadWoke,
   useThreadActions,
@@ -420,6 +421,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     setThreadHidden,
     setThreadGroup,
     confirmAndMoveThreadToProject,
+    turnThreadIntoProject,
     reorderPinnedThread,
     reorderActiveThread,
     markThreadUnread,
@@ -490,6 +492,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       );
     },
   });
+  const folderRowsMultiline = useClientSettings((settings) => settings.boringSidebarMultilineRows);
   const newThreadContext = useHandleNewThread();
   const { handleNewThread } = newThreadContext;
   const openAddProjectCommandPalette = () => openCommandPalette({ open: "add-project" });
@@ -673,6 +676,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     scopedProjectKeys,
     optimisticDrop,
     workingShelfEnabled,
+    sortActiveBySend: boringSidebarEnabled,
     clockKey: `${nowMinute}:${snoozeWakeTick}:${inboxReturnsVersion}`,
   });
   const projectExpandedById = useUiStateStore((store) => store.projectExpandedById);
@@ -685,7 +689,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const projectFolders =
     folderGroups === null
       ? null
-      : groupSidebarThreadsByProject(folderGroups, activeThreads).map((folder) => {
+      : groupSidebarThreadsByProject(
+          folderGroups,
+          activeThreads,
+          scopedProjectGroups.length > 0,
+        ).map((folder) => {
           const collapsed = !resolveProjectExpanded(
             projectExpandedById,
             sidebarFolderExpansionKeys(folder.group),
@@ -2587,6 +2595,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                 canShareWithGuest: appAtomRegistry.get(
                   canShareWithGuestAtom(threadRef.environmentId),
                 ),
+                canTurnIntoProject: canTurnThreadIntoProject(threadRef),
                 canLinkGitHubIssue: isGitHubProject(
                   readProject(scopeProjectRef(thread.environmentId, thread.projectId)),
                 ),
@@ -2736,6 +2745,26 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           case "unhide":
             attemptSetHidden(rowRef, clicked.value === "hide");
             return;
+          case "turn-into-project": {
+            const result = await turnThreadIntoProject(threadRef);
+            if (result._tag === "Success") {
+              toastManager.add({
+                type: "success",
+                title: "Project created",
+                description: thread.title,
+              });
+            } else if (!isAtomCommandInterrupted(result)) {
+              const error = squashAtomCommandFailure(result);
+              toastManager.add(
+                stackedThreadToast({
+                  type: "error",
+                  title: "Could not turn thread into a project",
+                  description: error instanceof Error ? error.message : "An error occurred.",
+                }),
+              );
+            }
+            return;
+          }
           case "auto-settle:enabled":
           case "auto-settle:disabled": {
             const result = await setThreadAutoSettle(
@@ -3218,7 +3247,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                           scopeThreadRef(thread.environmentId, thread.id),
                         );
                         const rowVariant = folderRow
-                          ? "folder"
+                          ? folderRowsMultiline
+                            ? "folder-multiline"
+                            : "folder"
                           : sidebarThreadView(section, thread.groupName, threadGroups, threadViews);
                         const isCard = rowVariant === "card";
                         const rowTabs = tabsByRowKey.get(threadKey);
@@ -3573,7 +3604,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                 className="mt-auto"
                                 label="Working"
                                 count={workingThreads.length}
-                                hostsUndoNotice
                                 toggle={{
                                   expanded: workingShelfExpanded,
                                   onToggle: toggleWorkingShelf,
@@ -3698,9 +3728,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           ) : null}
         </SidebarGroup>
       </SidebarContent>
-      <SidebarChromeFooter
-        showUndoNotice={isSearchingThreads || sidebarListItemsFresh.length === 0}
-      />
+      <SidebarChromeFooter />
     </>
   );
 }

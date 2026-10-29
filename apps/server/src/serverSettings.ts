@@ -427,17 +427,9 @@ const HISTORY_RESTORED_DRIVERS: ReadonlySet<ProviderDriverKind> = new Set(
   ["cursor", "devin", "grok", "opencode"].map((driver) => ProviderDriverKind.make(driver)),
 );
 
-/**
- * Move each customized legacy `providers.<kind>` blob into the driver's
- * default `providerInstances` slot. An explicit instance already in that slot
- * wins. Blobs that match a fresh install (empty, or only an `enabled` flag
- * equal to the driver default) carry nothing and are dropped.
- *
- * A cursor/devin/grok/opencode slot without an `enabled` flag is enabled when
- * provider history shows the driver was used, which is how those drivers
- * were opted into before they had an explicit flag. Callers run this only
- * while the settings file still has the retired map, so it happens once.
- */
+// An explicit instance in the default slot wins; fresh-install blobs are dropped. A cursor/devin/
+// grok/opencode slot with no `enabled` flag is enabled when history shows the driver was used,
+// since that is how those drivers were opted into. Runs only while the retired map exists.
 function migrateLegacyProviderSettings(
   settings: ServerSettings,
   legacyProviders: Readonly<Record<string, unknown>>,
@@ -534,6 +526,7 @@ const ATOMIC_SETTINGS_KEYS: ReadonlySet<string> = new Set([
   "sourceControlWriterModelSelection",
   "reviewGuideModelSelection",
   "textGenerationModelSelection",
+  "fallbackModelSelection",
   "pullRequestMergeMethod",
 ]);
 

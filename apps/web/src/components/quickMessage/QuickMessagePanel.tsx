@@ -111,12 +111,7 @@ import { PullRequestAttachPickerHost } from "../chat/PullRequestAttachPicker";
 import { RepositoryAttachPickerHost } from "../chat/RepositoryAttachPicker";
 import { SlackMessagePickerHost } from "../chat/SlackMessagePicker";
 import { ThreadAttachPickerHost } from "../chat/ThreadAttachPicker";
-import {
-  ComposerControl,
-  ComposerControlChevron,
-  ComposerControlIcon,
-  ComposerControlSeparator,
-} from "../chat/ComposerControl";
+import { ComposerControl, ComposerControlIcon } from "../chat/ComposerControl";
 import { ComposerPrimaryActions } from "../chat/ComposerPrimaryActions";
 import { ComposerImageThumbnail } from "../chat/ComposerImageThumbnail";
 import { ComposerSurface } from "../chat/ComposerSurface";
@@ -664,7 +659,6 @@ export function QuickMessagePanel() {
                           <span data-composer-control-label className="min-w-0 truncate">
                             {selectedProjectItem?.label ?? "Choose a project"}
                           </span>
-                          <ComposerControlChevron />
                         </ComboboxTrigger>
                         <ComboboxPopup align="start" className="w-72 overflow-hidden">
                           <ComboboxSearchInput
@@ -810,7 +804,6 @@ export function QuickMessagePanel() {
                     ) : null}
                     {showTraits && modelSelection !== null && providerEntry ? (
                       <>
-                        <ComposerControlSeparator />
                         <TraitsPicker
                           provider={providerEntry.driverKind}
                           instanceId={modelSelection.instanceId}
@@ -848,7 +841,6 @@ export function QuickMessagePanel() {
                     {modelSelection !== null &&
                     shouldShowProviderAccountPicker(providerAccounts) ? (
                       <>
-                        <ComposerControlSeparator />
                         <ProviderAccountPicker
                           isComposerOwned
                           activeInstanceId={modelSelection.instanceId}
