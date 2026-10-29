@@ -37,6 +37,12 @@ Then search for fork features that merged cleanly but are now dead, such as a pr
 newly added upstream switch. `git diff upstream/main -- <path>` shows everything the fork still
 differs by.
 
+The reverse also merges cleanly: upstream tests and helpers written against behavior the fork
+changed. List the upstream test changes in the range with
+`git diff --stat $base upstream/main -- '*.test.*'`. Run the ones near fork features, and when one
+asserts upstream's behavior, update it to the fork's. A shared helper whose only callers sit in
+code the fork replaced is dead in the fork; delete it rather than leave it exported.
+
 ### Files upstream split
 
 Git does not follow code that upstream moves into new files. A fork edit inside a moved block
@@ -75,6 +81,13 @@ below is separate and needs the user's permission after the PR is open.
   `@t3tools/mobile` when they conflicted.
 - `vp test run <files>` for tests in conflicted files.
 - `vp check --fix <files>` on the resolved files, then `git diff --check`.
+- `vp run check:changed`, after the merge commit exists. It covers the files that merged cleanly,
+  which the checks above never reach, and a clean merge skips the pre-commit hook.
+
+Fork CI never runs (see below), so this sync is the only place the fork's checks run beyond single
+commits. A failure that also happens on `origin/main` was not caused by the merge, but it is not
+done either: list it in the PR body, then fix it in a follow-up PR stacked on the sync branch
+(`--base <sync branch>`) so it lands with the sync instead of becoming the next sync's baseline.
 
 Commit the resolution into the merge commit (`git add` then `git commit --no-edit`), not as a
 follow-up commit, so the merge stays one reviewable unit.
