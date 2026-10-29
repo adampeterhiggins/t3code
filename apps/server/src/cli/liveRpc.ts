@@ -4,6 +4,7 @@ import {
   ORCHESTRATION_PROTOCOL_VERSION,
   ORCHESTRATION_V2_WS_METHODS,
   WsRpcGroup,
+  WS_METHODS,
   type OrchestrationV2ShellSnapshot,
 } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -101,13 +102,7 @@ export const rpc = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
 const SOCKET_OPEN_TIMEOUT = Duration.seconds(10);
 const SESSION_TTL = Duration.minutes(30);
 
-/**
- * Signs in to the running server as a short-lived standard client, the same
- * authority `t3 pair` hands a browser, opens one `/ws` RPC socket, and revokes
- * the session when the command ends. Settings, integrations, and other
- * features that only clients reach go through this; agent-shaped thread work
- * goes through MCP in `thread.ts`.
- */
+/** Opens an owner-authorized client session and revokes it when this CLI command ends. */
 export const withLiveRpc = Effect.fn("cli.withLiveRpc")(function* <A, E, R>(
   flags: { readonly baseDir: Option.Option<string> },
   label: string,
@@ -266,3 +261,18 @@ export const formatLocalMinute = (iso: string) => {
   const at = Date.parse(iso);
   return Number.isFinite(at) ? LOCAL_MINUTE_FORMAT.format(at) : iso;
 };
+
+export const loadLiveSettings = Effect.fn("cli.loadLiveSettings")(function* (
+  client: LiveRpcClient,
+) {
+  const first = yield* rpc(
+    client[WS_METHODS.subscribeServerConfig]({ workspaceSnapshotsOnDemand: true }).pipe(
+      Stream.filter((event) => event.type === "snapshot"),
+      Stream.runHead,
+    ),
+  );
+  if (Option.isNone(first) || first.value.type !== "snapshot") {
+    return yield* new LiveRpcFailedError({ detail: "The server sent no settings snapshot." });
+  }
+  return first.value.config.settings;
+});

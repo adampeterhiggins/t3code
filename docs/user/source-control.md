@@ -343,7 +343,7 @@ press **Link**. Unchecking a linked pull request there unlinks it. Creating a pu
 actions links it automatically, as does an agent creating one with `gh pr create` or
 `glab mr create`. Agents can link other pull requests with the `link_pull_request` tool.
 
-Use **Link this PR** in a branch-detected badge's tooltip to keep it with the thread. From a review
+Use **Link pull request to thread** in the command palette to keep a pull request with the thread. From a review
 on the Pull requests page, **Link to thread** lets you search for an active thread. The review header
 also lists the threads that link to it, including archived threads, so you can return to their context.
 

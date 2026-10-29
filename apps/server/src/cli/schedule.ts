@@ -24,6 +24,7 @@ import { Argument, Command, Flag } from "effect/cli";
 
 import {
   LiveUsageError,
+  LiveRpcFailedError,
   formatLocalMinute,
   jsonFlag,
   liveLocationFlags,
@@ -34,6 +35,7 @@ import {
   resolveLiveProject,
   rpc,
   withLiveRpc,
+  loadLiveSettings,
   type LiveRpcClient,
 } from "./liveRpc.ts";
 
@@ -208,7 +210,18 @@ const readPrompt = Effect.fn("cli.schedule.readPrompt")(function* (argument: str
   return text.trim();
 });
 
-const listTasks = (client: LiveRpcClient) => rpc(client[WS_METHODS.scheduledTasksList]({}));
+const listTasks = (client: LiveRpcClient) =>
+  rpc(client[WS_METHODS.scheduledTasksSubscribe]({}).pipe(Stream.runHead)).pipe(
+    Effect.flatMap(
+      Option.match({
+        onNone: () =>
+          Effect.fail(
+            new LiveRpcFailedError({ detail: "The server sent no scheduled task snapshot." }),
+          ),
+        onSome: Effect.succeed,
+      }),
+    ),
+  );
 
 const findTask = Effect.fn("cli.schedule.findTask")(function* (
   client: LiveRpcClient,
@@ -513,7 +526,7 @@ const scheduleCreateCommand = Command.make("create", {
           const modelSelection = Option.isSome(flagModel)
             ? flagModel.value
             : (project.defaultModelSelection ??
-              (yield* rpc(client[WS_METHODS.serverGetSettings]({}))).defaultModelSelection ??
+              (yield* loadLiveSettings(client)).defaultModelSelection ??
               defaultModelFromProviders(
                 (yield* rpc(client[WS_METHODS.serverGetConfig]({}))).providers,
               ));

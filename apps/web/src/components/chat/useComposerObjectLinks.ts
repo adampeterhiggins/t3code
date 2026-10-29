@@ -182,7 +182,7 @@ export function useComposerObjectLinks({
         });
     }
   };
-  // oxlint-disable-next-line t3code/react-effect-budget -- Publish retry actions for context chips after each commit.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Publish retry actions for context chips after each commit.
   useLayoutEffect(() => {
     unreadLinkActionsRef.current = {
       // Starts from the link its broken chip holds, or the link itself if it is still text.

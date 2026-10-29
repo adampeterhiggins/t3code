@@ -30,6 +30,7 @@ import {
   printJson,
   rpc,
   withLiveRpc,
+  loadLiveSettings,
   type LiveRpcClient,
 } from "./liveRpc.ts";
 
@@ -532,7 +533,7 @@ const integrationStatusCommand = Command.make("status", {
         const clients = loginClients(client);
         const [settings, ...states] = yield* Effect.all(
           [
-            rpc(client[WS_METHODS.serverGetSettings]({})),
+            loadLiveSettings(client),
             ...LOGIN_INTEGRATIONS.map((name) => clients[name].current),
             Effect.map(
               firstState(client[WS_METHODS.discordSubscribeState]({}), "discord"),

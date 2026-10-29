@@ -1,3 +1,4 @@
+import { EnvironmentContextChip } from "../EnvironmentContextChip";
 import { isSvgAttachment } from "@t3tools/shared/image";
 
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
@@ -184,6 +185,16 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
           }
         : null,
     ),
+    {
+      kind: "environment",
+      canRender: (record) => record.kind === "environment",
+      render: (record, context) =>
+        record.kind === "environment" ? (
+          <EnvironmentContextChip record={record} copyMarkdown={context.copyMarkdown} />
+        ) : (
+          <UnavailableUserMessageContextChip {...context} />
+        ),
+    },
     previewChip("image", (record, context) => {
       const attachment = context.attachment;
       if (record.kind !== "image" || attachment === null || !isImageAttachment(attachment)) {

@@ -160,7 +160,6 @@ export function useComposerSelection(input: ComposerSelectionInput) {
   const { getModelDisabledReason, modelRequiresFork } = makeModelChangeAvailability(
     currentModelSelection
       ? {
-          providers: providerStatuses,
           hasStartedSession,
           supportsProviderSwitchingViaHandoff,
           currentModelSelection,
@@ -234,7 +233,6 @@ export function useComposerSelection(input: ComposerSelectionInput) {
       ...(preservedOptions ? { options: preservedOptions } : {}),
     };
     const modelChangeBlockReason = getStartedThreadModelChangeBlockReason({
-      providers: providerStatuses,
       hasStartedSession: activeRuntime !== null,
       supportsProviderSwitchingViaHandoff,
       currentModelSelection: activeThread.modelSelection,

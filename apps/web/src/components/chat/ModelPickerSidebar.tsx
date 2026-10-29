@@ -1,7 +1,7 @@
 import { Toolbar } from "@base-ui/react/toolbar";
 import { type ProviderDriverKind } from "@t3tools/contracts";
 import { memo, useLayoutEffect, useRef, useState } from "react";
-import { SparklesIcon, StarIcon } from "lucide-react";
+import { StarIcon } from "lucide-react";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
@@ -25,10 +25,6 @@ function describeUnavailableProvider(entry: ProviderInstanceEntry): string {
   const msg = entry.snapshot.message?.trim();
   return msg ? `${label}: ${kind}. ${msg}` : `${label}: ${kind}.`;
 }
-
-const BADGE_BASE_CLASS =
-  "pointer-events-none absolute -right-0.5 top-0.5 z-10 flex size-3.5 items-center justify-center rounded-full bg-transparent shadow-sm ";
-const NEW_BADGE_CLASS = `${BADGE_BASE_CLASS} text-update-foreground `;
 
 const PICKER_TOOLTIP_SIDE = "left" as const;
 const PICKER_TOOLTIP_SIDE_OFFSET = 8;
@@ -60,6 +56,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
   const [hoveredDriverKind, setHoveredDriverKind] = useState<ProviderDriverKind | null>(null);
   const sidebarContentRef = useRef<HTMLDivElement>(null);
   const [selectedIndicatorTop, setSelectedIndicatorTop] = useState<number | null>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads the selected provider item's DOM offset to position the selection indicator
   useLayoutEffect(() => {
     const content = sidebarContentRef.current;
     if (!content) {
@@ -198,11 +195,6 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                         : "color-mix(in oklab, var(--muted) 30%, transparent)"
                   }
                 />
-                {showNewBadge ? (
-                  <span className={NEW_BADGE_CLASS} aria-hidden>
-                    <SparklesIcon className="size-2" />
-                  </span>
-                ) : null}
               </Toolbar.Button>
             );
 

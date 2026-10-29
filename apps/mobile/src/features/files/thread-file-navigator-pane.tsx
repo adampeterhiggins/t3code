@@ -65,18 +65,17 @@ export function ThreadFileNavigatorPane(props: {
       theme: highlightTheme,
     });
   };
-  const nativeHeaderRightBarButtonItems = (() =>
-    [
-      {
-        accessibilityLabel: "Close files",
-        icon: { name: "xmark", type: "sfSymbol" as const },
-        identifier: "thread-file-navigator-close",
-        onPress: toggleAuxiliaryPane,
-        sharesBackground: false,
-        tintColor: foregroundColor,
-        type: "button" as const,
-      },
-    ] as ComponentProps<typeof ScreenStackHeaderConfig>["headerRightBarButtonItems"])();
+  const nativeHeaderRightBarButtonItems = [
+    {
+      accessibilityLabel: "Close files",
+      icon: { name: "xmark", type: "sfSymbol" as const },
+      identifier: "thread-file-navigator-close",
+      onPress: toggleAuxiliaryPane,
+      sharesBackground: false,
+      tintColor: foregroundColor,
+      type: "button" as const,
+    },
+  ] as ComponentProps<typeof ScreenStackHeaderConfig>["headerRightBarButtonItems"];
 
   const fileTree = (
     <FileTreeBrowser

@@ -91,6 +91,7 @@ import * as AcpRegistrySupport from "@t3tools/provider-acp-registry/server/AcpRe
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as CheckpointStore from "./checkpointing/CheckpointStore.ts";
 import * as SourceControlBuiltInDrivers from "./sourceControl/builtInDrivers.ts";
+import * as SourceControlSignIn from "./sourceControl/SourceControlSignIn.ts";
 import { BUILT_IN_SOURCE_CONTROL_DRIVER_LIST } from "./sourceControl/sourceControlDefinitions.ts";
 import * as TextGeneration from "./textGeneration/TextGeneration.ts";
 import * as ProviderInstanceRegistryHydration from "./provider/ProviderInstanceRegistryHydration.ts";
@@ -99,6 +100,11 @@ import * as TerminalManager from "./terminal/Manager.ts";
 import * as AgentAccessMcpServer from "./mcp/AgentAccessMcpServer.ts";
 import * as McpContextLinks from "./mcp/McpContextLinks.ts";
 import * as McpHttpServer from "./mcp/McpHttpServer.ts";
+import * as PeerForwarding from "./peer/PeerForwarding.ts";
+import * as RemoteDelegation from "./peer/RemoteDelegation.ts";
+import * as PeerLinkRequests from "./peer/PeerLinkRequests.ts";
+import * as PeerLinks from "./peer/PeerLinks.ts";
+import * as PeerMcpClient from "./peer/PeerMcpClient.ts";
 import * as McpSessionRegistry from "./mcp/McpSessionRegistry.ts";
 import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
 import * as DeviceService from "./device/DeviceService.ts";
@@ -203,6 +209,7 @@ import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as HostResources from "./resourceTelemetry/HostResources.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
+import * as TriageService from "./triage/TriageService.ts";
 import * as DesktopTelemetryReceiver from "./resourceTelemetry/DesktopTelemetryReceiver.ts";
 import * as NativeTelemetryClient from "./resourceTelemetry/NativeTelemetryClient.ts";
 import * as ResourceAttribution from "./resourceTelemetry/ResourceAttribution.ts";
@@ -476,6 +483,9 @@ const layerVcs = Layer.empty.pipe(
   Layer.provideMerge(layerGitWorkflow),
   Layer.provideMerge(layerReview),
   Layer.provideMerge(layerSourceControlRepositoryService),
+  Layer.provideMerge(
+    SourceControlSignIn.layer.pipe(Layer.provide(layerSourceControlProviderRegistry)),
+  ),
   Layer.provideMerge(layerProjectCloneTracker),
   Layer.provideMerge(layerContextRepositories),
   Layer.provideMerge(layerCheckoutInspect),
@@ -712,90 +722,96 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   // Hands the project setup runner down to providers, which are built below it.
   SubagentWorktreeSetupLive.layerInstall.pipe(Layer.provide(ProjectionStoreV2.layer)),
   Layer.effectDiscard(ProjectSettingsOverrideSweep.sweep),
-).pipe(
-  // Imports Conductor workspaces as tab groups; tabs refresh the issue links below.
-  Layer.provideMerge(
-    ConductorImporter.layer.pipe(
-      Layer.provide(
-        Layer.mergeAll(ThreadTabs.layer, RuntimeLayer.layerEventSink, IdAllocator.layer),
-      ),
-    ),
-  ),
-  // Fork integrations: issue trackers and chat links surfaced in the composer.
-  // Link watches read every kind of link, so the remaining kinds reach them from below.
-  Layer.provideMerge(
-    ThreadLinkWatches.layer.pipe(
-      Layer.provideMerge(
-        LinearThreadLinks.layer.pipe(
-          Layer.provideMerge(LinearApi.layer),
-          Layer.provideMerge(LinearAuth.layer),
+)
+  .pipe(
+    // Imports Conductor workspaces as tab groups; tabs refresh the issue links below.
+    Layer.provideMerge(
+      ConductorImporter.layer.pipe(
+        Layer.provide(
+          Layer.mergeAll(ThreadTabs.layer, RuntimeLayer.layerEventSink, IdAllocator.layer),
         ),
       ),
     ),
-  ),
-  Layer.provideMerge(
-    Layer.mergeAll(
-      NotionThreadLinks.layer.pipe(
-        Layer.provideMerge(NotionApi.layer),
-        Layer.provideMerge(NotionAuth.layer),
-      ),
-      GoogleThreadLinks.layer.pipe(
-        Layer.provideMerge(GoogleApi.layer),
-        Layer.provideMerge(GoogleAuth.layer),
-      ),
-    ),
-  ),
-  Layer.provideMerge(
-    GranolaThreadLinks.layer.pipe(
-      Layer.provideMerge(GranolaApi.layer),
-      Layer.provideMerge(GranolaAuth.layer),
-    ),
-  ),
-  Layer.provideMerge(
-    Layer.mergeAll(
-      SlackThreadLinks.layer.pipe(
-        Layer.provideMerge(SlackApi.layer),
-        Layer.provideMerge(SlackAuth.layer),
-      ),
-      DiscordThreadLinks.layer.pipe(
-        Layer.provideMerge(DiscordApi.layer),
-        Layer.provideMerge(DiscordAuth.layer),
+    // Fork integrations: issue trackers and chat links surfaced in the composer.
+    // Link watches read every kind of link, so the remaining kinds reach them from below.
+    Layer.provideMerge(
+      ThreadLinkWatches.layer.pipe(
+        Layer.provideMerge(
+          LinearThreadLinks.layer.pipe(
+            Layer.provideMerge(LinearApi.layer),
+            Layer.provideMerge(LinearAuth.layer),
+          ),
+        ),
       ),
     ),
-  ),
-  Layer.provideMerge(
-    GitHubIssueThreadLinks.layer.pipe(
-      Layer.provideMerge(GitHubIssues.layer),
-      Layer.provide(GitHubCli.layer),
+    Layer.provideMerge(
+      Layer.mergeAll(
+        NotionThreadLinks.layer.pipe(
+          Layer.provideMerge(NotionApi.layer),
+          Layer.provideMerge(NotionAuth.layer),
+        ),
+        GoogleThreadLinks.layer.pipe(
+          Layer.provideMerge(GoogleApi.layer),
+          Layer.provideMerge(GoogleAuth.layer),
+        ),
+      ),
     ),
-  ),
-  Layer.provideMerge(MessageDrafts.layer),
-  Layer.provideMerge(layerOrchestrationApplication),
-  Layer.provideMerge(RuntimeLayer.layerEventInfrastructure),
-  Layer.provideMerge(Layer.merge(ProjectStore.layer, ThreadSearch.layer)),
-  Layer.provideMerge(layerServerSettings),
-  Layer.provideMerge(layerSourceControlProviderRegistry),
-  Layer.provideMerge(layerGit),
-  Layer.provideMerge(layerVcs),
-  Layer.provideMerge(Layer.mergeAll(layerTerminal, layerPreview, layerDevice)),
-  Layer.provideMerge(layerPersistence),
-  Layer.provideMerge(
-    Layer.mergeAll(
-      Keybindings.layer,
-      EnvironmentTheme.layer,
-      UsageLimitSources.layer,
-      ProviderServiceStatus.layer,
+    Layer.provideMerge(
+      GranolaThreadLinks.layer.pipe(
+        Layer.provideMerge(GranolaApi.layer),
+        Layer.provideMerge(GranolaAuth.layer),
+      ),
     ),
-  ),
-  Layer.provideMerge(ProviderRegistry.layer),
-  Layer.provideMerge(ProviderInstanceRegistryHydration.layer),
-  Layer.provideMerge(
-    Layer.mergeAll(
-      AntigravityInstallation.AntigravityInstallation.layer,
-      CodexInstallation.CodexInstallation.layer,
+    Layer.provideMerge(
+      Layer.mergeAll(
+        SlackThreadLinks.layer.pipe(
+          Layer.provideMerge(SlackApi.layer),
+          Layer.provideMerge(SlackAuth.layer),
+        ),
+        DiscordThreadLinks.layer.pipe(
+          Layer.provideMerge(DiscordApi.layer),
+          Layer.provideMerge(DiscordAuth.layer),
+        ),
+      ),
     ),
-  ),
-);
+    Layer.provideMerge(
+      GitHubIssueThreadLinks.layer.pipe(
+        Layer.provideMerge(GitHubIssues.layer),
+        Layer.provide(GitHubCli.layer),
+      ),
+    ),
+    Layer.provideMerge(MessageDrafts.layer),
+    Layer.provideMerge(layerOrchestrationApplication),
+    Layer.provideMerge(RuntimeLayer.layerEventInfrastructure),
+    Layer.provideMerge(Layer.merge(ProjectStore.layer, ThreadSearch.layer)),
+    Layer.provideMerge(layerServerSettings),
+    Layer.provideMerge(layerSourceControlProviderRegistry),
+    Layer.provideMerge(layerGit),
+    Layer.provideMerge(layerVcs),
+    Layer.provideMerge(Layer.mergeAll(layerTerminal, layerPreview, layerDevice)),
+    Layer.provideMerge(layerPersistence),
+    Layer.provideMerge(
+      Layer.mergeAll(
+        Keybindings.layer,
+        EnvironmentTheme.layer,
+        UsageLimitSources.layer,
+        ProviderServiceStatus.layer,
+      ),
+    ),
+    Layer.provideMerge(ProviderRegistry.layer),
+  )
+  .pipe(
+    Layer.provideMerge(ProviderInstanceRegistryHydration.layer),
+    // Provider hydration builds the Claude runner, which reports agents to the same scanner the
+    // terminal and preview layers share.
+    Layer.provideMerge(layerPortScanner),
+    Layer.provideMerge(
+      Layer.mergeAll(
+        AntigravityInstallation.AntigravityInstallation.layer,
+        CodexInstallation.CodexInstallation.layer,
+      ),
+    ),
+  );
 
 const layerRuntimeCoreDependencies = layerRuntimeCoreDependenciesBase.pipe(
   Layer.provideMerge(layerPtyAdapter),
@@ -847,6 +863,7 @@ const layerRuntimeDependencies = layerRuntimeCoreDependencies.pipe(
   Layer.provideMerge(layerBackground),
   Layer.provideMerge(layerResourceDiagnostics),
   Layer.provideMerge(TraceDiagnostics.layer),
+  Layer.provideMerge(TriageService.layer.pipe(Layer.provide(GitVcsDriver.layer))),
   Layer.provideMerge(AnalyticsService.layer),
   Layer.provideMerge(ExternalLauncher.layer),
   Layer.provideMerge(RemoteOpenTargets.layer),
@@ -900,10 +917,18 @@ const layerMakeRoutes = Layer.mergeAll(
     Layer.provide(ThreadTabs.layer),
     Layer.provide(ProviderAdapterRegistry.layerFromProviderInstanceRegistry),
   ),
+  // Follows delegated tasks running in linked environments, including after a restart.
+  Layer.effectDiscard(
+    RemoteDelegation.RemoteDelegation.pipe(Effect.flatMap((remote) => remote.start())),
+  ),
 ).pipe(
   Layer.provide(
     PullRequestReviewGuideService.layer.pipe(Layer.provide(PullRequestReviewGuides.layer)),
   ),
+  // delegate_task to a linked environment, from /mcp and the follower above.
+  Layer.provide(RemoteDelegation.layer.pipe(Layer.provide(ProjectionStoreV2.layer))),
+  // Links agents ask for: shown in a thread from /mcp, answered over WebSocket.
+  Layer.provide(PeerLinkRequests.layer),
   // Share the service so HTTP/WS clients single-flight reads and invalidate each other's cached patches.
   Layer.provide(layerPullRequestService),
   Layer.provide(McpContextLinks.layer),
@@ -914,6 +939,13 @@ const layerMakeRoutes = Layer.mergeAll(
     ),
   ),
   Layer.provide(PreviewBrowser.layer),
+  // Links to other environments, shared by Settings (WebSocket) and agents (/mcp).
+  Layer.provide(
+    PeerForwarding.layer.pipe(
+      Layer.provideMerge(PeerMcpClient.layer),
+      Layer.provideMerge(PeerLinks.layer),
+    ),
+  ),
   Layer.provide(PreviewAutomationBroker.layer),
   Layer.provide(UpdateThreadPause.layerServerSelfUpdate.pipe(Layer.provide(layerDesktopAppUpdate))),
   Layer.provide(layerCommandReadiness),

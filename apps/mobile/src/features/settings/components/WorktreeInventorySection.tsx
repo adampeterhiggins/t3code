@@ -7,7 +7,7 @@ import { Alert, Linking, View } from "react-native";
 import { AppText as Text } from "../../../components/ui/AppText";
 import { connectionAtomRuntime } from "../../../connection/runtime";
 import { useAtomCommand } from "../../../state/use-atom-command";
-import { SettingsActionRow } from "./SettingsActionRow";
+import { ListActionRow as SettingsActionRow } from "../../../components/ui/ListActionRow";
 import { SettingsSection } from "./SettingsSection";
 
 const listWorktrees = createEnvironmentRpcCommand(connectionAtomRuntime, {
@@ -104,10 +104,10 @@ export function WorktreeInventorySection({ environmentId }: { environmentId: Env
               {"\n"}
               {entry.state} ·{" "}
               {running
-                ? "Running — protected"
+                ? "Running (protected)"
                 : entry.dirty === false
                   ? "Clean"
-                  : "Changes or status unknown — protected"}
+                  : "Changes or status unknown (protected)"}
               {"\n"}
               {entry.threads.map((thread) => `${thread.title} · ${thread.state}`).join("\n")}
             </Text>

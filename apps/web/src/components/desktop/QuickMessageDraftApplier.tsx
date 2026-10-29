@@ -83,7 +83,7 @@ export function QuickMessageDraftApplier(props: {
     }
     next.onApplied(applied);
   });
-  // oxlint-disable-next-line t3code/react-effect-budget -- runs the main window's handoff once this draft's view is mounted
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- runs the main window's handoff once this draft's view is mounted
   useEffect(() => {
     if (
       pending !== null &&

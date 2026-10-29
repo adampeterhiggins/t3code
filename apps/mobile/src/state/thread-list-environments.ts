@@ -15,17 +15,7 @@ export type ThreadListProvider = Pick<
   "instanceId" | "driver" | "enabled" | "displayName" | "accentColor" | "iconUrl"
 >;
 
-const capabilityKeys = [
-  "threadSettlement",
-  "threadSnooze",
-  "threadPinning",
-  "threadAutoSettleOptOut",
-  "threadHiding",
-  "threadGroups",
-  "threadPinReorder",
-  "threadActiveReorder",
-  "threadTitleRegeneration",
-] as const;
+const capabilityKeys = ["threadAutoSettleOptOut", "threadHiding", "threadGroups"] as const;
 
 function selectEnvironment(config: ServerConfig) {
   return {
@@ -42,6 +32,7 @@ function selectEnvironment(config: ServerConfig) {
     machineKind: resolveEnvironmentMachineKind(config),
     capabilities: config.environment.capabilities,
     threadGroups: config.settings.threadGroups,
+    snoozePresets: config.settings.snoozePresets,
   };
 }
 
@@ -75,27 +66,20 @@ function sameShownGroups(left: ThreadGroups, right: ThreadGroups) {
 function collectEnvironments(environments: ReadonlyMap<EnvironmentId, ListEnvironment>) {
   const providersByEnvironmentId = new Map<EnvironmentId, ReadonlyArray<ThreadListProvider>>();
   const machineByEnvironmentId = new Map<EnvironmentId, EnvironmentMachineKind>();
-  const settlementEnvironmentIds = new Set<EnvironmentId>();
-  const snoozeEnvironmentIds = new Set<EnvironmentId>();
-  const pinningEnvironmentIds = new Set<EnvironmentId>();
+  // Every protocol-2 server supports these thread actions; they only wait for its config.
+  const loadedEnvironmentIds = new Set<EnvironmentId>();
   const autoSettleOptOutEnvironmentIds = new Set<EnvironmentId>();
   const hidingEnvironmentIds = new Set<EnvironmentId>();
   const groupEnvironmentIds = new Set<EnvironmentId>();
-  const pinReorderEnvironmentIds = new Set<EnvironmentId>();
-  const activeReorderEnvironmentIds = new Set<EnvironmentId>();
-  const titleRegenerationEnvironmentIds = new Set<EnvironmentId>();
-  for (const [id, { providers, machineKind, capabilities }] of environments) {
+  const snoozePresetsByEnvironmentId = new Map<EnvironmentId, ListEnvironment["snoozePresets"]>();
+  for (const [id, { providers, machineKind, capabilities, snoozePresets }] of environments) {
     providersByEnvironmentId.set(id, providers);
+    snoozePresetsByEnvironmentId.set(id, snoozePresets);
     machineByEnvironmentId.set(id, machineKind);
-    if (capabilities.threadSettlement === true) settlementEnvironmentIds.add(id);
-    if (capabilities.threadSnooze === true) snoozeEnvironmentIds.add(id);
+    loadedEnvironmentIds.add(id);
     if (capabilities.threadAutoSettleOptOut === true) autoSettleOptOutEnvironmentIds.add(id);
     if (capabilities.threadHiding === true) hidingEnvironmentIds.add(id);
     if (capabilities.threadGroups === true) groupEnvironmentIds.add(id);
-    if (capabilities.threadPinning === true) pinningEnvironmentIds.add(id);
-    if (capabilities.threadPinReorder === true) pinReorderEnvironmentIds.add(id);
-    if (capabilities.threadActiveReorder === true) activeReorderEnvironmentIds.add(id);
-    if (capabilities.threadTitleRegeneration === true) titleRegenerationEnvironmentIds.add(id);
   }
   // Groups whose threads stay on the Threads, Snoozed and Settled pages as well as their own.
   const groupsShownInThreads = threadGroupsShownInThreads(
@@ -104,16 +88,17 @@ function collectEnvironments(environments: ReadonlyMap<EnvironmentId, ListEnviro
   return {
     providersByEnvironmentId,
     machineByEnvironmentId,
-    settlementEnvironmentIds,
-    snoozeEnvironmentIds,
-    pinningEnvironmentIds,
+    settlementEnvironmentIds: loadedEnvironmentIds,
+    snoozeEnvironmentIds: loadedEnvironmentIds,
+    pinningEnvironmentIds: loadedEnvironmentIds,
     autoSettleOptOutEnvironmentIds,
     hidingEnvironmentIds,
     groupEnvironmentIds,
     groupsShownInThreads,
-    pinReorderEnvironmentIds,
-    activeReorderEnvironmentIds,
-    titleRegenerationEnvironmentIds,
+    pinReorderEnvironmentIds: loadedEnvironmentIds,
+    activeReorderEnvironmentIds: loadedEnvironmentIds,
+    titleRegenerationEnvironmentIds: loadedEnvironmentIds,
+    snoozePresetsByEnvironmentId,
   };
 }
 
@@ -132,11 +117,15 @@ export function createThreadListEnvironmentsAtom(
       if (prior && sameProviders(prior.providers, selected.providers)) {
         selected.providers = prior.providers;
       }
+      if (prior && JSON.stringify(prior.snoozePresets) === JSON.stringify(selected.snoozePresets)) {
+        selected.snoozePresets = prior.snoozePresets;
+      }
       const unchanged =
         prior &&
         prior.providers === selected.providers &&
         prior.machineKind === selected.machineKind &&
         sameShownGroups(prior.threadGroups, selected.threadGroups) &&
+        prior.snoozePresets === selected.snoozePresets &&
         capabilityKeys.every(
           (key) => (prior.capabilities[key] === true) === (selected.capabilities[key] === true),
         );

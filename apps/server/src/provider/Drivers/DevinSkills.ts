@@ -10,7 +10,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 
 import { collectUint8StreamText } from "@t3tools/provider-core/server/collectStreamText";
-import { isWindowsCommandNotFound } from "../../processRunner.ts";
+import { isWindowsCommandNotFound } from "@t3tools/provider-core/server/snapshotProbe";
 
 /** Discovery budget matches the other provider skill probes (Codex uses 20s). */
 const DEVIN_SKILLS_PROBE_TIMEOUT_MS = 20_000;

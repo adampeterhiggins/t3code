@@ -57,7 +57,7 @@ import {
 } from "~/hooks/useSettings";
 import { useTheme } from "~/hooks/useTheme";
 import { randomUUID } from "~/lib/utils";
-import { selectProjectGroupingSettings } from "~/logicalProject";
+import { selectProjectGroupingSettings } from "@t3tools/client-runtime/state/project-grouping";
 import {
   getAppModelOptionsForInstance,
   resolveEffectiveDefaultModelSelection,
@@ -323,6 +323,7 @@ export function QuickMessagePanel() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers the quick-message window show listener and readiness handshake with Electron
   useEffect(() => {
     if (!bridge) return;
     const unsubscribe = bridge.onShow((event) => {
@@ -945,7 +946,6 @@ export function QuickMessagePanel() {
                       }
                       isSendBusy={sending}
                       sendDisabledReason={sendDisabledReason}
-                      isConnecting={false}
                       isEnvironmentUnavailable={environmentUnavailable}
                       isPreparingWorktree={false}
                       hasSendableContent={hasContent}

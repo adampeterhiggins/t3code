@@ -1,3 +1,4 @@
+import * as RemoteDelegation from "../peer/RemoteDelegation.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
@@ -163,6 +164,7 @@ const run = <A, E>(
     }).pipe(
       Effect.provide(
         OrchestratorMcpService.layer.pipe(
+          Layer.provide(Layer.mock(RemoteDelegation.RemoteDelegation)({})),
           Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),
           Layer.provide(dependencies),
         ),

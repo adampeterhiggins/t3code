@@ -106,7 +106,7 @@ export function useOpenChangeRequestLink(
     const target = resolveChangeRequestLinkTarget({
       url: targetUrl,
       projects: readProjects(),
-      capabilities: (environmentId) => serverConfigs.get(environmentId)?.environment.capabilities,
+      configLoaded: (environmentId) => serverConfigs.has(environmentId),
       environmentId: resolvedThreadRef?.environmentId ?? targetEnvironmentId,
       primaryEnvironmentId,
       lendHostProject: resolvedPanelRef !== undefined,

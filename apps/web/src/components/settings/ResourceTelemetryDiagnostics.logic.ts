@@ -32,7 +32,7 @@ export function resourceProcessLabel(
   }
 }
 
-export function processIdentityKey(process: ResourceTelemetryProcess): string {
+export function processIdentityKey(process: Pick<ResourceTelemetryProcess, "identity">): string {
   return `${process.identity.pid}:${process.identity.startTimeMs}`;
 }
 

@@ -32,9 +32,19 @@ const EMPTY_THREAD_SHELLS: ReadonlyArray<EnvironmentThreadShell> = [];
 const EMPTY_PROJECTS: ReadonlyArray<EnvironmentProject> = [];
 const EMPTY_SUBAGENTS: ReadonlyArray<OrchestrationV2Subagent> = [];
 const EMPTY_PROVIDERS: ReadonlyArray<ServerProvider> = [];
+import {
+  type ComposerEnvironmentCandidate,
+  matchComposerEnvironmentItems,
+} from "@t3tools/client-runtime/composerThreadItems";
+
+const EMPTY_ENVIRONMENTS: ReadonlyArray<ComposerEnvironmentCandidate> = [];
+const NO_LINKED_ENVIRONMENTS: ReadonlyMap<EnvironmentId, string> = new Map();
 import { COMPOSER_CONTEXT_MAX_RECORDS } from "@t3tools/contracts";
-import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
-import { pullRequestComposerContext, threadComposerContext } from "../../lib/composerContext";
+import {
+  formatComposerContextReference,
+  threadContextRecord,
+} from "@t3tools/shared/composerContextReferences";
+import { environmentComposerContext, pullRequestComposerContext } from "../../lib/composerContext";
 import { uuidv4 } from "../../lib/uuid";
 import {
   getComposerDraftSnapshot,
@@ -225,6 +235,8 @@ export function useComposerCommandMenu({
   environmentId,
   threadShells = EMPTY_THREAD_SHELLS,
   projects = EMPTY_PROJECTS,
+  environments = EMPTY_ENVIRONMENTS,
+  linkedEnvironments = NO_LINKED_ENVIRONMENTS,
   currentThreadId = null,
   threadSubagents = EMPTY_SUBAGENTS,
   providers = EMPTY_PROVIDERS,
@@ -249,6 +261,9 @@ export function useComposerCommandMenu({
   /** Names the project beside each `@` thread suggestion. */
   readonly projects?: ReadonlyArray<EnvironmentProject>;
   /** Left out of `@` thread suggestions: a thread is never context for itself. */
+  readonly environments?: ReadonlyArray<ComposerEnvironmentCandidate>;
+  /** The machines `environmentId` links to, by name, whose threads the picker also offers. */
+  readonly linkedEnvironments?: ReadonlyMap<EnvironmentId, string>;
   readonly currentThreadId?: ThreadId | null;
   /** The current thread's subagent records, for the `@` menu's Agents tab. */
   readonly threadSubagents?: ReadonlyArray<OrchestrationV2Subagent>;
@@ -298,6 +313,7 @@ export function useComposerCommandMenu({
   );
   // Every draft change rechecks a stale snapshot, including drafts written by
   // another surface (a prompt link) that never move the editor selection.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- refreshes the provider workspace snapshot atom whenever the draft text changes from any surface
   useEffect(() => {
     refreshWorkspaceSnapshot();
   }, [
@@ -338,6 +354,7 @@ export function useComposerCommandMenu({
       ? matchComposerThreadItems({
           shells: threadShells,
           environmentId,
+          linkedEnvironments,
           excludeThreadId: currentThreadId,
           query: trigger.query,
           now,
@@ -591,17 +608,23 @@ export function useComposerCommandMenu({
     if (trigger.kind === "path" && pathTab?.active === "chats") return chatItems;
 
     if (trigger.kind === "path") {
-      return pathSearch.entries.map((entry) => {
-        const parts = entry.path.split("/");
-        return {
-          id: `path:${entry.path}`,
-          type: "path" as const,
-          path: entry.path,
-          kind: entry.kind,
-          label: parts[parts.length - 1] ?? entry.path,
-          description: parts.length > 1 ? parts.slice(0, -1).join("/") : "",
-        };
-      });
+      const environmentItems = environmentId
+        ? matchComposerEnvironmentItems({ environments, environmentId, query: trigger.query })
+        : [];
+      return [
+        ...environmentItems,
+        ...pathSearch.entries.map((entry) => {
+          const parts = entry.path.split("/");
+          return {
+            id: `path:${entry.path}`,
+            type: "path" as const,
+            path: entry.path,
+            kind: entry.kind,
+            label: parts[parts.length - 1] ?? entry.path,
+            description: parts.length > 1 ? parts.slice(0, -1).join("/") : "",
+          };
+        }),
+      ];
     }
 
     return [];
@@ -634,6 +657,11 @@ export function useComposerCommandMenu({
       }
       setSelection({ start: result.cursor, end: result.cursor });
     };
+    if (item.type === "environment") {
+      if (!ownerKey || trigger.kind !== "path") return;
+      insertReference(environmentComposerContext(item.environmentId, item.label));
+      return;
+    }
     if (item.type === "google-file") {
       if (!environmentId || !ownerKey) return;
       void getGoogleFile({ environmentId, input: { id: item.url } }).then((result) => {
@@ -650,7 +678,7 @@ export function useComposerCommandMenu({
           candidate.id === item.thread.threadId,
       );
       if (!shell) return;
-      insertReference(threadComposerContext(item.thread, shell.title));
+      insertReference(threadContextRecord(item.thread, shell.title));
       return;
     }
     if (item.type === "subagent") {

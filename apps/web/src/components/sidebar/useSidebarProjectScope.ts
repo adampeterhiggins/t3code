@@ -86,7 +86,7 @@ export function useSidebarProjectScope(
   // before a persisted scope can be considered missing.
   const allProjectSnapshotsReady = useAllEnvironmentProjectSnapshotsReady();
   const allProjectConfigsReady = useAtomValue(environmentProjects.projectConfigsReadyAtom);
-  // oxlint-disable-next-line t3code/react-effect-budget -- Reconcile saved scopes only after environment snapshots and configs load.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Reconcile saved scopes only after environment snapshots and configs load.
   useEffect(() => {
     const canClearMissingScope = allProjectSnapshotsReady && allProjectConfigsReady;
     const nextKeys = [

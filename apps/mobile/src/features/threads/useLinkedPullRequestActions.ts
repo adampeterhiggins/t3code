@@ -41,7 +41,7 @@ export function useLinkedPullRequestActions(input: {
     thread?.environmentId ?? null,
     AuthOrchestrationOperateScope,
   );
-  const canEdit = canOperate && capabilities?.threadPullRequests === true;
+  const canEdit = canOperate && capabilities !== undefined;
   const canWatch = canOperate && capabilities?.threadPullRequestWatch === true;
   const canStartWatch =
     canWatch &&
@@ -73,10 +73,9 @@ export function useLinkedPullRequestActions(input: {
       capabilities,
       threadId: thread.id,
       reference,
-      legacyProjectId: null,
       linked,
     });
-    if (mutation === null || mutation.type === "thread.meta.update") return;
+    if (mutation === null) return;
     const environmentId = thread.environmentId;
     void run(
       linked
@@ -172,7 +171,7 @@ export function useLinkedPullRequestActions(input: {
     else if (action === "unlink") setLinked(link, false);
   };
 
-  return (() => ({ canLink: canEdit, terminology, promptLink, menuActions, onMenuAction }))();
+  return { canLink: canEdit, terminology, promptLink, menuActions, onMenuAction };
 }
 
 export type LinkedPullRequestActions = ReturnType<typeof useLinkedPullRequestActions>;

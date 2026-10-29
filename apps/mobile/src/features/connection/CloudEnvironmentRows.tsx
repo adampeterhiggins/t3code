@@ -14,7 +14,7 @@ import {
   resolveEnvironmentMachineKind,
 } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { Pressable, type TextLayoutEvent, View } from "react-native";
 
 import { AppText as Text } from "../../components/ui/AppText";

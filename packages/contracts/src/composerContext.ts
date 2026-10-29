@@ -38,6 +38,7 @@ export const COMPOSER_CONTEXT_KINDS = [
   "skill",
   "thread",
   ...INTEGRATION_CONTEXT_KINDS,
+  "environment",
 ] as const;
 export type KnownComposerContextKind = (typeof COMPOSER_CONTEXT_KINDS)[number];
 
@@ -433,6 +434,17 @@ export const SubagentContextRecord = Schema.Struct({
   result: Schema.NullOr(BoundedString(COMPOSER_CONTEXT_SUBAGENT_TEXT_MAX_CHARS)),
 });
 export type SubagentContextRecord = typeof SubagentContextRecord.Type;
+/**
+ * One of the user's machines (a T3 Code environment), mentioned so the agent
+ * links it or works there. Only identity travels: the agent links it by id,
+ * and the user's client supplies its addresses.
+ */
+export const EnvironmentContextRecord = Schema.Struct({
+  ...recordBase,
+  kind: Schema.Literal("environment"),
+  environmentId: EnvironmentId,
+});
+export type EnvironmentContextRecord = typeof EnvironmentContextRecord.Type;
 
 const isJson = Schema.is(Schema.Json);
 
@@ -592,6 +604,7 @@ const KnownComposerContextRecordGroupB = Schema.Union([
   GoogleFileContextRecord,
   GranolaNoteContextRecord,
   ThreadContextRecord,
+  EnvironmentContextRecord,
   SubagentContextRecord,
   PromptLinkContextRecord,
   GitHubRefContextRecord,

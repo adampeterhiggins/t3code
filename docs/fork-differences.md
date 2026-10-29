@@ -556,7 +556,7 @@ editable. Names are stored by the [ThreadTabs service](../apps/server/src/thread
   or sending a message), pinning it, or a fresh completion, failure, or pending request returns
   the group. A sibling waiting on you or holding a queued turn prevents group snooze
   (`apps/server/src/threadTabs/settlement.ts`).
-- **Sidebars.** By default child tabs are hidden from the web sidebar, the legacy project sidebar,
+- **Sidebars.** By default child tabs are hidden from the web sidebar, including its project-folder view,
   and both mobile thread lists (`useHiddenTabThreads`). The group's row stays highlighted while any
   of its tabs is open. Opening it from another thread returns to the tab last left open; clicking
   it while one of its tabs is already open leaves that tab selected
@@ -577,14 +577,14 @@ editable. Names are stored by the [ThreadTabs service](../apps/server/src/thread
   ([tab rows and previews](../apps/web/src/components/sidebar/SidebarTabRows.tsx),
   [tab preferences and ordering](../apps/web/src/components/sidebar/useSidebarTabs.ts),
   [group disclosure](../apps/web/src/components/sidebar/SidebarTabDisclosure.tsx)).
-- **Menus.** The thread right-click menu in both sidebars and the header's thread menu offer
-  **New tab**. Link actions sit under one **Link** submenu in both sidebars, the header,
+- **Menus.** The sidebar thread right-click menu and the header's thread menu offer
+  **New tab**. Link actions sit under one **Link** submenu in the sidebar, the header,
   and the mobile tab menu, with only the available integrations listed
   ([menu builder](../apps/web/src/components/threadActionMenu.logic.ts),
   [sidebar link actions](../apps/web/src/components/sidebar/integrationLinks.ts)). The sidebar's menu also offers **Close tab** on a thread that has a sibling tab.
   Closing archives the tab's thread and lands on its neighbour (`useThreadTabActions` in
   `apps/web/src/components/chat/ThreadTabs.tsx`). Upstream restarts an agent session only from
-  the command palette, for the open chat; the tab crumb's menu and both sidebars' right-click
+  the command palette, for the open chat; the tab crumb's menu and the sidebar's right-click
   menus add **Restart agent session** for a tab (a row standing for a tab group restarts the tab
   it opens). The header's thread menu leaves it out because it acts on the group's original
   thread (`apps/web/src/hooks/useRestartAgentSession.ts`).
@@ -673,7 +673,7 @@ own timeline, composer, right panel, and terminal.
   `apps/web/src/components/chat/splitPane.ts`). Each pane uses CSS layout containment so its
   fixed title-bar controls stay inside it (`SplitChatPanes.tsx`).
 - **Entry points.** The tab crumb menu's per-tab split button, **Open in split view** / **Close
-  split view** in both sidebars' thread menus, the command palette, `splitView.toggle`
+  split view** in the sidebar's thread menus, the command palette, `splitView.toggle`
   (`mod+\`), and `splitView.focusOther` (`mod+alt+\`). Each pane header has a close button. In
   a sidebar tab list, dragging a tab onto the near half of another and holding it there for half
   a second pairs them, iOS home-screen style: the list holds still while aiming, the target row
@@ -685,7 +685,7 @@ own timeline, composer, right panel, and terminal.
   resets when the split closes.
 - **Sidebar.** Both chats' rows carry a side-by-side icon, and the one beside the routed chat gets
   a lighter version of the active highlight. A tab list's **more** fold keeps both listed
-  (`limitSidebarTabs` in `Sidebar.logic.ts`). The legacy project sidebar does not mark the split.
+  (`limitSidebarTabs` in `Sidebar.logic.ts`).
 - **Mobile.** Not supported. Windows at or below the right-panel sheet breakpoint also show one
   chat.
 

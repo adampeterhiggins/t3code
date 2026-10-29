@@ -6,6 +6,8 @@ import type {
   ThreadId,
 } from "@t3tools/contracts";
 import { formatPathsForWorkspace } from "@t3tools/client-runtime/work-log/command-display";
+import type { ToolCallDiffTarget } from "../../diffPanelStore";
+
 import {
   fileChangeDiffWithheld,
   fileChangePreviewText,
@@ -19,11 +21,13 @@ import {
 import { resolveToolPreview } from "@t3tools/client-runtime/work-log/tool-preview";
 import { formatDiffCount } from "@t3tools/client-runtime/diff-count";
 import { isJavaScriptReplTool } from "@t3tools/shared/toolActivity";
+import { ExternalLinkIcon } from "lucide-react";
 import { memo, type ReactNode } from "react";
 
 import { cn } from "../../lib/utils";
 import { useTurnItemDetail } from "../../state/queries";
 import { useV2ItemSupport } from "../../state/v2ItemSupport";
+import { Button } from "../ui/button";
 import ChatMarkdown from "../ChatMarkdown";
 import { ChatMarkdownAssetImage } from "./ChatMarkdownMedia";
 import { PreviewCornerAction } from "./PreviewCornerAction";
@@ -51,10 +55,10 @@ interface V2ItemInspectorProps {
   readonly highlightSyntax?: boolean | undefined;
   readonly onOpenThread: (threadId: ThreadId) => void;
   readonly onOpenTurnDiff?: ((runId: RunId, filePath?: string) => void) | undefined;
-  readonly onRollbackCheckpoint?: (input: {
-    readonly checkpointId: string;
-    readonly scopeId: string;
-  }) => void;
+  readonly onRollbackCheckpoint?:
+    | ((input: { readonly checkpointId: string; readonly scopeId: string }) => void)
+    | undefined;
+  readonly onOpenToolDiff?: ((target: ToolCallDiffTarget) => void) | undefined;
   readonly onImageExpand?: ((preview: ExpandedImagePreview) => void) | undefined;
   /**
    * The hover card already shows Open diff, Open fork, or Open subagent thread
@@ -373,6 +377,22 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
                 </span>
               ) : null}
             </div>
+            {props.onOpenToolDiff && !props.hidePreviewActions ? (
+              <Button
+                size="xs"
+                variant="outline"
+                onClick={() =>
+                  props.onOpenToolDiff?.({
+                    threadId: props.projectedItem.sourceThreadId,
+                    itemId: props.projectedItem.sourceItemId,
+                    revision: turnItemDetailRevision(item),
+                  })
+                }
+              >
+                <ExternalLinkIcon />
+                Open tool diff
+              </Button>
+            ) : null}
             {!props.hidePreviewActions &&
             item.runId !== null &&
             props.onOpenTurnDiff !== undefined ? (
@@ -491,7 +511,6 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
       {item.type === "notification" ? <StructuredValue value={item.detail} /> : null}
       {item.type === "system_notice" ? <StructuredValue value={item.message} /> : null}
       {item.type === "error" ? <StructuredValue value={item.failure.message} /> : null}
-      {item.type === "proposed_plan" ? <StructuredValue value={item.markdown} /> : null}
       {item.type === "todo_list" ? (
         <StructuredValue
           value={item.steps
