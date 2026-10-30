@@ -272,6 +272,7 @@ export function workEntryRowLabel(
   expanded = false,
   workspaceRoot: string | null = null,
 ): string {
+  if (entry.itemType === "fork") return entry.label;
   if (expanded && entry.itemType === "reasoning")
     return entry.toolLifecycleStatus === "inProgress" ? "Thinking" : "Thought";
   const presentation = resolveWorkEntryToolPresentation(entry);
@@ -2211,10 +2212,7 @@ export function buildThreadFeed(
       entryRows.push(index);
       continue;
     }
-    const app =
-      item.type === "dynamic_tool" && item.status === "completed"
-        ? mcpAppFromToolItem(item)
-        : undefined;
+    const app = item.type === "dynamic_tool" ? mcpAppFromToolItem(item) : undefined;
     if (app) {
       const entry: RawThreadFeedEntry = {
         type: "mcp-app",

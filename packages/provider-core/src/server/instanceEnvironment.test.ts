@@ -1,6 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
-import { ProviderDriverKind, ProviderInstanceId } from "@t3tools/contracts";
+import { ProviderDriverKind, ProviderInstanceId, SecretProviderId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -75,12 +75,21 @@ describe("mergeProviderInstanceEnvironment", () => {
           [
             { name: "OPENROUTER_API_KEY", value: "sk-or-test", sensitive: true },
             { name: "ANTHROPIC_API_KEY", value: "", sensitive: false },
+            {
+              name: "OPENAI_API_KEY",
+              value: {
+                provider: SecretProviderId.make("personal"),
+                reference: "op://Private/OpenAI/credential",
+              },
+              sensitive: true,
+            },
           ],
-          { ANTHROPIC_API_KEY: "inherited", PATH: "/bin" },
+          { ANTHROPIC_API_KEY: "inherited", OPENAI_API_KEY: "inherited", PATH: "/bin" },
         ),
       ).toMatchObject({
         OPENROUTER_API_KEY: "sk-or-test",
         ANTHROPIC_API_KEY: "",
+        OPENAI_API_KEY: "inherited",
         PATH: "/bin",
       });
     }),

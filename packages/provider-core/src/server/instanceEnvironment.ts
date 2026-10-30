@@ -2,6 +2,7 @@ import {
   defaultInstanceIdForDriver,
   type ProviderDriverKind,
   type ProviderInstanceEnvironment,
+  type ResolvedProviderInstanceEnvironment,
   type ProviderInstanceId,
 } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -33,6 +34,8 @@ export const mergeProviderInstanceEnvironment = Effect.fn(function* (
   const home = yield* HostProcess.HomeDirectory;
   const next: NodeJS.ProcessEnv = { ...baseEnv };
   for (const variable of environment) {
+    // An unresolved secret reference carries no value; the registry resolves it for the provider.
+    if (typeof variable.value !== "string") continue;
     // Child processes do not apply shell expansion to environment values.
     next[variable.name] = HOME_EXPANDED_VARIABLE_NAMES.has(variable.name)
       ? expandHomePath(variable.value, home)
@@ -126,8 +129,8 @@ export const mergeProviderHomePathEnvironment = Effect.fn("mergeProviderHomePath
 export const withProviderHomePathVariables = Effect.fn("withProviderHomePathVariables")(function* (
   homePath: string,
   variableNames: ReadonlyArray<string>,
-  environment: ProviderInstanceEnvironment,
-): Effect.fn.Return<ProviderInstanceEnvironment, never, Path.Path> {
+  environment: ResolvedProviderInstanceEnvironment,
+): Effect.fn.Return<ResolvedProviderInstanceEnvironment, never, Path.Path> {
   const resolvedHomePath = yield* resolveProviderHomePath(homePath);
   if (resolvedHomePath === undefined) return environment;
   const names = new Set(variableNames);
