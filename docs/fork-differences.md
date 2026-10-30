@@ -791,11 +791,13 @@ Code: `apps/web/src/components/sidebar/SidebarResourcePill.tsx` and `readUsage` 
 
 ## Sidebar back and forward buttons
 
-The sidebar titlebar has back and forward buttons after the resource pill. They step through the
-app's navigation history, the same as the `navigation.back` and `navigation.forward` shortcuts
-(`Mod+[` and `Mod+]` by default). This is web and desktop. The mobile app uses its own navigation.
+The sidebar titlebar keeps back and forward buttons after the resource pill on both web and
+desktop. Upstream shows these buttons only on desktop. They share the app navigation history
+with the `navigation.back` and `navigation.forward` shortcuts (`Mod+[` and `Mod+]` by default)
+and desktop trackpad gestures. Mobile uses its own navigation.
 
-Code: `SidebarHistoryNavigation` in `apps/web/src/components/sidebar/SidebarChrome.tsx`.
+Code: `HistoryNavigationButton` in `apps/web/src/components/sidebar/SidebarChrome.tsx` and
+`apps/web/src/navigationHistory.ts`.
 
 ## Sidebar thread views
 

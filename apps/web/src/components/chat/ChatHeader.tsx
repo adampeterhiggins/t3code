@@ -2,6 +2,7 @@ import {
   AuthOrchestrationOperateScope,
   type EnvironmentId,
   type ModelSelection,
+  type ScopedThreadRef,
   type ThreadId,
   type ThreadTabGroup,
 } from "@t3tools/contracts";
@@ -64,6 +65,7 @@ interface ChatHeaderProps {
   rightPanelOpen: boolean;
   onNewThreadInProject: () => void;
   onOpenProjectSettings?: (() => void) | undefined;
+  onFindInThread?: ((threadRef: ScopedThreadRef) => void) | undefined;
 }
 
 function resolveRenameCommit(input: {
@@ -92,6 +94,7 @@ export const ChatHeader = memo(function ChatHeader({
   rightPanelOpen,
   onNewThreadInProject,
   onOpenProjectSettings,
+  onFindInThread,
 }: ChatHeaderProps) {
   const splitPaneFocus = useSplitPaneFocus();
   const { closePane } = useSplitViewActions();
@@ -222,6 +225,7 @@ export const ChatHeader = memo(function ChatHeader({
     projectCwd: activeProjectCwd,
     onStartRename: startRename,
     tabsSupported: threadTabGroup !== null,
+    onFind: onFindInThread,
     canShareWithGuest,
   });
   const titleButtonRef = useRef<HTMLButtonElement | null>(null);

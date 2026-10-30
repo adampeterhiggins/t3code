@@ -1,5 +1,3 @@
-import * as NodeOS from "node:os";
-
 import {
   type ProviderInstanceConfig,
   ProviderInstanceId,
@@ -132,7 +130,7 @@ function findDevinProviderEnvironmentValue(
   for (const instance of Object.values(settings.providerInstances)) {
     if (String(instance.driver).toLowerCase() !== "devin") continue;
     for (const variable of instance.environment ?? []) {
-      if (!wanted.has(variable.name.toUpperCase())) continue;
+      if (!wanted.has(variable.name.toUpperCase()) || typeof variable.value !== "string") continue;
       const resolved = nonEmptyString(variable.value);
       if (resolved !== undefined) return resolved;
     }
@@ -262,6 +260,7 @@ export const make = Effect.gen(function* () {
   const settingsService = yield* ServerSettings.ServerSettingsService;
   const httpClient = yield* HttpClient.HttpClient;
   const hostEnvironment = yield* HostProcess.Environment;
+  const hostname = yield* HostProcess.Hostname;
   const readerContext = yield* Effect.context<BuiltInUsageReadersEnv>();
 
   const fileCache: ScanCache = new Map();
@@ -284,6 +283,37 @@ export const make = Effect.gen(function* () {
       Effect.provideService(FileSystem.FileSystem, fileSystem),
       Effect.provideService(Path.Path, path),
     );
+  const hostIdPath = path.join(config.baseDir, "usage-host-id");
+  const explicitHostId = hostEnvironment["T3CODE_HOST_ID"]?.trim();
+  const hostId =
+    explicitHostId ||
+    (yield* fileSystem.readFileString(hostIdPath).pipe(
+      Effect.catchIf(
+        (error) => error.reason._tag === "NotFound",
+        () =>
+          Effect.scoped(
+            Effect.gen(function* () {
+              yield* fileSystem.makeDirectory(config.baseDir, { recursive: true });
+              const tempDirectory = yield* fileSystem.makeTempDirectoryScoped({
+                directory: config.baseDir,
+                prefix: "usage-host-id.",
+              });
+              const tempFile = path.join(tempDirectory, "identity");
+              yield* fileSystem.writeFileString(tempFile, `${hostname}\n`);
+              // Publish complete contents without replacing another initializer's identity.
+              yield* fileSystem.link(tempFile, hostIdPath).pipe(
+                Effect.catchIf(
+                  (error) => error.reason._tag === "AlreadyExists",
+                  () => Effect.void,
+                ),
+              );
+              return yield* fileSystem.readFileString(hostIdPath);
+            }),
+          ),
+      ),
+      Effect.map((value) => value.trim() || hostname),
+      Effect.orElseSucceed(() => hostname),
+    ));
   let liteLlmRates: RateTable = new Map();
   let devinRates: RateTable = new Map();
   let ratesFetchedAtMs: number | null = null;
@@ -918,7 +948,6 @@ export const make = Effect.gen(function* () {
     const startedAtMs = yield* Clock.currentTimeMillis;
     yield* ensureScanCacheLoaded;
 
-    const hostId = NodeOS.hostname();
     yield* ensureDevinRates();
     const accountUsage = yield* readDevinAccountUsage(input, settings);
     const windowStart = DateTime.make(`${input.sinceDay}T00:00:00Z`);

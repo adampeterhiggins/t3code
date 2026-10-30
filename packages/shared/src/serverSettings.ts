@@ -14,7 +14,7 @@ import {
   type ModelSelection,
   type ProjectId,
   type ProjectScopedServerSettingKey,
-  type ProjectSettingsOverrides,
+  ProjectSettingsOverrides,
   ProviderDriverKind,
   ProviderInstanceId,
   type ServerProvider,
@@ -247,6 +247,16 @@ function mergeSettingsEntries<Value>(
   return Object.fromEntries(next);
 }
 
+const knownProjectOverrideKeys = new Set(Object.keys(ProjectSettingsOverrides.fields));
+
+function pickOverrideKeys(entry: ProjectSettingsOverrides | undefined, known: boolean) {
+  return Object.fromEntries(
+    Object.entries<unknown>(entry ?? {}).filter(
+      ([key]) => knownProjectOverrideKeys.has(key) === known,
+    ),
+  );
+}
+
 // Older clients omit providerInstances during whole-entry replacement; preserve it to avoid wiping overrides.
 function mergeProjectSettingsOverridesPatch(
   current: Readonly<Record<string, ProjectSettingsOverrides>>,
@@ -260,7 +270,9 @@ function mergeProjectSettingsOverridesPatch(
     }
     const storedProviderInstances = current[projectId]?.providerInstances;
     next.set(projectId, {
-      ...entry,
+      // Preserve downgraded storage, but reject new unknown writes so clients can detect unsupported settings.
+      ...pickOverrideKeys(current[projectId], false),
+      ...pickOverrideKeys(entry, true),
       ...(Object.hasOwn(entry, "providerInstances") || storedProviderInstances === undefined
         ? {}
         : { providerInstances: storedProviderInstances }),
@@ -383,6 +395,7 @@ export function applyServerSettingsPatch(
     storageCleanup: storageCleanupPatch,
     // Merged per entry below; its `null` removals must not reach deepMerge.
     usageLimitSources: usageLimitSourcesPatch,
+    secretProviders: secretProvidersPatch,
     sourceControlHosts: sourceControlHostsPatch,
     usagePriceOverrides: usagePriceOverridesPatch,
     providerAuthMethods: providerAuthMethodsPatch,
@@ -624,6 +637,9 @@ export function applyServerSettingsPatch(
             providerAuthMethodsPatch,
           ),
         }
+      : {}),
+    ...(secretProvidersPatch !== undefined
+      ? { secretProviders: mergeSettingsEntries(current.secretProviders, secretProvidersPatch) }
       : {}),
     ...(usagePriceOverridesPatch !== undefined
       ? {

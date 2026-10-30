@@ -1,7 +1,12 @@
-import type { BrowserLinkTarget, ScopedThreadRef } from "@t3tools/contracts";
+import {
+  AuthPreviewOperateScope,
+  type BrowserLinkTarget,
+  type ScopedThreadRef,
+} from "@t3tools/contracts";
 
 import { ensureClientSettingsHydrated, getClientSettings } from "~/hooks/useSettings";
 import { isQuickMessageWindow } from "~/components/quickMessage/quickMessageWindow";
+import { readEnvironmentScope } from "~/state/session";
 import { isPreviewAvailableFor } from "./previewRuntime";
 
 export interface ResolveLinkTargetInput {
@@ -41,5 +46,9 @@ export async function resolveBrowserLinkTargetPreference(): Promise<BrowserLinkT
 export function canOpenLinksInApp(threadRef: ScopedThreadRef | null | undefined): boolean {
   // The quick message panel has no preview surface, and its pickers run without a real thread.
   if (isQuickMessageWindow) return false;
-  return threadRef != null && isPreviewAvailableFor(threadRef.environmentId);
+  return (
+    threadRef != null &&
+    readEnvironmentScope(threadRef.environmentId, AuthPreviewOperateScope) &&
+    isPreviewAvailableFor(threadRef.environmentId)
+  );
 }

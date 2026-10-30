@@ -90,11 +90,11 @@ export function useThreadActionMenu(input: {
   readonly threadRef: ScopedThreadRef | null;
   readonly projectCwd: string | null;
   readonly onStartRename: () => void;
-  /** True when the thread's environment serves chat tabs, which adds "New tab". */
+  readonly onFind?: ((threadRef: ScopedThreadRef) => void) | undefined;
   readonly canShareWithGuest: boolean;
   readonly tabsSupported: boolean;
 }) {
-  const { threadRef, projectCwd, onStartRename, tabsSupported, canShareWithGuest } = input;
+  const { threadRef, projectCwd, onStartRename, tabsSupported, onFind, canShareWithGuest } = input;
   const { createTab } = useThreadTabActions();
   const router = useRouter();
   const projects = useProjects();
@@ -173,6 +173,7 @@ export function useThreadActionMenu(input: {
       const snoozePresets = resolveSnoozePresets(now, timestampFormat, threadRef.environmentId);
       const items = buildThreadActionMenuItems({
         canOperate: readEnvironmentScope(threadRef.environmentId, AuthOrchestrationOperateScope),
+        canFind: onFind !== undefined,
         branch: thread.branch ?? null,
         projectFilter: null,
         // Closing tabs belongs to the tab crumb; this menu acts on the group's root thread.
@@ -270,6 +271,9 @@ export function useThreadActionMenu(input: {
       switch (action) {
         case "new-tab":
           await createTab(threadRef, thread.modelSelection);
+          return;
+        case "find":
+          onFind?.(threadRef);
           return;
         case "project-settings": {
           const project = projects.find(
