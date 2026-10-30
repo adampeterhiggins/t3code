@@ -132,13 +132,14 @@ const linkedObjectPreview = { details: "popover", Body: LinkedObjectDetails } as
 
 /** A pull request summary previews as its pull request; other review comments as the comment. */
 function ReviewCommentHover(props: ContextPreviewHoverProps<ReviewCommentPreviewProps>) {
-  const { comment, environmentId } = props.preview;
+  const { comment, environmentId, threadRef } = props.preview;
   if (isPullRequestSummaryContext(comment) && comment.pullRequest !== undefined) {
     return (
       <PullRequestSummaryHover
         trigger={props.trigger}
         metadata={comment.pullRequest}
         environmentId={environmentId}
+        threadRef={threadRef}
       />
     );
   }

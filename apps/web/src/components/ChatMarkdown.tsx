@@ -1004,6 +1004,7 @@ function useChatMarkdownState({
     linkedThreadPullRequestFor,
     resolveThreadPullRequest,
     resolvedTheme,
+    pullRequestPanelRef,
     pullRequestsEnabled,
     threadPullRequestsEnabled,
     skills,
@@ -1335,6 +1336,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
       projects,
       linkedThreadPullRequestFor,
       resolveThreadPullRequest,
+      pullRequestPanelRef,
       pullRequestsEnabled,
       threadPullRequestsEnabled,
       updateThreadPullRequestLink,
@@ -1579,6 +1581,8 @@ const CHAT_MARKDOWN_COMPONENTS = {
             originalUrl={href}
             target={pullRequestPreviewTarget}
             confirmBeforeOpen={confirmBeforeOpen}
+            threadRef={threadRef}
+            panelRef={pullRequestPanelRef}
             fallback={
               issueLinkPullRequestUrl !== null &&
               environmentId !== null &&
