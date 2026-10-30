@@ -86,11 +86,13 @@ describe("TextGeneration.make", () => {
           makeStubRegistry([instance]),
         ),
         Effect.provide(
-          Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({
-            resolveLink: () => Effect.die("Supplied context must not be fetched again"),
-          }),
+          Layer.mergeAll(
+            Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({
+              resolveLink: () => Effect.die("Supplied context must not be fetched again"),
+            }),
+            ServerSettings.layerTest(),
+          ),
         ),
-        Effect.provide(ServerSettings.layerTest()),
       );
       yield* generation.generateThreadTitle({
         cwd: process.cwd(),
@@ -131,11 +133,13 @@ describe("TextGeneration.make", () => {
           makeStubRegistry([personal, work]),
         ),
         Effect.provide(
-          Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({
-            resolveLink: () => Effect.die("No link lookup expected"),
-          }),
+          Layer.mergeAll(
+            Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({
+              resolveLink: () => Effect.die("No link lookup expected"),
+            }),
+            ServerSettings.layerTest(),
+          ),
         ),
-        Effect.provide(ServerSettings.layerTest()),
       );
 
       const result = yield* tg.generateBranchName({
@@ -157,11 +161,13 @@ describe("TextGeneration.make", () => {
           makeStubRegistry([]),
         ),
         Effect.provide(
-          Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({
-            resolveLink: () => Effect.die("No link lookup expected"),
-          }),
+          Layer.mergeAll(
+            Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({
+              resolveLink: () => Effect.die("No link lookup expected"),
+            }),
+            ServerSettings.layerTest(),
+          ),
         ),
-        Effect.provide(ServerSettings.layerTest()),
       );
 
       const result = yield* tg

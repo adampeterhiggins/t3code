@@ -371,7 +371,7 @@ export function ScheduledTasksSettings(target: {
       ? { environmentId: pendingDraft.environmentId, task: null, seed: pendingDraft.seed }
       : null,
   );
-  // The form owns the prefill once open; clearing it keeps a later visit from reopening it.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Consume the external pending-draft atom after the mounted editor takes ownership.
   useEffect(() => {
     if (pendingDraft) setPendingScheduledTaskDraft(null);
   }, [pendingDraft]);
