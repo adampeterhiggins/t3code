@@ -2441,3 +2441,10 @@ an arbitrary `.js` or `.css` file, such as one holding secrets, off the host.
 Code: [HtmlRender.ts](../apps/server/src/htmlRender/HtmlRender.ts) and
 [render-mock.ts](../apps/web/scripts/render-mock.ts). Agent guide:
 [mock-t3-feature](../.agents/skills/mock-t3-feature/SKILL.md).
+
+## Citation and context chip appearance
+
+Web and desktop retain compact, rounded chips with a border and tinted background for
+citations, file references, and other context attachments in messages and the composer.
+The shared [ContextChip](../apps/web/src/components/ContextChip.tsx) keeps these references
+visually distinct from surrounding prose.

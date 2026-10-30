@@ -6,12 +6,13 @@ import type * as React from "react";
 import { cn } from "~/lib/utils";
 
 const contextChipVariants = cva(
-  "inline-flex max-w-full items-center gap-[0.2em] font-medium leading-[normal] text-(--context-chip-ink) [--context-chip-ink:var(--context-chip-accent)] [--document-icon-stroke:var(--context-chip-ink)] [&_svg]:block [&_svg]:size-[1em] [&_svg]:shrink-0 [&_svg]:self-center [button&,a&,[data-popup-open]&]:cursor-pointer focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current rounded-sm disabled:cursor-default",
+  "inline-flex max-w-full items-center gap-[0.33em] rounded-lg border border-(--context-chip-border) bg-(--context-chip-accent)/11 px-1.5 font-medium leading-[normal] text-(--context-chip-ink) [--context-chip-border:color-mix(in_oklab,var(--context-chip-accent)_34%,var(--contrast-border))] [--context-chip-ink:color-mix(in_oklab,var(--context-chip-accent)_22%,var(--contrast-foreground))] [--document-icon-stroke:var(--context-chip-ink)] [&_svg]:block [&_svg]:size-[1em] [&_svg]:shrink-0 [&_svg]:self-center [button&,a&,[data-popup-open]&]:cursor-pointer [button&,a&]:transition-colors [button&,a&]:motion-reduce:transition-none [button:enabled&,a&]:hover:border-(--context-chip-accent)/48 [button:enabled&,a&]:hover:bg-(--context-chip-accent)/17 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current disabled:cursor-default",
   {
     defaultVariants: { kind: "neutral" },
     variants: {
       kind: {
-        neutral: "[--context-chip-accent:currentColor]",
+        neutral:
+          "[--context-chip-accent:currentColor] border-border/70 bg-accent/40 text-foreground",
         image: "[--context-chip-accent:var(--context-chip-image)]",
         video: "[--context-chip-accent:oklch(0.62_0.16_48)]",
         file: "[--context-chip-accent:oklch(0.62_0.136_237)]",
@@ -113,7 +114,7 @@ function ContextChipLabel({ className, ...props }: React.ComponentProps<"span">)
   return (
     <span
       className={cn(
-        "block min-w-0 self-baseline overflow-x-clip text-ellipsis whitespace-nowrap underline decoration-transparent decoration-1 underline-offset-[0.2em] transition-colors motion-reduce:transition-none [:is(button:enabled,a):hover>&]:decoration-current",
+        "block min-w-0 self-baseline overflow-x-clip text-ellipsis whitespace-nowrap",
         className,
       )}
       data-slot="context-chip-label"
