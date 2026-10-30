@@ -717,7 +717,7 @@ function withReplayRequestId(
   entry: CodexReplay.CodexAppServerReplayEntry,
   id: number,
 ): CodexReplay.CodexAppServerReplayEntry {
-  return entry.type !== "runtime_exit" && Predicate.isObject(entry.frame)
+  return entry.type !== "runtime_exit" && Predicate.isObject(entry.frame) && "id" in entry.frame
     ? { ...entry, frame: { ...entry.frame, id } }
     : entry;
 }
@@ -1159,7 +1159,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
         runtimePolicy: CODEX_TEST_RUNTIME_POLICY,
       });
       const events: Array<ProviderAdapter.ProviderAdapterV2Event> = [];
-      const firstTerminal = yield* Deferred.make<void>();
+      const firstTerminal = yield* Deferred.make<void, ProviderAdapter.ProviderAdapterV2Error>();
       yield* runtime.events.pipe(
         Stream.runForEach((event) =>
           Effect.sync(() => {
@@ -1174,6 +1174,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
             Effect.andThen(onEvent(event)),
           ),
         ),
+        Effect.catchCause((cause) => Deferred.failCause(firstTerminal, cause)),
         Effect.forkScoped,
       );
       if (runtime.hasPendingBackgroundWork === undefined) {
