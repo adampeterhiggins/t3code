@@ -271,8 +271,8 @@ export function useOpenChangeRequestLink(
   };
 }
 
-export function useOpenPrLink(threadRef?: ScopedThreadRef) {
-  const openChangeRequest = useOpenChangeRequestLink(threadRef);
+export function useOpenPrLink(threadRef?: ScopedThreadRef, panelRef?: ScopedThreadRef) {
+  const openChangeRequest = useOpenChangeRequestLink(threadRef, panelRef);
   const openLink = useOpenLink(threadRef);
   return (event: MouseEvent<HTMLElement>, prUrl: string, targetThreadRef?: ScopedThreadRef) => {
     if (event.button > 1) return false;

@@ -1,4 +1,8 @@
-import type { EnvironmentId, PullRequestContextMetadata } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  PullRequestContextMetadata,
+  ScopedThreadRef,
+} from "@t3tools/contracts";
 import { CircleDashedIcon, FilmIcon, ImageIcon } from "lucide-react";
 import {
   useRef,
@@ -243,6 +247,7 @@ export function PullRequestSummaryHover(props: {
   trigger: ReactElement<ComponentProps<"button">>;
   metadata: PullRequestContextMetadata;
   environmentId: EnvironmentId | null;
+  threadRef?: ScopedThreadRef | undefined;
 }) {
   const previewTarget = usePullRequestPreviewTarget(props.environmentId, props.metadata.url);
   if (previewTarget !== null) {
@@ -252,6 +257,7 @@ export function PullRequestSummaryHover(props: {
         originalUrl={props.metadata.url}
         target={previewTarget}
         confirmBeforeOpen={false}
+        threadRef={props.threadRef}
         fallback={<PullRequestContextDetails metadata={props.metadata} />}
       />
     );

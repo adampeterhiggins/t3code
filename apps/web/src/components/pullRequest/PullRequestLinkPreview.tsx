@@ -1,6 +1,11 @@
 import type { PreviewCard as PreviewCardPrimitive } from "@base-ui/react/preview-card";
 import { isAtomCommandInterrupted } from "@t3tools/client-runtime/state/runtime";
-import type { EnvironmentId, PullRequestActor, PullRequestRef } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  PullRequestActor,
+  PullRequestRef,
+  ScopedThreadRef,
+} from "@t3tools/contracts";
 import {
   cloneElement,
   useRef,
@@ -11,9 +16,8 @@ import {
   type ReactNode,
 } from "react";
 
-import { useLinkClickHandler } from "~/browser/useOpenLink";
-
 import { RelativeTime } from "~/components/RelativeTime";
+import { useOpenPrLink } from "~/lib/openPullRequestLink";
 import { pullRequestEnvironment } from "~/state/pullRequests";
 import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
 import { useEnvironmentQuery } from "~/state/query";
@@ -56,6 +60,8 @@ export function PullRequestLinkPreview({
   originalUrl,
   target,
   confirmBeforeOpen,
+  threadRef,
+  panelRef,
   onOpenPullRequest,
   onOpenFallback,
   fallback,
@@ -64,6 +70,8 @@ export function PullRequestLinkPreview({
   originalUrl: string;
   target: PullRequestLinkPreviewTarget;
   confirmBeforeOpen?: boolean;
+  threadRef?: ScopedThreadRef | undefined;
+  panelRef?: ScopedThreadRef | undefined;
   onOpenPullRequest?: (url: string) => boolean;
   onOpenFallback?: (url: string) => Promise<void>;
   fallback?: ReactNode;
@@ -72,7 +80,7 @@ export function PullRequestLinkPreview({
   const cursorAnchor = useCursorAnchor();
   const previewActionsRef = useRef<PreviewCardPrimitive.Root.Actions | null>(null);
   const [resolvingClick, setResolvingClick] = useState(false);
-  const openLink = useLinkClickHandler(null);
+  const openPrLink = useOpenPrLink(threadRef, panelRef);
   const previewQuery = useEnvironmentQuery(
     open
       ? pullRequestEnvironment.previewCard({
@@ -171,7 +179,11 @@ export function PullRequestLinkPreview({
                     target="_blank"
                     rel="noreferrer"
                     className="ml-auto shrink-0 pl-2 underline-offset-2 hover:text-foreground hover:underline"
-                    onClick={(event) => openLink(event, linkedComment?.comment.url ?? preview.url)}
+                    onClick={(event) => {
+                      if (openPrLink(event, linkedComment?.comment.url ?? preview.url)) {
+                        setOpen(false);
+                      }
+                    }}
                   >
                     Open
                   </a>
