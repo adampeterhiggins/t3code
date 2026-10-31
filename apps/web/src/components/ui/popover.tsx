@@ -3,6 +3,8 @@ import { useRef } from "react";
 
 import { cn } from "~/lib/utils";
 
+import { renderClosingPositioner } from "./closing-positioner";
+
 const PopoverCreateHandle = PopoverPrimitive.createHandle;
 
 const Popover = PopoverPrimitive.Root;
@@ -102,6 +104,7 @@ function PopoverPopup({
         )}
         data-slot="popover-positioner"
         ref={positionerRef}
+        render={renderClosingPositioner}
         side={side}
         sideOffset={sideOffset}
       >

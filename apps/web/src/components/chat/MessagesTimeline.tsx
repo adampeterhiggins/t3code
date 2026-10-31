@@ -55,7 +55,14 @@ import {
 import { type PendingApproval, type TimelineEntry } from "../../session-logic";
 import type { CodexArtifactTemplate } from "@t3tools/shared/codexArtifactTemplates";
 import { type ChatFileAttachment, type TurnDiffSummary } from "../../types";
-import { ArrowRightIcon, AtSignIcon, BotIcon, FolderGit2Icon, Minimize2Icon } from "lucide-react";
+import {
+  ArrowRightIcon,
+  AtSignIcon,
+  BotIcon,
+  FolderGit2Icon,
+  MessagesSquareIcon,
+  Minimize2Icon,
+} from "lucide-react";
 import {
   isWorkspaceChangeNotice,
   WORKSPACE_CHANGED_NOTICE_TITLE,
@@ -272,14 +279,19 @@ interface MessagesTimelineProps {
   onOpenThread: (threadId: OrchestrationV2TurnItem["threadId"]) => void;
   renderHtmlRender?: TimelineRowSharedState["renderHtmlRender"];
   turnItemSource?: TimelineRowSharedState["turnItemSource"];
-  /** The thread this one is a subagent of; `open` is absent when it cannot be opened from here. */
+  /**
+   * The thread this one is a subagent or side chat of; `open` is absent when it cannot be
+   * opened from here.
+   */
   parentThreadLink?: {
     readonly title: string;
-    readonly threadId: ThreadId;
+    readonly threadId?: ThreadId;
     /** Fork: this subagent thread's `@handle` among its parent's agents. */
     readonly handle?: string | null;
     /** Fork: attaches this agent to the parent's chat and opens the parent. */
     readonly onAttach?: (() => void) | null;
+    /** A side chat's inherited rows collapse into this link. */
+    readonly sideChat?: boolean;
     /** Where it runs, when that is another environment. */
     readonly environmentLabel?: string;
     readonly open?: () => void;
@@ -1164,15 +1176,20 @@ const ConversationTimeline = memo(function ConversationTimeline({
       <div className="messages-timeline-row-frame">
         <div className="chat-content-lane pt-1 sm:pt-2">
           <TimelineSystemDivider
-            label="Subagent of"
+            label={parentThreadLink.sideChat ? "Context from" : "Subagent of"}
             detail={
               parentThreadLink.environmentLabel === undefined
                 ? parentThreadLink.title
                 : `${parentThreadLink.title} on ${parentThreadLink.environmentLabel}`
             }
-            icon={BotIcon}
+            icon={parentThreadLink.sideChat ? MessagesSquareIcon : BotIcon}
             actionLabel="Open parent thread"
-            onAction={() => onOpenThread(parentThreadLink.threadId)}
+            {...(parentThreadLink.open || parentThreadLink.threadId
+              ? {
+                  onAction:
+                    parentThreadLink.open ?? (() => onOpenThread(parentThreadLink.threadId!)),
+                }
+              : {})}
             trailing={
               (parentThreadLink.handle ?? null) === null ? null : (
                 <span className="flex shrink-0 items-center gap-1">
@@ -1550,16 +1567,18 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
           ? undefined
           : row.kind === "turn-fold" || row.kind === "working"
             ? "pb-1.5"
-            : (row.kind === "message" &&
-                  row.message.role === "assistant" &&
-                  !row.showAssistantMeta) ||
-                row.kind === "worktree-setup" ||
-                row.kind === "event" ||
-                row.kind === "attempt-fold" ||
-                row.kind === "html-render" ||
-                row.kind === "mcp-app"
-              ? "pb-2"
-              : "pb-4",
+            : row.kind === "message" && row.groupedWithNext
+              ? "pb-1"
+              : (row.kind === "message" &&
+                    row.message.role === "assistant" &&
+                    !row.showAssistantMeta) ||
+                  row.kind === "worktree-setup" ||
+                  row.kind === "event" ||
+                  row.kind === "attempt-fold" ||
+                  row.kind === "html-render" ||
+                  row.kind === "mcp-app"
+                ? "pb-2"
+                : "pb-4",
         (row.kind === "message" && row.message.role === "assistant") ||
           row.kind === "assistant-meta"
           ? "group/assistant"

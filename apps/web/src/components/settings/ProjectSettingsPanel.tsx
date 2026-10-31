@@ -50,7 +50,12 @@ import {
 import { ConductorSettings } from "./ConductorSettings";
 import { ProjectActionsSettings } from "./ProjectActionsSettings";
 import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
-import { projectGroupTitleNeedsUpdate } from "./ProjectSettingsPanel.logic";
+import {
+  defaultProjectIcon,
+  hasDefaultProjectIcon,
+  projectGroupTitleNeedsUpdate,
+  SCRATCH_PROJECT_TITLE,
+} from "./ProjectSettingsPanel.logic";
 import { useSettingsProjectGroups } from "./useSettingsProjectGroups";
 import { readUnloadedThreadCount } from "../../state/olderSettledShelf";
 import { settingsScopeEnvironmentLabels } from "./settingsScopeAxis";
@@ -204,6 +209,12 @@ export function ProjectSettingsPanel({
   );
 }
 
+type ProjectIdentityUpdate = Partial<{
+  title: string;
+  faviconPath: string | null;
+  projectIcon: ProjectIconOverride | null;
+}>;
+
 function ProjectDetail({
   group,
   hasOtherMembers,
@@ -278,11 +289,7 @@ function ProjectDetail({
   };
 
   const updateAllMembers = async (
-    input: Partial<{
-      title: string;
-      faviconPath: string | null;
-      projectIcon: ProjectIconOverride | null;
-    }>,
+    input: ProjectIdentityUpdate | ((member: SidebarProjectGroupMember) => ProjectIdentityUpdate),
     failureTitle: string,
   ): Promise<AtomCommandResult<void, unknown>> => {
     const denied = checkProjectAccess(group.memberProjects, failureTitle);
@@ -305,7 +312,10 @@ function ProjectDetail({
       const result = mapAtomCommandResult(
         await updateProject({
           environmentId: member.environmentId,
-          input: { projectId: member.id, ...input },
+          input: {
+            projectId: member.id,
+            ...(typeof input === "function" ? input(member) : input),
+          },
         }),
         () => undefined,
       );
@@ -344,10 +354,7 @@ function ProjectDetail({
   const [iconPickerOpen, setIconPickerOpen] = useComposerMenuState(!canEditGroup);
   const [isSavingFavicon, setIsSavingFavicon] = useState(false);
   const savingFaviconRef = useRef(false);
-  const setProjectIcon = async (input: {
-    faviconPath: string | null;
-    projectIcon: ProjectIconOverride | null;
-  }) => {
+  const setProjectIcon = async (input: Parameters<typeof updateAllMembers>[0]) => {
     if (savingFaviconRef.current) return;
     savingFaviconRef.current = true;
     setIsSavingFavicon(true);
@@ -357,6 +364,9 @@ function ProjectDetail({
   };
 
   const hasMultipleCheckouts = group.memberProjects.length > 1;
+  const canResetScratchTitle =
+    group.memberProjects.every((member) => member.isScratch) &&
+    group.memberProjects.some((member) => member.title !== SCRATCH_PROJECT_TITLE);
 
   const removeMembers = async (members: ReadonlyArray<SidebarProjectGroupMember>) => {
     if (checkProjectAccess(members, "Failed to remove project")) return;
@@ -524,6 +534,20 @@ function ProjectDetail({
           <SettingsRow
             title="Name"
             description="The shared name for this project group in the sidebar and thread lists."
+            resetAction={
+              canResetScratchTitle ? (
+                <SettingResetButton
+                  label="project name"
+                  disabled={!canEditGroup}
+                  onClick={() =>
+                    void updateAllMembers(
+                      { title: SCRATCH_PROJECT_TITLE },
+                      "Failed to rename project",
+                    )
+                  }
+                />
+              ) : null
+            }
             control={
               <Input
                 key={`${group.projectKey}:${group.displayName}`}
@@ -558,13 +582,11 @@ function ProjectDetail({
                     : (faviconPath ?? "Automatic")
             }
             resetAction={
-              group.memberProjects.some(
-                (member) => member.faviconPath != null || member.projectIcon != null,
-              ) ? (
+              group.memberProjects.some((member) => !hasDefaultProjectIcon(member)) ? (
                 <SettingResetButton
                   label="project icon"
                   disabled={isSavingFavicon || !canEditGroup}
-                  onClick={() => void setProjectIcon({ faviconPath: null, projectIcon: null })}
+                  onClick={() => void setProjectIcon(defaultProjectIcon)}
                 />
               ) : null
             }

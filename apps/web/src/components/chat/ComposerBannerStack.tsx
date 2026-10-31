@@ -89,6 +89,7 @@ function NoticeDetails({
     </Popover>
   );
 }
+const SUBPIXEL_ROUNDING = 0.001;
 
 export function NoticeText({
   children,
@@ -100,30 +101,56 @@ export function NoticeText({
   readonly detailsLabel: string;
 }) {
   const textRef = useRef<HTMLSpanElement>(null);
-  const [showDetails, setShowDetails] = useState(false);
+  const detailsRef = useRef<HTMLButtonElement>(null);
+  const [detailsAtWidth, setDetailsAtWidth] = useState<number | null>(null);
+  const showDetails = detailsAtWidth !== null;
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- measures text overflow in the DOM via ResizeObserver and MutationObserver to show the details button
   useLayoutEffect(() => {
     const text = textRef.current;
     if (!text) return;
+    const banner = text.closest("[data-slot=composer-banner]");
+    const range = document.createRange();
     const measure = () => {
-      const style = getComputedStyle(text);
-      // A narrow composer pulls the description out of the line entirely.
-      const hidden = style.position === "absolute";
-      // Padding holds the out-of-flow details button. It is inside the text, so
-      // subtract it or the button would count as overflow and never leave.
-      const reserved = Number.parseFloat(style.paddingInlineEnd) || 0;
-      setShowDetails(
+      // Ignore the space taken by the details button itself so it cannot
+      // sustain its own overflow after the text would otherwise fit.
+      const recoveredWidth = detailsRef.current ? detailsRef.current.offsetWidth + 4 : 0;
+      const hidden = getComputedStyle(text).position === "absolute";
+      const overflowing =
         hidden ||
-          [text, ...text.querySelectorAll("*")].some(
-            (element) =>
-              element.scrollWidth > element.clientWidth + (element === text ? reserved : 0),
-          ),
+        [text, ...text.querySelectorAll("*")].some((element) => {
+          // A range spans laid-out content only; scrollWidth also counts positioned layers
+          // such as a link's touch hit area, which overflow without cutting any text.
+          // The two rects can disagree by float rounding (~0.00001px on phones); real
+          // overflow is at least one layout unit, 1/64 of a device pixel.
+          range.selectNodeContents(element);
+          return (
+            range.getBoundingClientRect().width >
+            element.getBoundingClientRect().width + recoveredWidth + SUBPIXEL_ROUNDING
+          );
+        });
+      // The button's width can wrap the banner's actions onto a second row, which gives
+      // the text room and removes the button, which unwraps the row again. Once shown,
+      // the button stays until the banner itself gets wider than where it appeared.
+      const width = banner?.clientWidth ?? text.clientWidth;
+      setDetailsAtWidth((shownAt) =>
+        overflowing
+          ? (shownAt ?? width)
+          : banner && shownAt !== null && width <= shownAt
+            ? shownAt
+            : null,
       );
     };
     measure();
-    const stopObserving = observeResize(text, measure);
-    const mutations = new MutationObserver(measure);
+    const stopObserving = observeResize([text, banner ?? text], measure);
+    let content = text.textContent;
+    const mutations = new MutationObserver(() => {
+      if (text.textContent !== content) {
+        content = text.textContent;
+        setDetailsAtWidth(null);
+      }
+      measure();
+    });
     mutations.observe(text, { childList: true, subtree: true, characterData: true });
     return () => {
       stopObserving();
@@ -208,7 +235,7 @@ function NoticeCard({
           ) : null}
         </ComposerBanner.Content>
         {item.actions || item.onDismiss ? (
-          <ComposerBanner.Actions>
+          <ComposerBanner.Actions className="min-w-14 sm:min-w-12">
             {item.actions}
             {item.onDismiss ? (
               <ComposerBanner.Dismiss
