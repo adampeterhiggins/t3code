@@ -8,6 +8,8 @@ import { mixThemePreviewBase, THEME_PREVIEW_RENDER_SPECS } from "@t3tools/shared
 import { SymbolView } from "../../../../components/ui/AppSymbol";
 import { AppText as Text } from "../../../../components/ui/AppText";
 import {
+  environmentMobileThemeId,
+  environmentThemeAppearances,
   getMobileThemePreviewColors,
   MOBILE_THEME_OPTIONS,
   type MobileThemeAppearance,
@@ -38,12 +40,12 @@ const PreviewOrb = memo(function PreviewOrb(props: {
   const idPrefix = useId().replaceAll(":", "");
   const accentGradientId = `${idPrefix}-accent-glow`;
   const actionGradientId = `${idPrefix}-action-glow`;
-  const { systemColorPalettes } = useAppearancePreferences();
+  const { systemColorPalettes, environmentThemes } = useAppearancePreferences();
   const palette = systemColorPalettes?.[props.appearance];
   const colors =
     props.themeId === "material-you" && palette
       ? { canvas: palette.surface, accent: palette.primary, messageAction: palette.tertiary }
-      : getMobileThemePreviewColors(props.themeId, props.appearance);
+      : getMobileThemePreviewColors(props.themeId, props.appearance, environmentThemes);
   const spec = THEME_PREVIEW_RENDER_SPECS[props.appearance];
   const accentRadius = Math.hypot(
     Math.max(spec.accent.center[0], 1 - spec.accent.center[0]),
@@ -113,7 +115,10 @@ const PreviewOrb = memo(function PreviewOrb(props: {
   );
 });
 
+const BOTH_APPEARANCES: ReadonlyArray<MobileThemeAppearance> = ["light", "dark"];
+
 function ThemeCard(props: {
+  readonly appearances?: ReadonlyArray<MobileThemeAppearance>;
   readonly disabled: boolean;
   readonly darkSelected: boolean;
   readonly label: string;
@@ -122,6 +127,7 @@ function ThemeCard(props: {
   readonly onSelect: (appearance: MobileThemeAppearance) => void;
   readonly themeId: MobileThemeId;
 }) {
+  const appearances = props.appearances ?? BOTH_APPEARANCES;
   const choice = (appearance: MobileThemeAppearance, selected: boolean) => (
     <Pressable
       accessibilityHint={`Sets the ${appearance} appearance only`}
@@ -153,20 +159,26 @@ function ThemeCard(props: {
   return (
     <View className="min-w-36 flex-1 basis-[47%] gap-3 rounded-[24px] border border-border bg-grouped-card px-2 py-4">
       <Pressable
-        accessibilityHint="Sets both light and dark appearances"
+        accessibilityHint={
+          appearances.length === 1
+            ? `Sets the ${appearances[0]} appearance only`
+            : "Sets both light and dark appearances"
+        }
         accessibilityLabel={`${props.label} theme`}
         accessibilityRole="button"
         accessibilityState={{
           disabled: props.disabled,
-          selected: props.lightSelected && props.darkSelected,
+          selected:
+            (props.lightSelected || !appearances.includes("light")) &&
+            (props.darkSelected || !appearances.includes("dark")),
         }}
         className="absolute inset-0 rounded-[24px] active:bg-subtle"
         disabled={props.disabled}
         onPress={props.onSelectBoth}
       />
       <View className="flex-row items-center justify-center gap-2 py-1" pointerEvents="box-none">
-        {choice("light", props.lightSelected)}
-        {choice("dark", props.darkSelected)}
+        {appearances.includes("light") ? choice("light", props.lightSelected) : null}
+        {appearances.includes("dark") ? choice("dark", props.darkSelected) : null}
       </View>
       <Text
         className="min-w-0 flex-1 px-1 text-lg font-t3-medium"
@@ -293,6 +305,7 @@ export function ThemeAppearanceSection() {
     themeIds,
     themeMode,
     systemColorsAvailable,
+    environmentThemes,
   } = useAppearancePreferences();
 
   return (
@@ -331,6 +344,27 @@ export function ThemeAppearanceSection() {
               themeId={theme.id}
             />
           ))}
+          {environmentThemes.map((theme) => {
+            const themeId = environmentMobileThemeId(theme.id);
+            const appearances = environmentThemeAppearances(theme);
+            return (
+              <ThemeCard
+                appearances={appearances}
+                disabled={!isReady}
+                key={themeId}
+                label={theme.name}
+                darkSelected={themeId === themeIds.dark}
+                lightSelected={themeId === themeIds.light}
+                onSelect={(appearance) => setThemeIdForAppearance(appearance, themeId)}
+                onSelectBoth={() =>
+                  appearances.length === 1
+                    ? setThemeIdForAppearance(appearances[0]!, themeId)
+                    : setThemeIdForBothAppearances(themeId)
+                }
+                themeId={themeId}
+              />
+            );
+          })}
         </View>
       </View>
     </View>

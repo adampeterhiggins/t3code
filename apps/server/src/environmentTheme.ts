@@ -6,8 +6,11 @@ import {
   EnvironmentTheme,
   EnvironmentThemeFile,
   EnvironmentThemeId,
+  EnvironmentThemePublishError,
+  type EnvironmentThemePublishInput,
   environmentThemeFileHasColors,
 } from "@t3tools/contracts";
+import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
 import { UNPUBLISHABLE_THEME_IDS } from "@t3tools/shared/themePalettes";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
@@ -17,6 +20,7 @@ import * as Equal from "effect/Equal";
 import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
@@ -27,6 +31,9 @@ import * as Stream from "effect/Stream";
 import * as ServerConfig from "./config.ts";
 
 const decodeEnvironmentThemeFileJsonExit = Schema.decodeUnknownExit(
+  Schema.fromJsonString(EnvironmentThemeFile),
+);
+const encodeEnvironmentThemeFileJson = Schema.encodeSync(
   Schema.fromJsonString(EnvironmentThemeFile),
 );
 const isEnvironmentThemeId = Schema.is(EnvironmentThemeId);
@@ -50,6 +57,14 @@ export class EnvironmentThemeService extends Context.Service<
 
     /** Subscribes before reading to retain changes during connection. */
     readonly streamChanges: Stream.Stream<ReadonlyArray<EnvironmentTheme>>;
+
+    /** Writes the file the watcher reads, so every connected client receives it. */
+    readonly publish: (
+      input: EnvironmentThemePublishInput,
+    ) => Effect.Effect<void, EnvironmentThemePublishError>;
+    readonly unpublish: (
+      id: EnvironmentThemeId,
+    ) => Effect.Effect<void, EnvironmentThemePublishError>;
   }
 >()("t3/environmentTheme/EnvironmentThemeService") {}
 
@@ -155,6 +170,7 @@ export const readPublishedThemes = Effect.fn(function* (themesDir: string) {
 const make = Effect.gen(function* () {
   const { environmentThemesDir } = yield* ServerConfig.ServerConfig;
   const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
   // Sequence numbers let subscribers drop queued events older than their initial snapshot.
   const changes = yield* PubSub.sliding<PublishedThemes>(1);
   const published = yield* Ref.make<PublishedThemes>({ seq: 0, themes: [] });
@@ -196,7 +212,51 @@ const make = Effect.gen(function* () {
     Effect.asVoid,
   );
 
+  const themePath = (id: EnvironmentThemeId) => path.join(environmentThemesDir, `${id}.json`);
+  const writeFailed = (cause: unknown) =>
+    new EnvironmentThemePublishError({ reason: "write-failed", cause });
+
+  const publish = Effect.fn("EnvironmentThemeService.publish")(function* (
+    input: EnvironmentThemePublishInput,
+  ) {
+    if (UNPUBLISHABLE_THEME_IDS.has(input.id)) {
+      return yield* new EnvironmentThemePublishError({ reason: "reserved-id" });
+    }
+    if (!environmentThemeFileHasColors(input.theme)) {
+      return yield* new EnvironmentThemePublishError({ reason: "colorless" });
+    }
+    const contents = `${encodeEnvironmentThemeFileJson(input.theme)}\n`;
+    if (Buffer.byteLength(contents) > MAX_THEME_FILE_BYTES) {
+      return yield* new EnvironmentThemePublishError({ reason: "too-large" });
+    }
+    const { themes } = yield* refresh;
+    if (themes.length >= MAX_THEME_FILES && !themes.some((theme) => theme.id === input.id)) {
+      return yield* new EnvironmentThemePublishError({ reason: "too-many" });
+    }
+    yield* writeFileStringAtomically({ filePath: themePath(input.id), contents }).pipe(
+      Effect.provideService(FileSystem.FileSystem, fs),
+      Effect.provideService(Path.Path, path),
+      Effect.mapError(writeFailed),
+    );
+    yield* refresh;
+  });
+
+  const unpublish = Effect.fn("EnvironmentThemeService.unpublish")(function* (
+    id: EnvironmentThemeId,
+  ) {
+    yield* fs.remove(themePath(id)).pipe(
+      Effect.catchIf(
+        (error) => error.reason._tag === "NotFound",
+        () => Effect.void,
+      ),
+      Effect.mapError(writeFailed),
+    );
+    yield* refresh;
+  });
+
   return {
+    publish,
+    unpublish,
     current: Effect.map(refresh, (state) => state.themes),
     get streamChanges() {
       return Stream.unwrap(

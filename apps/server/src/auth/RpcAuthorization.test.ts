@@ -72,6 +72,15 @@ describe("RPC authorization scopes", () => {
     );
   });
 
+  it("lets only settings writers change the themes every client of an environment sees", () => {
+    for (const method of [
+      WS_METHODS.serverPublishEnvironmentTheme,
+      WS_METHODS.serverUnpublishEnvironmentTheme,
+    ]) {
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthSettingsWriteScope);
+    }
+  });
+
   it("separates passive terminal observation from operations that can change a shell", () => {
     for (const method of [WS_METHODS.terminalObserve, WS_METHODS.subscribeTerminalMetadata]) {
       expect(requiredScopeForRpcMethod(method)).toBe(AuthTerminalReadScope);

@@ -1,7 +1,8 @@
 import { HTML_RENDER_DEFAULT_FONTS, htmlRenderTheme } from "@t3tools/shared/htmlRender";
 
 import {
-  DEFAULT_MOBILE_THEME_ID,
+  bundledPaletteThemeId,
+  environmentThemeIdOf,
   getMobileThemeColors,
   nativeColors,
   type MobileThemeAppearance,
@@ -18,12 +19,11 @@ export function mobileHtmlRenderTheme(input: {
   readonly platform: string;
 }) {
   const { variables: v } = input;
-  const palette = getMobileThemeColors(
-    input.themeId === "material-you" ? DEFAULT_MOBILE_THEME_ID : input.themeId,
-    input.appearance,
-  );
+  const palette = getMobileThemeColors(bundledPaletteThemeId(input.themeId), input.appearance);
+  // Runtime palettes exist only as variables, so read their roles back from them.
+  const fromVariables = input.systemColors || environmentThemeIdOf(input.themeId) !== null;
   const colors = nativeColors(
-    input.systemColors
+    fromVariables
       ? {
           ...palette,
           text: v["--color-foreground"],

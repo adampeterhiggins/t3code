@@ -345,6 +345,9 @@ import {
   DeviceShutdownInput,
 } from "./device.ts";
 import {
+  EnvironmentThemePublishError,
+  EnvironmentThemePublishInput,
+  EnvironmentThemeUnpublishInput,
   ServerConfigStreamEvent,
   DesktopUpdateCommitInput,
   OtlpEndpointCheckInput,
@@ -546,6 +549,8 @@ export const WS_METHODS = {
   serverUpsertKeybinding: "server.upsertKeybinding",
   serverRemoveKeybinding: "server.removeKeybinding",
   serverRunStorageCleanup: "server.runStorageCleanup",
+  serverPublishEnvironmentTheme: "server.publishEnvironmentTheme",
+  serverUnpublishEnvironmentTheme: "server.unpublishEnvironmentTheme",
   serverGetStorageCleanupReport: "server.getStorageCleanupReport",
   serverGetDatabaseStorage: "server.getDatabaseStorage",
   peerLinksList: "peerLinks.list",
@@ -831,6 +836,16 @@ const WsServerRunStorageCleanupRpc = Rpc.make(WS_METHODS.serverRunStorageCleanup
   payload: Schema.Struct({}),
   success: StorageCleanupReport,
   error: Schema.Union([ServerSettingsError, EnvironmentAuthorizationError]),
+});
+const WsServerPublishEnvironmentThemeRpc = Rpc.make(WS_METHODS.serverPublishEnvironmentTheme, {
+  payload: EnvironmentThemePublishInput,
+  success: Schema.Void,
+  error: Schema.Union([EnvironmentThemePublishError, EnvironmentAuthorizationError]),
+});
+const WsServerUnpublishEnvironmentThemeRpc = Rpc.make(WS_METHODS.serverUnpublishEnvironmentTheme, {
+  payload: EnvironmentThemeUnpublishInput,
+  success: Schema.Void,
+  error: Schema.Union([EnvironmentThemePublishError, EnvironmentAuthorizationError]),
 });
 const WsServerGetStorageCleanupReportRpc = Rpc.make(WS_METHODS.serverGetStorageCleanupReport, {
   payload: Schema.Struct({}),
@@ -2161,6 +2176,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerUpsertKeybindingRpc,
   WsServerRemoveKeybindingRpc,
   WsServerRunStorageCleanupRpc,
+  WsServerPublishEnvironmentThemeRpc,
+  WsServerUnpublishEnvironmentThemeRpc,
   WsServerGetStorageCleanupReportRpc,
   WsServerGetDatabaseStorageRpc,
   WsServerUpdateSettingsRpc,

@@ -147,6 +147,8 @@ const RPC_AGGREGATES = {
   [WS_METHODS.serverUpsertKeybinding]: "server",
   [WS_METHODS.serverRemoveKeybinding]: "server",
   [WS_METHODS.serverRunStorageCleanup]: "server",
+  [WS_METHODS.serverPublishEnvironmentTheme]: "server",
+  [WS_METHODS.serverUnpublishEnvironmentTheme]: "server",
   [WS_METHODS.serverGetStorageCleanupReport]: "server",
   [WS_METHODS.serverGetDatabaseStorage]: "server",
   [WS_METHODS.peerLinksList]: "peerLinks",
