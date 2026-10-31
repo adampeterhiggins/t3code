@@ -1,3 +1,4 @@
+import { openSideChatTab } from "../../lib/sideChatPane";
 import { useAtomValue } from "@effect/atom-react";
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
 import { ContextPreviewHover, type ContextPreviewPlacement } from "../contextPreviewRegistry";
@@ -367,6 +368,8 @@ function DelegatedFromRow(props: {
 }
 
 export function ThreadRelationshipsPanel(props: {
+  readonly showLineage?: boolean;
+  readonly showSideChats?: boolean;
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
 }) {
@@ -472,7 +475,13 @@ export function ThreadRelationshipsPanel(props: {
     related = [],
     active = [],
     previous = [],
-  } = groupBy(relationshipRows, ({ edge }) => {
+    sideChats = [],
+  } = groupBy(relationshipRows, ({ threadId, edge }) => {
+    if (
+      !isParentThreadRelationship(edge, props.threadId) &&
+      graph.nodes.get(threadId)?.thread?.lineage.sideChat === true
+    )
+      return "sideChats";
     if (edge.kind !== "subagent" || isParentThreadRelationship(edge, props.threadId))
       return "related";
     return ["completed", "failed", "error", "cancelled", "interrupted", "idle"].includes(
@@ -507,7 +516,7 @@ export function ThreadRelationshipsPanel(props: {
   const visibleActive = applyAgentListView(active, agentListView, agentSubject);
   const visiblePrevious = applyAgentListView(previous, agentListView, agentSubject);
   const showAgentToolbar = agentRowCount > 1 || agentListFiltered;
-  const groups = [
+  const lineageGroups = [
     { id: "related", label: null, rows: related, expanded: true },
     { id: "active", label: null, rows: visibleActive, expanded: true },
     {
@@ -517,6 +526,12 @@ export function ThreadRelationshipsPanel(props: {
       expanded: false,
       forceExpanded: agentListFiltered,
     },
+  ];
+  const groups = [
+    ...(props.showLineage === false ? [] : lineageGroups),
+    ...(props.showSideChats === false || sideChats.length === 0
+      ? []
+      : [{ id: "side-chats", label: "Side chats", rows: sideChats, expanded: true }]),
   ];
   // Tasks running in a linked environment have no thread here; they get their own rows.
   const remoteSubagents = (projection?.subagents ?? []).filter(
@@ -532,7 +547,7 @@ export function ThreadRelationshipsPanel(props: {
   const delegatedFrom = currentThread?.delegatedFrom;
 
   if (
-    relationshipRows.length === 0 &&
+    groups.every((group) => group.rows.length === 0) &&
     runningCount === 0 &&
     remoteSubagents.length === 0 &&
     delegatedFrom === undefined
@@ -541,6 +556,7 @@ export function ThreadRelationshipsPanel(props: {
   }
 
   const openThread = (threadId: ThreadId) => {
+    if (openSideChatTab(ref, graph.nodes.get(threadId)?.thread ?? null)) return;
     void navigate({
       to: "/$environmentId/$threadId",
       params: buildThreadRouteParams(scopeThreadRef(props.environmentId, threadId)),

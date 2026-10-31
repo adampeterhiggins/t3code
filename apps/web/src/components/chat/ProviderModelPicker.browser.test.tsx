@@ -3,16 +3,17 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   type ServerProvider,
+  type ModelSelection,
 } from "@t3tools/contracts";
 import { RegistryContext, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { Atom, AtomRegistry } from "effect/reactivity";
-import { act, type ReactNode } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { useState, type ReactNode } from "react";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
 import "~/index.css";
 
+import { render } from "../../../test/render";
 import { deriveProviderInstanceEntries } from "../../providerInstances";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import type { ModelEsque } from "./providerIconUtils";
@@ -42,9 +43,6 @@ vi.mock(import("@tanstack/react-router"), async (original) => ({
   useNavigate: () => vi.fn(),
 }));
 
-let pickerRoot: Root | undefined;
-let pickerRegistry: AtomRegistry.AtomRegistry | undefined;
-
 function providerEntry(instanceId: string, driver: string) {
   const provider: ServerProvider = {
     instanceId: ProviderInstanceId.make(instanceId),
@@ -62,25 +60,10 @@ function providerEntry(instanceId: string, driver: string) {
   return deriveProviderInstanceEntries([provider])[0]!;
 }
 
-afterEach(async () => {
-  if (pickerRoot) await act(async () => pickerRoot!.unmount());
-  pickerRoot = undefined;
-  pickerRegistry?.dispose();
-  pickerRegistry = undefined;
-  document.body.replaceChildren();
-  vi.unstubAllGlobals();
-});
-
 // Returns the trigger's visible text, which is what the user reads before opening the picker.
 async function triggerText(node: ReactNode) {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  const container = document.createElement("div");
-  document.body.append(container);
-  const root = createRoot(container);
-  await act(async () => root.render(node));
-  const text = container.querySelector("button")?.textContent ?? "";
-  await act(async () => root.unmount());
-  return text;
+  await using screen = await render(node);
+  return screen.container.querySelector("button")?.textContent ?? "";
 }
 
 function renderPicker(input: {
@@ -108,52 +91,57 @@ function renderPicker(input: {
 }
 
 async function click(target: Parameters<typeof userEvent.click>[0]) {
-  await act(async () => userEvent.click(target));
+  await userEvent.click(target);
 }
 
 async function openLegacyPicker(activeModel: string) {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const entry = providerEntry("codex", "codex");
-  pickerRegistry = AtomRegistry.make();
-  pickerRegistry.set(favoritesAtom, [
-    { provider: entry.instanceId, model: "current-favorite" },
-    { provider: entry.instanceId, model: "legacy-favorite" },
-  ]);
-  pickerRoot = createRoot(document.body.appendChild(document.createElement("div")));
-  await act(async () =>
-    pickerRoot!.render(
-      <RegistryContext.Provider value={pickerRegistry!}>
-        <ProviderModelPicker
-          environmentId={null}
-          activeInstanceId={entry.instanceId}
-          model={activeModel}
-          lockedProvider={null}
-          instanceEntries={[entry]}
-          modelOptionsByInstance={
-            new Map([
-              [
-                entry.instanceId,
+  const pickerRegistry = AtomRegistry.make();
+  const stack = new AsyncDisposableStack();
+  stack.defer(() => pickerRegistry.dispose());
+  try {
+    pickerRegistry.set(favoritesAtom, [
+      { provider: entry.instanceId, model: "current-favorite" },
+      { provider: entry.instanceId, model: "legacy-favorite" },
+    ]);
+    const _screen = stack.use(
+      await render(
+        <RegistryContext.Provider value={pickerRegistry!}>
+          <ProviderModelPicker
+            environmentId={null}
+            activeInstanceId={entry.instanceId}
+            model={activeModel}
+            lockedProvider={null}
+            instanceEntries={[entry]}
+            modelOptionsByInstance={
+              new Map([
                 [
-                  { slug: "current", name: "Current model" },
-                  { slug: "legacy-favorite", name: "Legacy favorite", isLegacy: true },
-                  { slug: "current-favorite", name: "Current favorite" },
-                  { slug: "other-legacy", name: "Other legacy", isLegacy: true },
+                  entry.instanceId,
+                  [
+                    { slug: "current", name: "Current model" },
+                    { slug: "legacy-favorite", name: "Legacy favorite", isLegacy: true },
+                    { slug: "current-favorite", name: "Current favorite" },
+                    { slug: "other-legacy", name: "Other legacy", isLegacy: true },
+                  ],
                 ],
-              ],
-            ])
-          }
-          onInstanceModelChange={() => {}}
-        />
-      </RegistryContext.Provider>,
-    ),
-  );
-  await click(document.querySelector("button")!);
-  await click(page.getByRole("button", { name: entry.displayName, exact: true }));
+              ])
+            }
+            onInstanceModelChange={() => {}}
+          />
+        </RegistryContext.Provider>,
+      ),
+    );
+    await click(document.querySelector("button")!);
+    await click(page.getByRole("button", { name: entry.displayName, exact: true }));
+    return stack.move();
+  } finally {
+    await stack.disposeAsync();
+  }
 }
 
 describe("ProviderModelPicker", () => {
   it("hoists legacy favorites in provider order and returns an unfavorited model to legacy", async () => {
-    await openLegacyPicker("current");
+    await using _fixture = await openLegacyPicker("current");
     const legacyFavorite = page.getByRole("option", { name: /Legacy favorite/ });
     const currentFavorite = page.getByRole("option", { name: /Current favorite/ });
     const current = page.getByRole("option", { name: /Current model/ });
@@ -183,7 +171,7 @@ describe("ProviderModelPicker", () => {
   });
 
   it("keeps unrelated legacy models collapsed when the active model is a favorite", async () => {
-    await openLegacyPicker("legacy-favorite");
+    await using _fixture = await openLegacyPicker("legacy-favorite");
 
     await expect.element(page.getByRole("option", { name: /Legacy favorite/ })).toBeVisible();
     await expect
@@ -316,4 +304,162 @@ describe("ProviderModelPicker", () => {
 
     expect(label).not.toContain("CP");
   });
+});
+
+it("keeps each registry image when adding a model from another ACP agent", async () => {
+  const icons = [
+    "https://cdn.agentclientprotocol.com/registry/icons/picker-explicit.svg",
+    "https://cdn.agentclientprotocol.com/registry/v1/latest/picker-by-id.svg",
+  ];
+  const cache = await caches.open("t3-acp-registry-icons-v1");
+  await using _cachedIcons = {
+    async [Symbol.asyncDispose]() {
+      await Promise.all(icons.map((url) => cache.delete(url)));
+    },
+  };
+  for (const [index, url] of icons.entries()) {
+    await cache.put(
+      url,
+      new Response(
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${11 + index * 6}" height="10"><path d="M0 0h10v10H0z"/></svg>`,
+        { headers: { "content-type": "image/svg+xml" } },
+      ),
+    );
+  }
+  const entries = deriveProviderInstanceEntries(
+    ["First", "Second"].map((name) => ({
+      instanceId: ProviderInstanceId.make(name.toLowerCase()),
+      driver: ProviderDriverKind.make("acpRegistry"),
+      displayName: `${name} agent`,
+      enabled: true,
+      installed: true,
+      version: null,
+      status: "ready" as const,
+      auth: { status: "authenticated" as const },
+      checkedAt: "2026-01-01T00:00:00.000Z",
+      models: [
+        { slug: name.toLowerCase(), name: `${name} model`, isCustom: false, capabilities: {} },
+      ],
+      slashCommands: [],
+      skills: [],
+    })),
+  ).map((entry, index) => ({
+    ...entry,
+    ...(index === 0 ? { acpRegistryIconUrl: icons[0] } : { acpRegistryAgentId: "picker-by-id" }),
+  }));
+  const first = { instanceId: entries[0]!.instanceId, model: "first" };
+  const options = new Map(entries.map((entry) => [entry.instanceId, entry.models]));
+
+  function Picker() {
+    const [selection, setSelection] = useState<ReadonlyArray<ModelSelection>>([first]);
+    return (
+      <ProviderModelPicker
+        environmentId={null}
+        activeInstanceId={first.instanceId}
+        model={first.model}
+        {...(selection.length > 1 ? { selectedModels: selection } : {})}
+        lockedProvider={null}
+        instanceEntries={entries}
+        modelOptionsByInstance={options}
+        onToggleModel={(instanceId, model) => setSelection([...selection, { instanceId, model }])}
+        onInstanceModelChange={(instanceId, model) => setSelection([{ instanceId, model }])}
+      />
+    );
+  }
+
+  await using screen = await render(<Picker />);
+  const imageWidths = () =>
+    Array.from(
+      screen.container.querySelectorAll<HTMLImageElement>("[data-chat-provider-model-picker] img"),
+      (image) => image.naturalWidth,
+    );
+  await vi.waitFor(() => expect(imageWidths()).toEqual([11]));
+  await screen.getByRole("button", { name: "First model", exact: true }).click();
+  await page.getByRole("button", { name: "Second agent", exact: true }).click();
+  await userEvent.keyboard("{Shift>}");
+  try {
+    await page.getByRole("option", { name: /Second model/ }).click();
+  } finally {
+    await userEvent.keyboard("{/Shift}");
+  }
+  await userEvent.keyboard("{Escape}");
+  await vi.waitFor(() => expect(imageWidths()).toEqual([11, 17]));
+});
+
+it("keeps a docked picker open after a pick and hands focus to that model's effort", async () => {
+  const instanceId = ProviderInstanceId.make("codex");
+  const entries = deriveProviderInstanceEntries([
+    {
+      instanceId,
+      driver: ProviderDriverKind.make("codex"),
+      enabled: true,
+      installed: true,
+      version: null,
+      status: "ready",
+      auth: { status: "authenticated" },
+      checkedAt: "2026-01-01T00:00:00.000Z",
+      models: [],
+      slashCommands: [],
+      skills: [],
+    },
+  ]);
+  const options = new Map([
+    [
+      instanceId,
+      [
+        { slug: "original", name: "Original model" },
+        { slug: "second", name: "Second model" },
+        { slug: "plain", name: "Plain model" },
+      ],
+    ],
+  ]);
+  // The last level is the selected one; "plain" has no effort to pick.
+  const levels: Record<string, ReadonlyArray<string>> = {
+    original: ["Low", "High"],
+    second: ["Medium"],
+    plain: [],
+  };
+
+  function Picker() {
+    const [model, setModel] = useState("original");
+    return (
+      <ProviderModelPicker
+        environmentId={null}
+        activeInstanceId={instanceId}
+        model={model}
+        lockedProvider={null}
+        instanceEntries={entries}
+        modelOptionsByInstance={options}
+        triggerAriaLabel="Choose model"
+        onInstanceModelChange={(_, selected) => setModel(selected)}
+        effortColumn={(levels[model] ?? []).map((level, index, all) => (
+          <button
+            key={level}
+            type="button"
+            role="radio"
+            aria-checked={index === all.length - 1}
+            data-effort-row
+            data-effort-level
+          >
+            {level}
+          </button>
+        ))}
+      />
+    );
+  }
+
+  await using screen = await render(<Picker />);
+  await screen.getByRole("button", { name: "Choose model" }).click();
+  const search = page.getByPlaceholder("Search models...");
+  await expect.element(search).toHaveFocus();
+  await userEvent.keyboard("{ArrowRight}");
+  await expect.element(page.getByRole("radio", { name: "High" })).toHaveFocus();
+  await userEvent.keyboard("{ArrowLeft}");
+  await expect.element(search).toHaveFocus();
+
+  await page.getByRole("option", { name: /Second model/ }).click();
+  await expect.element(page.getByRole("radio", { name: "Medium" })).toHaveFocus();
+
+  await page.getByRole("option", { name: /Plain model/ }).click();
+  await expect.element(search).not.toBeInTheDocument();
 });

@@ -11,7 +11,8 @@ import {
   nextSnoozeWakeAfter,
 } from "../features/threads/threadListV2";
 import { appAtomRegistry } from "./atom-registry";
-import { environmentServerConfigsAtom, threadListEnvironmentsAtom } from "./server";
+import { environmentServerConfigsAtom } from "./server";
+import { threadListEnvironmentsAtom } from "./presentation";
 import { environmentThreadShells } from "./threads";
 import { queuedThreadKeysAtom } from "./use-thread-outbox";
 

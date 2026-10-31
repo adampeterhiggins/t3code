@@ -3,6 +3,7 @@ import { assert, describe, expect, it, vi } from "@effect/vitest";
 import {
   type Project,
   ProjectId,
+  TerminalNotRunningError,
   type TerminalEvent,
   type TerminalSessionSnapshot,
 } from "@t3tools/contracts";
@@ -52,7 +53,7 @@ const makeProjectServiceLayer = (project: Project) =>
   });
 
 type TerminalOverrides = Pick<TerminalManager.TerminalManager["Service"], "open" | "write"> &
-  Partial<Pick<TerminalManager.TerminalManager["Service"], "subscribe" | "closeIdle">>;
+  Partial<Pick<TerminalManager.TerminalManager["Service"], "subscribe" | "closeIdle" | "getShell">>;
 
 const makeTerminalManagerLayer = (overrides: TerminalOverrides) =>
   Layer.succeed(TerminalManager.TerminalManager, {
@@ -60,6 +61,7 @@ const makeTerminalManagerLayer = (overrides: TerminalOverrides) =>
     resyncStream: () => Effect.die(new Error("unused")),
     attachStream: () => Effect.die(new Error("unused")),
     attachOutputStream: () => Stream.die(new Error("unused")),
+    getShell: () => Effect.succeed("/bin/zsh"),
     resize: () => Effect.void,
     clear: () => Effect.void,
     close: () => Effect.void,
@@ -653,7 +655,7 @@ describe("ProjectSetupScriptRunner", () => {
       expect(writes).toHaveLength(1);
       expect(writes[0]).toMatch(expected);
     }).pipe(
-      Effect.provide(testLayer(project, { open, write })),
+      Effect.provide(testLayer(project, { open, write, getShell: () => Effect.succeed(shell) })),
       Effect.provideService(HostProcess.Platform, "linux"),
       Effect.provideService(HostProcess.Environment, { SHELL: shell }),
     );
@@ -773,7 +775,13 @@ it.effect("resolves setup scripts through the standalone project service", () =>
         Layer.mock(ProjectService.ProjectService)({
           getById: () => Effect.succeedSome(project),
         }),
-        Layer.mock(TerminalManager.TerminalManager)({ open, write, subscribe, closeIdle }),
+        Layer.mock(TerminalManager.TerminalManager)({
+          open,
+          write,
+          subscribe,
+          closeIdle,
+          getShell: () => Effect.succeed("/bin/zsh"),
+        }),
         ServerSettings.layerTest(),
         ConductorWorkspace.layerNoop,
         NodeCrypto.layer,
@@ -905,6 +913,7 @@ const openSnapshot = (history: string): TerminalSessionSnapshot => ({
 const makeHarness = Effect.fn(function* (options: {
   readonly history?: string;
   readonly opening?: Deferred.Deferred<void>;
+  readonly shell?: string | null;
 }) {
   const listeners = new Set<(event: TerminalEvent) => Effect.Effect<void>>();
   const writes = yield* Queue.unbounded<string>();
@@ -915,6 +924,10 @@ const makeHarness = Effect.fn(function* (options: {
         ? Deferred.succeed(options.opening, undefined).pipe(Effect.andThen(Effect.never))
         : Effect.void
       ).pipe(Effect.as(openSnapshot(options.history ?? ""))),
+    getShell: () =>
+      options.shell === null
+        ? Effect.fail(new TerminalNotRunningError({ threadId, terminalId }))
+        : Effect.succeed(options.shell ?? "/bin/zsh"),
     subscribe: (listener) =>
       Effect.sync(() => {
         listeners.add(listener);
@@ -936,8 +949,6 @@ const makeHarness = Effect.fn(function* (options: {
         NodeCrypto.layer,
       ),
     ),
-    Effect.provideService(HostProcess.Platform, "darwin"),
-    Effect.provideService(HostProcess.Environment, { SHELL: "/bin/zsh" }),
   );
   const start = runner.runForThread({
     threadId,
@@ -962,7 +973,12 @@ const makeHarness = Effect.fn(function* (options: {
   return { start, listeners, writes, outputLines, emit };
 });
 
-const setup = Effect.fn(function* (options: { readonly history?: string } = {}) {
+const setup = Effect.fn(function* (
+  options: {
+    readonly history?: string;
+    readonly shell?: string | null;
+  } = {},
+) {
   const harness = yield* makeHarness(options);
   const result = yield* harness.start;
   const completion = result.status === "started" ? result.completion : undefined;
@@ -971,6 +987,15 @@ const setup = Effect.fn(function* (options: { readonly history?: string } = {}) 
 });
 
 describe("ProjectSetupScriptRunner", () => {
+  it.effect("writes immediately when the spawned fallback is PowerShell", () =>
+    Effect.gen(function* () {
+      const { writes } = yield* setup({
+        shell: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      });
+      expect(yield* Queue.take(writes)).toContain("$global:LASTEXITCODE");
+    }),
+  );
+
   it.effect("shows a startup prompt and types only once the line editor starts", () =>
     Effect.gen(function* () {
       const { result, writes, outputLines, emit } = yield* setup();
@@ -1030,13 +1055,20 @@ describe("ProjectSetupScriptRunner", () => {
     }),
   );
 
-  it.effect("does not type into a shell that exits during startup", () =>
-    Effect.gen(function* () {
-      const { completion, writes, emit } = yield* setup();
-      yield* emit({ ...event, type: "exited", exitCode: 1, exitSignal: null });
-      expect(yield* completion).toMatchObject({ exitCode: null });
-      yield* TestClock.adjust("1 minute");
-      expect(yield* Queue.size(writes)).toBe(0);
-    }),
+  it.effect.each([false, true])(
+    "does not type into a shell that exits during startup (before shell lookup: %s)",
+    (beforeShellLookup) =>
+      Effect.gen(function* () {
+        const { completion, writes, emit, listeners } = yield* setup(
+          beforeShellLookup ? { shell: null } : {},
+        );
+        if (!beforeShellLookup) {
+          yield* emit({ ...event, type: "exited", exitCode: 1, exitSignal: null });
+        }
+        expect(yield* completion).toMatchObject({ exitCode: null });
+        yield* TestClock.adjust("1 minute");
+        expect(yield* Queue.size(writes)).toBe(0);
+        expect(listeners.size).toBe(0);
+      }),
   );
 });

@@ -15,6 +15,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Redacted from "effect/Redacted";
 import * as References from "effect/References";
 import * as Runtime from "effect/Runtime";
 import * as Schedule from "effect/Schedule";
@@ -128,7 +129,7 @@ export const withLiveRpc = Effect.fn("cli.withLiveRpc")(function* <A, E, R>(
     const ticket = yield* environmentAuth.issueWebSocketTicket({ sessionId: issued.sessionId });
     const socketUrl = new URL("/ws", runtimeState.value.origin);
     socketUrl.protocol = socketUrl.protocol === "https:" ? "wss:" : "ws:";
-    socketUrl.searchParams.set("wsTicket", ticket.ticket);
+    socketUrl.searchParams.set("wsTicket", Redacted.value(ticket.ticket));
     socketUrl.searchParams.set(
       ORCHESTRATION_PROTOCOL_QUERY_PARAM,
       String(ORCHESTRATION_PROTOCOL_VERSION),

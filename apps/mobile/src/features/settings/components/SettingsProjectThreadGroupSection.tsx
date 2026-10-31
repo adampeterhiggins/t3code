@@ -5,7 +5,8 @@ import { View } from "react-native";
 
 import { AppText as Text } from "../../../components/ui/AppText";
 import { useNavigationThreadShells } from "../../../state/entities";
-import { serverEnvironment, threadListEnvironmentsAtom } from "../../../state/server";
+import { serverEnvironment } from "../../../state/server";
+import { threadListEnvironmentsAtom } from "../../../state/presentation";
 import { useAtomCommand } from "../../../state/use-atom-command";
 import { collectThreadGroupNames } from "../../threads/threadListV2";
 import { useThreadGroups } from "../../threads/use-thread-groups";

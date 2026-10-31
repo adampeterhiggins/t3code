@@ -1409,7 +1409,7 @@ Code: [`threadTranscript.ts`](../apps/web/src/lib/threadTranscript.ts),
 
 ## Import a CLI conversation
 
-Upstream imports recent Claude Code and Codex history only in bulk, from the welcome wizard. The
+Upstream imports recent Claude Code, Codex, and Pi history in bulk from the welcome wizard. The
 fork adds a picker on web and desktop: **Import conversation…** in the command palette, which
 lists every project, and in the legacy sidebar's project menu, which starts on that project. Its
 **Filters** menu narrows the list to one project or one source. Search matches conversation titles,
