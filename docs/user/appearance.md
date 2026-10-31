@@ -12,7 +12,8 @@ the theme. **Cmd+Option+Shift+A** on macOS or **Ctrl+Alt+Shift+A** on Windows/Li
 those modes. Customize these shortcuts under **Settings → Keybindings**.
 
 On mobile, open **Settings → Appearance**. Mobile has its own themes and text,
-code, and terminal preferences. It does not follow environment themes or defaults.
+code, and terminal preferences. Themes shared by your connected environments appear alongside
+them; mobile does not follow an environment's default theme.
 
 On Android 12 or newer, choose the **Material You** theme in Appearance to use colors from
 your wallpaper. Selecting another theme replaces those colors. Like other themes, Material You
@@ -56,6 +57,15 @@ change. Export your theme as JSON to share it.
 
 Themes also carry the terminal's 16 ANSI colors. Importing a VS Code theme brings its
 `terminal.ansi*` colors, and the editor's advanced view lists them under **Terminal colors**.
+
+### Share a custom theme
+
+To use a custom theme on your other devices, choose **Share** (the cloud icon) on its card. This
+publishes it to the environment the app runs on, so every web, desktop, and mobile client of that
+environment can select it. After editing a shared theme, choose **Share** again to update the
+shared copy. **Stop sharing** removes it from other clients' lists. Mobile keeps a copy of a
+shared theme you select, so it still applies offline. On mobile, the terminal keeps the standard
+colors.
 
 ## Terminal
 

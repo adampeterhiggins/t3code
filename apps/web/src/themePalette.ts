@@ -1,5 +1,5 @@
 import { pipe } from "effect/Function";
-import type { EnvironmentTheme } from "@t3tools/contracts";
+import type { EnvironmentTheme, EnvironmentThemeFile } from "@t3tools/contracts";
 import * as Equal from "effect/Equal";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -1531,6 +1531,30 @@ export function serializeThemeFile(theme: ThemeDefinition): string {
     ...(canonicalTheme.managed ? { managed: true } : {}),
   };
   return `${JSON.stringify(file, null, 2)}\n`;
+}
+
+/** The full palette, so clients without the web's seed generator (mobile) render it exactly. */
+export function environmentThemeFileFromDefinition(theme: ThemeDefinition): EnvironmentThemeFile {
+  const canonicalTheme = canonicalizeThemeDefinition(theme);
+  return {
+    version: THEME_FILE_VERSION,
+    name: canonicalTheme.label,
+    appearance: canonicalTheme.appearance,
+    colors: canonicalTheme.colors,
+    ...(canonicalTheme.variants ? { variants: canonicalTheme.variants } : {}),
+  };
+}
+
+export type EnvironmentThemeShareState = "unshared" | "shared" | "outdated";
+
+export function environmentThemeShareState(
+  theme: ThemeDefinition,
+  published: ReadonlyArray<EnvironmentTheme>,
+): EnvironmentThemeShareState {
+  const match = published.find((candidate) => candidate.id === theme.id);
+  if (!match) return "unshared";
+  const { id: _id, ...file } = match;
+  return Equal.equals(file, environmentThemeFileFromDefinition(theme)) ? "shared" : "outdated";
 }
 
 export function getThemeColorVariable(role: ThemeColorRole): string {

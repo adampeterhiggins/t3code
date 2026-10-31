@@ -14,13 +14,18 @@ import {
 } from "./mobileTheme.test-support";
 import { getMobileThemeRuntimeVariables } from "./mobileThemeVariables";
 
+import type { EnvironmentTheme } from "@t3tools/contracts";
+
 import {
   createMobileThemeSelectionPatch,
   createMobileThemeVariables,
   DEFAULT_MOBILE_THEME_ID,
+  environmentThemeAppearances,
+  environmentThemeColors,
   flattenThemeColor,
   getMobileThemeVariables,
   resolveMobileThemeIds,
+  retainEnvironmentThemeCopies,
   themeColorWithAlpha,
   themeColorToNativeColor,
 } from "./mobileTheme";
@@ -214,6 +219,74 @@ describe("mobile themes", () => {
       light: DEFAULT_MOBILE_THEME_ID,
       dark: "grove",
     });
+    expect(
+      resolveMobileThemeIds({
+        lightThemeId: "environment:nightfall",
+        darkThemeId: "environment:Bad",
+      }),
+    ).toEqual({ light: "environment:nightfall", dark: DEFAULT_MOBILE_THEME_ID });
+  });
+
+  it("renders an environment theme's palette over the standard one", () => {
+    const shared: EnvironmentTheme = {
+      id: "nightfall",
+      name: "Nightfall",
+      appearance: "dark",
+      colors: { canvas: "oklch(0.2 0.02 270)", notARole: "#ffffff" },
+      variants: { light: { accent: "#1e66f5" } },
+    };
+    expect(environmentThemeAppearances(shared)).toEqual(["light", "dark"]);
+    expect(environmentThemeColors(shared, "dark")).toEqual({
+      ...T3_CODE_DARK_THEME_COLORS,
+      canvas: "oklch(0.2 0.02 270)",
+    });
+    expect(environmentThemeColors(shared, "light")).toEqual({
+      ...T3_CODE_LIGHT_THEME_COLORS,
+      accent: "#1e66f5",
+    });
+
+    const seeded: EnvironmentTheme = {
+      id: "seeded",
+      name: "Seeded",
+      appearance: "light",
+      canvas: "#eff1f5",
+      accent: "#7aa2f7",
+    };
+    expect(environmentThemeAppearances(seeded)).toEqual(["light"]);
+    expect(environmentThemeColors(seeded, "dark")).toBeNull();
+    expect(environmentThemeColors(seeded, "light")).toMatchObject({
+      canvas: "#eff1f5",
+      accent: "#7aa2f7",
+    });
+    expect(
+      getMobileThemeRuntimeVariables("environment:seeded", "light", "ios", [seeded])[
+        "--color-primary"
+      ],
+    ).toBe(
+      createMobileThemeVariables(environmentThemeColors(seeded, "light")!, "light")[
+        "--color-primary"
+      ],
+    );
+    // A picked theme nobody publishes and no copy remembers falls back to the standard palette.
+    expect(getMobileThemeRuntimeVariables("environment:gone", "dark", "ios", [])).toEqual(
+      getMobileThemeRuntimeVariables(DEFAULT_MOBILE_THEME_ID, "dark", "ios"),
+    );
+  });
+
+  it("keeps copies of picked environment themes and drops the rest", () => {
+    const theme = (id: string, name: string): EnvironmentTheme => ({
+      id,
+      name,
+      appearance: "dark",
+      colors: { canvas: "#000000" },
+    });
+    expect(
+      retainEnvironmentThemeCopies(
+        ["environment:live", "environment:offline", "grove", "environment:live"],
+        [theme("live", "Published")],
+        [theme("live", "Stale copy"), theme("offline", "Copy"), theme("unpicked", "Copy")],
+      ),
+    ).toEqual([theme("live", "Published"), theme("offline", "Copy")]);
   });
 
   it("changes either theme without switching the active appearance", () => {

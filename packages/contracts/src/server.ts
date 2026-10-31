@@ -620,6 +620,44 @@ export function environmentThemeFileHasColors(file: EnvironmentThemeFile): boole
   );
 }
 
+export const EnvironmentThemePublishInput = Schema.Struct({
+  id: EnvironmentThemeId,
+  theme: EnvironmentThemeFile,
+});
+export type EnvironmentThemePublishInput = typeof EnvironmentThemePublishInput.Type;
+
+export const EnvironmentThemeUnpublishInput = Schema.Struct({ id: EnvironmentThemeId });
+export type EnvironmentThemeUnpublishInput = typeof EnvironmentThemeUnpublishInput.Type;
+
+export const EnvironmentThemePublishErrorReason = Schema.Literals([
+  "reserved-id",
+  "colorless",
+  "too-large",
+  "too-many",
+  "write-failed",
+]);
+export type EnvironmentThemePublishErrorReason = typeof EnvironmentThemePublishErrorReason.Type;
+
+export class EnvironmentThemePublishError extends Schema.TaggedError<EnvironmentThemePublishError>()(
+  "EnvironmentThemePublishError",
+  { reason: EnvironmentThemePublishErrorReason, cause: Schema.optional(Schema.Defect()) },
+) {
+  override get message(): string {
+    switch (this.reason) {
+      case "reserved-id":
+        return "That theme id is reserved for a built-in theme.";
+      case "colorless":
+        return "The theme has no colors to share.";
+      case "too-large":
+        return "The theme is too large to share.";
+      case "too-many":
+        return "This environment already shares the maximum number of themes.";
+      case "write-failed":
+        return "Could not save the theme on this environment.";
+    }
+  }
+}
+
 /** tailnet means this machine's Tailscale interface; other private addresses are lan. */
 export const ServerDirectEndpointKind = Schema.Literals(["lan", "tailnet"]);
 export type ServerDirectEndpointKind = typeof ServerDirectEndpointKind.Type;

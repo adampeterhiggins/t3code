@@ -17,8 +17,11 @@ import {
   resolveAppearancePreferences,
   type ResolvedAppearance,
 } from "../../../lib/appearancePreferences";
+import type { EnvironmentTheme } from "@t3tools/contracts";
+
 import { appAtomRegistry } from "../../../state/atom-registry";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../../state/preferences";
+import { publishedEnvironmentThemesAtom } from "../../../state/server";
 import type { Preferences } from "../../../persistence/mobile-preferences";
 import {
   isSystemColorsAvailable,
@@ -32,6 +35,7 @@ import {
   createMobileThemePairPatch,
   createMobileThemeSelectionPatch,
   normalizeMobileThemeMode,
+  retainEnvironmentThemeCopies,
   resolveMobileThemeIds,
   type MobileThemeAppearance,
   type MobileThemeId,
@@ -59,6 +63,8 @@ interface AppearancePreferencesContextValue {
     Record<MobileThemeAppearance, MobileThemeVariables>
   >;
   readonly systemColorPalettes: ReturnType<typeof readSystemColorPalettes>;
+  /** Published by connected environments, then saved copies of picked ones no longer published. */
+  readonly environmentThemes: ReadonlyArray<EnvironmentTheme>;
   readonly isReady: boolean;
   readonly setThemeIdForAppearance: (
     appearance: MobileThemeAppearance,
@@ -108,9 +114,15 @@ const systemColorPalettesAtom = Atom.make((get): MaterialYouPalettes | null => {
 function resolveThemeVariablesByAppearance(
   themeIds: MobileThemeIds,
   palettes: MaterialYouPalettes | null,
+  environmentThemes: ReadonlyArray<EnvironmentTheme>,
 ): Readonly<Record<MobileThemeAppearance, MobileThemeVariables>> {
   const resolve = (appearance: MobileThemeAppearance) => {
-    const base = getMobileThemeRuntimeVariables(themeIds[appearance], appearance, Platform.OS);
+    const base = getMobileThemeRuntimeVariables(
+      themeIds[appearance],
+      appearance,
+      Platform.OS,
+      environmentThemes,
+    );
     return themeIds[appearance] === "material-you" && palettes
       ? materialYouPaletteToMobileThemeVariables(palettes[appearance], appearance, base)
       : base;
@@ -211,9 +223,21 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
   const themeId = themeIds[themeAppearance];
   const systemColorsActive = themeId === "material-you" && isSystemColorsAvailable;
   const systemColorPalettes = useAtomValue(systemColorPalettesAtom);
+  const publishedEnvironmentThemes = useAtomValue(publishedEnvironmentThemesAtom);
+  const savedEnvironmentThemes = storedPreferences?.environmentThemes;
+  const environmentThemes = useMemo(
+    () => [
+      ...publishedEnvironmentThemes,
+      ...(savedEnvironmentThemes ?? []).filter(
+        (saved) => !publishedEnvironmentThemes.some((theme) => theme.id === saved.id),
+      ),
+    ],
+    [publishedEnvironmentThemes, savedEnvironmentThemes],
+  );
   const themeVariablesByAppearance = resolveThemeVariablesByAppearance(
     themeIds,
     systemColorPalettes,
+    environmentThemes,
   );
   const themeVariables = themeVariablesByAppearance[themeAppearance];
   const activeThemeName = getMobileUniwindThemeName(themeId, themeAppearance);
@@ -227,8 +251,28 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
     startTransition(() => savePreferences(patch));
   };
 
-  const updateThemePreferences = (patch: Partial<Preferences>) => {
-    savePreferences(patch);
+  const updateThemePreferences = (patch: {
+    readonly lightThemeId?: MobileThemeId;
+    readonly darkThemeId?: MobileThemeId;
+    readonly themeId?: MobileThemeId;
+    readonly themeMode?: MobileThemeMode;
+  }) => {
+    const selected = [patch.lightThemeId, patch.darkThemeId].filter(
+      (themeId): themeId is MobileThemeId => themeId !== undefined,
+    );
+    savePreferences(
+      selected.length === 0
+        ? patch
+        : {
+            ...patch,
+            environmentThemes: retainEnvironmentThemeCopies(
+              selected,
+              appAtomRegistry.get(publishedEnvironmentThemesAtom),
+              storedPreferencesOf(appAtomRegistry.get(mobilePreferencesAtom))?.environmentThemes ??
+                [],
+            ),
+          },
+    );
   };
 
   const setThemeIdForAppearance = (appearance: MobileThemeAppearance, value: MobileThemeId) => {
@@ -307,6 +351,7 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
       themeVariables,
       themeVariablesByAppearance,
       systemColorPalettes,
+      environmentThemes,
       isReady,
       setThemeIdForAppearance,
       setThemeIdForBothAppearances,
@@ -330,6 +375,7 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
       themeVariables,
       themeVariablesByAppearance,
       systemColorPalettes,
+      environmentThemes,
       isReady,
       setThemeIdForAppearance,
       setThemeIdForBothAppearances,

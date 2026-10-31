@@ -1,6 +1,7 @@
 import { resolveTextScaleVariables } from "./appearancePreferences";
 import { BUILT_IN_THEME_IDS, type BuiltInThemeId } from "@t3tools/shared/themePalettes";
 import {
+  bundledPaletteThemeId,
   DEFAULT_MOBILE_THEME_ID,
   type MobileThemeAppearance,
   type MobileThemeId,
@@ -42,9 +43,8 @@ export function getMobileUniwindThemeName(
   themeId: MobileThemeId,
   appearance: MobileThemeAppearance,
 ): MobileUniwindThemeName {
-  return themeId === DEFAULT_MOBILE_THEME_ID || themeId === "material-you"
-    ? appearance
-    : `${themeId}-${appearance}`;
+  const bundled = bundledPaletteThemeId(themeId);
+  return bundled === DEFAULT_MOBILE_THEME_ID ? appearance : `${bundled}-${appearance}`;
 }
 
 export function createMobileThemeRuntimeOperations(

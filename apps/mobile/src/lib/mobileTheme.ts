@@ -1,3 +1,5 @@
+import { EnvironmentThemeId, type EnvironmentTheme } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 import {
   BUILT_IN_THEMES,
   T3_CHAT_THEME,
@@ -17,27 +19,115 @@ import {
 
 export const DEFAULT_MOBILE_THEME_ID = MOBILE_DEFAULT_THEME_ID;
 export const MOBILE_THEME_IDS = [...SHARED_MOBILE_THEME_IDS, "material-you"] as const;
-export type MobileThemeId = SharedMobileThemeId | "material-you";
+/** A theme a connected environment publishes; the palette arrives at runtime, not in the bundle. */
+export type EnvironmentMobileThemeId = `environment:${string}`;
+export type BundledMobileThemeId = SharedMobileThemeId | "material-you";
+export type MobileThemeId = BundledMobileThemeId | EnvironmentMobileThemeId;
 export type MobileThemeAppearance = ThemeAppearance;
 export type MobileThemeMode = MobileThemeAppearance | "system";
 export type MobileThemeIds = Readonly<Record<MobileThemeAppearance, MobileThemeId>>;
 
 export const MOBILE_THEME_OPTIONS: ReadonlyArray<{
-  readonly id: MobileThemeId;
+  readonly id: BundledMobileThemeId;
   readonly label: string;
 }> = [
   { id: DEFAULT_MOBILE_THEME_ID, label: "T3 Code" },
   { id: "material-you", label: "Material You" },
-  ...BUILT_IN_THEMES.map((theme) => ({ id: theme.id as MobileThemeId, label: theme.label })),
+  ...BUILT_IN_THEMES.map((theme) => ({ id: theme.id as SharedMobileThemeId, label: theme.label })),
 ];
 
 export type MobileThemeVariable = keyof ReturnType<typeof createMobileThemeVariables>;
 export type MobileThemeVariables = Readonly<Record<MobileThemeVariable, string>>;
 
+const ENVIRONMENT_THEME_PREFIX = "environment:";
+const isEnvironmentThemeId = Schema.is(EnvironmentThemeId);
+
+export function environmentMobileThemeId(id: EnvironmentThemeId): EnvironmentMobileThemeId {
+  return `${ENVIRONMENT_THEME_PREFIX}${id}`;
+}
+
+export function environmentThemeIdOf(themeId: MobileThemeId): EnvironmentThemeId | null {
+  return themeId.startsWith(ENVIRONMENT_THEME_PREFIX)
+    ? themeId.slice(ENVIRONMENT_THEME_PREFIX.length)
+    : null;
+}
+
+export function isMobileThemeId(value: unknown): value is MobileThemeId {
+  if (typeof value !== "string") return false;
+  if (value.startsWith(ENVIRONMENT_THEME_PREFIX)) {
+    return isEnvironmentThemeId(value.slice(ENVIRONMENT_THEME_PREFIX.length));
+  }
+  return (MOBILE_THEME_IDS as readonly string[]).includes(value);
+}
+
+/** The bundled palette standing in where a runtime palette cannot reach (terminal, previews). */
+export function bundledPaletteThemeId(themeId: MobileThemeId): SharedMobileThemeId {
+  return themeId === "material-you" || environmentThemeIdOf(themeId) !== null
+    ? DEFAULT_MOBILE_THEME_ID
+    : (themeId as SharedMobileThemeId);
+}
+
 function normalizeMobileThemeId(value: unknown): MobileThemeId {
-  return typeof value === "string" && (MOBILE_THEME_IDS as readonly string[]).includes(value)
-    ? (value as MobileThemeId)
-    : DEFAULT_MOBILE_THEME_ID;
+  return isMobileThemeId(value) ? value : DEFAULT_MOBILE_THEME_ID;
+}
+
+export function findEnvironmentTheme(
+  themeId: MobileThemeId,
+  themes: ReadonlyArray<EnvironmentTheme>,
+): EnvironmentTheme | null {
+  const id = environmentThemeIdOf(themeId);
+  return id === null ? null : (themes.find((theme) => theme.id === id) ?? null);
+}
+
+export function environmentThemeAppearances(
+  theme: EnvironmentTheme,
+): ReadonlyArray<MobileThemeAppearance> {
+  const other = theme.appearance === "dark" ? "light" : "dark";
+  return theme.variants?.[other] === undefined ? [theme.appearance] : ["light", "dark"];
+}
+
+/**
+ * Published roles over the standard palette. Seed-only files (canvas and accent)
+ * get just those two roles: the web's palette generator is not bundled here.
+ */
+export function environmentThemeColors(
+  theme: EnvironmentTheme,
+  appearance: MobileThemeAppearance,
+): ThemeColors | null {
+  const overrides =
+    appearance === theme.appearance
+      ? {
+          ...(theme.canvas !== undefined && theme.accent !== undefined
+            ? { canvas: theme.canvas, accent: theme.accent }
+            : {}),
+          ...theme.colors,
+        }
+      : theme.variants?.[appearance];
+  if (overrides === undefined) return null;
+  const base = appearance === "dark" ? T3_CODE_DARK_THEME_COLORS : T3_CODE_LIGHT_THEME_COLORS;
+  const known = Object.entries(overrides).filter(([role]) => Object.hasOwn(base, role));
+  return { ...base, ...Object.fromEntries(known) };
+}
+
+/**
+ * Keeps a copy of each environment theme the user picked, so it still applies
+ * offline or after the environment stops publishing it. Unpicked copies drop.
+ */
+export function retainEnvironmentThemeCopies(
+  themeIds: ReadonlyArray<MobileThemeId>,
+  published: ReadonlyArray<EnvironmentTheme>,
+  copies: ReadonlyArray<EnvironmentTheme>,
+): ReadonlyArray<EnvironmentTheme> {
+  const retained = new Map<string, EnvironmentTheme>();
+  for (const themeId of themeIds) {
+    const id = environmentThemeIdOf(themeId);
+    if (id === null || retained.has(id)) continue;
+    const theme =
+      published.find((candidate) => candidate.id === id) ??
+      copies.find((candidate) => candidate.id === id);
+    if (theme) retained.set(id, theme);
+  }
+  return [...retained.values()];
 }
 
 export function normalizeMobileThemeMode(value: unknown): MobileThemeMode {
@@ -502,14 +592,35 @@ export function getMobileThemeVariables(
   return overrides ? ({ ...baseVariables, ...overrides } as MobileThemeVariables) : baseVariables;
 }
 
+export function getEnvironmentThemeVariables(
+  theme: EnvironmentTheme,
+  appearance: MobileThemeAppearance,
+): MobileThemeVariables | null {
+  const colors = environmentThemeColors(theme, appearance);
+  return colors === null
+    ? null
+    : createMobileThemeVariables(colors, appearance, colors.muted, [
+        colors.messageAction,
+        colors.messageActionForeground,
+      ]);
+}
+
 export function getMobileThemePreviewColors(
   themeId: MobileThemeId,
   appearance: MobileThemeAppearance,
+  environmentThemes: ReadonlyArray<EnvironmentTheme> = [],
 ): ThemePreviewColors {
+  const environmentTheme = findEnvironmentTheme(themeId, environmentThemes);
+  const environmentColors = environmentTheme
+    ? environmentThemeColors(environmentTheme, appearance)
+    : null;
+  if (environmentColors === null && environmentThemeIdOf(themeId) !== null)
+    return STANDARD_THEME_PREVIEW_COLORS[appearance];
   if (themeId === DEFAULT_MOBILE_THEME_ID || themeId === "material-you")
     return STANDARD_THEME_PREVIEW_COLORS[appearance];
   const theme = BUILT_IN_THEMES.find((candidate) => candidate.id === themeId) ?? T3_CHAT_THEME;
-  const colors = getThemeColorsForAppearance(theme, appearance) ?? theme.colors;
+  const colors =
+    environmentColors ?? getThemeColorsForAppearance(theme, appearance) ?? theme.colors;
   return {
     canvas: themeColorToNativeColor(colors.canvas),
     accent: themeColorToNativeColor(colors.accent),

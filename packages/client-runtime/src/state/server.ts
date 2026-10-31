@@ -1166,6 +1166,16 @@ export function createServerEnvironmentAtoms<R, E>(
       tag: WS_METHODS.serverRunStorageCleanup,
       concurrency: { mode: "singleFlight", key: ({ environmentId }) => environmentId },
     }),
+    publishEnvironmentTheme: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:publish-environment-theme",
+      tag: WS_METHODS.serverPublishEnvironmentTheme,
+      concurrency: { mode: "serial", key: ({ environmentId }) => environmentId },
+    }),
+    unpublishEnvironmentTheme: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:unpublish-environment-theme",
+      tag: WS_METHODS.serverUnpublishEnvironmentTheme,
+      concurrency: { mode: "serial", key: ({ environmentId }) => environmentId },
+    }),
     prepareTriage: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:prepare-triage",
       tag: WS_METHODS.serverPrepareTriage,
