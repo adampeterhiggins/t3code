@@ -15,6 +15,11 @@ import {
 import { getMobileThemeRuntimeVariables } from "./mobileThemeVariables";
 
 import type { EnvironmentTheme } from "@t3tools/contracts";
+import {
+  createVividThemeColors,
+  getDefaultThemeColors,
+  hexToThemeRgb,
+} from "@t3tools/shared/themeGenerator";
 
 import {
   createMobileThemeSelectionPatch,
@@ -237,26 +242,28 @@ describe("mobile themes", () => {
     };
     expect(environmentThemeAppearances(shared)).toEqual(["light", "dark"]);
     expect(environmentThemeColors(shared, "dark")).toEqual({
-      ...T3_CODE_DARK_THEME_COLORS,
+      ...getDefaultThemeColors("dark"),
       canvas: "oklch(0.2 0.02 270)",
     });
     expect(environmentThemeColors(shared, "light")).toEqual({
-      ...T3_CODE_LIGHT_THEME_COLORS,
+      ...getDefaultThemeColors("light"),
       accent: "#1e66f5",
     });
 
+    // Seed-only files (from integrations) get the same generated palette web clients show.
     const seeded: EnvironmentTheme = {
       id: "seeded",
       name: "Seeded",
       appearance: "light",
       canvas: "#eff1f5",
       accent: "#7aa2f7",
+      colors: { warning: "#ff0000" },
     };
     expect(environmentThemeAppearances(seeded)).toEqual(["light"]);
     expect(environmentThemeColors(seeded, "dark")).toBeNull();
-    expect(environmentThemeColors(seeded, "light")).toMatchObject({
-      canvas: "#eff1f5",
-      accent: "#7aa2f7",
+    expect(environmentThemeColors(seeded, "light")).toEqual({
+      ...createVividThemeColors("light", hexToThemeRgb("#eff1f5"), hexToThemeRgb("#7aa2f7")),
+      warning: "#ff0000",
     });
     expect(
       getMobileThemeRuntimeVariables("environment:seeded", "light", "ios", [seeded])[

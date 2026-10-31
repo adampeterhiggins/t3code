@@ -13,6 +13,11 @@ import {
   type ThemeColors,
 } from "@t3tools/shared/themePalettes";
 import {
+  createVividThemeColors,
+  getDefaultThemeColors,
+  hexToThemeRgb,
+} from "@t3tools/shared/themeGenerator";
+import {
   STANDARD_THEME_PREVIEW_COLORS,
   type ThemePreviewColors,
 } from "@t3tools/shared/themePreview";
@@ -86,26 +91,19 @@ export function environmentThemeAppearances(
   return theme.variants?.[other] === undefined ? [theme.appearance] : ["light", "dark"];
 }
 
-/**
- * Published roles over the standard palette. Seed-only files (canvas and accent)
- * get just those two roles: the web's palette generator is not bundled here.
- */
+/** Resolves a published file the way web clients do, so every surface shows one palette. */
 export function environmentThemeColors(
   theme: EnvironmentTheme,
   appearance: MobileThemeAppearance,
 ): ThemeColors | null {
-  const overrides =
-    appearance === theme.appearance
-      ? {
-          ...(theme.canvas !== undefined && theme.accent !== undefined
-            ? { canvas: theme.canvas, accent: theme.accent }
-            : {}),
-          ...theme.colors,
-        }
-      : theme.variants?.[appearance];
-  if (overrides === undefined) return null;
-  const base = appearance === "dark" ? T3_CODE_DARK_THEME_COLORS : T3_CODE_LIGHT_THEME_COLORS;
-  const known = Object.entries(overrides).filter(([role]) => Object.hasOwn(base, role));
+  const overrides = appearance === theme.appearance ? theme.colors : theme.variants?.[appearance];
+  if (appearance !== theme.appearance && overrides === undefined) return null;
+  // A variant builds on stock defaults: seeds describe the base appearance only.
+  const base =
+    appearance === theme.appearance && theme.canvas !== undefined && theme.accent !== undefined
+      ? createVividThemeColors(appearance, hexToThemeRgb(theme.canvas), hexToThemeRgb(theme.accent))
+      : getDefaultThemeColors(appearance);
+  const known = Object.entries(overrides ?? {}).filter(([role]) => Object.hasOwn(base, role));
   return { ...base, ...Object.fromEntries(known) };
 }
 
