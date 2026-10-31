@@ -1,4 +1,5 @@
 import {
+  bundledPaletteThemeId,
   getMobileThemeColors,
   getMobileThemeVariables,
   themeColorToNativeColor,
@@ -99,7 +100,7 @@ export function getMobileTerminalTheme(
   scheme: TerminalAppearanceScheme,
 ): TerminalTheme {
   const base = getPierreTerminalTheme(scheme);
-  const paletteId = themeId === "material-you" ? "t3-code" : themeId;
+  const paletteId = bundledPaletteThemeId(themeId);
   const palette = getMobileThemeColors(paletteId, scheme);
   const colors = getMobileThemeVariables(paletteId, scheme);
   const background = themeColorToNativeColor(palette.terminalBackground);

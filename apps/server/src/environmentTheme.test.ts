@@ -1,4 +1,4 @@
-import { EnvironmentThemeFile } from "@t3tools/contracts";
+import { EnvironmentThemeFile, type EnvironmentThemePublishInput } from "@t3tools/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -170,6 +170,54 @@ it.layer(NodeServices.layer)("environment theme", (it) => {
         assert.deepEqual(
           (yield* currentThemes).map((theme) => theme.id),
           ["zz-valid"],
+        );
+      }),
+    ),
+  );
+
+  it.effect("publishes a client's theme and withdraws it again", () =>
+    withEnvironmentThemes(
+      {},
+      Effect.gen(function* () {
+        const environmentTheme = yield* EnvironmentTheme.EnvironmentThemeService;
+        yield* environmentTheme.publish({ id: "shared-light", theme: SHARED_THEME });
+        assert.deepEqual(yield* currentThemes, [{ id: "shared-light", ...SHARED_THEME }]);
+
+        yield* environmentTheme.unpublish("shared-light");
+        assert.deepEqual(yield* currentThemes, []);
+        // Withdrawing twice is not an error: another client may have withdrawn it first.
+        yield* environmentTheme.unpublish("shared-light");
+      }),
+    ),
+  );
+
+  it.effect("refuses themes the watcher would skip", () =>
+    withEnvironmentThemes(
+      Object.fromEntries(
+        Array.from({ length: 32 }, (_, index) => [
+          `theme-${String(index).padStart(2, "0")}.json`,
+          encodeThemeFile(NIGHTFALL_THEME),
+        ]),
+      ),
+      Effect.gen(function* () {
+        const environmentTheme = yield* EnvironmentTheme.EnvironmentThemeService;
+        const reasonFor = (input: EnvironmentThemePublishInput) =>
+          environmentTheme.publish(input).pipe(
+            Effect.flip,
+            Effect.map((error) => error.reason),
+          );
+
+        assert.strictEqual(yield* reasonFor({ id: "ocean", theme: SHARED_THEME }), "reserved-id");
+        assert.strictEqual(
+          yield* reasonFor({ id: "empty", theme: { name: "Empty", appearance: "dark" } }),
+          "colorless",
+        );
+        assert.strictEqual(yield* reasonFor({ id: "one-more", theme: SHARED_THEME }), "too-many");
+        // Replacing an already published theme is still allowed at the limit.
+        yield* environmentTheme.publish({ id: "theme-00", theme: SHARED_THEME });
+        assert.deepEqual(
+          (yield* currentThemes).find((theme) => theme.id === "theme-00"),
+          { id: "theme-00", ...SHARED_THEME },
         );
       }),
     ),
