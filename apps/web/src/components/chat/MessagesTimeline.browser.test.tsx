@@ -206,7 +206,7 @@ function v2Item(type: string, fields: Record<string, unknown>) {
       title: null,
       startedAt: null,
       completedAt: null,
-      updatedAt: {},
+      updatedAt: DateTime.makeUnsafe(CREATED_AT),
       type,
       ...fields,
     },

@@ -2005,6 +2005,8 @@ watches stay on. **Stop everything** is upstream's Stop. Work the provider runs 
 such as Claude's background shells and agents, ends with the turn either way. Once the turn has
 stopped, the existing "Waiting on" strip lists the subagents and its Stop ends them. On mobile the
 same choice is a native alert, and tapping the background-work pill offers to stop what is left.
+On web and desktop, long background-work notices wrap and scroll beside the fixed Stop action, so
+all child-thread links stay reachable ([ComposerBannerStack.tsx](../apps/web/src/components/chat/ComposerBannerStack.tsx)).
 
 Code: `keepBackgroundWork` on `run.interrupt` in
 [`orchestrationV2.ts`](../packages/contracts/src/orchestrationV2.ts), `dispatchRunInterrupt` and

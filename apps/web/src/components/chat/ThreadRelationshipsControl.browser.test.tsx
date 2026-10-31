@@ -4,6 +4,11 @@ import { AsyncResult } from "effect/reactivity";
 import { expect, it, vi } from "vite-plus/test";
 import { page } from "vite-plus/test/browser";
 
+vi.mock(import("./agentReferences"), async (original) => ({
+  ...(await original()),
+  useAgentHandles: () => new Map(),
+}));
+
 const state = vi.hoisted(() => ({ projection: null as unknown, commandSucceeds: false }));
 
 vi.mock(import("@effect/atom-react"), async (original) => ({
@@ -11,7 +16,8 @@ vi.mock(import("@effect/atom-react"), async (original) => ({
   useAtomValue: (() => false) as never,
 }));
 
-vi.mock(import("../../state/entities"), () => ({
+vi.mock(import("../../state/entities"), async (original) => ({
+  ...(await original()),
   useQuietThreadShell: (() => null) as never,
   useThreadProjection: ((ref: unknown) =>
     ref === null ? null : { projection: state.projection }) as never,
@@ -19,11 +25,14 @@ vi.mock(import("../../state/entities"), () => ({
     state.projection === null ? [] : [(state.projection as { thread: unknown }).thread]) as never,
   useProjects: (() => []) as never,
 }));
-vi.mock(import("../../state/environments"), () => ({
+vi.mock(import("../../state/environments"), async (original) => ({
+  ...(await original()),
   useEnvironment: (() => null) as never,
+  useEnvironments: (() => ({ environments: [] })) as never,
   useEnvironmentProviders: (() => new Map()) as never,
 }));
-vi.mock(import("../../lib/archivedThreadsState"), () => ({
+vi.mock(import("../../lib/archivedThreadsState"), async (original) => ({
+  ...(await original()),
   useArchivedThreadSnapshots: (() => ({ snapshots: [] })) as never,
 }));
 vi.mock(import("../../state/use-atom-command"), () => ({

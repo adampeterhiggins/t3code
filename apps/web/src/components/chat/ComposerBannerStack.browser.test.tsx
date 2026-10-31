@@ -199,30 +199,37 @@ it("offers one details button when the usage-limit title is clipped", async () =
     screen.rerender(
       <ComposerBannerStack
         items={[
-          usageLimitRecoveryBannerItem({
-            runId,
-            resetAt,
-            stoppedAt: "2026-10-20T21:00:00.000Z",
-            snoozedUntil: null,
-            recovery: null,
-            onChange: async () => {},
-            timestampFormat: "locale",
-            onResumeNow: async () => {},
-            continueElsewhere: null,
-          }),
+          {
+            ...usageLimitRecoveryBannerItem({
+              runId,
+              resetAt,
+              stoppedAt: "2026-10-20T21:00:00.000Z",
+              snoozedUntil: null,
+              recovery: null,
+              onChange: async () => {},
+              timestampFormat: "locale",
+              onResumeNow: async () => {},
+              continueElsewhere: null,
+            }),
+            title: "Usage limit reached for the current provider account",
+          },
         ]}
       />,
     ),
   );
 
-  const title = container.querySelector<HTMLElement>(".truncate.font-medium")!;
+  const title = container.querySelector<HTMLElement>(
+    ".truncate.font-medium [data-notice-text], .truncate.font-medium:not(:has([data-notice-text]))",
+  )!;
   expect(title.scrollWidth).toBeGreaterThan(title.clientWidth);
   expect(container.querySelectorAll('[aria-label$="details"]')).toHaveLength(1);
 
   await userEvent.hover(page.getByRole("button", { name: "Show notice details", exact: true }));
   const popup = page.getByRole("dialog", { name: "Notice details", exact: true });
   await expect.element(popup).toBeVisible();
-  expect(popup.element().textContent).toMatch(/^Usage limit reachedResets /);
+  expect(popup.element().textContent).toMatch(
+    /^Usage limit reached for the current provider accountResets /,
+  );
 });
 
 it.each([320, 800])(

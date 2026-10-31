@@ -197,7 +197,10 @@ function NoticeCard({
       density="comfortable"
       data-chat-composer-collapsed-controls="true"
     >
-      <ComposerBanner.Row layout="wrap-actions">
+      <ComposerBanner.Row
+        layout={descriptionBelow ? "inline" : "wrap-actions"}
+        className={descriptionBelow ? "items-start" : undefined}
+      >
         <ComposerBanner.Icon className="h-(--composer-banner-icon-column) self-start">
           {item.icon}
         </ComposerBanner.Icon>
@@ -221,6 +224,10 @@ function NoticeCard({
               {item.title}
               <div>{item.description}</div>
             </NoticeDetails>
+          ) : descriptionBelow && item.description ? (
+            <ComposerBanner.Scroll className="w-full min-w-0 whitespace-normal wrap-anywhere text-muted-foreground [--inline-button-text-align:start] [--inline-button-white-space:normal] [&_[data-slot=inline-button]]:max-w-full">
+              {item.description}
+            </ComposerBanner.Scroll>
           ) : item.description ? (
             <NoticeText
               detailsLabel="Show notice details"

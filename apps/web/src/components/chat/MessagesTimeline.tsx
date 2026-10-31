@@ -847,6 +847,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     rows,
     listRef,
   });
+  // Smooth following must wait until LegendList finishes initial positioning.
   const [findListReady, setFindListReady] = useState(false);
   const handleListLoad = () => {
     onCitationListLoad();
@@ -1442,7 +1443,10 @@ const ConversationTimeline = memo(function ConversationTimeline({
                 fullscreenAppRowId !== null ||
                 disclosureToggleSettling
                   ? false
-                  : isWorking && !prefersReducedMotion && settlingListIdentity === null
+                  : isWorking &&
+                      !prefersReducedMotion &&
+                      settlingListIdentity === null &&
+                      findListReady
                     ? TIMELINE_MAINTAIN_SCROLL_AT_END_SMOOTH
                     : TIMELINE_MAINTAIN_SCROLL_AT_END
               }

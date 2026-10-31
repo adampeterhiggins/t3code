@@ -59,7 +59,7 @@ vi.mock(import("../state/pullRequests"), async (original) => {
     ...actual,
     pullRequestEnvironment: {
       ...actual.pullRequestEnvironment,
-      detail: (() => "pull-request-detail") as never,
+      previewCard: (() => "pull-request-detail") as never,
     },
   };
 });

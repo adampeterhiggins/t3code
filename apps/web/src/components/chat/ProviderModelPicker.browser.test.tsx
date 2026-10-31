@@ -222,7 +222,7 @@ describe("ProviderModelPicker", () => {
         ],
       });
 
-      expect(label).toContain("Gemini Pro");
+      expect(label).toBe("Pro");
       expect(label).not.toContain("Gemini Fast");
       expect(label).not.toContain(ANTIGRAVITY_DEFAULT_MODEL);
     },
@@ -375,7 +375,7 @@ it("keeps each registry image when adding a model from another ACP agent", async
     );
   await vi.waitFor(() => expect(imageWidths()).toEqual([11]));
   await screen.getByRole("button", { name: "First model", exact: true }).click();
-  await page.getByRole("button", { name: "Second agent", exact: true }).click();
+  await page.getByRole("button", { name: "ACP Registry", exact: true }).click();
   await userEvent.keyboard("{Shift>}");
   try {
     await page.getByRole("option", { name: /Second model/ }).click();

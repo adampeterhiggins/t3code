@@ -1,5 +1,5 @@
-import { act, cloneElement, type ReactElement, type ReactNode } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { cloneElement, type ReactElement, type ReactNode } from "react";
+import { act, render as renderUI } from "../../../test/render";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import {
   EnvironmentId,
@@ -10,7 +10,7 @@ import {
   type OrchestrationV2ContextTransfer,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
-import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
+import { expect, it, vi } from "vite-plus/test";
 
 import "~/index.css";
 
@@ -127,62 +127,7 @@ vi.mock(import("../ui/preview-card"), async (original) => ({
 import { STATUS_VISUALS } from "../AgentStatus";
 import { ThreadRelationshipsPanel } from "./ThreadRelationshipsControl";
 
-let root: Root;
-let container: HTMLDivElement;
-let current: ReactElement;
-
-async function render(element: ReactElement) {
-  current = element;
-  await act(async () => root.render(element));
-}
-// The mocked hooks read `state` while rendering, so a new element picks up changes.
-const update = () => act(async () => root.render(cloneElement(current)));
-const click = (element: HTMLElement) => act(async () => element.click());
-const buttons = () => [...container.querySelectorAll("button")];
-const allByLabel = (label: string) =>
-  buttons().filter((button) => button.getAttribute("aria-label") === label);
-function byLabel(label: string) {
-  const matches = allByLabel(label);
-  if (matches.length !== 1)
-    throw new Error(`Expected one "${label}" button, got ${matches.length}`);
-  return matches[0]!;
-}
-const sectionToggles = (expanded: boolean) =>
-  buttons().filter(
-    (button) =>
-      button.getAttribute("aria-expanded") === String(expanded) &&
-      !button.hasAttribute("aria-label"),
-  );
-function sectionToggle(expanded: boolean) {
-  const [toggle] = sectionToggles(expanded);
-  if (!toggle) throw new Error(`No ${expanded ? "expanded" : "collapsed"} section toggle`);
-  return toggle;
-}
-const heading = () => container.querySelector("h3")?.textContent;
-const buttonsWithLabel = (matches: (label: string) => boolean) =>
-  buttons().filter((button) => matches(button.getAttribute("aria-label") ?? ""));
-// Joins rendered text nodes; `visibleOnly` drops screen-reader-only text.
-function textNodes(separator: string, visibleOnly = false) {
-  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
-  const parts: string[] = [];
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    if (visibleOnly && node.parentElement?.closest(".sr-only")) continue;
-    parts.push(node.textContent ?? "");
-  }
-  return parts.join(separator);
-}
-
-beforeEach(() => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  container = document.createElement("div");
-  document.body.append(container);
-  root = createRoot(container);
-});
-
-afterEach(async () => {
-  await act(async () => root.unmount());
-  container.remove();
-  vi.unstubAllGlobals();
+function setup() {
   state.shells = [];
   state.projects = [];
   state.configs.clear();
@@ -193,9 +138,73 @@ afterEach(async () => {
   state.toast.mockClear();
   state.projection = null;
   state.projections = null;
-});
+  const stack = new AsyncDisposableStack();
+  let screen: Awaited<ReturnType<typeof renderUI>> | undefined;
+  let current: ReactElement;
+  const container = document.createElement("div");
+  async function render(element: ReactElement) {
+    current = element;
+    if (screen) await screen.rerender(element);
+    else {
+      // The suite mocks navigation and needs no real router.
+      screen = stack.use(await renderUI(element, { container, router: false }));
+    }
+  }
+  const update = () => screen!.rerender(cloneElement(current));
+  const click = (element: HTMLElement) => act(async () => element.click());
+  const buttons = () => [...container.querySelectorAll("button")];
+  const allByLabel = (label: string) =>
+    buttons().filter((button) => button.getAttribute("aria-label") === label);
+  function byLabel(label: string) {
+    const matches = allByLabel(label);
+    if (matches.length !== 1)
+      throw new Error(`Expected one "${label}" button, got ${matches.length}`);
+    return matches[0]!;
+  }
+  const sectionToggles = (expanded: boolean) =>
+    buttons().filter(
+      (button) =>
+        button.getAttribute("aria-expanded") === String(expanded) &&
+        !button.hasAttribute("aria-label"),
+    );
+  function sectionToggle(expanded: boolean) {
+    const [toggle] = sectionToggles(expanded);
+    if (!toggle) throw new Error(`No ${expanded ? "expanded" : "collapsed"} section toggle`);
+    return toggle;
+  }
+  const heading = () => container.querySelector("h3")?.textContent;
+  const buttonsWithLabel = (matches: (label: string) => boolean) =>
+    buttons().filter((button) => matches(button.getAttribute("aria-label") ?? ""));
+  // Joins rendered text nodes; `visibleOnly` drops screen-reader-only text.
+  function textNodes(separator: string, visibleOnly = false) {
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    const parts: string[] = [];
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (visibleOnly && node.parentElement?.closest(".sr-only")) continue;
+      parts.push(node.textContent ?? "");
+    }
+    return parts.join(separator);
+  }
+
+  return {
+    render,
+    buttons,
+    update,
+    click,
+    allByLabel,
+    byLabel,
+    sectionToggles,
+    sectionToggle,
+    heading,
+    buttonsWithLabel,
+    textNodes,
+    container,
+    [Symbol.asyncDispose]: () => stack.disposeAsync(),
+  };
+}
 
 it("stops the entire native workflow through its parent without changing state before acknowledgement", async () => {
+  await using fixture = setup();
   const coordinator = {
     id: "workflow",
     origin: "provider_native",
@@ -243,15 +252,15 @@ it("stops the entire native workflow through its parent without changing state b
       },
     },
   ];
-  await render(
+  await fixture.render(
     <ThreadRelationshipsPanel
       environmentId={EnvironmentId.make("remote")}
       threadId={ThreadId.make("parent")}
     />,
   );
-  await click(byLabel("Expand Checkout review"));
-  const stopButton = () => byLabel("Stop workflow Checkout review");
-  expect(buttonsWithLabel((label) => label.startsWith("Stop "))).toHaveLength(2);
+  await fixture.click(fixture.byLabel("Expand Checkout review"));
+  const stopButton = () => fixture.byLabel("Stop workflow Checkout review");
+  expect(fixture.buttonsWithLabel((label) => label.startsWith("Stop "))).toHaveLength(2);
   let acknowledge!: (result: { _tag: string }) => void;
   state.workflowCommand.mockImplementationOnce(
     () =>
@@ -259,7 +268,7 @@ it("stops the entire native workflow through its parent without changing state b
         acknowledge = resolve;
       }),
   );
-  await click(stopButton());
+  await fixture.click(stopButton());
   expect(state.workflowCommand).toHaveBeenCalledExactlyOnceWith({
     environmentId: "remote",
     input: { threadId: "parent", subagentId: "workflow" },
@@ -267,16 +276,16 @@ it("stops the entire native workflow through its parent without changing state b
   expect(state.command).not.toHaveBeenCalled();
   expect(state.navigate).not.toHaveBeenCalled();
   expect(stopButton().disabled).toBe(true);
-  expect(byLabel("Stop subagent Worker").disabled).toBe(true);
-  expect(byLabel("Open Checker chat")).toBeDefined();
-  expect(heading()).toBe("Lineage · 2 running");
+  expect(fixture.byLabel("Stop subagent Worker").disabled).toBe(true);
+  expect(fixture.byLabel("Open Checker chat")).toBeDefined();
+  expect(fixture.heading()).toBe("Lineage · 2 running");
   await act(async () => {
     acknowledge({ _tag: "Success" });
   });
   expect(stopButton().disabled).toBe(false);
-  expect(heading()).toBe("Lineage · 2 running");
+  expect(fixture.heading()).toBe("Lineage · 2 running");
   state.workflowCommand.mockResolvedValueOnce({ _tag: "Failure" });
-  await click(stopButton());
+  await fixture.click(stopButton());
   expect(state.toast).toHaveBeenCalledExactlyOnceWith({
     type: "error",
     title: "Could not stop workflow",
@@ -294,6 +303,7 @@ it.each([
   ["codex", "provider_native", "running"],
   ["claudeAgent", "app_owned", "running"],
 ])("does not offer workflow stop for %s %s %s", async (driver, origin, status) => {
+  await using fixture = setup();
   state.projection = {
     thread: { id: "parent", lineage: { relationshipToParent: null } },
     runs: [],
@@ -316,20 +326,21 @@ it.each([
       },
     ],
   };
-  await render(
+  await fixture.render(
     <ThreadRelationshipsPanel
       environmentId={EnvironmentId.make("remote")}
       threadId={ThreadId.make("parent")}
     />,
   );
-  const previousAgents = sectionToggles(false);
-  if (previousAgents.length > 0) await click(previousAgents[0]!);
-  expect(byLabel("Expand Checkout review")).toBeDefined();
-  expect(allByLabel("Stop workflow Checkout review")).toHaveLength(0);
+  const previousAgents = fixture.sectionToggles(false);
+  if (previousAgents.length > 0) await fixture.click(previousAgents[0]!);
+  expect(fixture.byLabel("Expand Checkout review")).toBeDefined();
+  expect(fixture.allByLabel("Stop workflow Checkout review")).toHaveLength(0);
   expect(state.workflowCommand).not.toHaveBeenCalled();
 });
 
 it("opens the correct chat for every workflow phase and unphased member", async () => {
+  await using fixture = setup();
   state.showTooltips = true;
   state.configs.set("remote", {
     providers: [
@@ -403,36 +414,36 @@ it("opens the correct chat for every workflow phase and unphased member", async 
       threadId={ThreadId.make("parent")}
     />
   );
-  await render(panel);
-  await click(byLabel("Expand Checkout review"));
-  const memberButtons = () => buttonsWithLabel((label) => label.startsWith("Open Member"));
+  await fixture.render(panel);
+  await fixture.click(fixture.byLabel("Expand Checkout review"));
+  const memberButtons = () => fixture.buttonsWithLabel((label) => label.startsWith("Open Member"));
   const phaseButtons = () =>
-    buttonsWithLabel((label) => label.includes(" phase, ")).filter((button) =>
-      button.hasAttribute("aria-expanded"),
-    );
+    fixture
+      .buttonsWithLabel((label) => label.includes(" phase, "))
+      .filter((button) => button.hasAttribute("aria-expanded"));
   expect(memberButtons()).toHaveLength(3);
   expect(phaseButtons()).toHaveLength(3);
-  expect(byLabel("Expand Inspect phase, done")).toBeDefined();
-  expect(byLabel("Expand Improve phase, stopped")).toBeDefined();
-  expect(byLabel("Collapse Verify phase, running")).toBeDefined();
-  for (const phase of phaseButtons().slice(0, 2)) await click(phase);
+  expect(fixture.byLabel("Expand Inspect phase, done")).toBeDefined();
+  expect(fixture.byLabel("Expand Improve phase, stopped")).toBeDefined();
+  expect(fixture.byLabel("Collapse Verify phase, running")).toBeDefined();
+  for (const phase of phaseButtons().slice(0, 2)) await fixture.click(phase);
   expect(memberButtons()).toHaveLength(7);
   for (const button of memberButtons()) {
     expect(button.disabled).toBe(true);
-    await click(button);
+    await fixture.click(button);
   }
   expect(state.navigate).not.toHaveBeenCalled();
   state.shells = memberShells.map((source) => ({ environmentId: "remote", source }));
-  await update();
+  await fixture.update();
   for (const button of memberButtons()) expect(button.disabled).toBe(false);
   for (const agent of agents) {
-    await click(byLabel(`Open ${agent.label} chat`));
+    await fixture.click(fixture.byLabel(`Open ${agent.label} chat`));
     expect(state.navigate).toHaveBeenLastCalledWith({
       to: "/$environmentId/$threadId",
       params: { environmentId: "remote", threadId: agent.childThreadId },
     });
   }
-  const rendered = textNodes("|");
+  const rendered = fixture.textNodes("|");
   // Each member's preview names its account, then its model as the account's catalog does.
   expect(rendered.match(/Work account\| · \|Sonnet\|/g)).toHaveLength(7);
   expect(rendered).not.toContain("Personal account");
@@ -441,33 +452,34 @@ it("opens the correct chat for every workflow phase and unphased member", async 
   expect(rendered).toContain("1|/|2| |agents");
   expect(rendered).toContain("Running");
   expect(rendered).toContain("running");
-  expect(buttonsWithLabel((label) => label.endsWith("phase, done"))).toHaveLength(1);
-  expect(buttonsWithLabel((label) => label.endsWith("phase, stopped"))).toHaveLength(1);
+  expect(fixture.buttonsWithLabel((label) => label.endsWith("phase, done"))).toHaveLength(1);
+  expect(fixture.buttonsWithLabel((label) => label.endsWith("phase, stopped"))).toHaveLength(1);
   expect(rendered).toContain("|6s|");
   for (const phase of phaseButtons()) {
     const label = String(phase.getAttribute("aria-label")).slice("Collapse ".length);
-    await click(phase);
+    await fixture.click(phase);
     expect(memberButtons()).toHaveLength(5);
-    await click(byLabel(`Expand ${label}`));
+    await fixture.click(fixture.byLabel(`Expand ${label}`));
     expect(memberButtons()).toHaveLength(7);
   }
-  await click(phaseButtons()[0]!);
+  await fixture.click(phaseButtons()[0]!);
   expect(memberButtons()).toHaveLength(5);
   const restarted = agents.map((agent) =>
     agent.index === 0 ? { ...agent, state: "running" } : agent,
   );
   state.projection = project(restarted);
-  await update();
+  await fixture.update();
   expect(memberButtons()).toHaveLength(5);
   state.projection = project(agents);
-  await update();
+  await fixture.update();
   expect(memberButtons()).toHaveLength(5);
-  await click(byLabel("Collapse Checkout review"));
+  await fixture.click(fixture.byLabel("Collapse Checkout review"));
   expect(memberButtons()).toHaveLength(0);
   expect(state.navigate).toHaveBeenCalledTimes(7);
 });
 
 it("groups and counts a workflow by its run status instead of its coordinator chat", async () => {
+  await using fixture = setup();
   state.showTooltips = true;
   const coordinator = {
     id: "workflow",
@@ -513,14 +525,14 @@ it("groups and counts a workflow by its run status instead of its coordinator ch
       threadId={ThreadId.make("parent")}
     />
   );
-  await render(panel);
-  const text = () => textNodes("");
-  expect(heading()).toBe("Lineage · 1 running");
-  await click(byLabel("Expand Checkout review"));
-  expect(byLabel("Open Checker chat")).toBeDefined();
+  await fixture.render(panel);
+  const text = () => fixture.textNodes("");
+  expect(fixture.heading()).toBe("Lineage · 1 running");
+  await fixture.click(fixture.byLabel("Expand Checkout review"));
+  expect(fixture.byLabel("Open Checker chat")).toBeDefined();
   state.shells = [{ environmentId: "test", source: { ...child, activityRunStatus: "waiting" } }];
-  await update();
-  expect(heading()).toBe("Lineage · 1 running");
+  await fixture.update();
+  expect(fixture.heading()).toBe("Lineage · 1 running");
   expect(text()).toContain("Inspecting the checkout workflow");
   state.projection = {
     ...projection,
@@ -534,12 +546,12 @@ it("groups and counts a workflow by its run status instead of its coordinator ch
   };
   // A finished workflow's chat is no longer waiting on a follow-up.
   state.shells = [{ environmentId: "test", source: child }];
-  await update();
-  expect(heading()).toBe("Lineage");
+  await fixture.update();
+  expect(fixture.heading()).toBe("Lineage");
   expect(text()).toContain("Previous agents");
-  expect(allByLabel("Open Checker chat")).toHaveLength(0);
-  await click(sectionToggle(false));
-  expect(byLabel("Expand Checkout review")).toBeDefined();
+  expect(fixture.allByLabel("Open Checker chat")).toHaveLength(0);
+  await fixture.click(fixture.sectionToggle(false));
+  expect(fixture.byLabel("Expand Checkout review")).toBeDefined();
   expect(text()).toContain("Workflow checks complete");
   expect(text()).toContain("10m");
 });
@@ -552,6 +564,7 @@ it.each([
 ])(
   "offers individual Stop for supported $origin $driver subagents with run $runId",
   async ({ driver, origin, runId, canStop }) => {
+    await using fixture = setup();
     const parent = {
       id: "parent",
       lineage: { relationshipToParent: null },
@@ -598,13 +611,13 @@ it.each([
         threadId={ThreadId.make("parent")}
       />
     );
-    await render(panel);
+    await fixture.render(panel);
     if (!canStop) {
-      expect(allByLabel("Stop subagent Worker")).toHaveLength(0);
+      expect(fixture.allByLabel("Stop subagent Worker")).toHaveLength(0);
       return;
     }
-    const stopButton = () => byLabel("Stop subagent Worker");
-    await click(stopButton());
+    const stopButton = () => fixture.byLabel("Stop subagent Worker");
+    await fixture.click(stopButton());
     expect(state.command).toHaveBeenCalledWith({
       environmentId: "test",
       input:
@@ -630,15 +643,15 @@ it.each([
         ...projection,
         subagents: [{ ...agent, origin: "provider_native", status: "completed" }],
       };
-      await update();
-      expect(allByLabel("Stop subagent Worker")).toHaveLength(0);
+      await fixture.update();
+      expect(fixture.allByLabel("Stop subagent Worker")).toHaveLength(0);
       state.projection = { ...projection, subagents: [{ ...agent, status: "completed" }] };
-      await update();
+      await fixture.update();
       if (origin === "provider_native") {
-        expect(allByLabel("Stop subagent Worker")).toHaveLength(0);
+        expect(fixture.allByLabel("Stop subagent Worker")).toHaveLength(0);
         continue;
       }
-      await click(stopButton());
+      await fixture.click(stopButton());
       expect(state.command).toHaveBeenCalledTimes(1);
       expect(state.command).toHaveBeenLastCalledWith({
         environmentId: "test",
@@ -648,22 +661,23 @@ it.each([
     state.shells = [{ environmentId: "test", source: child }];
     for (const status of ["completed", "failed", "interrupted"]) {
       state.projection = { ...projection, subagents: [{ ...agent, status }] };
-      await update();
-      expect(allByLabel("Stop subagent Worker")).toHaveLength(0);
+      await fixture.update();
+      expect(fixture.allByLabel("Stop subagent Worker")).toHaveLength(0);
     }
     state.projection = { ...projection, subagents: [{ ...agent, startedAt: null }] };
-    await update();
-    expect(allByLabel("Stop subagent Worker")).toHaveLength(0);
+    await fixture.update();
+    expect(fixture.allByLabel("Stop subagent Worker")).toHaveLength(0);
     state.projection = {
       ...projection,
       subagents: [{ ...agent, origin: "provider_native", driver: "codex" }],
     };
-    await update();
-    expect(allByLabel("Stop subagent Worker")).toHaveLength(0);
+    await fixture.update();
+    expect(fixture.allByLabel("Stop subagent Worker")).toHaveLength(0);
   },
 );
 
 it("shows the matching child agent details and refreshes them when the agent settles", async () => {
+  await using fixture = setup();
   const agent = {
     id: "agent-1",
     driver: "codex",
@@ -702,8 +716,8 @@ it("shows the matching child agent details and refreshes them when the agent set
       threadId={ThreadId.make("parent")}
     />
   );
-  await render(panel);
-  const text = () => textNodes(" ").replace(/\s+/g, " ");
+  await fixture.render(panel);
+  const text = () => fixture.textNodes(" ").replace(/\s+/g, " ");
   expect(text()).toContain("Checker");
   expect(text()).toContain("Lineage · 3 running");
   expect(text()).toContain("running");
@@ -712,7 +726,7 @@ it("shows the matching child agent details and refreshes them when the agent set
   expect(text()).not.toContain("tok");
   expect(text()).not.toContain("Unlinked agent");
   expect(text()).not.toContain("Active agents");
-  expect(sectionToggles(true)).toHaveLength(0);
+  expect(fixture.sectionToggles(true)).toHaveLength(0);
 
   state.projection = {
     ...projection,
@@ -726,21 +740,21 @@ it("shows the matching child agent details and refreshes them when the agent set
       },
     ],
   };
-  await update();
-  expect(heading()).toBe("Lineage");
-  expect(text()).toContain("Previous agents (1)");
+  await fixture.update();
+  expect(fixture.heading()).toBe("Lineage");
+  expect(text()).toContain("Previous agents 1");
   expect(text()).not.toContain("Checker");
-  await click(sectionToggle(false));
+  await fixture.click(fixture.sectionToggle(false));
   expect(text()).toContain("Checker");
   expect(text()).toContain("Checker 2m");
   expect(text()).not.toContain("(1)");
   expect(text()).not.toContain("Done");
   expect(text()).not.toContain("running");
   expect(text()).not.toContain("Worker");
-  await click(sectionToggle(true));
+  await fixture.click(fixture.sectionToggle(true));
   expect(text()).not.toContain("Checker");
-  expect(text()).toContain("Previous agents (1)");
-  await click(sectionToggle(false));
+  expect(text()).toContain("Previous agents 1");
+  await fixture.click(fixture.sectionToggle(false));
   expect(text()).toContain("Checker");
 
   state.projection = {
@@ -751,7 +765,7 @@ it("shows the matching child agent details and refreshes them when the agent set
       childThreadId: `running-child-${index}`,
     })),
   };
-  await update();
+  await fixture.update();
   expect(text()).toContain("Lineage · 8 running");
 
   state.projection = {
@@ -766,21 +780,22 @@ it("shows the matching child agent details and refreshes them when the agent set
       completedAt: DateTime.makeUnsafe("2026-09-16T12:02:15Z"),
     })),
   };
-  await update();
+  await fixture.update();
   expect(text()).toContain("1 failed");
   expect(text()).not.toContain("Old agent 7");
-  await click(buttons().find((button) => button.textContent?.startsWith("Show "))!);
+  await fixture.click(fixture.buttons().find((button) => button.textContent?.startsWith("Show "))!);
   expect(text()).toContain("Old agent 7");
 
   state.projection = {
     ...projection,
     subagents: [{ ...agent, childThreadId: null }],
   };
-  await update();
+  await fixture.update();
   expect(text()).toContain("Lineage · 1 running");
 });
 
 it("keeps active supervisor status, progress, and task timing after its child turn ends", async () => {
+  await using fixture = setup();
   using _now = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-09-16T12:05:15Z"));
   state.showTooltips = true;
   // The child request follows task creation by milliseconds, but finishing that
@@ -837,19 +852,21 @@ it("keeps active supervisor status, progress, and task timing after its child tu
       ...projection,
       subagents: [{ ...projection.subagents[0], status }],
     };
-    await render(
+    await fixture.render(
       <ThreadRelationshipsPanel
         environmentId={EnvironmentId.make("test")}
         threadId={ThreadId.make("parent")}
       />,
     );
 
-    expect(heading()).toBe(status === "running" ? "Lineage · 1 running" : "Lineage");
-    expect(textNodes(" ")).not.toContain("Previous agents");
-    expect(buttons().some((button) => button.textContent?.includes("Supervisor"))).toBe(true);
+    expect(fixture.heading()).toBe(status === "running" ? "Lineage · 1 running" : "Lineage");
+    expect(fixture.textNodes(" ")).not.toContain("Previous agents");
+    expect(fixture.buttons().some((button) => button.textContent?.includes("Supervisor"))).toBe(
+      true,
+    );
     // The panel header's "Open in Agents panel" button has its own tooltip.
     const tooltip = Array.from(
-      container.querySelectorAll('[role="tooltip"]'),
+      fixture.container.querySelectorAll('[role="tooltip"]'),
       (node) => node.textContent,
     ).find((content) => content?.includes("Supervisor"));
     expect.soft(tooltip).toContain(STATUS_VISUALS[status].label);
@@ -859,6 +876,7 @@ it("keeps active supervisor status, progress, and task timing after its child tu
 });
 
 it("shows readable models and only differing workspace details in agent tooltips", async () => {
+  await using fixture = setup();
   state.showTooltips = true;
   const parent = {
     id: "parent",
@@ -933,8 +951,8 @@ it("shows readable models and only differing workspace details in agent tooltips
       threadId={ThreadId.make("parent")}
     />
   );
-  await render(panel);
-  const text = (visibleOnly = false) => textNodes("", visibleOnly);
+  await fixture.render(panel);
+  const text = (visibleOnly = false) => fixture.textNodes("", visibleOnly);
   const rerender = async (source = child) => {
     // Fresh objects, as real shells are: the compiled component memoizes on identity.
     state.shells = [
@@ -946,7 +964,7 @@ it("shows readable models and only differing workspace details in agent tooltips
         },
       },
     ];
-    await update();
+    await fixture.update();
   };
   const nativeProjection = {
     ...projection,
@@ -954,11 +972,11 @@ it("shows readable models and only differing workspace details in agent tooltips
   };
   expect(text()).toContain("My GPT · high");
   state.projection = nativeProjection;
-  await update();
+  await fixture.update();
   expect(text()).toContain("My GPT");
   expect(text()).not.toContain("My GPT · high");
   state.projection = projection;
-  await update();
+  await fixture.update();
   expect(text()).not.toContain("Tokens");
   expect(text()).not.toContain("Open subagent");
   expect(text()).not.toContain("Project");
@@ -978,7 +996,7 @@ it("shows readable models and only differing workspace details in agent tooltips
       ...projection,
       subagents: [{ ...projection.subagents[0], model }],
     };
-    await update();
+    await fixture.update();
     expect(text()).toContain(effort ? `${expected} · high` : expected);
     if (!effort) expect(text()).not.toContain(" · high");
     expect(text()).not.toContain("Unknown");
@@ -999,7 +1017,7 @@ it("shows readable models and only differing workspace details in agent tooltips
       ...projection,
       subagents: [{ ...projection.subagents[0], driver, model: null }],
     };
-    await update();
+    await fixture.update();
     expect(text()).toContain("My GPT");
     expect(text()).not.toContain("Not reported");
   }
@@ -1128,7 +1146,7 @@ it("shows readable models and only differing workspace details in agent tooltips
   expect(text()).toContain("Work account · My GPT · Fast mode onhigh");
   expect(text()).not.toContain("Personal account");
   state.projection = nativeProjection;
-  await update();
+  await fixture.update();
   expect(text()).not.toMatch(/Fast|Ultrafast|Normal|Standard|Flex| · high/);
   state.projection = projection;
   for (const modelSelection of [
@@ -1158,14 +1176,14 @@ it("shows readable models and only differing workspace details in agent tooltips
         },
       ],
     };
-    await update();
+    await fixture.update();
     if (status === "completed") {
-      await click(sectionToggle(false));
+      await fixture.click(fixture.sectionToggle(false));
     }
     expect(text()).toContain("Work account · My GPT · Ultrafast mode onlow");
     expect(text()).not.toContain(" · high");
   }
-  await click(sectionToggle(true));
+  await fixture.click(fixture.sectionToggle(true));
   state.projection = projection;
   state.configs.set("test", speedConfig);
   child.modelSelection.options = [{ id: "reasoningEffort", value: "high" }];
@@ -1173,7 +1191,7 @@ it("shows readable models and only differing workspace details in agent tooltips
   expect(text()).not.toContain("My GPT ·");
   const config = state.configs.get("test");
   state.configs.clear();
-  await update();
+  await fixture.update();
   expect(text()).toContain("GPT-5.4");
   expect(text()).not.toContain("GPT-5.4 ·");
   await rerender();
@@ -1201,7 +1219,7 @@ it("shows readable models and only differing workspace details in agent tooltips
       },
     ],
   };
-  await update();
+  await fixture.update();
   expect(text()).toContain("Checking the latest changes");
   expect(text()).not.toContain("Old intermediate result");
   const result = "Final checks passed. " + "More detail. ".repeat(50) + "Hidden tail";
@@ -1211,12 +1229,12 @@ it("shows readable models and only differing workspace details in agent tooltips
       { ...projection.subagents[0], status: "failed", progress: "Stale progress", result },
     ],
   };
-  await update();
-  await click(sectionToggle(false));
+  await fixture.update();
+  await fixture.click(fixture.sectionToggle(false));
   expect(text()).toContain("Final checks passed.");
   expect(text()).not.toContain("Stale progress");
   // The preview clamps a long outcome to a few lines rather than cutting its text.
-  const outcome = [...container.querySelectorAll("p")].find((node) =>
+  const outcome = [...fixture.container.querySelectorAll("p")].find((node) =>
     node.textContent?.startsWith("Final checks passed."),
   );
   expect(outcome?.classList.contains("line-clamp-3")).toBe(true);
@@ -1249,7 +1267,7 @@ it("shows readable models and only differing workspace details in agent tooltips
 
   state.shells = [];
   state.configs.clear();
-  await update();
+  await fixture.update();
   expect(text()).toContain("GPT-5.4");
   expect(text()).not.toContain("GPT-5.4 ·");
   expect(text()).not.toContain("gpt-5.4");
@@ -1271,12 +1289,13 @@ it("shows readable models and only differing workspace details in agent tooltips
       ...projection,
       subagents: [{ ...projection.subagents[0], driver, model }],
     };
-    await update();
+    await fixture.update();
     expect(text()).toContain(expected);
   }
 });
 
 it("shows the parent's own visible status as parent and child activity change", async () => {
+  await using fixture = setup();
   const environmentId = EnvironmentId.make("test");
   const parent = {
     id: "parent",
@@ -1307,20 +1326,21 @@ it("shows the parent's own visible status as parent and child activity change", 
   const panel = (
     <ThreadRelationshipsPanel environmentId={environmentId} threadId={ThreadId.make("child")} />
   );
-  await render(panel);
-  const visibleText = () => textNodes(" ", true);
+  await fixture.render(panel);
+  const visibleText = () => fixture.textNodes(" ", true);
   expect(visibleText()).toContain("Parent conversation");
   expect(visibleText()).toContain("Running");
   state.shells = shells(
     { ...parent, activityRunStatus: "completed" },
     { ...child, status: "running" },
   );
-  await update();
+  await fixture.update();
   expect(visibleText()).toContain("Done");
   expect(visibleText()).not.toContain("Running");
 });
 
 it("shows the native coordinator status from its member and gives follow-up activity precedence", async () => {
+  await using fixture = setup();
   const environmentId = EnvironmentId.make("remote");
   const coordinator = {
     id: "coordinator",
@@ -1356,11 +1376,12 @@ it("shows the native coordinator status from its member and gives follow-up acti
     ["local:coordinator", { ...emptyProjection, thread: coordinator, nodes: [rootTurn] }],
   ]);
   state.shells = [coordinator, member].map((source) => ({ environmentId, source }));
-  await render(
+  await fixture.render(
     <ThreadRelationshipsPanel environmentId={environmentId} threadId={ThreadId.make("member")} />,
   );
   const coordinatorText = () =>
-    buttons().find((button) => button.textContent?.includes("Workflow coordinator"))?.textContent;
+    fixture.buttons().find((button) => button.textContent?.includes("Workflow coordinator"))
+      ?.textContent;
   expect(coordinatorText()).toMatch(/Workflow coordinator\s*Idle$/);
 
   for (const [status, label] of [
@@ -1374,7 +1395,7 @@ it("shows the native coordinator status from its member and gives follow-up acti
         { ...rootTurn, status, completedAt: status === "running" ? null : rootTurn.completedAt },
       ],
     });
-    await update();
+    await fixture.update();
     expect(coordinatorText()).toMatch(new RegExp(`Workflow coordinator\\s*${label}$`));
   }
 
@@ -1382,13 +1403,14 @@ it("shows the native coordinator status from its member and gives follow-up acti
     { environmentId, source: { ...coordinator, activityRunStatus: "running" } },
     { environmentId, source: member },
   ];
-  await update();
+  await fixture.update();
   expect(coordinatorText()).toMatch(/Workflow coordinator\s*Running$/);
 });
 
 it.each(["source", "target"])(
   "shows transfer lifecycle states when viewing the %s thread",
   async (currentThreadId) => {
+    await using fixture = setup();
     const environmentId = EnvironmentId.make("test");
     const threads = ["source", "target"].map((id) => ({
       id,
@@ -1424,9 +1446,9 @@ it.each(["source", "target"])(
         subagents: [],
         contextTransfers: [{ sourceThreadId: "source", targetThreadId: "target", status }],
       };
-      if (status === "pending") await render(panel);
-      else await update();
-      const visibleText = textNodes(" ");
+      if (status === "pending") await fixture.render(panel);
+      else await fixture.update();
+      const visibleText = fixture.textNodes(" ");
       expect(visibleText).toContain(
         currentThreadId === "source" ? "target conversation" : "source conversation",
       );

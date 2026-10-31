@@ -436,6 +436,11 @@ const CHAT_MARKDOWN_RENDER_REHYPE_PLUGINS = [
   rehypeChipPunctuation,
 ] satisfies NonNullable<ReactMarkdownOptions["rehypePlugins"]>;
 
+const CHAT_MARKDOWN_THEMED_REHYPE_PLUGINS = {
+  light: [...CHAT_MARKDOWN_RENDER_REHYPE_PLUGINS, rehypeResolvePictureSources("light")],
+  dark: [...CHAT_MARKDOWN_RENDER_REHYPE_PLUGINS, rehypeResolvePictureSources("dark")],
+} satisfies Record<"light" | "dark", NonNullable<ReactMarkdownOptions["rehypePlugins"]>>;
+
 const CHAT_MARKDOWN_LITERAL_HTML_REHYPE_PLUGINS = [
   rehypeHeadingIds,
   rehypeTextDirection,
@@ -2139,10 +2144,7 @@ function ChatMarkdown({
             remarkPlugins={remarkPlugins}
             rehypePlugins={
               parseRawHtml
-                ? [
-                    ...CHAT_MARKDOWN_RENDER_REHYPE_PLUGINS,
-                    rehypeResolvePictureSources(componentState.resolvedTheme),
-                  ]
+                ? CHAT_MARKDOWN_THEMED_REHYPE_PLUGINS[componentState.resolvedTheme]
                 : CHAT_MARKDOWN_LITERAL_HTML_REHYPE_PLUGINS
             }
             shared={!uncachedPlugins}

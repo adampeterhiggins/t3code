@@ -121,6 +121,11 @@ vi.mock(import("./ProjectActionsSettings"), async (original) => ({
   ProjectActionsSettings: (() => null) as never,
 }));
 
+vi.mock(import("./ConductorSettings"), async (original) => ({
+  ...(await original()),
+  ConductorSettings: (() => null) as never,
+}));
+
 vi.mock(import("../files/projectFilesQueryState"), async (original) => ({
   ...(await original()),
   getProjectFileQueryAtom: () => missingProjectFile,
