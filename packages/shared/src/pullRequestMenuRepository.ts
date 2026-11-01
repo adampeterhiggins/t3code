@@ -13,8 +13,8 @@ export interface PullRequestMenuRepository {
 export function pullRequestMenuRepository(
   identity: Pick<RepositoryIdentity, "canonicalKey" | "displayName" | "webUrl"> | null | undefined,
 ): PullRequestMenuRepository | null {
-  const webUrl = identity?.webUrl;
-  if (webUrl === undefined) return null;
+  if (identity == null || identity.webUrl === undefined) return null;
+  const webUrl = identity.webUrl;
   let url: URL;
   try {
     url = new URL(webUrl);
