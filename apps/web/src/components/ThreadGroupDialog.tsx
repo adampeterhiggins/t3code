@@ -28,7 +28,7 @@ const ProjectIconPickerDialog = lazy(() =>
 );
 
 // "default" follows the Grouped threads setting in Settings.
-const THREAD_GROUP_VIEW_LABELS = {
+export const THREAD_GROUP_VIEW_LABELS = {
   default: "Default",
   card: "Detailed",
   slim: "Compact",

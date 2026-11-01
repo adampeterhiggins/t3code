@@ -464,10 +464,10 @@ export const SETTINGS_SEARCH_ITEMS = [
     ],
   },
   {
-    id: "sidebar-group-settled",
+    id: "sidebar-thread-groups",
     title: "Thread groups",
     to: "/settings/general",
-    searchTerms: ["show settled threads group sidebar"],
+    searchTerms: ["show settled threads group sidebar rows detailed compact view"],
   },
   {
     id: "sidebar-tabs",

@@ -2087,7 +2087,7 @@ Snoozed or Settled page and lists them on its own page too, skipping any already
 picked page. `showSettled` defaults to on (the field is omitted). Set to false, that group's settled
 threads stay on Settled instead of its page, including when the group would otherwise take them out
 of Settled; they are not copied onto the group page. Snoozed threads stay on the group page.
-Besides each group's dialog, **Settings → General** has a switch per group for it
+Besides each group's dialog, **Settings → General** sets it per group, along with `view` on web and desktop
 ([web](../apps/web/src/components/settings/ThreadGroupSettings.tsx),
 [mobile](../apps/mobile/src/features/settings/ThreadSettingsSections.tsx)).
 A group's `view` picks Detailed or Compact rows on its page in the web and desktop sidebar,

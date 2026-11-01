@@ -609,12 +609,13 @@ Settled** when creating or editing it. Its threads then stay in your live list (
 Settled), and picking the group under **Show** still lists all of them.
 
 **Show settled threads** is on unless you turn it off. Turning it off lists that group's settled
-threads under Settled instead of in the group. Snoozed threads stay in the group. You can also
-change it for every group at once in **Settings → General**, under **Thread groups** on web and
-desktop or **Show settled threads in groups** on mobile.
+threads under Settled instead of in the group. Snoozed threads stay in the group. You can also set
+it for each group in **Settings → General**, under **Thread groups** on web and desktop or **Show
+settled threads in groups** on mobile.
 
 On web and desktop, **Rows** in the same dialog picks Detailed or Compact rows for that group's
-page. **Default** follows **Grouped threads** under the sidebar's thread view settings.
+page, and **Settings → General → Thread groups** has the same choice for each group. **Default**
+follows **Grouped threads** under the sidebar's thread view settings.
 
 To file a project's new threads automatically, open the project's settings and pick a group under
 **New threads → Thread group**. Every new thread in that project starts in the group, however it
