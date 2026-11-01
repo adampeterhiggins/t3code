@@ -281,6 +281,15 @@ it.layer(NodeServices.layer)("RepositoryIdentityResolverLive", (it) => {
         remoteUrl: "git@github.com:julius/t3code-fork.git",
         displayName: "julius/t3code-fork",
       });
+
+      // `gh repo set-default origin` makes the fork the repository its pull requests live in.
+      yield* git(cwd, ["config", "remote.origin.gh-resolved", "base"]);
+      const chosen = yield* resolver.resolve(cwd, { refresh: true });
+
+      expect(chosen?.canonicalKey).toBe("github.com/julius/t3code-fork");
+      expect(chosen?.locator.remoteName).toBe("origin");
+      expect(chosen?.displayName).toBe("julius/t3code-fork");
+      expect(chosen?.origin).toBeUndefined();
     }).pipe(Effect.provide(RepositoryIdentityResolver.layer)),
   );
 

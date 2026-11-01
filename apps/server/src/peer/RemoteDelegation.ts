@@ -11,6 +11,7 @@ import {
   type ProjectId,
   type ProviderInstanceId,
   ProviderDriverKind,
+  repositoryGroupingKeyOf,
   type RunId,
   type ThreadId,
 } from "@t3tools/contracts";
@@ -151,10 +152,10 @@ const make = Effect.gen(function* () {
     );
     // The project's own identity is a one-minute cache that reads blank when
     // cold, so resolve it here, as the other side's t3_project_list does.
-    const key =
-      here === undefined
-        ? undefined
-        : (yield* repositoryIdentities.resolve(here.workspaceRoot))?.canonicalKey;
+    // Grouping keys name a fork the same way whichever remote each machine's gh prefers.
+    const identity =
+      here === undefined ? null : yield* repositoryIdentities.resolve(here.workspaceRoot);
+    const key = identity ? repositoryGroupingKeyOf(identity) : undefined;
     if (key === undefined) {
       return yield* new OrchestratorMcpFailure({
         code: "target_required",
@@ -170,7 +171,11 @@ const make = Effect.gen(function* () {
           limit: 100,
         });
       matches.push(
-        ...listed.projects.filter((project) => project.repositoryIdentity?.canonicalKey === key),
+        ...listed.projects.filter(
+          (project) =>
+            project.repositoryIdentity != null &&
+            repositoryGroupingKeyOf(project.repositoryIdentity) === key,
+        ),
       );
       cursor = listed.nextCursor;
     }

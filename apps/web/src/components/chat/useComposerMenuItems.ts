@@ -144,7 +144,6 @@ export function useComposerMenuItems({
             input: {
               state: "all" as const,
               projectId: pullRequestProjectId,
-              ...(pullRequestRepository === null ? {} : { repository: pullRequestRepository }),
               limit: COMPOSER_PULL_REQUEST_LIST_LIMIT,
               ...(settledPullRequestTextQuery === null
                 ? {}

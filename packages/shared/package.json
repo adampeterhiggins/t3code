@@ -299,10 +299,6 @@
       "types": "./src/githubIssueReferences.ts",
       "import": "./src/githubIssueReferences.ts"
     },
-    "./pullRequestMenuRepository": {
-      "types": "./src/pullRequestMenuRepository.ts",
-      "import": "./src/pullRequestMenuRepository.ts"
-    },
     "./linearIssueReferences": {
       "types": "./src/linearIssueReferences.ts",
       "import": "./src/linearIssueReferences.ts"

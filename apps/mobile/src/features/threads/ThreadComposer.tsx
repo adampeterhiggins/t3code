@@ -28,7 +28,6 @@ import {
   type ServerConfig as T3ServerConfig,
   type UsageLimitsReport,
 } from "@t3tools/contracts";
-import { pullRequestMenuRepository } from "@t3tools/shared/pullRequestMenuRepository";
 import {
   collectProviderUsageLimits,
   hasProviderUsageLimits,
@@ -625,10 +624,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     ...(props.serverConfig ? { providers: props.serverConfig.providers } : {}),
     projectCwd: props.projectCwd,
     pullRequestProjectId: props.serverConfig ? (project?.id ?? null) : null,
-    pullRequestRepository:
-      pullRequestMenuRepository(project?.repositoryIdentity)?.repository ??
-      project?.repositoryIdentity?.displayName ??
-      null,
+    pullRequestRepository: project?.repositoryIdentity?.displayName ?? null,
     threadPullRequests: props.selectedThread.pullRequests,
     selectedProviderStatus,
     hasThread: !props.isDraft,

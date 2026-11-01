@@ -363,11 +363,6 @@ export const PullRequestListInput = Schema.Struct({
   projectId: Schema.optional(ProjectId),
   projectIds: Schema.optional(Schema.Array(ProjectId).check(Schema.isMaxLength(100))),
   host: Schema.optional(TrimmedNonEmptyString),
-  /**
-   * List this repository instead of the project's identity when it is the one `webUrl` names.
-   * Any other value is ignored, so the field cannot browse an arbitrary repository.
-   */
-  repository: Schema.optional(TrimmedNonEmptyString),
   limit: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 500 }))),
   cursors: Schema.optional(PullRequestListCursors),
   query: Schema.optional(TrimmedNonEmptyString.check(Schema.isMaxLength(200))),

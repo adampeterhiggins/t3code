@@ -48,7 +48,6 @@ function project(input: {
   readonly provider?: string;
   readonly host?: string;
   readonly remoteUrl?: string;
-  readonly webUrl?: string;
 }): OrchestrationProjectShell {
   const host = input.host ?? (input.provider === "gitlab" ? "gitlab.com" : "github.com");
   return {
@@ -66,7 +65,6 @@ function project(input: {
             },
             provider: SourceControlProviderKind.make(input.provider ?? "github"),
             displayName: input.repository,
-            ...(input.webUrl === undefined ? {} : { webUrl: input.webUrl }),
           },
         }
       : {}),
@@ -309,63 +307,6 @@ function makeService(input: {
     (context) => Effect.provideContext(PullRequestService.make, context),
   );
 }
-
-it.effect("lists the repository gh opens when the menu asks for it", () =>
-  Effect.gen(function* () {
-    const listed: string[] = [];
-    const read: string[] = [];
-    const service = yield* makeService({
-      projects: [
-        project({
-          id: "p1",
-          title: "fork",
-          workspaceRoot: "/repo",
-          repository: "acme/web",
-          webUrl: "https://github.com/Me/Web",
-        }),
-      ],
-      providers: [
-        fakePullRequestProvider(SourceControlProviderKind.make("github"), {
-          listChangeRequests: ({ repository }) => {
-            listed.push(repository);
-            return Effect.succeed({
-              items: [changeRequest(522, "2026-07-05T00:00:00Z")],
-              truncated: false,
-              continues: false,
-            });
-          },
-          getChangeRequest: ({ repository, number }) => {
-            read.push(`${repository}#${number}`);
-            return Effect.succeed(hostedChangeRequest("Body"));
-          },
-        }),
-      ],
-    });
-    const fork = yield* service.list({
-      state: "open",
-      projectId: "p1" as ProjectId,
-      repository: "me/web",
-    });
-    assert.deepStrictEqual(
-      fork.entries.map((entry) => entry.repository),
-      ["Me/Web"],
-    );
-    const detail = yield* service.detail({
-      projectId: "p1" as ProjectId,
-      repository: "Me/Web",
-      number: 522,
-    });
-    assert.strictEqual(detail.repository, "Me/Web");
-    yield* service.list({ state: "open", projectId: "p1" as ProjectId });
-    yield* service.list({
-      state: "open",
-      projectId: "p1" as ProjectId,
-      repository: "other/repo",
-    });
-    assert.deepStrictEqual(listed, ["Me/Web", "acme/web", "acme/web"]);
-    assert.deepStrictEqual(read, ["Me/Web#522"]);
-  }),
-);
 
 it.effect("lists GitHub Enterprise PRs for a stored unknown repository after host discovery", () =>
   Effect.gen(function* () {
