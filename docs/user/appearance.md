@@ -13,7 +13,10 @@ those modes. Customize these shortcuts under **Settings → Keybindings**.
 
 On mobile, open **Settings → Appearance**. Mobile has its own themes and text,
 code, and terminal preferences. Themes shared by your connected environments appear alongside
-them; mobile does not follow an environment's default theme.
+them; mobile does not follow an environment's default theme. Choose **Create theme** to make a
+theme from a background and accent color, or the pencil on a shared theme to edit or delete it.
+Themes made or edited on mobile are shared with every device connected to your environments.
+**Contrast** works as it does on desktop and is set separately on each device.
 
 On Android 12 or newer, choose the **Material You** theme in Appearance to use colors from
 your wallpaper. Selecting another theme replaces those colors. Like other themes, Material You
@@ -64,8 +67,19 @@ To use a custom theme on your other devices, choose **Share** (the cloud icon) o
 publishes it to the environment the app runs on, so every web, desktop, and mobile client of that
 environment can select it. After editing a shared theme, choose **Share** again to update the
 shared copy. **Stop sharing** removes it from other clients' lists. Mobile keeps a copy of a
-shared theme you select, so it still applies offline. On mobile, the terminal keeps the standard
-colors.
+shared theme you select, so it still applies offline.
+
+Edits made to a shared theme on another device replace your copy, unless you have changed your
+copy since it was last shared; then its card offers to update the shared copy instead.
+
+### Sync your theme across devices
+
+Turn on **Sync theme across devices** in **Settings → Appearance** on each device that should
+match. Picking a theme on any of them switches the others, including separate light and dark
+choices; System, Light, or Dark mode stays per device. Picking a custom theme shares it. A device
+that cannot show the picked theme, such as Material You on desktop, keeps its own for that
+appearance. When you turn sync on, the device adopts the current synced theme, or starts the sync
+with its own if there is none.
 
 ## Terminal
 

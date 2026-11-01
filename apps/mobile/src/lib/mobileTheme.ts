@@ -1,4 +1,8 @@
-import { EnvironmentThemeId, type EnvironmentTheme } from "@t3tools/contracts";
+import {
+  EnvironmentThemeId,
+  type EnvironmentTheme,
+  type EnvironmentThemeFile,
+} from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import {
   BUILT_IN_THEMES,
@@ -91,6 +95,27 @@ export function environmentThemeAppearances(
   return theme.variants?.[other] === undefined ? [theme.appearance] : ["light", "dark"];
 }
 
+/** Theme sync ids: built-in ids as they are, environment themes by their bare id. */
+export function syncedThemeIdOf(themeId: MobileThemeId): string {
+  return environmentThemeIdOf(themeId) ?? themeId;
+}
+
+/** Null when this device cannot show the synced theme in that appearance. */
+export function mobileThemeIdFromSynced(
+  id: string,
+  appearance: MobileThemeAppearance,
+  environmentThemes: ReadonlyArray<EnvironmentTheme>,
+  systemColorsAvailable: boolean,
+): MobileThemeId | null {
+  if ((MOBILE_THEME_IDS as readonly string[]).includes(id)) {
+    return id === "material-you" && !systemColorsAvailable ? null : (id as MobileThemeId);
+  }
+  const theme = environmentThemes.find((candidate) => candidate.id === id);
+  return theme !== undefined && environmentThemeAppearances(theme).includes(appearance)
+    ? environmentMobileThemeId(theme.id)
+    : null;
+}
+
 /** Resolves a published file the way web clients do, so every surface shows one palette. */
 export function environmentThemeColors(
   theme: EnvironmentTheme,
@@ -105,6 +130,80 @@ export function environmentThemeColors(
       : getDefaultThemeColors(appearance);
   const known = Object.entries(overrides ?? {}).filter(([role]) => Object.hasOwn(base, role));
   return { ...base, ...Object.fromEntries(known) };
+}
+
+const HEX_COLOR_PATTERN = /^#[0-9a-f]{6}$/i;
+
+export function isThemeHexColor(value: string): boolean {
+  return HEX_COLOR_PATTERN.test(value);
+}
+
+/** The background and accent a theme is edited from: its seeds, else its rendered colors. */
+export function environmentThemeSeeds(theme: EnvironmentTheme): {
+  readonly canvas: string;
+  readonly accent: string;
+} {
+  const colors =
+    environmentThemeColors(theme, theme.appearance) ?? getDefaultThemeColors(theme.appearance);
+  const seed = (value: string | undefined, rendered: string) => {
+    const candidate = value ?? themeColorToNativeColor(rendered);
+    return isThemeHexColor(candidate) ? candidate.toLowerCase() : themeColorToNativeColor(rendered);
+  };
+  return { canvas: seed(theme.canvas, colors.canvas), accent: seed(theme.accent, colors.accent) };
+}
+
+/**
+ * Changing a seed regenerates the base appearance from it, dropping its hand-tuned colors;
+ * the other appearance's variant is kept. Unchanged seeds leave the palette as it was.
+ */
+export function environmentThemeFileFromSeeds(input: {
+  readonly existing: EnvironmentTheme | null;
+  readonly name: string;
+  readonly appearance: MobileThemeAppearance;
+  readonly canvas: string;
+  readonly accent: string;
+}): EnvironmentThemeFile {
+  const canvas = input.canvas.toLowerCase();
+  const accent = input.accent.toLowerCase();
+  const name = input.name.trim();
+  const { existing } = input;
+  if (existing !== null) {
+    const seeds = environmentThemeSeeds(existing);
+    if (seeds.canvas === canvas && seeds.accent === accent) {
+      const { id: _id, ...file } = existing;
+      return { ...file, version: 1, name };
+    }
+  }
+  return {
+    version: 1,
+    name,
+    appearance: existing?.appearance ?? input.appearance,
+    canvas,
+    accent,
+    ...(existing?.variants !== undefined ? { variants: existing.variants } : {}),
+  };
+}
+
+/** A new theme's id from its name, unique among `taken`. */
+export function newEnvironmentThemeId(
+  name: string,
+  taken: ReadonlyArray<string>,
+): EnvironmentThemeId {
+  const slug =
+    name
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40)
+      .replace(/-+$/, "") || "theme";
+  const base = isEnvironmentThemeId(slug) ? slug : `theme-${slug}`.slice(0, 40);
+  const unavailable = new Set([...taken, ...MOBILE_THEME_IDS]);
+  if (!unavailable.has(base)) return base;
+  for (let suffix = 2; ; suffix++) {
+    const candidate = `${base}-${suffix}`;
+    if (!unavailable.has(candidate)) return candidate;
+  }
 }
 
 /**
@@ -624,4 +723,91 @@ export function getMobileThemePreviewColors(
     accent: themeColorToNativeColor(colors.accent),
     messageAction: themeColorToNativeColor(colors.messageAction),
   };
+}
+
+const CONTRAST_TEXT_VARIABLES = [
+  "--color-foreground",
+  "--color-foreground-secondary",
+  "--color-foreground-muted",
+  "--color-foreground-tertiary",
+  "--color-placeholder",
+  "--color-icon",
+  "--color-icon-muted",
+  "--color-icon-subtle",
+  "--color-header-foreground",
+  "--color-md-body",
+  "--color-drawer-foreground",
+  "--color-drawer-foreground-muted",
+  "--color-chevron",
+] as const satisfies ReadonlyArray<MobileThemeVariable>;
+
+const CONTRAST_BORDER_VARIABLES = [
+  "--color-border",
+  "--color-border-subtle",
+  "--color-separator",
+  "--color-input-border",
+  "--color-composer-border",
+  "--color-header-border",
+  "--color-drawer-border",
+] as const satisfies ReadonlyArray<MobileThemeVariable>;
+
+type Rgba = readonly [number, number, number, number];
+
+function parseRgba(color: string): Rgba | null {
+  const hex = /^#([\da-f]{6})([\da-f]{2})?$/i.exec(color.trim());
+  if (hex) {
+    const [red, green, blue] = rgbChannels(`#${hex[1]}`)!;
+    return [red, green, blue, hex[2] === undefined ? 1 : Number.parseInt(hex[2], 16) / 255];
+  }
+  const rgb = /^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)(?:[,\s/]+([\d.]+))?\s*\)$/i.exec(
+    color.trim(),
+  );
+  return rgb
+    ? [Number(rgb[1]), Number(rgb[2]), Number(rgb[3]), rgb[4] === undefined ? 1 : Number(rgb[4])]
+    : null;
+}
+
+function formatRgba([red, green, blue, alpha]: Rgba): string {
+  const channels = [red, green, blue].map((channel) =>
+    Math.max(0, Math.min(255, Math.round(channel))),
+  );
+  return alpha >= 1
+    ? `#${channels.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`
+    : `rgba(${channels.join(", ")}, ${Number(alpha.toFixed(4))})`;
+}
+
+function mixRgba(from: Rgba, to: Rgba, towards: number): Rgba {
+  return [0, 1, 2, 3].map(
+    (index) => from[index]! + (to[index]! - from[index]!) * towards,
+  ) as unknown as Rgba;
+}
+
+/**
+ * Web's contrast setting: below 100 text fades toward the background and borders fade out;
+ * above it text moves toward black or white and borders toward the text color.
+ */
+export function applyMobileContrast(
+  variables: MobileThemeVariables,
+  appearance: MobileThemeAppearance,
+  contrast: number,
+): MobileThemeVariables {
+  if (contrast === 100) return variables;
+  const base = Math.min(contrast, 100) / 100;
+  const boost = Math.max(contrast - 100, 0) / 100;
+  const background = parseRgba(variables["--color-screen"]);
+  const foreground = parseRgba(variables["--color-foreground"]);
+  const target: Rgba = appearance === "dark" ? [255, 255, 255, 1] : [0, 0, 0, 1];
+  const next: Record<string, string> = { ...variables };
+  for (const name of CONTRAST_TEXT_VARIABLES) {
+    const color = parseRgba(variables[name]);
+    if (color === null || background === null) continue;
+    next[name] = formatRgba(mixRgba(mixRgba(background, color, base), target, boost));
+  }
+  for (const name of CONTRAST_BORDER_VARIABLES) {
+    const color = parseRgba(variables[name]);
+    if (color === null || foreground === null) continue;
+    const faded: Rgba = [color[0], color[1], color[2], color[3] * base];
+    next[name] = formatRgba(mixRgba(faded, foreground, boost / 4));
+  }
+  return next as MobileThemeVariables;
 }

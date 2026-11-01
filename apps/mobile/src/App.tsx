@@ -46,6 +46,7 @@ import {
   installAppearanceRuntime,
   useAppearancePreferences,
 } from "./features/settings/appearance/AppearancePreferencesProvider";
+import { installThemeSync } from "./features/settings/appearance/themeSync";
 import { RootStack, rootPathnameFromState, workspaceLocationFromState } from "./Stack";
 import { appAtomRegistry } from "./state/atom-registry";
 import { subscribeComposerDraftModelReconciliation } from "./state/use-composer-drafts";
@@ -183,6 +184,7 @@ const appServiceDisposers = [
     shellStateAtom: environmentShell.stateAtom,
   }),
   installAppearanceRuntime(),
+  installThemeSync(),
   installSubscriptionUsageRefresh(),
   installPermissionUpdateNotice(),
   installThreadOutboxDelivery(),

@@ -1,4 +1,4 @@
-import type { EnvironmentTheme } from "@t3tools/contracts";
+import type { EnvironmentId, EnvironmentTheme } from "@t3tools/contracts";
 import { createServerEnvironmentAtoms } from "@t3tools/client-runtime/state/server";
 import * as Equal from "effect/Equal";
 import * as Option from "effect/Option";
@@ -38,3 +38,10 @@ export const publishedEnvironmentThemesAtom = Atom.make((get): ReadonlyArray<Env
   const previous = Option.getOrNull(get.self<ReadonlyArray<EnvironmentTheme>>());
   return previous !== null && Equal.equals(previous, next) ? previous : next;
 }).pipe(Atom.withLabel("mobile-published-environment-themes"));
+
+/** Connected environments that let this device publish, edit and delete themes. */
+export const themeEditingEnvironmentIdsAtom = Atom.make((get): ReadonlyArray<EnvironmentId> =>
+  [...get(environmentServerConfigsAtom).keys()].filter((environmentId) =>
+    get(serverEnvironment.publishEnvironmentTheme.permissionAtom(environmentId)),
+  ),
+).pipe(Atom.withLabel("mobile-theme-editing-environment-ids"));

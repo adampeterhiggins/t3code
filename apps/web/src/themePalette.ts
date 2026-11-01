@@ -1184,14 +1184,40 @@ export function environmentThemeFileFromDefinition(theme: ThemeDefinition): Envi
 
 export type EnvironmentThemeShareState = "unshared" | "shared" | "outdated";
 
+/** Compares rendered palettes, so a seed-only file and its expansion count as the same theme. */
+export function publishedThemeFile(theme: EnvironmentTheme): EnvironmentThemeFile {
+  return environmentThemeFileFromDefinition(environmentThemeDefinition(theme));
+}
+
 export function environmentThemeShareState(
   theme: ThemeDefinition,
   published: ReadonlyArray<EnvironmentTheme>,
 ): EnvironmentThemeShareState {
   const match = published.find((candidate) => candidate.id === theme.id);
   if (!match) return "unshared";
-  const { id: _id, ...file } = match;
-  return Equal.equals(file, environmentThemeFileFromDefinition(theme)) ? "shared" : "outdated";
+  return Equal.equals(publishedThemeFile(match), environmentThemeFileFromDefinition(theme))
+    ? "shared"
+    : "outdated";
+}
+
+/**
+ * A shared custom theme follows edits made on other devices while it still matches the version
+ * this device last saw shared (`base`). Returns the theme to save locally, or null to keep it.
+ */
+export function followSharedThemeEdit(input: {
+  readonly local: ThemeDefinition;
+  readonly published: EnvironmentTheme;
+  readonly base: EnvironmentThemeFile | undefined;
+}): ThemeDefinition | null {
+  const localFile = environmentThemeFileFromDefinition(input.local);
+  const publishedFile = publishedThemeFile(input.published);
+  if (input.base === undefined || Equal.equals(localFile, publishedFile)) return null;
+  if (!Equal.equals(localFile, input.base)) return null;
+  const { managed: _managed, ...followed } = environmentThemeDefinition(input.published);
+  return {
+    ...followed,
+    ...(input.local.collection ? { collection: input.local.collection } : {}),
+  };
 }
 
 export function getThemeColorVariable(role: ThemeColorRole): string {

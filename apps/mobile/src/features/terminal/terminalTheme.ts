@@ -1,10 +1,19 @@
+import { TERMINAL_ANSI_ROLES } from "@t3tools/shared/themePalettes";
+import { AsyncResult } from "effect/reactivity";
+
 import {
   bundledPaletteThemeId,
+  environmentThemeColors,
+  findEnvironmentTheme,
+  getEnvironmentThemeVariables,
   getMobileThemeColors,
   getMobileThemeVariables,
   themeColorToNativeColor,
   type MobileThemeId,
 } from "../../lib/mobileTheme";
+import { appAtomRegistry } from "../../state/atom-registry";
+import { mobilePreferencesAtom } from "../../state/preferences";
+import { publishedEnvironmentThemesAtom } from "../../state/server";
 
 export type TerminalAppearanceScheme = "light" | "dark";
 
@@ -95,11 +104,40 @@ function getPierreTerminalTheme(scheme: TerminalAppearanceScheme): TerminalTheme
   return scheme === "light" ? PIERRE_LIGHT_THEME : PIERRE_DARK_THEME;
 }
 
+/** Callers re-render on theme changes through the appearance context, so a read is current. */
+function readEnvironmentTheme(themeId: MobileThemeId) {
+  const published = appAtomRegistry.get(publishedEnvironmentThemesAtom);
+  const preferences = appAtomRegistry.get(mobilePreferencesAtom);
+  const copies = AsyncResult.isSuccess(preferences)
+    ? (preferences.value.environmentThemes ?? [])
+    : [];
+  return findEnvironmentTheme(themeId, [...published, ...copies]);
+}
+
 export function getMobileTerminalTheme(
   themeId: MobileThemeId,
   scheme: TerminalAppearanceScheme,
 ): TerminalTheme {
   const base = getPierreTerminalTheme(scheme);
+  const environmentTheme = readEnvironmentTheme(themeId);
+  const environmentColors =
+    environmentTheme === null ? null : environmentThemeColors(environmentTheme, scheme);
+  const environmentVariables =
+    environmentTheme === null ? null : getEnvironmentThemeVariables(environmentTheme, scheme);
+  if (environmentColors !== null && environmentVariables !== null) {
+    const background = themeColorToNativeColor(environmentColors.terminalBackground);
+    return {
+      background,
+      foreground: themeColorToNativeColor(environmentColors.terminalForeground),
+      mutedForeground: environmentVariables["--color-foreground-muted"],
+      border: environmentVariables["--color-border"],
+      cursorForeground: themeColorToNativeColor(environmentColors.terminalCursor),
+      cursorBackground: background,
+      palette: TERMINAL_ANSI_ROLES.map((role) =>
+        themeColorToNativeColor(environmentColors[role]),
+      ) as unknown as TerminalPalette,
+    };
+  }
   const paletteId = bundledPaletteThemeId(themeId);
   const palette = getMobileThemeColors(paletteId, scheme);
   const colors = getMobileThemeVariables(paletteId, scheme);

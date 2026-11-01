@@ -105,6 +105,9 @@ export interface Preferences {
   readonly themeMode?: MobileThemeMode;
   /** Copies of the environment themes picked above, for when no environment publishes them. */
   readonly environmentThemes?: ReadonlyArray<EnvironmentTheme>;
+  readonly themeSyncEnabled?: boolean;
+  /** Synced theme changes this device adopted or pushed, newest first. */
+  readonly themeSyncSeenSetAts?: readonly string[];
   readonly androidNavigationStyle?: AndroidNavigationStyle;
   readonly baseFontSize?: number;
   readonly terminalFontSize?: number | null;
@@ -112,6 +115,8 @@ export interface Preferences {
   readonly codeFontSize?: number | null;
   readonly codeWordBreak?: boolean;
   readonly mathRenderingEnabled?: boolean;
+  /** Percent, as web's contrast setting; unset is 100. */
+  readonly appearanceContrast?: number;
   /** Unset means on: crash reports are sent unless the user turns them off. */
   readonly crashReportsEnabled?: boolean;
   readonly connectOnboardingOptOutAccounts?: ReadonlyArray<string>;
@@ -187,6 +192,8 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     darkThemeId?: MobileThemeId;
     themeMode?: MobileThemeMode;
     environmentThemes?: ReadonlyArray<EnvironmentTheme>;
+    themeSyncEnabled?: boolean;
+    themeSyncSeenSetAts?: readonly string[];
     androidNavigationStyle?: AndroidNavigationStyle;
     baseFontSize?: number;
     terminalFontSize?: number | null;
@@ -194,6 +201,7 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     codeFontSize?: number | null;
     codeWordBreak?: boolean;
     mathRenderingEnabled?: boolean;
+    appearanceContrast?: number;
     crashReportsEnabled?: boolean;
     connectOnboardingOptOutAccounts?: ReadonlyArray<string>;
     collapsedProjectGroups?: readonly string[];
@@ -273,6 +281,14 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   if (Array.isArray(parsed.environmentThemes)) {
     preferences.environmentThemes = parsed.environmentThemes.filter(isEnvironmentTheme);
   }
+  if (typeof parsed.themeSyncEnabled === "boolean") {
+    preferences.themeSyncEnabled = parsed.themeSyncEnabled;
+  }
+  if (Array.isArray(parsed.themeSyncSeenSetAts)) {
+    preferences.themeSyncSeenSetAts = parsed.themeSyncSeenSetAts.filter(
+      (entry): entry is string => typeof entry === "string",
+    );
+  }
   if (parsed.androidNavigationStyle === "one-ui" || parsed.androidNavigationStyle === "material") {
     preferences.androidNavigationStyle = parsed.androidNavigationStyle;
   }
@@ -289,6 +305,9 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   if (typeof parsed.codeWordBreak === "boolean") preferences.codeWordBreak = parsed.codeWordBreak;
   if (typeof parsed.mathRenderingEnabled === "boolean")
     preferences.mathRenderingEnabled = parsed.mathRenderingEnabled;
+  if (typeof parsed.appearanceContrast === "number") {
+    preferences.appearanceContrast = parsed.appearanceContrast;
+  }
   if (typeof parsed.crashReportsEnabled === "boolean") {
     preferences.crashReportsEnabled = parsed.crashReportsEnabled;
   }

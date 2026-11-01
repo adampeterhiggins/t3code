@@ -1,3 +1,6 @@
+import type { EnvironmentTheme } from "@t3tools/contracts";
+import { useAtomValue } from "@effect/atom-react";
+import { useNavigation } from "@react-navigation/native";
 import { memo, useId } from "react";
 import { Pressable, View } from "react-native";
 import Svg, { Circle, Defs, RadialGradient, Stop } from "react-native-svg";
@@ -19,6 +22,10 @@ import {
 } from "../../../../lib/mobileTheme";
 import { getMobileUniwindThemeName } from "../../../../lib/mobileThemeRuntime";
 import { cn } from "../../../../lib/cn";
+import {
+  publishedEnvironmentThemesAtom,
+  themeEditingEnvironmentIdsAtom,
+} from "../../../../state/server";
 import { useAppearancePreferences } from "../AppearancePreferencesProvider";
 
 const APPEARANCE_MODES: ReadonlyArray<{
@@ -32,15 +39,19 @@ const APPEARANCE_MODES: ReadonlyArray<{
 
 const previewPercentage = (value: number) => `${value * 100}%`;
 
-const PreviewOrb = memo(function PreviewOrb(props: {
+export const PreviewOrb = memo(function PreviewOrb(props: {
   readonly appearance: MobileThemeAppearance;
   readonly compact?: boolean;
   readonly themeId: MobileThemeId;
+  /** Replaces the published themes, to preview a draft. */
+  readonly environmentThemes?: ReadonlyArray<EnvironmentTheme>;
 }) {
   const idPrefix = useId().replaceAll(":", "");
   const accentGradientId = `${idPrefix}-accent-glow`;
   const actionGradientId = `${idPrefix}-action-glow`;
-  const { systemColorPalettes, environmentThemes } = useAppearancePreferences();
+  const preferences = useAppearancePreferences();
+  const { systemColorPalettes } = preferences;
+  const environmentThemes = props.environmentThemes ?? preferences.environmentThemes;
   const palette = systemColorPalettes?.[props.appearance];
   const colors =
     props.themeId === "material-you" && palette
@@ -120,6 +131,7 @@ const BOTH_APPEARANCES: ReadonlyArray<MobileThemeAppearance> = ["light", "dark"]
 function ThemeCard(props: {
   readonly appearances?: ReadonlyArray<MobileThemeAppearance>;
   readonly disabled: boolean;
+  readonly onEdit?: () => void;
   readonly darkSelected: boolean;
   readonly label: string;
   readonly lightSelected: boolean;
@@ -187,11 +199,48 @@ function ThemeCard(props: {
       >
         {props.label}
       </Text>
+      {props.onEdit ? (
+        <Pressable
+          accessibilityLabel={`Edit ${props.label}`}
+          accessibilityRole="button"
+          className="absolute right-2 top-2 size-8 items-center justify-center rounded-full active:bg-subtle"
+          hitSlop={6}
+          onPress={props.onEdit}
+        >
+          <SymbolView
+            name="pencil"
+            size={14}
+            tintColorClassName="accent-foreground-muted"
+            type="monochrome"
+            weight="medium"
+          />
+        </Pressable>
+      ) : null}
     </View>
   );
 }
 
-function PreviewPane(props: { readonly compact?: boolean }) {
+function CreateThemeCard(props: { readonly onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityLabel="Create theme"
+      accessibilityRole="button"
+      className="min-h-[136px] min-w-36 flex-1 basis-[47%] items-center justify-center gap-2 rounded-[24px] border border-dashed border-border px-2 py-4 active:bg-subtle"
+      onPress={props.onPress}
+    >
+      <SymbolView
+        name="plus"
+        size={20}
+        tintColorClassName="accent-foreground-muted"
+        type="monochrome"
+        weight="medium"
+      />
+      <Text className="text-lg font-t3-medium">Create theme</Text>
+    </Pressable>
+  );
+}
+
+export function PreviewPane(props: { readonly compact?: boolean }) {
   return (
     <View className="flex-1 overflow-hidden bg-screen">
       <View
@@ -307,6 +356,9 @@ export function ThemeAppearanceSection() {
     systemColorsAvailable,
     environmentThemes,
   } = useAppearancePreferences();
+  const navigation = useNavigation();
+  const canEditThemes = useAtomValue(themeEditingEnvironmentIdsAtom).length > 0;
+  const publishedThemes = useAtomValue(publishedEnvironmentThemesAtom);
 
   return (
     <View className="gap-6">
@@ -361,10 +413,19 @@ export function ThemeAppearanceSection() {
                     ? setThemeIdForAppearance(appearances[0]!, themeId)
                     : setThemeIdForBothAppearances(themeId)
                 }
+                {...(canEditThemes && publishedThemes.some((published) => published.id === theme.id)
+                  ? {
+                      onEdit: () =>
+                        navigation.navigate("SettingsThemeEditor", { themeId: theme.id }),
+                    }
+                  : {})}
                 themeId={themeId}
               />
             );
           })}
+          {canEditThemes ? (
+            <CreateThemeCard onPress={() => navigation.navigate("SettingsThemeEditor", {})} />
+          ) : null}
         </View>
       </View>
     </View>

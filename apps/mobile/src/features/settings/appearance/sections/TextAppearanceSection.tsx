@@ -11,10 +11,19 @@ import {
 } from "../components/AppearancePreviews";
 import { FontSizeSliderRow } from "../components/FontSizeSliderRow";
 import { SettingsSwitchRow } from "../../components/SettingsSwitchRow";
+import { SliderRow } from "../../../../components/ui/SliderRow";
+import { MAX_APPEARANCE_CONTRAST, MIN_APPEARANCE_CONTRAST } from "@t3tools/contracts/settings";
 
 export function TextAppearanceSection() {
-  const { isReady, appearance, setBaseFontSize, mathRenderingEnabled, setMathRenderingEnabled } =
-    useAppearancePreferences();
+  const {
+    isReady,
+    appearance,
+    setBaseFontSize,
+    mathRenderingEnabled,
+    setMathRenderingEnabled,
+    appearanceContrast,
+    setAppearanceContrast,
+  } = useAppearancePreferences();
 
   return (
     <SettingsSection title="Text">
@@ -30,6 +39,17 @@ export function TextAppearanceSection() {
         step={BASE_FONT_SIZE_STEP}
         value={appearance.baseFontSize}
         valueLabel={`${appearance.baseFontSize} pt`}
+      />
+      <SliderRow
+        disabled={!isReady}
+        icon="circle.inset.filled"
+        label="Contrast"
+        max={MAX_APPEARANCE_CONTRAST}
+        min={MIN_APPEARANCE_CONTRAST}
+        onChange={setAppearanceContrast}
+        step={10}
+        value={appearanceContrast}
+        valueLabel={`${appearanceContrast}%`}
       />
       <SettingsSwitchRow
         disabled={!isReady}

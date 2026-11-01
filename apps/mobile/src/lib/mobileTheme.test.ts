@@ -22,12 +22,16 @@ import {
 } from "@t3tools/shared/themeGenerator";
 
 import {
+  applyMobileContrast,
   createMobileThemeSelectionPatch,
   createMobileThemeVariables,
   DEFAULT_MOBILE_THEME_ID,
   environmentThemeAppearances,
   environmentThemeColors,
+  environmentThemeFileFromSeeds,
   flattenThemeColor,
+  mobileThemeIdFromSynced,
+  newEnvironmentThemeId,
   getMobileThemeVariables,
   resolveMobileThemeIds,
   retainEnvironmentThemeCopies,
@@ -294,6 +298,75 @@ describe("mobile themes", () => {
         [theme("live", "Stale copy"), theme("offline", "Copy"), theme("unpicked", "Copy")],
       ),
     ).toEqual([theme("live", "Published"), theme("offline", "Copy")]);
+  });
+
+  it("maps synced theme ids to themes this device can show", () => {
+    const nightfall: EnvironmentTheme = { id: "nightfall", name: "Nightfall", appearance: "dark" };
+    expect(mobileThemeIdFromSynced("grove", "light", [], false)).toBe("grove");
+    expect(mobileThemeIdFromSynced("nightfall", "dark", [nightfall], false)).toBe(
+      "environment:nightfall",
+    );
+    expect(mobileThemeIdFromSynced("nightfall", "light", [nightfall], false)).toBeNull();
+    expect(mobileThemeIdFromSynced("material-you", "dark", [], false)).toBeNull();
+    expect(mobileThemeIdFromSynced("unpublished", "dark", [], false)).toBeNull();
+  });
+
+  it("edits a theme from its seeds without disturbing what it does not change", () => {
+    const tuned: EnvironmentTheme = {
+      id: "nightfall",
+      name: "Nightfall",
+      appearance: "dark",
+      colors: { canvas: "#101010", accent: "#ff0000", terminalAnsiRed: "#ff5555" },
+      variants: { light: { canvas: "#ffffff" } },
+    };
+    expect(
+      environmentThemeFileFromSeeds({
+        existing: tuned,
+        name: " Midnight ",
+        appearance: "light",
+        canvas: "#101010",
+        accent: "#FF0000",
+      }),
+    ).toEqual({ version: 1, ...tuned, id: undefined, name: "Midnight" });
+    expect(
+      environmentThemeFileFromSeeds({
+        existing: tuned,
+        name: "Nightfall",
+        appearance: "light",
+        canvas: "#202020",
+        accent: "#ff0000",
+      }),
+    ).toEqual({
+      version: 1,
+      name: "Nightfall",
+      appearance: "dark",
+      canvas: "#202020",
+      accent: "#ff0000",
+      variants: tuned.variants,
+    });
+  });
+
+  it("names a new theme with an id no environment or built-in theme uses", () => {
+    expect(newEnvironmentThemeId("Late Night ✨", [])).toBe("late-night");
+    expect(newEnvironmentThemeId("Grove", [])).toBe("grove-2");
+    expect(newEnvironmentThemeId("Ocean", ["ocean-2"])).toBe("ocean-3");
+    expect(newEnvironmentThemeId("!!!", [])).toBe("theme");
+  });
+
+  it("applies web's contrast setting to text and borders", () => {
+    const variables = {
+      ...getMobileThemeVariables(DEFAULT_MOBILE_THEME_ID, "dark"),
+      "--color-screen": "#000000",
+      "--color-foreground": "#808080",
+      "--color-border": "#ffffff",
+    };
+    expect(applyMobileContrast(variables, "dark", 100)).toBe(variables);
+    const low = applyMobileContrast(variables, "dark", 50);
+    expect(low["--color-foreground"]).toBe("#404040");
+    expect(low["--color-border"]).toBe("rgba(255, 255, 255, 0.5)");
+    const high = applyMobileContrast(variables, "dark", 200);
+    expect(high["--color-foreground"]).toBe("#ffffff");
+    expect(high["--color-screen"]).toBe("#000000");
   });
 
   it("changes either theme without switching the active appearance", () => {

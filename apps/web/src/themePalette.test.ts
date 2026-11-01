@@ -11,6 +11,7 @@ import {
   contextChipVariables,
   environmentThemeFileFromDefinition,
   environmentThemeShareState,
+  followSharedThemeEdit,
   getThemeColorsForMode,
   publishedThemeDefinitions,
   getThemeModes,
@@ -161,6 +162,22 @@ describe("theme files", () => {
     const [received] = publishedThemeDefinitions(published);
     expect(received?.colors).toEqual(theme.colors);
     expect(received?.variants).toEqual(theme.variants);
+
+    // A seed-only edit from mobile counts as shared once this device holds its expansion.
+    const editedOnPhone = {
+      id: theme.id,
+      name: "Nightfall",
+      appearance: "dark" as const,
+      canvas: "#202020",
+      accent: "#30a46c",
+    };
+    const base = environmentThemeFileFromDefinition(theme);
+    const followed = followSharedThemeEdit({ local: theme, published: editedOnPhone, base });
+    expect(followed?.label).toBe("Nightfall");
+    expect(environmentThemeShareState(followed!, [editedOnPhone])).toBe("shared");
+    // An edit here that is not shared yet is kept rather than overwritten.
+    const editedHere = { ...theme, label: "Nightfall 2" };
+    expect(followSharedThemeEdit({ local: editedHere, published: editedOnPhone, base })).toBeNull();
   });
 
   it.each(["searchMatchBackground", "searchMatchActiveBackground"] as const)(

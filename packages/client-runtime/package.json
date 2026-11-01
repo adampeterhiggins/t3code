@@ -35,6 +35,10 @@
       "types": "./src/imageAttachmentSize.ts",
       "default": "./src/imageAttachmentSize.ts"
     },
+    "./theme-sync": {
+      "types": "./src/themeSync.ts",
+      "default": "./src/themeSync.ts"
+    },
     "./handoff": {
       "types": "./src/handoff.ts",
       "default": "./src/handoff.ts"

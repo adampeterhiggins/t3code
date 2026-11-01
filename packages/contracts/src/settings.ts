@@ -391,6 +391,18 @@ export const DefaultThemePreference = Schema.String.check(Schema.isMaxLength(64)
 // Excluded from RPC patches so t3 theme set can validate syntax and resolvability.
 export type DefaultThemePreference = typeof DefaultThemePreference.Type;
 
+/**
+ * The light and dark themes devices with theme sync on share. Ids are built-in ids
+ * ("t3-code" for the standard theme) or environment theme ids; a device keeps its own
+ * theme for an id it cannot resolve. `setAt` marks each change so devices apply it once.
+ */
+export const SyncedTheme = Schema.Struct({
+  light: DefaultThemePreference,
+  dark: DefaultThemePreference,
+  setAt: Schema.String.check(Schema.isMaxLength(64)),
+});
+export type SyncedTheme = typeof SyncedTheme.Type;
+
 export const DEFAULT_BROWSER_VIEWPORT: PreviewViewportSetting = FILL_PREVIEW_VIEWPORT;
 export const DEFAULT_BROWSER_AUTO_SHOW_FLOATING_PREVIEW = true;
 export {
@@ -1751,6 +1763,7 @@ export const ServerSettings = Schema.Struct({
   defaultThemeSetAt: Schema.String.check(Schema.isMaxLength(64)).pipe(
     Schema.withDecodingDefault(Effect.succeed("")),
   ),
+  syncedTheme: Schema.NullOr(SyncedTheme).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
   environmentIcon: ForwardCompatibleNullable(EnvironmentMachineKind).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
@@ -2014,6 +2027,7 @@ const ModelSelectionPatch = Schema.Struct({
 });
 
 export const ServerSettingsPatch = Schema.Struct({
+  syncedTheme: Schema.optionalKey(Schema.NullOr(SyncedTheme)),
   customEditors: Schema.optionalKey(Schema.Array(CustomEditor)),
   fileOpenDefault: Schema.optionalKey(FileOpenTarget),
   fileOpenRules: Schema.optionalKey(Schema.Array(FileOpenRule)),
