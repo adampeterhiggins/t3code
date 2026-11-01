@@ -82,6 +82,7 @@ import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
 import { ThreadTitleInstructionsSettings } from "./ThreadTitleInstructionsSettings";
 import { SnoozePresetsRow } from "./SnoozePresetsSettings";
 import { ThreadGroupSettingsSection } from "./ThreadGroupSettings";
+import { THREAD_GROUP_VIEW_LABELS } from "../ThreadGroupDialog";
 import { useDesktopUpdateState } from "../../state/desktopUpdate";
 import {
   getCustomModelOptionsByInstance,
@@ -874,65 +875,50 @@ export function GeneralSettingsPanel() {
         {settings.legacySidebarEnabled ? null : (
           <>
             <SettingsRow
-              {...searchableSetting("sidebar-thread-views")}
-              description="Choose detailed cards or compact rows independently for each thread category."
+              {...searchableSetting("sidebar-grouped-threads")}
+              description="Choose detailed cards or compact rows for your groups set to Default."
               resetAction={
-                !Equal.equals(
-                  settings.sidebarThreadViews,
-                  DEFAULT_UNIFIED_SETTINGS.sidebarThreadViews,
-                ) ? (
+                settings.sidebarThreadViews.grouped !==
+                DEFAULT_UNIFIED_SETTINGS.sidebarThreadViews.grouped ? (
                   <SettingResetButton
-                    label="thread views"
+                    label="grouped threads"
                     onClick={() =>
                       updateSettings({
-                        sidebarThreadViews: DEFAULT_UNIFIED_SETTINGS.sidebarThreadViews,
+                        sidebarThreadViews: {
+                          ...settings.sidebarThreadViews,
+                          grouped: DEFAULT_UNIFIED_SETTINGS.sidebarThreadViews.grouped,
+                        },
                       })
                     }
                   />
                 ) : undefined
               }
+              control={
+                <Select
+                  value={settings.sidebarThreadViews.grouped}
+                  onValueChange={(value) => {
+                    if (value === "card" || value === "slim") {
+                      updateSettings({
+                        sidebarThreadViews: { ...settings.sidebarThreadViews, grouped: value },
+                      });
+                    }
+                  }}
+                >
+                  <SelectTrigger aria-label="Grouped thread view" size="sm">
+                    <SelectValue>
+                      {THREAD_GROUP_VIEW_LABELS[settings.sidebarThreadViews.grouped]}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectPopup>
+                    {SidebarThreadView.literals.map((view) => (
+                      <SelectItem key={view} value={view}>
+                        {THREAD_GROUP_VIEW_LABELS[view]}
+                      </SelectItem>
+                    ))}
+                  </SelectPopup>
+                </Select>
+              }
             />
-            {(
-              [
-                ["active", "Active"],
-                ["pinned", "Pinned"],
-                ["working", "Working"],
-                ["grouped", "Grouped"],
-                ["hidden", "Hidden"],
-                ["snoozed", "Snoozed"],
-                ["settled", "Settled"],
-              ] as const
-            ).map(([category, label]) => (
-              <SettingsRow
-                key={category}
-                title={`${label} threads`}
-                control={
-                  <Select
-                    value={settings.sidebarThreadViews[category]}
-                    onValueChange={(value) => {
-                      if (value === "card" || value === "slim") {
-                        updateSettings({
-                          sidebarThreadViews: { ...settings.sidebarThreadViews, [category]: value },
-                        });
-                      }
-                    }}
-                  >
-                    <SelectTrigger aria-label={`${label} thread view`} size="sm">
-                      <SelectValue>
-                        {settings.sidebarThreadViews[category] === "card" ? "Detailed" : "Compact"}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectPopup>
-                      {SidebarThreadView.literals.map((view) => (
-                        <SelectItem key={view} value={view}>
-                          {view === "card" ? "Detailed" : "Compact"}
-                        </SelectItem>
-                      ))}
-                    </SelectPopup>
-                  </Select>
-                }
-              />
-            ))}
             <SettingsRow
               {...searchableSetting("sidebar-tabs")}
               description={`List a chat's tabs under it in the sidebar. Past the limit, the rest fold behind a "more" row.`}

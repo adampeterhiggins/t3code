@@ -48,7 +48,7 @@ import { SidebarHeaderIconButton } from "./SidebarThreadHeader";
 
 /** Stored loosely: groups come and go, so Sidebar.logic's resolveSidebarPages cleans it on read. */
 
-const BUILT_IN_PAGES = {
+export const BUILT_IN_PAGES = {
   threads: { label: "Threads", Icon: ListIcon },
   automations: { label: "Automations", Icon: CalendarClockIcon },
   snoozed: { label: "Snoozed", Icon: AlarmClockIcon },

@@ -44,6 +44,7 @@ const SETTINGS_SEARCH_TERMS = {
     "working section",
     "thread groups",
     "show settled threads",
+    "automations",
     "new threads",
     "last project",
   ],

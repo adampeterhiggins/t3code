@@ -801,14 +801,16 @@ Code: `HistoryNavigationButton` in `apps/web/src/components/sidebar/SidebarChrom
 
 ## Sidebar thread views
 
-On web and desktop, **Settings → General → Thread views** chooses detailed cards or compact
-rows independently for active, pinned, working, grouped, hidden, snoozed, and settled threads.
+On web and desktop, **Settings → General → Thread groups** lists the built-in pages above the
+user's own groups and chooses detailed cards or compact rows independently for active, pinned,
+working, automation, hidden, snoozed, and settled threads. **Grouped threads** under Sidebar sets
+the rows for user groups left on Default.
 Hidden threads default to detailed cards; snoozed and settled threads default to compact rows.
 These client preferences also apply when several categories share the sidebar and when chat
 tabs are expanded.
 
 Code: [`Sidebar.tsx`](../apps/web/src/components/Sidebar.tsx),
-[`SettingsPanels.tsx`](../apps/web/src/components/settings/SettingsPanels.tsx), and
+[`ThreadGroupSettings.tsx`](../apps/web/src/components/settings/ThreadGroupSettings.tsx), and
 [`settings.ts`](../packages/contracts/src/settings.ts). User guide:
 [thread-sidebar.md](./user/thread-sidebar.md#hide-a-thread).
 
@@ -862,8 +864,11 @@ deleting the task releases it. Each bound run files its thread again, so tasks s
 change catch up on their next run. Threads a task's runs started keep the id after the task is
 deleted, and a fork does not inherit it. The web sidebar and mobile thread list show these threads
 under a built-in **Automations** page, picked by default, which ranks below Hidden and user groups
-and above snooze, settlement, and pins. Automations rows use the Grouped thread view and cannot be
-dragged.
+and above snooze, settlement, and pins. Automations rows have their own thread view and cannot be
+dragged. The shared server setting `automationsShowSettled` (default on) set to false sends that
+environment's settled automation threads to Settled instead; web and desktop set it from
+Automations' menu under **Settings → General → Thread groups**, mobile beside its groups' settled
+switches.
 
 Code: `thread.scheduled-task.set` in
 [`Orchestrator.ts`](../apps/server/src/orchestration-v2/Orchestrator.ts), `fileThread` in

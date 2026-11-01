@@ -18,6 +18,7 @@ import {
 import { groupSidebarThreadsByName, projectSidebarPages } from "./sidebar/pageProjection";
 import {
   sidebarThreadView,
+  isSidebarAutomationThread,
   isSidebarThreadGroupedAway,
   buildSidebarFilterFacets,
   sidebarGroupPage,
@@ -671,6 +672,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   // lifecycle command and any order-key writes. The next pickup waits for
   // this hold so a second drop cannot replace an unconfirmed placement.
   const [optimisticDrop, setOptimisticDrop] = useState<SidebarOptimisticDrop | null>(null);
+  const automationsHidingSettledEnvironmentIds = new Set(
+    [...serverConfigs]
+      .filter(([, config]) => !config.settings.automationsShowSettled)
+      .map(([environmentId]) => environmentId),
+  );
   const {
     pinnedThreads,
     draggableThreadKeys,
@@ -692,6 +698,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     tabThreadGroups,
     groupsShownInThreads,
     groupsHidingSettled,
+    automationsHidingSettledEnvironmentIds,
     serverConfigs,
     scopedProjectKeys,
     optimisticDrop,
@@ -1057,8 +1064,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               ? group.threads
               : [],
           ),
-          // Automations is a built-in group, so it takes the groups' view.
-          ...(threadViews.grouped === "card" ? visibleAutomationThreads : []),
+          ...(threadViews.automations === "card" ? visibleAutomationThreads : []),
           ...(threadViews.hidden === "card" ? visibleHiddenThreads : []),
           ...(threadViews.snoozed === "card" ? visibleSnoozedThreads : []),
           ...(threadViews.settled === "card" ? renderedSettledThreads : []),
@@ -1690,18 +1696,21 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     if (thread === undefined || thread.archivedAt !== null) {
       return true;
     }
+    const settledListing =
+      !effectiveSnoozed(thread, { now: snoozeNow }) && thread.settledOverride === "settled";
+    const automation = isSidebarAutomationThread(thread, {
+      settled: settledListing,
+      automationsHidingSettled: automationsHidingSettledEnvironmentIds.has(thread.environmentId),
+    });
     const canonicalSection =
       thread.hiddenAt != null
         ? "hidden"
         : isSidebarThreadGroupedAway(thread.groupName, groupsShownInThreads, {
               groupsHidingSettled,
-              settled:
-                thread.scheduledTaskId == null &&
-                !effectiveSnoozed(thread, { now: snoozeNow }) &&
-                thread.settledOverride === "settled",
+              settled: settledListing && !automation,
             })
           ? "grouped"
-          : thread.scheduledTaskId != null
+          : automation
             ? "automations"
             : effectiveSnoozed(thread, { now: snoozeNow })
               ? "snoozed"

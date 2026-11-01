@@ -173,7 +173,8 @@ function ThreadArrangementSheet(props: { onClose: () => void }) {
   const threads = useAtomValue(environmentThreadShells.navigationThreadShellsAtom);
   const configs = useAtomValue(environmentServerConfigsAtom);
   const listEnvironments = useAtomValue(threadListEnvironmentsAtom);
-  const { groupsShownInThreads, groupsHidingSettled } = listEnvironments;
+  const { groupsShownInThreads, groupsHidingSettled, automationsHidingSettledEnvironmentIds } =
+    listEnvironments;
   const queuedThreadKeys = useAtomValue(queuedThreadKeysAtom);
   const pendingOrder = useAtomValue(pendingThreadOrderAtom);
   const dropBusy = useAtomValue(threadDropBusyAtom);
@@ -198,6 +199,7 @@ function ThreadArrangementSheet(props: { onClose: () => void }) {
       pendingOrder,
       groupsShownInThreads,
       groupsHidingSettled,
+      automationsHidingSettledEnvironmentIds,
       settlementEnvironmentIds: new Set(configs.keys()),
       snoozeEnvironmentIds: new Set(configs.keys()),
     };
@@ -230,6 +232,7 @@ function ThreadArrangementSheet(props: { onClose: () => void }) {
     workingShelfEnabled,
     groupsShownInThreads,
     groupsHidingSettled,
+    automationsHidingSettledEnvironmentIds,
   ]);
   const listedSettled = sections.settled.filter(olderSettledShelf.isListed);
   useOlderSettledShelfGrowth(olderSettledShelf, listedSettled);

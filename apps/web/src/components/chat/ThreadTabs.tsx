@@ -789,6 +789,7 @@ function useSidebarSiblingTabs(
         now: new Date().toISOString(),
         groupsShownInThreads,
         groupsHidingSettled,
+        automationsHidingSettled: serverConfig?.settings.automationsShowSettled === false,
       })
     : "active";
   const { shown, hidden } = sidebarSiblingTabs(group.tabs, {

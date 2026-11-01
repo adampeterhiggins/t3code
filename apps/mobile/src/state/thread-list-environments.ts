@@ -37,6 +37,7 @@ function selectEnvironment(config: ServerConfig, isConnected: boolean) {
     machineKind: resolveEnvironmentMachineKind(config),
     capabilities: config.environment.capabilities,
     threadGroups: config.settings.threadGroups,
+    automationsShowSettled: config.settings.automationsShowSettled,
     snoozePresets: config.settings.snoozePresets,
   };
 }
@@ -78,11 +79,13 @@ function collectEnvironments(environments: ReadonlyMap<EnvironmentId, ListEnviro
   const hidingEnvironmentIds = new Set<EnvironmentId>();
   const groupEnvironmentIds = new Set<EnvironmentId>();
   const reorderableEnvironmentIds = new Set<EnvironmentId>();
+  const automationsHidingSettledEnvironmentIds = new Set<EnvironmentId>();
   const snoozePresetsByEnvironmentId = new Map<EnvironmentId, ListEnvironment["snoozePresets"]>();
   for (const [
     id,
-    { providers, machineKind, capabilities, isConnected, snoozePresets },
+    { providers, machineKind, capabilities, isConnected, snoozePresets, automationsShowSettled },
   ] of environments) {
+    if (!automationsShowSettled) automationsHidingSettledEnvironmentIds.add(id);
     providersByEnvironmentId.set(id, providers);
     snoozePresetsByEnvironmentId.set(id, snoozePresets);
     machineByEnvironmentId.set(id, machineKind);
@@ -109,6 +112,7 @@ function collectEnvironments(environments: ReadonlyMap<EnvironmentId, ListEnviro
     groupEnvironmentIds,
     groupsShownInThreads,
     groupsHidingSettled,
+    automationsHidingSettledEnvironmentIds,
     pinReorderEnvironmentIds: reorderableEnvironmentIds,
     activeReorderEnvironmentIds: reorderableEnvironmentIds,
     titleRegenerationEnvironmentIds: loadedEnvironmentIds,
@@ -141,6 +145,7 @@ export function createThreadListEnvironmentsAtom(
         prior.providers === selected.providers &&
         prior.machineKind === selected.machineKind &&
         sameShownGroups(prior.threadGroups, selected.threadGroups) &&
+        prior.automationsShowSettled === selected.automationsShowSettled &&
         prior.isConnected === selected.isConnected &&
         prior.snoozePresets === selected.snoozePresets &&
         capabilityKeys.every(

@@ -41,6 +41,8 @@ export function partitionSidebarThreads(input: {
   tabThreadGroups: ReadonlyMap<string, string>;
   groupsShownInThreads: ReadonlySet<string>;
   groupsHidingSettled: ReadonlySet<string>;
+  /** Environments whose settled automation threads list under Settled. */
+  automationsHidingSettledEnvironmentIds: ReadonlySet<EnvironmentId>;
   serverConfigs: ReadonlyMap<EnvironmentId, Pick<ServerConfig, "environment">>;
   scopedProjectKeys: ReadonlySet<string> | null;
   optimisticDrop: SidebarOptimisticDrop | null;
@@ -57,6 +59,7 @@ export function partitionSidebarThreads(input: {
     tabThreadGroups,
     groupsShownInThreads,
     groupsHidingSettled,
+    automationsHidingSettledEnvironmentIds,
     serverConfigs,
     scopedProjectKeys,
     optimisticDrop,
@@ -133,6 +136,7 @@ export function partitionSidebarThreads(input: {
         now: preciseNow,
         groupsShownInThreads,
         groupsHidingSettled,
+        automationsHidingSettled: automationsHidingSettledEnvironmentIds.has(thread.environmentId),
         working: inboxObservation.isWorking(thread),
       });
     }
