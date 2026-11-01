@@ -4,7 +4,7 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { SidebarThreadView } from "@t3tools/contracts/settings";
-import { PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { EllipsisIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 
 import { useThreadActions } from "../../hooks/useThreadActions";
 import { useQuietThreadShells } from "../../state/entities";
@@ -13,12 +13,20 @@ import { createSidebarGroupActions } from "../sidebar/groupActions";
 import { ThreadGroupIcon } from "../sidebar/ThreadGroupIcon";
 import { useSidebarOrganization } from "../sidebar/useSidebarOrganization";
 import { Button } from "../ui/button";
-import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
+import {
+  Menu,
+  MenuGroup,
+  MenuGroupLabel,
+  MenuItem,
+  MenuPopup,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuSeparator,
+  MenuTrigger,
+} from "../ui/menu";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
-
-const SETTLED_LABELS = { show: "Show settled", hide: "Hide settled" } as const;
 
 /** Creates, renames, deletes and configures thread groups. */
 export function ThreadGroupSettingsSection() {
@@ -73,7 +81,6 @@ export function ThreadGroupSettingsSection() {
         const { showSettled: _showSettled, view: _view, ...rest } = group;
         const withView = group.view === undefined ? rest : { ...rest, view: group.view };
         const withSettled = group.showSettled === false ? { ...rest, showSettled: false } : rest;
-        const settled = group.showSettled === false ? "hide" : "show";
         return (
           <SettingsRow
             key={name}
@@ -84,69 +91,67 @@ export function ThreadGroupSettingsSection() {
               </span>
             }
             control={
-              <div className="flex items-center gap-2">
-                <Select
-                  value={group.view ?? "default"}
-                  onValueChange={(value) =>
-                    saveGroup({
-                      name,
-                      group:
-                        value === "card" || value === "slim"
-                          ? { ...withSettled, view: value }
-                          : withSettled,
-                    })
+              <Menu>
+                <MenuTrigger
+                  render={
+                    <Button
+                      variant="ghost-muted"
+                      size="icon-sm"
+                      aria-label={`Options for ${name}`}
+                    />
                   }
                 >
-                  <SelectTrigger aria-label={`Rows in ${name}`} size="sm">
-                    <SelectValue>
-                      {`${THREAD_GROUP_VIEW_LABELS[group.view ?? "default"]} rows`}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectPopup>
-                    {(["default", ...SidebarThreadView.literals] as const).map((view) => (
-                      <SelectItem key={view} value={view}>
-                        {`${THREAD_GROUP_VIEW_LABELS[view]} rows`}
-                      </SelectItem>
-                    ))}
-                  </SelectPopup>
-                </Select>
-                <Select
-                  value={settled}
-                  onValueChange={(value) =>
-                    saveGroup({
-                      name,
-                      group: value === "hide" ? { ...withView, showSettled: false } : withView,
-                    })
-                  }
-                >
-                  <SelectTrigger aria-label={`Settled threads in ${name}`} size="sm">
-                    <SelectValue>{SETTLED_LABELS[settled]}</SelectValue>
-                  </SelectTrigger>
-                  <SelectPopup>
-                    {(["show", "hide"] as const).map((option) => (
-                      <SelectItem key={option} value={option}>
-                        {SETTLED_LABELS[option]}
-                      </SelectItem>
-                    ))}
-                  </SelectPopup>
-                </Select>
-                <Button
-                  variant="ghost-muted"
-                  size="icon-sm"
-                  aria-label={`Edit group ${name}`}
-                  onClick={() => editThreadGroup(name)}
-                >
-                  <PencilIcon />
-                </Button>
-                <Button
-                  variant="ghost-muted"
-                  size="icon-sm"
-                  aria-label={`Delete group ${name}`}
-                  onClick={() => deleteThreadGroup(name)}
-                >
-                  <Trash2Icon />
-                </Button>
-              </div>
+                  <EllipsisIcon />
+                </MenuTrigger>
+                <MenuPopup align="end">
+                  <MenuGroup>
+                    <MenuGroupLabel>Rows</MenuGroupLabel>
+                    <MenuRadioGroup
+                      value={group.view ?? "default"}
+                      onValueChange={(value) =>
+                        saveGroup({
+                          name,
+                          group:
+                            value === "card" || value === "slim"
+                              ? { ...withSettled, view: value }
+                              : withSettled,
+                        })
+                      }
+                    >
+                      {(["default", ...SidebarThreadView.literals] as const).map((view) => (
+                        <MenuRadioItem key={view} value={view}>
+                          {THREAD_GROUP_VIEW_LABELS[view]}
+                        </MenuRadioItem>
+                      ))}
+                    </MenuRadioGroup>
+                  </MenuGroup>
+                  <MenuSeparator />
+                  <MenuGroup>
+                    <MenuGroupLabel>Settled threads</MenuGroupLabel>
+                    <MenuRadioGroup
+                      value={group.showSettled === false ? "hide" : "show"}
+                      onValueChange={(value) =>
+                        saveGroup({
+                          name,
+                          group: value === "hide" ? { ...withView, showSettled: false } : withView,
+                        })
+                      }
+                    >
+                      <MenuRadioItem value="show">Show in group</MenuRadioItem>
+                      <MenuRadioItem value="hide">Move to Settled</MenuRadioItem>
+                    </MenuRadioGroup>
+                  </MenuGroup>
+                  <MenuSeparator />
+                  <MenuItem onClick={() => editThreadGroup(name)}>
+                    <PencilIcon />
+                    Edit group…
+                  </MenuItem>
+                  <MenuItem variant="destructive" onClick={() => deleteThreadGroup(name)}>
+                    <Trash2Icon />
+                    Delete group
+                  </MenuItem>
+                </MenuPopup>
+              </Menu>
             }
           />
         );
