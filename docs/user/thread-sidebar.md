@@ -616,7 +616,8 @@ settled threads in groups** on mobile.
 
 On web and desktop, **Rows** in the same dialog picks Detailed or Compact rows for that group's
 page, and **Settings → General → Thread groups** has the same choice for each group. **Default**
-follows **Your groups** at the top of that section, which can also create, edit and delete groups.
+follows **Settings → General → Grouped threads**. The Thread groups section can also create, edit
+and delete groups.
 
 To file a project's new threads automatically, open the project's settings and pick a group under
 **New threads → Thread group**. Every new thread in that project starts in the group, however it

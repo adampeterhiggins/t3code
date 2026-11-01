@@ -7,6 +7,7 @@ import {
 import {
   MAX_SIDEBAR_TAB_LIMIT,
   MIN_SIDEBAR_TAB_LIMIT,
+  SidebarThreadView,
   type PullRequestOpenTarget,
   DEFAULT_UNIFIED_SETTINGS,
   type DiffLayout,
@@ -81,6 +82,7 @@ import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
 import { ThreadTitleInstructionsSettings } from "./ThreadTitleInstructionsSettings";
 import { SnoozePresetsRow } from "./SnoozePresetsSettings";
 import { ThreadGroupSettingsSection } from "./ThreadGroupSettings";
+import { THREAD_GROUP_VIEW_LABELS } from "../ThreadGroupDialog";
 import { useDesktopUpdateState } from "../../state/desktopUpdate";
 import {
   getCustomModelOptionsByInstance,
@@ -872,6 +874,51 @@ export function GeneralSettingsPanel() {
       <SettingsSection id="sidebar" title="Sidebar">
         {settings.legacySidebarEnabled ? null : (
           <>
+            <SettingsRow
+              {...searchableSetting("sidebar-grouped-threads")}
+              description="Choose detailed cards or compact rows for your groups set to Default."
+              resetAction={
+                settings.sidebarThreadViews.grouped !==
+                DEFAULT_UNIFIED_SETTINGS.sidebarThreadViews.grouped ? (
+                  <SettingResetButton
+                    label="grouped threads"
+                    onClick={() =>
+                      updateSettings({
+                        sidebarThreadViews: {
+                          ...settings.sidebarThreadViews,
+                          grouped: DEFAULT_UNIFIED_SETTINGS.sidebarThreadViews.grouped,
+                        },
+                      })
+                    }
+                  />
+                ) : undefined
+              }
+              control={
+                <Select
+                  value={settings.sidebarThreadViews.grouped}
+                  onValueChange={(value) => {
+                    if (value === "card" || value === "slim") {
+                      updateSettings({
+                        sidebarThreadViews: { ...settings.sidebarThreadViews, grouped: value },
+                      });
+                    }
+                  }}
+                >
+                  <SelectTrigger aria-label="Grouped thread view" size="sm">
+                    <SelectValue>
+                      {THREAD_GROUP_VIEW_LABELS[settings.sidebarThreadViews.grouped]}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectPopup>
+                    {SidebarThreadView.literals.map((view) => (
+                      <SelectItem key={view} value={view}>
+                        {THREAD_GROUP_VIEW_LABELS[view]}
+                      </SelectItem>
+                    ))}
+                  </SelectPopup>
+                </Select>
+              }
+            />
             <SettingsRow
               {...searchableSetting("sidebar-tabs")}
               description={`List a chat's tabs under it in the sidebar. Past the limit, the rest fold behind a "more" row.`}

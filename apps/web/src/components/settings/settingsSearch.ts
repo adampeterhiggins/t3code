@@ -462,11 +462,17 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["combine matching repositories environments sidebar"],
   },
   {
+    id: "sidebar-grouped-threads",
+    title: "Grouped threads",
+    to: "/settings/general",
+    searchTerms: ["sidebar thread views detailed compact cards rows groups default"],
+  },
+  {
     id: "sidebar-thread-groups",
     title: "Thread groups",
     to: "/settings/general",
     searchTerms: [
-      "show hide settled threads group sidebar rows detailed compact cards view new create rename delete active pinned working grouped automations hidden snoozed",
+      "show hide settled threads group sidebar rows detailed compact cards view new create rename delete active pinned working automations hidden snoozed",
     ],
   },
   {

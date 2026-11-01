@@ -8,7 +8,7 @@ import {
   SidebarThreadView,
   type SidebarThreadViews,
 } from "@t3tools/contracts/settings";
-import { EllipsisIcon, LayersIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { EllipsisIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 
 import { useThreadActions } from "../../hooks/useThreadActions";
 import { useQuietThreadShells } from "../../state/entities";
@@ -38,8 +38,7 @@ type ThreadViewCategory = keyof SidebarThreadViews;
 
 const BUILT_IN_GROUPS: ReadonlyArray<{
   readonly title: string;
-  readonly Icon: typeof LayersIcon;
-  readonly description?: string;
+  readonly Icon: typeof EllipsisIcon;
   readonly views: ReadonlyArray<readonly [ThreadViewCategory, string]>;
 }> = [
   {
@@ -59,22 +58,16 @@ const BUILT_IN_GROUPS: ReadonlyArray<{
   { ...BUILT_IN_PAGES.snoozed, title: BUILT_IN_PAGES.snoozed.label, views: [["snoozed", "Rows"]] },
   { ...BUILT_IN_PAGES.hidden, title: BUILT_IN_PAGES.hidden.label, views: [["hidden", "Rows"]] },
   { ...BUILT_IN_PAGES.settled, title: BUILT_IN_PAGES.settled.label, views: [["settled", "Rows"]] },
-  {
-    title: "Your groups",
-    Icon: LayersIcon,
-    description: "Rows for your groups set to Default.",
-    views: [["grouped", "Rows"]],
-  },
 ];
 
-/** Row style for the built-in pages, and the default your own groups follow. */
+/** Row style for each built-in page. */
 function BuiltInThreadGroupRows() {
   const threadViews = useScopedSettings((settings) => settings.sidebarThreadViews);
   const updateSettings = useUpdateScopedSettings();
   const setViews = (views: Partial<SidebarThreadViews>) =>
     updateSettings({ sidebarThreadViews: { ...threadViews, ...views } });
 
-  return BUILT_IN_GROUPS.map(({ title, Icon, description, views }) => {
+  return BUILT_IN_GROUPS.map(({ title, Icon, views }) => {
     const defaults: Partial<SidebarThreadViews> = Object.fromEntries(
       views.map(([category]) => [category, DEFAULT_UNIFIED_SETTINGS.sidebarThreadViews[category]]),
     );
@@ -88,7 +81,6 @@ function BuiltInThreadGroupRows() {
             <span className="truncate">{title}</span>
           </span>
         }
-        description={description}
         resetAction={
           isDefault ? undefined : (
             <SettingResetButton label={`${title} rows`} onClick={() => setViews(defaults)} />
