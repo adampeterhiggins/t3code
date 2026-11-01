@@ -803,7 +803,7 @@ Code: `HistoryNavigationButton` in `apps/web/src/components/sidebar/SidebarChrom
 
 On web and desktop, **Settings → General → Thread groups** lists the built-in pages above the
 user's own groups and chooses detailed cards or compact rows independently for active, pinned,
-working, grouped, hidden, snoozed, and settled threads.
+working, grouped, automation, hidden, snoozed, and settled threads.
 Hidden threads default to detailed cards; snoozed and settled threads default to compact rows.
 These client preferences also apply when several categories share the sidebar and when chat
 tabs are expanded.

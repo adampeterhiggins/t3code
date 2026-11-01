@@ -108,6 +108,7 @@ export const SidebarThreadViews = Schema.Struct({
   pinned: SidebarThreadView.pipe(Schema.withDecodingDefault(Effect.succeed("card" as const))),
   working: SidebarThreadView.pipe(Schema.withDecodingDefault(Effect.succeed("card" as const))),
   grouped: SidebarThreadView.pipe(Schema.withDecodingDefault(Effect.succeed("card" as const))),
+  automations: SidebarThreadView.pipe(Schema.withDecodingDefault(Effect.succeed("card" as const))),
   hidden: SidebarThreadView.pipe(Schema.withDecodingDefault(Effect.succeed("card" as const))),
   snoozed: SidebarThreadView.pipe(Schema.withDecodingDefault(Effect.succeed("slim" as const))),
   settled: SidebarThreadView.pipe(Schema.withDecodingDefault(Effect.succeed("slim" as const))),

@@ -208,16 +208,14 @@ export function buildSidebarFilterFacets<
 }
 
 export function sidebarThreadView(
-  section: keyof SidebarThreadViews | "automations",
+  section: keyof SidebarThreadViews,
   groupName: string | null | undefined,
   groups: ThreadGroups,
   views: SidebarThreadViews,
 ) {
   return section === "grouped" && groupName != null
     ? (groups[groupName]?.view ?? views.grouped)
-    : section === "automations"
-      ? views.grouped
-      : views[section];
+    : views[section];
 }
 
 export const SidebarPagesSchema = Schema.Array(Schema.String);

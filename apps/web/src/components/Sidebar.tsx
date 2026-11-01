@@ -1057,8 +1057,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               ? group.threads
               : [],
           ),
-          // Automations is a built-in group, so it takes the groups' view.
-          ...(threadViews.grouped === "card" ? visibleAutomationThreads : []),
+          ...(threadViews.automations === "card" ? visibleAutomationThreads : []),
           ...(threadViews.hidden === "card" ? visibleHiddenThreads : []),
           ...(threadViews.snoozed === "card" ? visibleSnoozedThreads : []),
           ...(threadViews.settled === "card" ? renderedSettledThreads : []),

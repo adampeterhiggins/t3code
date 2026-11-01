@@ -592,7 +592,7 @@ hidden on your other devices.
 
 On web and desktop, **Settings → General → Thread groups** lets you choose detailed cards or
 compact rows for each built-in page: pinned, working and active threads under **Threads**, then
-**Snoozed**, **Hidden** and **Settled**. Hidden threads start with detailed cards so their project
+**Automations**, **Snoozed**, **Hidden** and **Settled**. Hidden threads start with detailed cards so their project
 and branch remain visible.
 
 ## Group threads

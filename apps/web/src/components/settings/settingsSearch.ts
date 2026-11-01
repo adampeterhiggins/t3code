@@ -466,7 +466,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Thread groups",
     to: "/settings/general",
     searchTerms: [
-      "show hide settled threads group sidebar rows detailed compact cards view new create rename delete active pinned working grouped hidden snoozed",
+      "show hide settled threads group sidebar rows detailed compact cards view new create rename delete active pinned working grouped automations hidden snoozed",
     ],
   },
   {

@@ -51,6 +51,11 @@ const BUILT_IN_GROUPS: ReadonlyArray<{
       ["active", "Active rows"],
     ],
   },
+  {
+    ...BUILT_IN_PAGES.automations,
+    title: BUILT_IN_PAGES.automations.label,
+    views: [["automations", "Rows"]],
+  },
   { ...BUILT_IN_PAGES.snoozed, title: BUILT_IN_PAGES.snoozed.label, views: [["snoozed", "Rows"]] },
   { ...BUILT_IN_PAGES.hidden, title: BUILT_IN_PAGES.hidden.label, views: [["hidden", "Rows"]] },
   { ...BUILT_IN_PAGES.settled, title: BUILT_IN_PAGES.settled.label, views: [["settled", "Rows"]] },

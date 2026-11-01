@@ -66,16 +66,17 @@ describe("sidebar page projection", () => {
     );
   });
 
-  it("uses group overrides only for groups and the grouped default for Automations", () => {
+  it("uses group overrides only for groups, and Automations its own view", () => {
     const views = {
       ...DEFAULT_CLIENT_SETTINGS.sidebarThreadViews,
       grouped: "slim" as const,
+      automations: "card" as const,
       active: "card" as const,
     };
     const groups = { Work: { view: "card" as const } };
     expect(sidebarThreadView("grouped", "Work", groups, views)).toBe("card");
     expect(sidebarThreadView("grouped", "Missing", groups, views)).toBe("slim");
-    expect(sidebarThreadView("automations", "Work", groups, views)).toBe("slim");
+    expect(sidebarThreadView("automations", "Work", groups, views)).toBe("card");
     expect(sidebarThreadView("active", "Work", groups, views)).toBe("card");
   });
 });

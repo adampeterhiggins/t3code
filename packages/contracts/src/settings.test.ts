@@ -642,6 +642,7 @@ describe("ClientSettings sidebar thread views", () => {
       pinned: "card",
       working: "card",
       grouped: "card",
+      automations: "card",
       hidden: "card",
       snoozed: "slim",
       settled: "slim",
