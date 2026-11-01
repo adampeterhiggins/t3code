@@ -7,6 +7,7 @@ import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import {
   EnvironmentId,
+  EnvironmentTheme,
   PullRequestInvolvement,
   PullRequestListFilters,
   PullRequestListState,
@@ -18,7 +19,7 @@ import type { AndroidNavigationStyle } from "../lib/androidNavigationStyle";
 import type { ComposerEnterBehavior } from "../lib/composerEnterBehavior";
 import type { FollowUpBehavior } from "../lib/followUpBehavior";
 import { isMicrophoneKind, type MicrophoneEntry } from "../lib/microphonePriority";
-import { MOBILE_THEME_IDS, type MobileThemeId, type MobileThemeMode } from "../lib/mobileTheme";
+import { isMobileThemeId, type MobileThemeId, type MobileThemeMode } from "../lib/mobileTheme";
 import * as MobileDatabase from "./mobile-database";
 import * as MobileSecureStorage from "./mobile-secure-storage";
 import { MobileStorageDecodeError, MobileStorageEncodeError } from "./mobile-storage";
@@ -85,6 +86,7 @@ const ThreadProject = Schema.Struct({
   projectId: Schema.NonEmptyString,
 });
 const isThreadProject = Schema.is(ThreadProject);
+const isEnvironmentTheme = Schema.is(EnvironmentTheme);
 
 export interface Preferences {
   readonly navigationTabOrder?: readonly string[];
@@ -101,6 +103,11 @@ export interface Preferences {
   readonly lightThemeId?: MobileThemeId;
   readonly darkThemeId?: MobileThemeId;
   readonly themeMode?: MobileThemeMode;
+  /** Copies of the environment themes picked above, for when no environment publishes them. */
+  readonly environmentThemes?: ReadonlyArray<EnvironmentTheme>;
+  readonly themeSyncEnabled?: boolean;
+  /** Synced theme changes this device adopted or pushed, newest first. */
+  readonly themeSyncSeenSetAts?: readonly string[];
   readonly androidNavigationStyle?: AndroidNavigationStyle;
   readonly baseFontSize?: number;
   readonly terminalFontSize?: number | null;
@@ -108,6 +115,8 @@ export interface Preferences {
   readonly codeFontSize?: number | null;
   readonly codeWordBreak?: boolean;
   readonly mathRenderingEnabled?: boolean;
+  /** Percent, as web's contrast setting; unset is 100. */
+  readonly appearanceContrast?: number;
   /** Unset means on: crash reports are sent unless the user turns them off. */
   readonly crashReportsEnabled?: boolean;
   readonly connectOnboardingOptOutAccounts?: ReadonlyArray<string>;
@@ -182,6 +191,9 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     lightThemeId?: MobileThemeId;
     darkThemeId?: MobileThemeId;
     themeMode?: MobileThemeMode;
+    environmentThemes?: ReadonlyArray<EnvironmentTheme>;
+    themeSyncEnabled?: boolean;
+    themeSyncSeenSetAts?: readonly string[];
     androidNavigationStyle?: AndroidNavigationStyle;
     baseFontSize?: number;
     terminalFontSize?: number | null;
@@ -189,6 +201,7 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     codeFontSize?: number | null;
     codeWordBreak?: boolean;
     mathRenderingEnabled?: boolean;
+    appearanceContrast?: number;
     crashReportsEnabled?: boolean;
     connectOnboardingOptOutAccounts?: ReadonlyArray<string>;
     collapsedProjectGroups?: readonly string[];
@@ -249,22 +262,13 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     const value = parsed[key];
     if (typeof value === "boolean") preferences[key] = value;
   }
-  if (
-    typeof parsed.themeId === "string" &&
-    (MOBILE_THEME_IDS as readonly string[]).includes(parsed.themeId)
-  ) {
+  if (isMobileThemeId(parsed.themeId)) {
     preferences.themeId = parsed.themeId as MobileThemeId;
   }
-  if (
-    typeof parsed.lightThemeId === "string" &&
-    (MOBILE_THEME_IDS as readonly string[]).includes(parsed.lightThemeId)
-  ) {
+  if (isMobileThemeId(parsed.lightThemeId)) {
     preferences.lightThemeId = parsed.lightThemeId as MobileThemeId;
   }
-  if (
-    typeof parsed.darkThemeId === "string" &&
-    (MOBILE_THEME_IDS as readonly string[]).includes(parsed.darkThemeId)
-  ) {
+  if (isMobileThemeId(parsed.darkThemeId)) {
     preferences.darkThemeId = parsed.darkThemeId as MobileThemeId;
   }
   if (
@@ -273,6 +277,17 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     parsed.themeMode === "dark"
   ) {
     preferences.themeMode = parsed.themeMode;
+  }
+  if (Array.isArray(parsed.environmentThemes)) {
+    preferences.environmentThemes = parsed.environmentThemes.filter(isEnvironmentTheme);
+  }
+  if (typeof parsed.themeSyncEnabled === "boolean") {
+    preferences.themeSyncEnabled = parsed.themeSyncEnabled;
+  }
+  if (Array.isArray(parsed.themeSyncSeenSetAts)) {
+    preferences.themeSyncSeenSetAts = parsed.themeSyncSeenSetAts.filter(
+      (entry): entry is string => typeof entry === "string",
+    );
   }
   if (parsed.androidNavigationStyle === "one-ui" || parsed.androidNavigationStyle === "material") {
     preferences.androidNavigationStyle = parsed.androidNavigationStyle;
@@ -290,6 +305,9 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   if (typeof parsed.codeWordBreak === "boolean") preferences.codeWordBreak = parsed.codeWordBreak;
   if (typeof parsed.mathRenderingEnabled === "boolean")
     preferences.mathRenderingEnabled = parsed.mathRenderingEnabled;
+  if (typeof parsed.appearanceContrast === "number") {
+    preferences.appearanceContrast = parsed.appearanceContrast;
+  }
   if (typeof parsed.crashReportsEnabled === "boolean") {
     preferences.crashReportsEnabled = parsed.crashReportsEnabled;
   }

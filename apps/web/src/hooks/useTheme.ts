@@ -531,6 +531,10 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
+export function subscribeToThemeChanges(listener: () => void): () => void {
+  return subscribe(listener);
+}
+
 /** For shortcuts and other handlers outside React that read the theme at event time. */
 export function getThemeSnapshot(): ThemeSnapshot {
   return getSnapshot();
@@ -625,7 +629,7 @@ export function setAppearanceMode(nextAppearanceMode: ThemePreferenceMode): bool
   return true;
 }
 
-function setThemeHalf(appearance: ThemeAppearance, themeId: string | null): boolean {
+export function setThemeHalf(appearance: ThemeAppearance, themeId: string | null): boolean {
   if (typeof window === "undefined") return false;
   try {
     const current = readStoredThemeHalvesRaw();

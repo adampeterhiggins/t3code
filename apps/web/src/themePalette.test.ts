@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { converter } from "culori/fn";
+import { EnvironmentThemeFile } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 import { BUILT_IN_THEMES } from "@t3tools/shared/themePalettes";
 
 import { CONTEXT_CHIP_ACCENTS, contextChipColorVariable } from "./lib/contextChipAccents";
@@ -7,7 +9,11 @@ import { CONTEXT_CHIP_ACCENTS, contextChipColorVariable } from "./lib/contextChi
 import {
   applyThemePalette,
   contextChipVariables,
+  environmentThemeFileFromDefinition,
+  environmentThemeShareState,
+  followSharedThemeEdit,
   getThemeColorsForMode,
+  publishedThemeDefinitions,
   getThemeModes,
   getCustomThemes,
   getStandardThemeColors,
@@ -126,6 +132,52 @@ describe("theme files", () => {
     const restored = parseThemeFile(JSON.parse(serializeThemeFile(theme)));
     expect(restored.colors).toEqual(theme.colors);
     expect(restored.variants).toEqual(theme.variants);
+  });
+
+  it("shares a saved theme that other clients render unchanged", () => {
+    const theme = parseThemeFile({
+      version: THEME_FILE_VERSION,
+      id: "nightfall",
+      name: "Nightfall",
+      appearance: "dark",
+      colors: { canvas: "#1a1b26", accent: "#7aa2f7" },
+      variants: { light: { canvas: "#eff1f5" } },
+    });
+    // The server stores the file as JSON and decodes it again before streaming it out.
+    const codec = Schema.fromJsonString(EnvironmentThemeFile);
+    const stored = Schema.decodeSync(codec)(
+      Schema.encodeSync(codec)(environmentThemeFileFromDefinition(theme)),
+    );
+    const published = [{ id: theme.id, ...stored }];
+
+    expect(environmentThemeShareState(theme, [])).toBe("unshared");
+    expect(environmentThemeShareState(theme, published)).toBe("shared");
+    expect(
+      environmentThemeShareState(
+        { ...theme, colors: { ...theme.colors, accent: getDefaultThemeColors("dark").accent } },
+        published,
+      ),
+    ).toBe("outdated");
+
+    const [received] = publishedThemeDefinitions(published);
+    expect(received?.colors).toEqual(theme.colors);
+    expect(received?.variants).toEqual(theme.variants);
+
+    // A seed-only edit from mobile counts as shared once this device holds its expansion.
+    const editedOnPhone = {
+      id: theme.id,
+      name: "Nightfall",
+      appearance: "dark" as const,
+      canvas: "#202020",
+      accent: "#30a46c",
+    };
+    const base = environmentThemeFileFromDefinition(theme);
+    const followed = followSharedThemeEdit({ local: theme, published: editedOnPhone, base });
+    expect(followed?.label).toBe("Nightfall");
+    expect(environmentThemeShareState(followed!, [editedOnPhone])).toBe("shared");
+    // An edit here that is not shared yet is kept rather than overwritten.
+    const editedHere = { ...theme, label: "Nightfall 2" };
+    expect(followSharedThemeEdit({ local: editedHere, published: editedOnPhone, base })).toBeNull();
   });
 
   it.each(["searchMatchBackground", "searchMatchActiveBackground"] as const)(

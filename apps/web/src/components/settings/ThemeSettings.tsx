@@ -1,5 +1,8 @@
+import { useAtomValue } from "@effect/atom-react";
 import {
   CheckIcon,
+  CloudOffIcon,
+  CloudUploadIcon,
   CopyIcon,
   MoonIcon,
   PaintbrushIcon,
@@ -10,10 +13,21 @@ import {
   UploadIcon,
 } from "lucide-react";
 import { useState, type ReactElement } from "react";
+import {
+  type AtomCommandResult,
+  isAtomCommandInterrupted,
+  squashAtomCommandFailure,
+} from "@t3tools/client-runtime/state/runtime";
 import { useEnvironmentThemeDefinitions } from "../../hooks/useEnvironmentTheme";
 import { readThemeHalvesRaw } from "../../hooks/useTheme";
 import { cn } from "../../lib/utils";
+import { primaryEnvironmentIdAtom } from "../../state/primaryEnvironment";
+import { primaryServerEnvironmentThemesAtom, serverEnvironment } from "../../state/server";
+import { useAtomCommand } from "../../state/use-atom-command";
 import {
+  environmentThemeFileFromDefinition,
+  environmentThemeShareState,
+  type EnvironmentThemeShareState,
   getThemeDefinition,
   singleAppearanceOf,
   getThemeModes,
@@ -96,6 +110,45 @@ function ThemeVariantTooltip({ label, children }: { label: string; children: Rea
   );
 }
 
+type ThemeShareControls = Readonly<{
+  state: EnvironmentThemeShareState;
+  onShare: () => void;
+  onUnshare: () => void;
+}>;
+
+function ThemeCardAction({
+  label,
+  tooltip,
+  onClick,
+  children,
+}: {
+  label: string;
+  tooltip: string;
+  onClick: () => void;
+  children: ReactElement;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            aria-label={label}
+            size="icon-xs"
+            variant="ghost"
+            onClick={(event) => {
+              event.stopPropagation();
+              onClick();
+            }}
+          >
+            {children}
+          </Button>
+        }
+      />
+      <TooltipPopup>{tooltip}</TooltipPopup>
+    </Tooltip>
+  );
+}
+
 function ThemeLibraryCard({
   theme,
   isActive,
@@ -106,6 +159,7 @@ function ThemeLibraryCard({
   onDuplicate,
   onDownload,
   onRemove,
+  share,
   variantNavigation,
 }: {
   theme: ThemeCardDefinition;
@@ -117,6 +171,7 @@ function ThemeLibraryCard({
   onDuplicate?: () => void;
   onDownload?: () => void;
   onRemove?: () => void;
+  share?: ThemeShareControls | undefined;
   variantNavigation?: {
     collectionLabel: string;
     options: ReadonlyArray<{
@@ -310,7 +365,7 @@ function ThemeLibraryCard({
                   </button>
                 </div>
               </div>
-              {onEdit || onDuplicate || onDownload || onRemove ? (
+              {onEdit || onDuplicate || onDownload || onRemove || share ? (
                 <div className="flex shrink-0 items-center gap-1">
                   {onDuplicate ? (
                     <Tooltip>
@@ -372,6 +427,28 @@ function ThemeLibraryCard({
                       <TooltipPopup>Export theme file</TooltipPopup>
                     </Tooltip>
                   ) : null}
+                  {share && share.state !== "shared" ? (
+                    <ThemeCardAction
+                      label={`${share.state === "outdated" ? "Update shared" : "Share"} ${theme.label}`}
+                      tooltip={
+                        share.state === "outdated"
+                          ? "Update the shared copy with your changes"
+                          : "Share with every client of this environment"
+                      }
+                      onClick={share.onShare}
+                    >
+                      <CloudUploadIcon />
+                    </ThemeCardAction>
+                  ) : null}
+                  {share && share.state !== "unshared" ? (
+                    <ThemeCardAction
+                      label={`Stop sharing ${theme.label}`}
+                      tooltip="Stop sharing with this environment's clients"
+                      onClick={share.onUnshare}
+                    >
+                      <CloudOffIcon />
+                    </ThemeCardAction>
+                  ) : null}
                   {onRemove ? (
                     <Tooltip>
                       <TooltipTrigger
@@ -424,6 +501,7 @@ function CustomThemeCollectionCard({
   onEdit,
   onDownload,
   onRemove,
+  shareFor,
 }: {
   themes: ReadonlyArray<ThemeDefinition>;
   activeModesFor: (themeId: string) => ReadonlyArray<ThemeMode>;
@@ -433,6 +511,7 @@ function CustomThemeCollectionCard({
   onEdit: (theme: ThemeDefinition) => void;
   onDownload: (theme: ThemeDefinition) => void;
   onRemove: (theme: ThemeDefinition) => void;
+  shareFor: (theme: ThemeDefinition) => ThemeShareControls | undefined;
 }) {
   const [variantIndex, setVariantIndex] = useState(() => {
     const activeIndex = themes.findIndex((theme) => activeModesFor(theme.id).length > 0);
@@ -466,6 +545,7 @@ function CustomThemeCollectionCard({
       onDuplicate={() => onDuplicate(theme)}
       onEdit={() => onEdit(theme)}
       onRemove={() => onRemove(theme)}
+      share={shareFor(theme)}
       onUse={selectCollectionDefaults}
       onUseMode={(mode) => onUseMode(theme, mode)}
       theme={getThemeCardDefinition(theme)}
@@ -521,6 +601,44 @@ export function ThemeLibrary({
 }) {
   const openThemeEditor = useThemeEditorStore((store) => store.openThemeEditor);
   const environmentThemes = useEnvironmentThemeDefinitions();
+  const primaryEnvironmentId = useAtomValue(primaryEnvironmentIdAtom);
+  const publishedThemes = useAtomValue(primaryServerEnvironmentThemesAtom);
+  const canShareThemes = useAtomValue(
+    serverEnvironment.publishEnvironmentTheme.permissionAtom(primaryEnvironmentId),
+  );
+  const publishTheme = useAtomCommand(serverEnvironment.publishEnvironmentTheme);
+  const unpublishTheme = useAtomCommand(serverEnvironment.unpublishEnvironmentTheme);
+  const shareFor = (customTheme: ThemeDefinition): ThemeShareControls | undefined => {
+    if (primaryEnvironmentId === null || !canShareThemes) return undefined;
+    const notifyShareFailure = (title: string, result: AtomCommandResult<void, unknown>) => {
+      if (result._tag !== "Failure" || isAtomCommandInterrupted(result)) return;
+      const failure = squashAtomCommandFailure(result);
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title,
+          description: failure instanceof Error ? failure.message : "Try again.",
+        }),
+      );
+    };
+    return {
+      state: environmentThemeShareState(customTheme, publishedThemes),
+      onShare: async () => {
+        const result = await publishTheme({
+          environmentId: primaryEnvironmentId,
+          input: { id: customTheme.id, theme: environmentThemeFileFromDefinition(customTheme) },
+        });
+        notifyShareFailure("Couldn’t share theme", result);
+      },
+      onUnshare: async () => {
+        const result = await unpublishTheme({
+          environmentId: primaryEnvironmentId,
+          input: { id: customTheme.id },
+        });
+        notifyShareFailure("Couldn’t stop sharing theme", result);
+      },
+    };
+  };
   const [themeRemovalTarget, setThemeRemovalTarget] = useState<{
     theme: ThemeDefinition;
     collectionThemes: ReadonlyArray<ThemeDefinition>;
@@ -812,6 +930,7 @@ export function ThemeLibrary({
               })
             }
             onRemove={(customTheme) => handleRemoveTheme(customTheme, themes)}
+            shareFor={shareFor}
             onUse={(customTheme) => {
               const modes = getThemeModes(customTheme);
               if (modes.length === 1) assignHalf(modes[0]!, customTheme.id);

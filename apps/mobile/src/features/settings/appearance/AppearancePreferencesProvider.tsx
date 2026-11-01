@@ -17,8 +17,16 @@ import {
   resolveAppearancePreferences,
   type ResolvedAppearance,
 } from "../../../lib/appearancePreferences";
+import type { EnvironmentTheme } from "@t3tools/contracts";
+import {
+  DEFAULT_UNIFIED_SETTINGS,
+  MAX_APPEARANCE_CONTRAST,
+  MIN_APPEARANCE_CONTRAST,
+} from "@t3tools/contracts/settings";
+
 import { appAtomRegistry } from "../../../state/atom-registry";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../../state/preferences";
+import { publishedEnvironmentThemesAtom } from "../../../state/server";
 import type { Preferences } from "../../../persistence/mobile-preferences";
 import {
   isSystemColorsAvailable,
@@ -29,9 +37,11 @@ import { materialYouPaletteToMobileThemeVariables } from "../../../lib/materialY
 import { getMobileThemeRuntimeVariables } from "../../../lib/mobileThemeVariables";
 import type { MobileThemeVariables } from "../../../lib/mobileTheme";
 import {
+  applyMobileContrast,
   createMobileThemePairPatch,
   createMobileThemeSelectionPatch,
   normalizeMobileThemeMode,
+  retainEnvironmentThemeCopies,
   resolveMobileThemeIds,
   type MobileThemeAppearance,
   type MobileThemeId,
@@ -59,6 +69,8 @@ interface AppearancePreferencesContextValue {
     Record<MobileThemeAppearance, MobileThemeVariables>
   >;
   readonly systemColorPalettes: ReturnType<typeof readSystemColorPalettes>;
+  /** Published by connected environments, then saved copies of picked ones no longer published. */
+  readonly environmentThemes: ReadonlyArray<EnvironmentTheme>;
   readonly isReady: boolean;
   readonly setThemeIdForAppearance: (
     appearance: MobileThemeAppearance,
@@ -72,6 +84,8 @@ interface AppearancePreferencesContextValue {
   readonly setCodeWordBreak: (value: boolean) => void;
   readonly mathRenderingEnabled: boolean;
   readonly setMathRenderingEnabled: (value: boolean) => void;
+  readonly appearanceContrast: number;
+  readonly setAppearanceContrast: (value: number) => void;
 }
 
 const AppearancePreferencesContext = createContext<AppearancePreferencesContextValue | null>(null);
@@ -108,12 +122,21 @@ const systemColorPalettesAtom = Atom.make((get): MaterialYouPalettes | null => {
 function resolveThemeVariablesByAppearance(
   themeIds: MobileThemeIds,
   palettes: MaterialYouPalettes | null,
+  environmentThemes: ReadonlyArray<EnvironmentTheme>,
+  contrast: number,
 ): Readonly<Record<MobileThemeAppearance, MobileThemeVariables>> {
   const resolve = (appearance: MobileThemeAppearance) => {
-    const base = getMobileThemeRuntimeVariables(themeIds[appearance], appearance, Platform.OS);
-    return themeIds[appearance] === "material-you" && palettes
-      ? materialYouPaletteToMobileThemeVariables(palettes[appearance], appearance, base)
-      : base;
+    const base = getMobileThemeRuntimeVariables(
+      themeIds[appearance],
+      appearance,
+      Platform.OS,
+      environmentThemes,
+    );
+    const variables =
+      themeIds[appearance] === "material-you" && palettes
+        ? materialYouPaletteToMobileThemeVariables(palettes[appearance], appearance, base)
+        : base;
+    return applyMobileContrast(variables, appearance, contrast);
   };
   return { light: resolve("light"), dark: resolve("dark") };
 }
@@ -211,9 +234,29 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
   const themeId = themeIds[themeAppearance];
   const systemColorsActive = themeId === "material-you" && isSystemColorsAvailable;
   const systemColorPalettes = useAtomValue(systemColorPalettesAtom);
+  const publishedEnvironmentThemes = useAtomValue(publishedEnvironmentThemesAtom);
+  const savedEnvironmentThemes = storedPreferences?.environmentThemes;
+  const environmentThemes = useMemo(
+    () => [
+      ...publishedEnvironmentThemes,
+      ...(savedEnvironmentThemes ?? []).filter(
+        (saved) => !publishedEnvironmentThemes.some((theme) => theme.id === saved.id),
+      ),
+    ],
+    [publishedEnvironmentThemes, savedEnvironmentThemes],
+  );
+  const appearanceContrast = Math.min(
+    MAX_APPEARANCE_CONTRAST,
+    Math.max(
+      MIN_APPEARANCE_CONTRAST,
+      storedPreferences?.appearanceContrast ?? DEFAULT_UNIFIED_SETTINGS.appearanceContrast,
+    ),
+  );
   const themeVariablesByAppearance = resolveThemeVariablesByAppearance(
     themeIds,
     systemColorPalettes,
+    environmentThemes,
+    appearanceContrast,
   );
   const themeVariables = themeVariablesByAppearance[themeAppearance];
   const activeThemeName = getMobileUniwindThemeName(themeId, themeAppearance);
@@ -227,8 +270,28 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
     startTransition(() => savePreferences(patch));
   };
 
-  const updateThemePreferences = (patch: Partial<Preferences>) => {
-    savePreferences(patch);
+  const updateThemePreferences = (patch: {
+    readonly lightThemeId?: MobileThemeId;
+    readonly darkThemeId?: MobileThemeId;
+    readonly themeId?: MobileThemeId;
+    readonly themeMode?: MobileThemeMode;
+  }) => {
+    const selected = [patch.lightThemeId, patch.darkThemeId].filter(
+      (themeId): themeId is MobileThemeId => themeId !== undefined,
+    );
+    savePreferences(
+      selected.length === 0
+        ? patch
+        : {
+            ...patch,
+            environmentThemes: retainEnvironmentThemeCopies(
+              selected,
+              appAtomRegistry.get(publishedEnvironmentThemesAtom),
+              storedPreferencesOf(appAtomRegistry.get(mobilePreferencesAtom))?.environmentThemes ??
+                [],
+            ),
+          },
+    );
   };
 
   const setThemeIdForAppearance = (appearance: MobileThemeAppearance, value: MobileThemeId) => {
@@ -292,6 +355,7 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
   const mathRenderingEnabled = storedPreferences?.mathRenderingEnabled === true;
   const setMathRenderingEnabled = (value: boolean) =>
     updatePreferences({ mathRenderingEnabled: value });
+  const setAppearanceContrast = (value: number) => updatePreferences({ appearanceContrast: value });
 
   const value = useMemo(
     (): AppearancePreferencesContextValue => ({
@@ -307,6 +371,7 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
       themeVariables,
       themeVariablesByAppearance,
       systemColorPalettes,
+      environmentThemes,
       isReady,
       setThemeIdForAppearance,
       setThemeIdForBothAppearances,
@@ -317,6 +382,8 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
       setCodeWordBreak,
       mathRenderingEnabled,
       setMathRenderingEnabled,
+      appearanceContrast,
+      setAppearanceContrast,
     }),
     [
       appearance,
@@ -330,6 +397,7 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
       themeVariables,
       themeVariablesByAppearance,
       systemColorPalettes,
+      environmentThemes,
       isReady,
       setThemeIdForAppearance,
       setThemeIdForBothAppearances,
@@ -340,6 +408,8 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
       setCodeWordBreak,
       mathRenderingEnabled,
       setMathRenderingEnabled,
+      appearanceContrast,
+      setAppearanceContrast,
     ],
   );
 

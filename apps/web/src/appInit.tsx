@@ -31,8 +31,9 @@ import {
   useComposerDraftStore,
 } from "./composerDraftStore";
 import { startDefaultThemeAdoption } from "./hooks/useDefaultTheme";
-import { startEnvironmentThemeRepaint } from "./hooks/useEnvironmentTheme";
+import { startEnvironmentThemeRepaint, startSharedThemeFollow } from "./hooks/useEnvironmentTheme";
 import { readLocalStorageValue, subscribeLocalStorageKey } from "./hooks/useLocalStorage";
+import { startThemeSync } from "./hooks/useThemeSync";
 import {
   getClientSettings,
   startModelPreferencesMigration,
@@ -186,6 +187,8 @@ export function startAppServices(): AppRouter {
   startDocumentTitle();
   startBrowserChromeThemeSync(router);
   startDefaultThemeAdoption();
+  startSharedThemeFollow();
+  startThemeSync();
   startModelPreferencesMigration();
   startAgentOpenedPreviews();
   if (isElectron) startElectronBrowserHost();

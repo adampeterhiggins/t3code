@@ -1,3 +1,6 @@
+import type { EnvironmentTheme } from "@t3tools/contracts";
+import { useAtomValue } from "@effect/atom-react";
+import { useNavigation } from "@react-navigation/native";
 import { memo, useId } from "react";
 import { Pressable, View } from "react-native";
 import Svg, { Circle, Defs, RadialGradient, Stop } from "react-native-svg";
@@ -8,6 +11,8 @@ import { mixThemePreviewBase, THEME_PREVIEW_RENDER_SPECS } from "@t3tools/shared
 import { SymbolView } from "../../../../components/ui/AppSymbol";
 import { AppText as Text } from "../../../../components/ui/AppText";
 import {
+  environmentMobileThemeId,
+  environmentThemeAppearances,
   getMobileThemePreviewColors,
   MOBILE_THEME_OPTIONS,
   type MobileThemeAppearance,
@@ -17,6 +22,10 @@ import {
 } from "../../../../lib/mobileTheme";
 import { getMobileUniwindThemeName } from "../../../../lib/mobileThemeRuntime";
 import { cn } from "../../../../lib/cn";
+import {
+  publishedEnvironmentThemesAtom,
+  themeEditingEnvironmentIdsAtom,
+} from "../../../../state/server";
 import { useAppearancePreferences } from "../AppearancePreferencesProvider";
 
 const APPEARANCE_MODES: ReadonlyArray<{
@@ -30,20 +39,24 @@ const APPEARANCE_MODES: ReadonlyArray<{
 
 const previewPercentage = (value: number) => `${value * 100}%`;
 
-const PreviewOrb = memo(function PreviewOrb(props: {
+export const PreviewOrb = memo(function PreviewOrb(props: {
   readonly appearance: MobileThemeAppearance;
   readonly compact?: boolean;
   readonly themeId: MobileThemeId;
+  /** Replaces the published themes, to preview a draft. */
+  readonly environmentThemes?: ReadonlyArray<EnvironmentTheme>;
 }) {
   const idPrefix = useId().replaceAll(":", "");
   const accentGradientId = `${idPrefix}-accent-glow`;
   const actionGradientId = `${idPrefix}-action-glow`;
-  const { systemColorPalettes } = useAppearancePreferences();
+  const preferences = useAppearancePreferences();
+  const { systemColorPalettes } = preferences;
+  const environmentThemes = props.environmentThemes ?? preferences.environmentThemes;
   const palette = systemColorPalettes?.[props.appearance];
   const colors =
     props.themeId === "material-you" && palette
       ? { canvas: palette.surface, accent: palette.primary, messageAction: palette.tertiary }
-      : getMobileThemePreviewColors(props.themeId, props.appearance);
+      : getMobileThemePreviewColors(props.themeId, props.appearance, environmentThemes);
   const spec = THEME_PREVIEW_RENDER_SPECS[props.appearance];
   const accentRadius = Math.hypot(
     Math.max(spec.accent.center[0], 1 - spec.accent.center[0]),
@@ -113,8 +126,12 @@ const PreviewOrb = memo(function PreviewOrb(props: {
   );
 });
 
+const BOTH_APPEARANCES: ReadonlyArray<MobileThemeAppearance> = ["light", "dark"];
+
 function ThemeCard(props: {
+  readonly appearances?: ReadonlyArray<MobileThemeAppearance>;
   readonly disabled: boolean;
+  readonly onEdit?: () => void;
   readonly darkSelected: boolean;
   readonly label: string;
   readonly lightSelected: boolean;
@@ -122,6 +139,7 @@ function ThemeCard(props: {
   readonly onSelect: (appearance: MobileThemeAppearance) => void;
   readonly themeId: MobileThemeId;
 }) {
+  const appearances = props.appearances ?? BOTH_APPEARANCES;
   const choice = (appearance: MobileThemeAppearance, selected: boolean) => (
     <Pressable
       accessibilityHint={`Sets the ${appearance} appearance only`}
@@ -153,20 +171,26 @@ function ThemeCard(props: {
   return (
     <View className="min-w-36 flex-1 basis-[47%] gap-3 rounded-[24px] border border-border bg-grouped-card px-2 py-4">
       <Pressable
-        accessibilityHint="Sets both light and dark appearances"
+        accessibilityHint={
+          appearances.length === 1
+            ? `Sets the ${appearances[0]} appearance only`
+            : "Sets both light and dark appearances"
+        }
         accessibilityLabel={`${props.label} theme`}
         accessibilityRole="button"
         accessibilityState={{
           disabled: props.disabled,
-          selected: props.lightSelected && props.darkSelected,
+          selected:
+            (props.lightSelected || !appearances.includes("light")) &&
+            (props.darkSelected || !appearances.includes("dark")),
         }}
         className="absolute inset-0 rounded-[24px] active:bg-subtle"
         disabled={props.disabled}
         onPress={props.onSelectBoth}
       />
       <View className="flex-row items-center justify-center gap-2 py-1" pointerEvents="box-none">
-        {choice("light", props.lightSelected)}
-        {choice("dark", props.darkSelected)}
+        {appearances.includes("light") ? choice("light", props.lightSelected) : null}
+        {appearances.includes("dark") ? choice("dark", props.darkSelected) : null}
       </View>
       <Text
         className="min-w-0 flex-1 px-1 text-lg font-t3-medium"
@@ -175,11 +199,48 @@ function ThemeCard(props: {
       >
         {props.label}
       </Text>
+      {props.onEdit ? (
+        <Pressable
+          accessibilityLabel={`Edit ${props.label}`}
+          accessibilityRole="button"
+          className="absolute right-2 top-2 size-8 items-center justify-center rounded-full active:bg-subtle"
+          hitSlop={6}
+          onPress={props.onEdit}
+        >
+          <SymbolView
+            name="pencil"
+            size={14}
+            tintColorClassName="accent-foreground-muted"
+            type="monochrome"
+            weight="medium"
+          />
+        </Pressable>
+      ) : null}
     </View>
   );
 }
 
-function PreviewPane(props: { readonly compact?: boolean }) {
+function CreateThemeCard(props: { readonly onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityLabel="Create theme"
+      accessibilityRole="button"
+      className="min-h-[136px] min-w-36 flex-1 basis-[47%] items-center justify-center gap-2 rounded-[24px] border border-dashed border-border px-2 py-4 active:bg-subtle"
+      onPress={props.onPress}
+    >
+      <SymbolView
+        name="plus"
+        size={20}
+        tintColorClassName="accent-foreground-muted"
+        type="monochrome"
+        weight="medium"
+      />
+      <Text className="text-lg font-t3-medium">Create theme</Text>
+    </Pressable>
+  );
+}
+
+export function PreviewPane(props: { readonly compact?: boolean }) {
   return (
     <View className="flex-1 overflow-hidden bg-screen">
       <View
@@ -293,7 +354,11 @@ export function ThemeAppearanceSection() {
     themeIds,
     themeMode,
     systemColorsAvailable,
+    environmentThemes,
   } = useAppearancePreferences();
+  const navigation = useNavigation();
+  const canEditThemes = useAtomValue(themeEditingEnvironmentIdsAtom).length > 0;
+  const publishedThemes = useAtomValue(publishedEnvironmentThemesAtom);
 
   return (
     <View className="gap-6">
@@ -331,6 +396,36 @@ export function ThemeAppearanceSection() {
               themeId={theme.id}
             />
           ))}
+          {environmentThemes.map((theme) => {
+            const themeId = environmentMobileThemeId(theme.id);
+            const appearances = environmentThemeAppearances(theme);
+            return (
+              <ThemeCard
+                appearances={appearances}
+                disabled={!isReady}
+                key={themeId}
+                label={theme.name}
+                darkSelected={themeId === themeIds.dark}
+                lightSelected={themeId === themeIds.light}
+                onSelect={(appearance) => setThemeIdForAppearance(appearance, themeId)}
+                onSelectBoth={() =>
+                  appearances.length === 1
+                    ? setThemeIdForAppearance(appearances[0]!, themeId)
+                    : setThemeIdForBothAppearances(themeId)
+                }
+                {...(canEditThemes && publishedThemes.some((published) => published.id === theme.id)
+                  ? {
+                      onEdit: () =>
+                        navigation.navigate("SettingsThemeEditor", { themeId: theme.id }),
+                    }
+                  : {})}
+                themeId={themeId}
+              />
+            );
+          })}
+          {canEditThemes ? (
+            <CreateThemeCard onPress={() => navigation.navigate("SettingsThemeEditor", {})} />
+          ) : null}
         </View>
       </View>
     </View>

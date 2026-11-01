@@ -14,13 +14,27 @@ import {
 } from "./mobileTheme.test-support";
 import { getMobileThemeRuntimeVariables } from "./mobileThemeVariables";
 
+import type { EnvironmentTheme } from "@t3tools/contracts";
 import {
+  createVividThemeColors,
+  getDefaultThemeColors,
+  hexToThemeRgb,
+} from "@t3tools/shared/themeGenerator";
+
+import {
+  applyMobileContrast,
   createMobileThemeSelectionPatch,
   createMobileThemeVariables,
   DEFAULT_MOBILE_THEME_ID,
+  environmentThemeAppearances,
+  environmentThemeColors,
+  environmentThemeFileFromSeeds,
   flattenThemeColor,
+  mobileThemeIdFromSynced,
+  newEnvironmentThemeId,
   getMobileThemeVariables,
   resolveMobileThemeIds,
+  retainEnvironmentThemeCopies,
   themeColorWithAlpha,
   themeColorToNativeColor,
 } from "./mobileTheme";
@@ -214,6 +228,145 @@ describe("mobile themes", () => {
       light: DEFAULT_MOBILE_THEME_ID,
       dark: "grove",
     });
+    expect(
+      resolveMobileThemeIds({
+        lightThemeId: "environment:nightfall",
+        darkThemeId: "environment:Bad",
+      }),
+    ).toEqual({ light: "environment:nightfall", dark: DEFAULT_MOBILE_THEME_ID });
+  });
+
+  it("renders an environment theme's palette over the standard one", () => {
+    const shared: EnvironmentTheme = {
+      id: "nightfall",
+      name: "Nightfall",
+      appearance: "dark",
+      colors: { canvas: "oklch(0.2 0.02 270)", notARole: "#ffffff" },
+      variants: { light: { accent: "#1e66f5" } },
+    };
+    expect(environmentThemeAppearances(shared)).toEqual(["light", "dark"]);
+    expect(environmentThemeColors(shared, "dark")).toEqual({
+      ...getDefaultThemeColors("dark"),
+      canvas: "oklch(0.2 0.02 270)",
+    });
+    expect(environmentThemeColors(shared, "light")).toEqual({
+      ...getDefaultThemeColors("light"),
+      accent: "#1e66f5",
+    });
+
+    // Seed-only files (from integrations) get the same generated palette web clients show.
+    const seeded: EnvironmentTheme = {
+      id: "seeded",
+      name: "Seeded",
+      appearance: "light",
+      canvas: "#eff1f5",
+      accent: "#7aa2f7",
+      colors: { warning: "#ff0000" },
+    };
+    expect(environmentThemeAppearances(seeded)).toEqual(["light"]);
+    expect(environmentThemeColors(seeded, "dark")).toBeNull();
+    expect(environmentThemeColors(seeded, "light")).toEqual({
+      ...createVividThemeColors("light", hexToThemeRgb("#eff1f5"), hexToThemeRgb("#7aa2f7")),
+      warning: "#ff0000",
+    });
+    expect(
+      getMobileThemeRuntimeVariables("environment:seeded", "light", "ios", [seeded])[
+        "--color-primary"
+      ],
+    ).toBe(
+      createMobileThemeVariables(environmentThemeColors(seeded, "light")!, "light")[
+        "--color-primary"
+      ],
+    );
+    // A picked theme nobody publishes and no copy remembers falls back to the standard palette.
+    expect(getMobileThemeRuntimeVariables("environment:gone", "dark", "ios", [])).toEqual(
+      getMobileThemeRuntimeVariables(DEFAULT_MOBILE_THEME_ID, "dark", "ios"),
+    );
+  });
+
+  it("keeps copies of picked environment themes and drops the rest", () => {
+    const theme = (id: string, name: string): EnvironmentTheme => ({
+      id,
+      name,
+      appearance: "dark",
+      colors: { canvas: "#000000" },
+    });
+    expect(
+      retainEnvironmentThemeCopies(
+        ["environment:live", "environment:offline", "grove", "environment:live"],
+        [theme("live", "Published")],
+        [theme("live", "Stale copy"), theme("offline", "Copy"), theme("unpicked", "Copy")],
+      ),
+    ).toEqual([theme("live", "Published"), theme("offline", "Copy")]);
+  });
+
+  it("maps synced theme ids to themes this device can show", () => {
+    const nightfall: EnvironmentTheme = { id: "nightfall", name: "Nightfall", appearance: "dark" };
+    expect(mobileThemeIdFromSynced("grove", "light", [], false)).toBe("grove");
+    expect(mobileThemeIdFromSynced("nightfall", "dark", [nightfall], false)).toBe(
+      "environment:nightfall",
+    );
+    expect(mobileThemeIdFromSynced("nightfall", "light", [nightfall], false)).toBeNull();
+    expect(mobileThemeIdFromSynced("material-you", "dark", [], false)).toBeNull();
+    expect(mobileThemeIdFromSynced("unpublished", "dark", [], false)).toBeNull();
+  });
+
+  it("edits a theme from its seeds without disturbing what it does not change", () => {
+    const tuned: EnvironmentTheme = {
+      id: "nightfall",
+      name: "Nightfall",
+      appearance: "dark",
+      colors: { canvas: "#101010", accent: "#ff0000", terminalAnsiRed: "#ff5555" },
+      variants: { light: { canvas: "#ffffff" } },
+    };
+    expect(
+      environmentThemeFileFromSeeds({
+        existing: tuned,
+        name: " Midnight ",
+        appearance: "light",
+        canvas: "#101010",
+        accent: "#FF0000",
+      }),
+    ).toEqual({ version: 1, ...tuned, id: undefined, name: "Midnight" });
+    expect(
+      environmentThemeFileFromSeeds({
+        existing: tuned,
+        name: "Nightfall",
+        appearance: "light",
+        canvas: "#202020",
+        accent: "#ff0000",
+      }),
+    ).toEqual({
+      version: 1,
+      name: "Nightfall",
+      appearance: "dark",
+      canvas: "#202020",
+      accent: "#ff0000",
+      variants: tuned.variants,
+    });
+  });
+
+  it("names a new theme with an id no environment or built-in theme uses", () => {
+    expect(newEnvironmentThemeId("Late Night ✨", [])).toBe("late-night");
+    expect(newEnvironmentThemeId("Grove", [])).toBe("grove-2");
+    expect(newEnvironmentThemeId("Ocean", ["ocean-2"])).toBe("ocean-3");
+    expect(newEnvironmentThemeId("!!!", [])).toBe("theme");
+  });
+
+  it("applies web's contrast setting to text and borders", () => {
+    const variables = {
+      ...getMobileThemeVariables(DEFAULT_MOBILE_THEME_ID, "dark"),
+      "--color-screen": "#000000",
+      "--color-foreground": "#808080",
+      "--color-border": "#ffffff",
+    };
+    expect(applyMobileContrast(variables, "dark", 100)).toBe(variables);
+    const low = applyMobileContrast(variables, "dark", 50);
+    expect(low["--color-foreground"]).toBe("#404040");
+    expect(low["--color-border"]).toBe("rgba(255, 255, 255, 0.5)");
+    const high = applyMobileContrast(variables, "dark", 200);
+    expect(high["--color-foreground"]).toBe("#ffffff");
+    expect(high["--color-screen"]).toBe("#000000");
   });
 
   it("changes either theme without switching the active appearance", () => {

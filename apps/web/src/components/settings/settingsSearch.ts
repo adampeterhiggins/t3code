@@ -372,6 +372,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["reasoning effort thinking bars graph word label level composer"],
   },
   {
+    id: "theme-sync",
+    title: "Sync theme across devices",
+    to: "/settings/appearance",
+    searchTerms: ["share theme phone mobile desktop other devices match same everywhere"],
+  },
+  {
     id: "math-rendering",
     title: "Render math",
     to: "/settings/appearance",

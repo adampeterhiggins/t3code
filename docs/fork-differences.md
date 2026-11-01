@@ -2290,6 +2290,35 @@ Code: [GranolaAuth](../apps/server/src/granola/GranolaAuth.ts),
 [GranolaNotePickerSheet](../apps/mobile/src/components/GranolaNotePickerSheet.tsx). User guide:
 [Granola](./user/granola.md).
 
+## Shared custom themes
+
+A custom theme's card in **Settings → Appearance** has a **Share** button that publishes the
+theme to the environment the web or desktop app runs on, as if its file had been saved in the
+environment's `themes` directory. Every client of that environment can then pick it, and the
+card offers to update the shared copy after an edit or to stop sharing. A shared copy also
+follows edits other devices publish while it still matches what this device last saw shared.
+Sharing needs the settings-write permission.
+
+Upstream mobile ignores environment themes. Here mobile lists the themes every connected
+environment publishes next to its own, applies the chosen palette (terminal included) at
+runtime, and keeps a copy so the theme still works offline. Mobile can also create, edit, and
+delete shared themes from a background and accent color, and has web's **Contrast** setting,
+applied to the same text and border colors. Mobile still does not follow an environment's default
+theme.
+
+**Sync theme across devices** is a per-device toggle on web, desktop, and mobile. Devices with it
+on share their light and dark theme choices through the `syncedTheme` server setting, separate
+from the `t3 theme set` default.
+
+Code: `publish` in [environmentTheme.ts](../apps/server/src/environmentTheme.ts), the share
+controls in [ThemeSettings.tsx](../apps/web/src/components/settings/ThemeSettings.tsx),
+[themeSync.ts](../packages/client-runtime/src/themeSync.ts) with its web
+([useThemeSync.ts](../apps/web/src/hooks/useThemeSync.ts)) and mobile
+([themeSync.ts](../apps/mobile/src/features/settings/appearance/themeSync.ts)) controllers, and
+the mobile [theme editor](../apps/mobile/src/features/settings/SettingsThemeEditorRouteScreen.tsx),
+and `applyMobileContrast` in [mobileTheme.ts](../apps/mobile/src/lib/mobileTheme.ts).
+User guide: [Appearance](./user/appearance.md#share-a-custom-theme).
+
 ## Terminal colors, cursor, and line height
 
 Themes carry the terminal's 16 ANSI colors. A VS Code import reads `terminal.ansi*` and fills unset

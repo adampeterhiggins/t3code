@@ -22,6 +22,7 @@ import {
 import { useCustomThemes } from "../../hooks/useCustomThemes";
 import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
 import { useTheme } from "../../hooks/useTheme";
+import { setThemeSyncEnabled, useThemeSyncEnabled } from "../../hooks/useThemeSync";
 import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
@@ -99,6 +100,7 @@ export function AppearanceSettingsPanel() {
   const customThemes = useCustomThemes();
   const [isImportThemeOpen, setIsImportThemeOpen] = useState(false);
   const settings = useScopedSettings();
+  const themeSyncEnabled = useThemeSyncEnabled();
   const updateSettings = useUpdateScopedSettings();
   const environmentStageLabel = useEnvironmentStageLabel();
   const environmentStageVariant = resolveSidebarStageBackdropVariant(environmentStageLabel);
@@ -161,6 +163,20 @@ export function AppearanceSettingsPanel() {
             onImportOpenChange={setIsImportThemeOpen}
           />
         </div>
+      </SettingsSection>
+
+      <SettingsSection id="appearance-theme-sync" title="Devices">
+        <SettingsRow
+          {...searchableSetting("theme-sync")}
+          description="Use the same light and dark themes on every device that turns this on. Picking a custom theme shares it."
+          control={
+            <Switch
+              checked={themeSyncEnabled}
+              onCheckedChange={(checked) => setThemeSyncEnabled(Boolean(checked))}
+              aria-label="Sync theme across devices"
+            />
+          }
+        />
       </SettingsSection>
 
       <QuickMessageAppearanceSettings />
