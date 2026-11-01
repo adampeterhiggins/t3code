@@ -1,3 +1,4 @@
+import { pullRequestMenuRepository } from "@t3tools/shared/pullRequestMenuRepository";
 import { isSshRemoteUrl } from "@t3tools/shared/sourceControl";
 import { parseDiffFilePaths } from "@t3tools/source-control-core/server/diffFileRevisions";
 import * as Cache from "effect/Cache";
@@ -838,7 +839,7 @@ export const make = Effect.gen(function* () {
   });
 
   const listWorkspaceProjects = (
-    filter: Pick<PullRequestListInput, "projectId" | "projectIds" | "host">,
+    filter: Pick<PullRequestListInput, "projectId" | "projectIds" | "host" | "repository">,
   ): Effect.Effect<WorkspaceProjects, PullRequestError> =>
     Effect.flatMap(sharedProjectReads, (shared) => {
       if (shared === null || !shared.open) return readWorkspaceProjects(filter);
@@ -912,10 +913,10 @@ export const make = Effect.gen(function* () {
           if (filter.projectIds !== undefined && !filter.projectIds.includes(project.id)) continue;
           const identity = project.repositoryIdentity;
           let kind = identity?.provider;
-          const repository = sourceControlDefinitions.repositorySelector(
+          const ownRepository = sourceControlDefinitions.repositorySelector(
             project.repositoryIdentity,
           );
-          if (!identity || kind === undefined || repository === null) continue;
+          if (!identity || kind === undefined || ownRepository === null) continue;
           const recognized = sourceControlDefinitions.recognizeRemote(identity.locator.remoteUrl);
           const remote =
             recognized === null
@@ -933,9 +934,22 @@ export const make = Effect.gen(function* () {
             if (roots === undefined) viewerRoots.set(host, [project.workspaceRoot]);
             else if (!roots.includes(project.workspaceRoot)) roots.push(project.workspaceRoot);
           }
+          // `webUrl` is the only other repository this checkout may list.
+          const alternate = pullRequestMenuRepository(identity);
+          const requested = filter.repository?.trim().toLowerCase();
+          const repository =
+            alternate !== null &&
+            alternate.host === host &&
+            requested === alternate.repository.toLowerCase()
+              ? alternate.repository
+              : ownRepository;
           const repositoryKey =
             api?.repositoryKey?.({ canonicalKey: identity.canonicalKey }) ?? null;
-          const key = listCursorKey(host, repositoryKey ?? repository);
+          const listsIdentity = repository.toLowerCase() === ownRepository.toLowerCase();
+          const key = listCursorKey(
+            host,
+            listsIdentity ? (repositoryKey ?? repository) : repository,
+          );
           if (seen.has(key)) continue;
           seen.add(key);
           if (api === null) {
@@ -951,12 +965,13 @@ export const make = Effect.gen(function* () {
             repository,
             host,
             remote:
-              repositoryKey ??
-              sourceControlDefinitions.repositoryKeyFromRemote(`https://${host}/${repository}`),
+              listsIdentity && repositoryKey !== null
+                ? repositoryKey
+                : sourceControlDefinitions.repositoryKeyFromRemote(`https://${host}/${repository}`),
             repositoryKey:
-              repositoryKey === null
-                ? null
-                : sourceControlDefinitions.canonicalRepositoryKey(repositoryKey.toLowerCase()),
+              listsIdentity && repositoryKey !== null
+                ? sourceControlDefinitions.canonicalRepositoryKey(repositoryKey.toLowerCase())
+                : null,
           });
         }
         return { supported, unimplemented, viewerRoots };
@@ -965,7 +980,7 @@ export const make = Effect.gen(function* () {
 
   // Azure derives organization from the checkout; require the matching repository.
   const requireProject = (ref: PullRequestRef): Effect.Effect<SupportedProject, PullRequestError> =>
-    listWorkspaceProjects({ projectId: ref.projectId }).pipe(
+    listWorkspaceProjects({ projectId: ref.projectId, repository: ref.repository }).pipe(
       Effect.flatMap(({ supported }): Effect.Effect<SupportedProject, PullRequestError> => {
         const own = supported[0];
         const repository = ref.repository.trim();
@@ -2966,6 +2981,7 @@ export const make = Effect.gen(function* () {
         host,
         limit,
         query,
+        repository,
         cursorEntries,
       ] = JSON.parse(key) as [
         number,
@@ -2976,6 +2992,7 @@ export const make = Effect.gen(function* () {
         ReadonlyArray<string> | null,
         string | null,
         number | null,
+        string | null,
         string | null,
         ReadonlyArray<[string, string]> | null,
       ];
@@ -2988,6 +3005,7 @@ export const make = Effect.gen(function* () {
         ...(host === null ? {} : { host }),
         ...(limit === null ? {} : { limit }),
         ...(query === null ? {} : { query }),
+        ...(repository === null ? {} : { repository }),
         ...(cursorEntries === null ? {} : { cursors: Object.fromEntries(cursorEntries) }),
       } as PullRequestListInput);
     },
@@ -3016,6 +3034,7 @@ export const make = Effect.gen(function* () {
       input.host ?? null,
       input.limit ?? null,
       input.query ?? null,
+      input.repository ?? null,
       input.cursors === undefined
         ? null
         : Object.entries(input.cursors).toSorted(([left], [right]) => left.localeCompare(right)),

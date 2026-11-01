@@ -68,6 +68,7 @@ import { useProjectScriptEditing } from "./chat/useProjectScriptEditing";
 import { RightPanelSurfaceContent } from "./chat/RightPanelSurfaceContent";
 import { usePendingThreadRequests } from "./chat/usePendingThreadRequests";
 import { isScratchProject } from "@t3tools/client-runtime/state/projects";
+import { pullRequestMenuRepository } from "@t3tools/shared/pullRequestMenuRepository";
 import { visibleThreadPullRequests } from "@t3tools/shared/threadPullRequests";
 import { type UsageLimitSourceSnapshots } from "@t3tools/contracts";
 import { feedbackBannerItem } from "./chat/ComposerFeedback";
@@ -4016,7 +4017,10 @@ export default function ChatView(props: ChatViewProps) {
                                 supportsPullRequests ? (activeProject?.id ?? null) : null
                               }
                               pullRequestRepository={
-                                supportsPullRequests ? activeProjectRepository : null
+                                supportsPullRequests
+                                  ? (pullRequestMenuRepository(activeProject?.repositoryIdentity)
+                                      ?.repository ?? activeProjectRepository)
+                                  : null
                               }
                               githubIssueCwd={githubIssueCwd}
                               threadPullRequests={(activeThreadShell ?? activeThread)?.pullRequests}

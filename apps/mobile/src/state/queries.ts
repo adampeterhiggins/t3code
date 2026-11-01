@@ -137,6 +137,7 @@ export function useComposerPullRequestSearch(input: {
         projectId: input.projectId!,
         state: "all",
         limit: 200,
+        ...(input.repository === null ? {} : { repository: input.repository }),
         ...(query ? { query } : {}),
       },
     });

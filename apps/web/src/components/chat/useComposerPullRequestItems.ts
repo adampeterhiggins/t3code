@@ -94,6 +94,7 @@ export function useComposerPullRequestItems(input: {
             input: {
               state: "all",
               projectId,
+              ...(repository === null ? {} : { repository }),
               limit: PULL_REQUEST_LIST_LIMIT,
             } satisfies PullRequestListInput,
           },
@@ -107,6 +108,7 @@ export function useComposerPullRequestItems(input: {
             input: {
               state: "all",
               projectId,
+              ...(repository === null ? {} : { repository }),
               limit: PULL_REQUEST_LIST_LIMIT,
               query: settledTextQuery,
             } satisfies PullRequestListInput,

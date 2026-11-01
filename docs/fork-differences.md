@@ -955,8 +955,8 @@ existing links are left alone.
   The repository is the one gh opens pull requests in, so `gh repo set-default origin` sends a
   fork's `#123` to the fork rather than its `upstream` remote. The GitHub provider records it as
   the project identity's `webUrl`
-  ([`GitHubSourceControlProvider.ts`](../packages/source-control-github/src/server/GitHubSourceControlProvider.ts)),
-  which a pull request linked by number also uses.
+  ([`GitHubSourceControlProvider.ts`](../packages/source-control-github/src/server/GitHubSourceControlProvider.ts)).
+  The composer's `#` menu lists that repository, and a pull request linked by number uses it too.
   An agent's `#123` stays text, since a thread can work in several repositories and the number
   alone does not say which. The runtime instructions every provider gets tell agents to write the
   full URL or `owner/repo#123` instead
