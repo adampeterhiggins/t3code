@@ -184,13 +184,15 @@ const boxProjects: ReadonlyArray<Project> = [
     id: boxProject,
     title: "app",
     workspaceRoot: "/srv/app",
+    // The same fork, without `gh repo set-default origin` there, names its upstream remote.
     repositoryIdentity: {
       canonicalKey: "github.com/acme/app",
       locator: {
         source: "git-remote",
-        remoteName: "origin",
+        remoteName: "upstream",
         remoteUrl: "git@github.com:acme/app.git",
       },
+      origin: { canonicalKey: "github.com/me/app" },
     },
     defaultModelSelection: null,
     scripts: [],
@@ -589,7 +591,7 @@ const makeLaptop = (
               resolve: (cwd) =>
                 Effect.succeed(
                   cwd === "/home/me/app"
-                    ? ({ canonicalKey: "github.com/acme/app" } as RepositoryIdentity)
+                    ? ({ canonicalKey: "github.com/me/app" } as RepositoryIdentity)
                     : null,
                 ),
             }),

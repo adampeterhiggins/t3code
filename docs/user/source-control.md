@@ -340,8 +340,12 @@ and their marks follow the same rules as on web and desktop.
 `owner/repo#123` in a message links to that issue or pull request, with the same preview as a
 pasted link. In a thread whose project is a GitHub repository, `#123` in your own messages links
 to that repository's issue or pull request. An agent can work in several repositories, so its bare
-`#123` stays text; agents are asked to write the full link instead. In a fork with an `upstream` remote, that is the repository `gh` opens pull
-requests in, so run `gh repo set-default` to choose between your fork and upstream.
+`#123` stays text; agents are asked to write the full link instead.
+
+In a fork with an `upstream` remote, the project's repository is the one `gh` opens pull requests
+in. Pull request lists, the `#` menu and `#123` links use upstream until you run
+`gh repo set-default origin` in the checkout. Restart T3 Code, or wait about 15 minutes, for the
+change to show.
 
 ## Linked pull requests
 
