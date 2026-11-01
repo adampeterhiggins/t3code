@@ -430,6 +430,41 @@ describe("buildThreadListV2Items", () => {
         (thread) => thread.id,
       ),
     ).toEqual([]);
+
+    const hidingSettled = (pages: ReadonlyArray<ThreadListPage>) =>
+      buildThreadListV2Items({
+        threads,
+        environmentId: null,
+        searchQuery: "",
+        now: NOW,
+        pages,
+        snoozedShelfExpanded: true,
+        groupsHidingSettled: new Set(["Alpha"]),
+      });
+    expect(ids(hidingSettled(["settled"]))).toEqual(["grouped-settled", "settled"]);
+    expect(ids(hidingSettled(["group:Alpha"]))).toEqual([]);
+    expect(ids(hidingSettled(["group:Beta"]))).toEqual(["grouped-pinned-snoozed"]);
+    expect(ids(hidingSettled(["hidden"]))).toEqual([
+      "hidden-settled",
+      "hidden-pinned",
+      "grouped-hidden",
+    ]);
+    expect(ids(hidingSettled(available))).toEqual([
+      "active",
+      "grouped-pinned-snoozed",
+      "snoozed",
+      "hidden-settled",
+      "hidden-pinned",
+      "grouped-hidden",
+      "grouped-settled",
+      "settled",
+    ]);
+    expect(
+      threadListV2Pages(
+        threads.find((thread) => thread.id === "grouped-settled")!,
+        { now: NOW, groupsHidingSettled: new Set(["Alpha"]) },
+      ),
+    ).toEqual(["settled"]);
   });
 
   it("keeps a group shown in Threads on its usual page and lists the rest under the group", () => {
@@ -473,6 +508,52 @@ describe("buildThreadListV2Items", () => {
       "settled",
       "group:Docs",
     ]);
+
+    const groupsHidingSettled = new Set(["Docs"]);
+    const hiding = (pages: ReadonlyArray<ThreadListPage>) =>
+      buildThreadListV2Items({
+        threads,
+        environmentId: null,
+        searchQuery: "",
+        now: NOW,
+        pages,
+        groupsShownInThreads,
+        groupsHidingSettled,
+      }).items.map((item) => item.thread.id);
+    expect(hiding(["threads"])).toEqual(["docs-active"]);
+    expect(hiding(["settled"])).toEqual(["docs-settled"]);
+    expect(hiding(["group:Docs"])).toEqual(["docs-active"]);
+    expect(hiding(["threads", "group:Docs"])).toEqual(["docs-active"]);
+    expect(hiding(["threads", "group:Docs", "settled"])).toEqual(["docs-active", "docs-settled"]);
+    expect(
+      threadListV2Pages(threads[1]!, { now: NOW, groupsShownInThreads, groupsHidingSettled }),
+    ).toEqual(["settled"]);
+
+    const queuedId = ThreadId.make("docs-queued");
+    const queuedThreads = [
+      ...threads,
+      makeThread({
+        id: queuedId,
+        title: "Docs queued",
+        settledOverride: "settled",
+        settledAt: NOW,
+        groupName: "Docs",
+      }),
+    ];
+    const queued = (pages: ReadonlyArray<ThreadListPage>) =>
+      buildThreadListV2Items({
+        threads: queuedThreads,
+        environmentId: null,
+        searchQuery: "",
+        now: NOW,
+        pages,
+        groupsShownInThreads,
+        groupsHidingSettled,
+        queuedThreadKeys: new Set([`${environmentId}:${queuedId}`]),
+      }).items.map((item) => item.thread.id);
+    expect(queued(["group:Docs"])).toEqual(["docs-active", "docs-queued"]);
+    expect(queued(["settled"])).toEqual(["docs-settled"]);
+    expect(queued(["threads", "group:Docs"])).toEqual(["docs-active", "docs-queued"]);
   });
 
   it("toggles pages but never deselects the last one", () => {

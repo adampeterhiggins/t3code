@@ -81,6 +81,7 @@ import { scopedIdleCompaction } from "./scopedSettings";
 import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
 import { ThreadTitleInstructionsSettings } from "./ThreadTitleInstructionsSettings";
 import { SnoozePresetsRow } from "./SnoozePresetsSettings";
+import { ThreadGroupSettingsSection } from "./ThreadGroupSettings";
 import { useDesktopUpdateState } from "../../state/desktopUpdate";
 import {
   getCustomModelOptionsByInstance,
@@ -1205,6 +1206,8 @@ export function GeneralSettingsPanel() {
           }
         />
       </SettingsSection>
+
+      {settings.legacySidebarEnabled ? null : <ThreadGroupSettingsSection />}
 
       <SettingsSection id="confirmations" title="Confirmations">
         <SettingsRow

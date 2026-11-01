@@ -285,15 +285,26 @@ export function sidebarThreadShelf(
     now: string;
     /** Groups whose threads keep their usual shelf instead of the group's. */
     groupsShownInThreads?: ReadonlySet<string>;
+    /** Groups whose settled threads stay on Settled instead of the group's page. */
+    groupsHidingSettled?: ReadonlySet<string>;
   },
 ): SidebarThreadShelf {
   // Snooze outranks settlement and pinning until the thread wakes. Only servers
   // that understand hiding ever set hiddenAt, so it needs no capability check.
+  const snoozed = input.supportsSnooze && effectiveSnoozed(thread, { now: input.now });
   const section = resolveSidebarThreadSection({
     hidden: thread.hiddenAt != null,
-    grouped: isSidebarThreadGroupedAway(thread.groupName, input.groupsShownInThreads),
+    grouped: isSidebarThreadGroupedAway(thread.groupName, input.groupsShownInThreads, {
+      groupsHidingSettled: input.groupsHidingSettled,
+      // Snooze and Automations keep a grouped thread; only a Settled-shelf thread leaves.
+      settled:
+        input.supportsSettlement &&
+        thread.settledOverride === "settled" &&
+        !snoozed &&
+        thread.scheduledTaskId == null,
+    }),
     automation: thread.scheduledTaskId != null,
-    snoozed: input.supportsSnooze && effectiveSnoozed(thread, { now: input.now }),
+    snoozed,
     settled: input.supportsSettlement && thread.settledOverride === "settled",
     pinned: thread.pinnedAt != null,
   });
@@ -308,8 +319,17 @@ export function sidebarThreadShelf(
 export function isSidebarThreadGroupedAway(
   groupName: string | null | undefined,
   groupsShownInThreads: ReadonlySet<string> | undefined,
+  options?: {
+    readonly groupsHidingSettled?: ReadonlySet<string> | undefined;
+    /** The thread would sit on Settled if the group did not take it. */
+    readonly settled?: boolean | undefined;
+  },
 ): boolean {
-  return groupName != null && groupsShownInThreads?.has(groupName) !== true;
+  if (groupName == null) return false;
+  if (options?.settled === true && options.groupsHidingSettled?.has(groupName) === true) {
+    return false;
+  }
+  return groupsShownInThreads?.has(groupName) !== true;
 }
 
 /** The Show page a shelf belongs to: pinned, working and active rows are all live threads. */

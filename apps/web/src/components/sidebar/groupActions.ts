@@ -25,6 +25,23 @@ export function createSidebarGroupActions(input: {
     setCollapsedPages,
     attemptSetGroup,
   } = input;
+  /** Moves a renamed or deleted group's threads and Show pages; null deletes it. */
+  const retargetGroup = (name: string, nextName: string | null) => {
+    if (nextName === name) return;
+    for (const thread of threads) {
+      if (thread.groupName === name) {
+        attemptSetGroup(scopeThreadRef(thread.environmentId, thread.id), nextName);
+      }
+    }
+    const renamePage = (pages: readonly string[]) =>
+      nextName === null
+        ? pages.filter((page) => page !== sidebarGroupPage(name))
+        : pages.map((page) =>
+            page === sidebarGroupPage(name) ? sidebarGroupPage(nextName) : page,
+          );
+    setSidebarPages(renamePage);
+    setCollapsedPages(renamePage);
+  };
   /**
    * Renames, restyles or deletes a group. Renaming moves each of its threads and keeps it picked;
    * deleting returns its threads to the live list and drops it from Show.
@@ -36,24 +53,15 @@ export function createSidebarGroupActions(input: {
         group: threadGroups[name] ?? {},
       });
       if (result === null) return;
-      const nextName = result === "delete" ? null : result.name;
       if (result === "delete") deleteGroup(name);
       else saveGroup({ from: name, ...result });
-      if (nextName === name) return;
-      for (const thread of threads) {
-        if (thread.groupName === name) {
-          attemptSetGroup(scopeThreadRef(thread.environmentId, thread.id), nextName);
-        }
-      }
-      const renamePage = (pages: readonly string[]) =>
-        nextName === null
-          ? pages.filter((page) => page !== sidebarGroupPage(name))
-          : pages.map((page) =>
-              page === sidebarGroupPage(name) ? sidebarGroupPage(nextName) : page,
-            );
-      setSidebarPages(renamePage);
-      setCollapsedPages(renamePage);
+      retargetGroup(name, result === "delete" ? null : result.name);
     })();
+  };
+  /** Deletes a group without the dialog, returning its threads to the live list. */
+  const deleteThreadGroup = (name: string) => {
+    deleteGroup(name);
+    retargetGroup(name, null);
   };
   /** Creates an empty group from the filter menu and shows it. */
   const createThreadGroup = () => {
@@ -64,5 +72,5 @@ export function createSidebarGroupActions(input: {
       setSidebarPages((pages) => [...pages, sidebarGroupPage(result.name)]);
     })();
   };
-  return { editThreadGroup, createThreadGroup };
+  return { editThreadGroup, createThreadGroup, deleteThreadGroup };
 }

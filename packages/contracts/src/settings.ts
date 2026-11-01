@@ -1558,6 +1558,11 @@ export const ThreadGroup = Schema.Struct({
    * own page. Absent, the group takes its threads out of those lists.
    */
   showInThreads: Schema.optionalKey(Schema.Boolean),
+  /**
+   * Lists the group's settled threads on its own page. Absent, they stay there. False sends them
+   * to Settled instead, even when the group would otherwise take them out of it.
+   */
+  showSettled: Schema.optionalKey(Schema.Boolean),
   /** Row style on the group's own page. Absent, the client's Grouped threads view applies. */
   view: Schema.optionalKey(SidebarThreadView),
 });
@@ -1568,6 +1573,11 @@ export type ThreadGroups = typeof ThreadGroups.Type;
 /** The names of the groups whose threads also stay in the Threads, Snoozed and Settled lists. */
 export function threadGroupsShownInThreads(groups: ThreadGroups): ReadonlySet<string> {
   return new Set(Object.keys(groups).filter((name) => groups[name]?.showInThreads === true));
+}
+
+/** Groups whose settled threads list under Settled instead of on the group's page. */
+export function threadGroupsHidingSettled(groups: ThreadGroups): ReadonlySet<string> {
+  return new Set(Object.keys(groups).filter((name) => groups[name]?.showSettled === false));
 }
 
 /**

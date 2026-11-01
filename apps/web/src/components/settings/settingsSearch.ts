@@ -470,6 +470,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     ],
   },
   {
+    id: "sidebar-thread-groups",
+    title: "Thread groups",
+    to: "/settings/general",
+    searchTerms: [
+      "show hide settled threads group sidebar rows detailed compact view new create rename delete",
+    ],
+  },
+  {
     id: "sidebar-tabs",
     title: "Tabs in sidebar",
     to: "/settings/general",

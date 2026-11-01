@@ -2088,10 +2088,16 @@ mobile's [`threadListV2.ts`](../apps/mobile/src/features/threads/threadListV2.ts
 **Move to group** in the thread menu (web, desktop, mobile) files a thread under a user-made
 group, which takes it out of the live thread list; each group is an entry in the filter menu's
 **Show** submenu, which can also create an empty group. Groups are the shared server setting
-`threadGroups` (name to icon, accent, `showInThreads` and `view`), written to every environment, so they
-persist when empty and are removed only by **Delete group**, which returns their threads to the
-live list. A group with `showInThreads` leaves its threads on their usual Threads, Snoozed or
-Settled page and lists them on its own page too, skipping any already listed by another picked page.
+`threadGroups` (name to icon, accent, `showInThreads`, `showSettled` and `view`), written to every
+environment, so they persist when empty and are removed only by **Delete group**, which returns their
+threads to the live list. A group with `showInThreads` leaves its threads on their usual Threads,
+Snoozed or Settled page and lists them on its own page too, skipping any already listed by another
+picked page. `showSettled` defaults to on (the field is omitted). Set to false, that group's settled
+threads stay on Settled instead of its page, including when the group would otherwise take them out
+of Settled; they are not copied onto the group page. Snoozed threads stay on the group page.
+Besides each group's dialog, **Settings → General** sets it per group, along with `view` on web and desktop
+([web](../apps/web/src/components/settings/ThreadGroupSettings.tsx),
+[mobile](../apps/mobile/src/features/settings/ThreadSettingsSections.tsx)).
 A group's `view` picks Detailed or Compact rows on its page in the web and desktop sidebar,
 overriding the **Grouped threads** view; mobile keeps its usual group rows.
 Membership is the server-owned `groupName` field, set by `thread.group.set` and gated on the
