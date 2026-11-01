@@ -3,7 +3,7 @@ import {
   T3_CHAT_THEME,
   type ThemeAppearance,
   type ThemeColors,
-} from "./themePalettes.js";
+} from "./themePalettes.ts";
 
 /**
  * Color math shared by the web theme editor and mobile, which renders environment
