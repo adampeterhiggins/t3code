@@ -21,6 +21,7 @@ import { SettingsScreen } from "./components/SettingsScreen";
 import { planAutoSettleSettingsSync, type AutoSettleSettings } from "./autoSettleSettingsSync";
 import { useSettingsEnvironmentFilter } from "./settings-environment-filter";
 import { resolveMobileSettingsTargets, uniformMobileSetting } from "./settings-scoped-server";
+import { useThreadGroups } from "../threads/use-thread-groups";
 
 export function SettingsLabsRouteScreen() {
   const insets = useSafeAreaInsets();
@@ -200,6 +201,37 @@ export function WorkingSectionSettings() {
         Fold working and monitoring threads into a Working section. They return to the top of the
         list when they need you. While this is on, active threads are ordered by time and cannot be
         moved.
+      </Text>
+    </View>
+  );
+}
+
+/** Per-group switches for whether a group's page lists its settled threads. */
+export function ThreadGroupSettledSection() {
+  const { groups, setGroup } = useThreadGroups();
+  const names = Object.keys(groups).sort((a, b) => a.localeCompare(b));
+  if (names.length === 0) return null;
+
+  return (
+    <View className="gap-3">
+      <SettingsSection title="Show settled threads in groups">
+        {names.map((name) => {
+          const { showSettled: _showSettled, ...rest } = groups[name]!;
+          return (
+            <SettingsSwitchRow
+              key={name}
+              icon="folder"
+              label={name}
+              value={groups[name]!.showSettled !== false}
+              onValueChange={(value) =>
+                setGroup({ name, group: value ? rest : { ...rest, showSettled: false } })
+              }
+            />
+          );
+        })}
+      </SettingsSection>
+      <Text className="px-2 text-sm text-foreground-muted">
+        When off, that group's settled threads appear under Settled instead.
       </Text>
     </View>
   );
