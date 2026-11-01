@@ -428,11 +428,15 @@ it("opens the correct chat for every workflow phase and unphased member", async 
   expect(fixture.byLabel("Collapse Verify phase, running")).toBeDefined();
   for (const phase of phaseButtons().slice(0, 2)) await fixture.click(phase);
   expect(memberButtons()).toHaveLength(7);
-  for (const button of memberButtons()) {
-    expect(button.disabled).toBe(true);
+  for (const agent of agents) {
+    const button = fixture.byLabel(`Open ${agent.label} chat`);
+    expect(button.disabled).toBe(false);
     await fixture.click(button);
+    expect(state.navigate).toHaveBeenLastCalledWith({
+      to: "/$environmentId/$threadId",
+      params: { environmentId: "remote", threadId: agent.childThreadId },
+    });
   }
-  expect(state.navigate).not.toHaveBeenCalled();
   state.shells = memberShells.map((source) => ({ environmentId: "remote", source }));
   await fixture.update();
   for (const button of memberButtons()) expect(button.disabled).toBe(false);
@@ -475,7 +479,7 @@ it("opens the correct chat for every workflow phase and unphased member", async 
   expect(memberButtons()).toHaveLength(5);
   await fixture.click(fixture.byLabel("Collapse Checkout review"));
   expect(memberButtons()).toHaveLength(0);
-  expect(state.navigate).toHaveBeenCalledTimes(7);
+  expect(state.navigate).toHaveBeenCalledTimes(14);
 });
 
 it("groups and counts a workflow by its run status instead of its coordinator chat", async () => {
@@ -882,7 +886,7 @@ it("shows readable models and only differing workspace details in agent tooltips
     id: "parent",
     projectId: "main",
     worktreePath: null,
-    lineage: {},
+    lineage: { parentThreadId: null },
     activeProviderThreadId: null,
   };
   const child = {

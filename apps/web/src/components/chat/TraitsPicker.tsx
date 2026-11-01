@@ -4,7 +4,7 @@ import {
   getTraitSelectChange,
   replaceDescriptorCurrentValue,
   selectableProviderOptionChoices,
-  REASONING_SELECT_DESCRIPTOR_IDS,
+  isReasoningSelect,
 } from "@t3tools/client-runtime/model-traits";
 import {
   type ModelSelection,
@@ -267,9 +267,7 @@ export function getReasoningTraitStep(input: {
     undefined,
   );
   if (selected.modelIsUnavailable || selected.ultrathinkInBodyText) return null;
-  const descriptor = selected.selectDescriptors.find((entry) =>
-    REASONING_SELECT_DESCRIPTOR_IDS.has(entry.id),
-  );
+  const descriptor = selected.selectDescriptors.find(isReasoningSelect);
   const choices = descriptor ? selectableProviderOptionChoices(descriptor) : [];
   if (!descriptor || choices.length < 2) return null;
   const isPrimary = descriptor.id === selected.primarySelectDescriptor?.id;
@@ -607,9 +605,7 @@ export const TraitsPicker = memo(function TraitsPicker({
       ? [`Effort: ${triggerLabel}`, speedLabel, extraMenuHint].filter(Boolean).join(" · ")
       : namedLabel;
   const effortGlyph =
-    isComposerOwned &&
-    primarySelectDescriptor &&
-    REASONING_SELECT_DESCRIPTOR_IDS.has(primarySelectDescriptor.id)
+    isComposerOwned && primarySelectDescriptor && isReasoningSelect(primarySelectDescriptor)
       ? resolveEffortGlyph(
           primarySelectDescriptor,
           ultrathinkPromptControlled

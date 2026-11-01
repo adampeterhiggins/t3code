@@ -1,3 +1,4 @@
+import { liveShellEnvironmentIdsAtom } from "../state/shell";
 import { copyThreadReference } from "../lib/copyThreadReference";
 import { threadChipCopyTarget } from "@t3tools/client-runtime/thread-reference";
 import { attachSidebarTree, SIDEBAR_TREE_PROPS } from "../lib/sidebarTree";
@@ -125,7 +126,10 @@ import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../termina
 import { isMacPlatform, cn } from "~/lib/utils";
 import { readLocalApi } from "../localApi";
 import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
-import { selectProjectGroupingSettings } from "@t3tools/client-runtime/state/project-grouping";
+import {
+  pickableProjectGroups,
+  selectProjectGroupingSettings,
+} from "@t3tools/client-runtime/state/project-grouping";
 import {
   projectGroupsSpanEnvironments,
   getSidebarProjectSettingsKey,
@@ -159,6 +163,7 @@ import { useNowMinute } from "../hooks/useNowMinute";
 import {
   useEnvironmentIdentities,
   useConnectedEnvironmentIds,
+  useEnvironmentConnectionSummaries,
   useEnvironmentMachines,
   usePrimaryEnvironmentId,
 } from "../state/environments";
@@ -227,6 +232,7 @@ import {
   resolveSidebarDropTarget,
   resolveSidebarDropVerb,
   searchSidebarThreads,
+  isSidebarEnvironmentDisconnected,
   shouldCreateNewThreadInCurrentProject,
   shouldNavigateAfterThreadPark,
   sidebarListItemId,
@@ -556,6 +562,18 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     ),
   );
   const delegatedUnderParent = useDelegatedUnderParent();
+  const environmentConnections = useEnvironmentConnectionSummaries();
+  const liveShellEnvironmentIds = useAtomValue(liveShellEnvironmentIdsAtom);
+  const disconnectedEnvironmentIds = new Set(
+    environmentConnections
+      .filter((environment) =>
+        isSidebarEnvironmentDisconnected(
+          environment.connectionState,
+          liveShellEnvironmentIds.has(environment.environmentId),
+        ),
+      )
+      .map((environment) => environment.environmentId),
+  );
   const nowMinute = useNowMinute();
   // Snooze wake times are second-precise, so classifying with the quantized
   // minute would hold a woken thread on the shelf for up to a minute.
@@ -676,6 +694,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     scopedProjectKeys,
     optimisticDrop,
     workingShelfEnabled,
+    disconnectedEnvironmentIds,
     sortActiveBySend: boringSidebarEnabled,
     clockKey: `${nowMinute}:${snoozeWakeTick}:${inboxReturnsVersion}`,
   });
@@ -683,7 +702,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const setProjectExpanded = useUiStateStore((store) => store.setProjectExpanded);
   const folderGroups = boringSidebarEnabled
     ? scopedProjectGroups.length === 0
-      ? projectGroups
+      ? [
+          ...pickableProjectGroups(projectGroups),
+          ...projectGroups.filter((project) => project.archived),
+        ]
       : scopedProjectGroups
     : null;
   const projectFolders =
@@ -692,7 +714,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       : groupSidebarThreadsByProject(
           folderGroups,
           activeThreads,
-          scopedProjectGroups.length > 0,
+          (group) => scopedProjectGroups.length > 0 || (group.pinned && !group.archived),
         ).map((folder) => {
           const collapsed = !resolveProjectExpanded(
             projectExpandedById,
@@ -1051,7 +1073,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     false,
     Schema.Boolean,
   );
-  const projectChoiceCount = projectGroups.length;
+  const projectChoiceCount = pickableProjectGroups(projectGroups).length;
   const toggleWorkingShelf = () => setWorkingShelfExpanded((value) => !value);
   const visibleWorkingThreads = (() => {
     if (workingShelfExpanded) return workingThreads;
@@ -2576,14 +2598,15 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                   AuthOrchestrationOperateScope,
                 ),
                 branch: thread.branch ?? null,
-                projectFilter: threadProjectGroup
-                  ? {
-                      label: threadProjectGroup.displayName,
-                      isActive:
-                        projectScopeKeys.length === 1 &&
-                        projectScopeKeys[0] === threadProjectGroup.projectKey,
-                    }
-                  : null,
+                projectFilter:
+                  threadProjectGroup && !threadProjectGroup.archived
+                    ? {
+                        label: threadProjectGroup.displayName,
+                        isActive:
+                          projectScopeKeys.length === 1 &&
+                          projectScopeKeys[0] === threadProjectGroup.projectKey,
+                      }
+                    : null,
                 tabs: tabEnvironmentIds.has(thread.environmentId)
                   ? {
                       canClose:
@@ -3031,13 +3054,23 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   );
   const showJumpHints = useThreadJumpHintsVisible(shouldShowJumpHintsNow);
   const handleNewThreadClick = (event?: ReactMouseEvent) => {
-    if (shouldCreateNewThreadInCurrentProject(event?.shiftKey ?? false, projectChoiceCount)) {
+    if (
+      shouldCreateNewThreadInCurrentProject(
+        event?.shiftKey ?? false,
+        pickableProjectGroups(scopedProjectGroups.length ? scopedProjectGroups : projectGroups)
+          .length,
+        projectChoiceCount,
+      )
+    ) {
       if (isMobile) setOpenMobile(false);
+      // With no current or open project, such as when every project is archived, pick one.
       void startNewThreadFromContext({
         activeDraftThread: newThreadContext.activeDraftThread,
         activeThread: newThreadContext.activeThread ?? undefined,
         defaultProjectRef: newThreadContext.defaultProjectRef,
         handleNewThread,
+      }).then((started) => {
+        if (!started) openCommandPalette({ open: "new-thread-in" });
       });
       return;
     }

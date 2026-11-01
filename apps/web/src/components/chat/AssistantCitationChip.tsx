@@ -37,6 +37,7 @@ import { resolveAssistantCitationCommentDismissal } from "./assistantCitationCom
 import { observeAssistantCitationCommentSource } from "./AssistantCitationSource";
 import { composerFloatingLayerProps } from "./composerEventScope";
 import { observeResize } from "~/lib/observeResize";
+import { textDirection } from "~/textDirection";
 
 export function AssistantCitationChip({
   citation,
@@ -162,7 +163,9 @@ export function AssistantCitationChip({
         }
       >
         <QuoteIcon aria-hidden="true" />
-        <ContextChipLabel className="max-w-[16em]">{label}</ContextChipLabel>
+        <ContextChipLabel className="max-w-[16em]" dir={textDirection(label)}>
+          {label}
+        </ContextChipLabel>
       </PreviewCardTrigger>
       <PreviewCardPopup {...composerFloatingLayerProps} className="w-96 max-w-[calc(100vw-2rem)]">
         <div className="flex max-h-[calc(var(--available-height)_-_1rem_-_2px)] flex-col gap-2 p-3 text-sm">
@@ -340,7 +343,10 @@ function AssistantCitationQuote({ citation }: { citation: AssistantCitation }) {
         getVirtualizedScrollFadeClassName(fade),
       )}
     >
-      <blockquote className="border-l-2 border-border pl-3 text-muted-foreground">
+      <blockquote
+        className="border-l-2 border-border pl-3 text-muted-foreground"
+        dir={textDirection(citation.text)}
+      >
         {citation.markdown === undefined ? (
           <span className="whitespace-pre-wrap">{citation.text}</span>
         ) : (

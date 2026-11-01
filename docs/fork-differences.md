@@ -818,7 +818,7 @@ On web and desktop, one filter button in the sidebar header replaces upstream's 
 Each row opens a multi-select submenu, like the pull request filters: **Show** picks which of
 Threads, your thread groups, Automations, Snoozed, Hidden, and Settled the list holds; **Organisations** scopes
 it to repository owners, read per checkout from `repositoryIdentity` (a fork counts under its own
-remote); and **Projects** scopes it to some projects. Each choice shows how many threads picking it
+remote); and **Projects** scopes it to some projects. Project rows offer pin and unpin; pinned projects come first, and archived projects leave the picker. Each choice shows how many threads picking it
 would leave under the other two rows, and Organisations and Projects offer only the choices the
 other one leaves (an organisation that owns a picked project, a project in a picked organisation);
 a pick the others exclude stays listed at 0 so it can be unticked, and a picked organisation with

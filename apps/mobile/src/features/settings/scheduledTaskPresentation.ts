@@ -69,6 +69,10 @@ export const SCHEDULE_DAYS = [
 ] as const;
 
 export function describeSchedule(task: Pick<ScheduledTask, "schedule">): string {
+  if (task.schedule.type === "once") {
+    const runAt = new Date(task.schedule.runAt);
+    return `Once, ${runAt.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })} at ${runAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+  }
   if (task.schedule.type === "webhook") return "On webhook";
   if (task.schedule.type === "interval") return formatScheduledTaskInterval(task.schedule.everyMs);
   const days = task.schedule.weekdays?.length ? repeatLabel(task.schedule.weekdays) : "Every day";

@@ -76,9 +76,11 @@ describe("buildTraitsTriggerDisplay", () => {
   it("pairs fast mode with reasoning before the context window", () => {
     expect(display([EFFORT, fastModeDescriptor(true), CONTEXT_WINDOW])).toMatchObject({
       label: "High Fast · 1M",
+      otherLabels: ["1M"],
     });
     expect(display([EFFORT, CONTEXT_WINDOW, fastModeDescriptor(true)])).toMatchObject({
       label: "High Fast · 1M",
+      otherLabels: ["1M"],
     });
   });
 
@@ -98,7 +100,7 @@ describe("buildTraitsTriggerDisplay", () => {
             primarySelectDescriptorId: "profile",
             ultrathinkPromptControlled: false,
           }),
-        ).toMatchObject({ label: "Balanced · 1M · High Fast" });
+        ).toMatchObject({ label: "Balanced · 1M · High Fast", otherLabels: ["Balanced", "1M"] });
       }
       expect(
         buildTraitsTriggerDisplay({
@@ -124,7 +126,10 @@ describe("buildTraitsTriggerDisplay", () => {
         primarySelectDescriptorId: CONTEXT_WINDOW.id,
         ultrathinkPromptControlled: false,
       }),
-    ).toMatchObject({ label: "1M · High Fast · Thinking On" });
+    ).toMatchObject({
+      label: "1M · High Fast · Thinking On",
+      otherLabels: ["1M", "Thinking On"],
+    });
   });
 
   it.each([true, false])("keeps boolean thinking %s independent of Fast", (currentValue) => {
