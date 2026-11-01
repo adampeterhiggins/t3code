@@ -801,14 +801,15 @@ Code: `HistoryNavigationButton` in `apps/web/src/components/sidebar/SidebarChrom
 
 ## Sidebar thread views
 
-On web and desktop, **Settings → General → Thread views** chooses detailed cards or compact
-rows independently for active, pinned, working, grouped, hidden, snoozed, and settled threads.
+On web and desktop, **Settings → General → Thread groups** lists the built-in pages above the
+user's own groups and chooses detailed cards or compact rows independently for active, pinned,
+working, grouped, hidden, snoozed, and settled threads.
 Hidden threads default to detailed cards; snoozed and settled threads default to compact rows.
 These client preferences also apply when several categories share the sidebar and when chat
 tabs are expanded.
 
 Code: [`Sidebar.tsx`](../apps/web/src/components/Sidebar.tsx),
-[`SettingsPanels.tsx`](../apps/web/src/components/settings/SettingsPanels.tsx), and
+[`ThreadGroupSettings.tsx`](../apps/web/src/components/settings/ThreadGroupSettings.tsx), and
 [`settings.ts`](../packages/contracts/src/settings.ts). User guide:
 [thread-sidebar.md](./user/thread-sidebar.md#hide-a-thread).
 
@@ -2099,7 +2100,7 @@ Besides each group's dialog, **Settings → General** sets it per group, along w
 ([web](../apps/web/src/components/settings/ThreadGroupSettings.tsx),
 [mobile](../apps/mobile/src/features/settings/ThreadSettingsSections.tsx)).
 A group's `view` picks Detailed or Compact rows on its page in the web and desktop sidebar,
-overriding the **Grouped threads** view; mobile keeps its usual group rows.
+overriding the **Your groups** view; mobile keeps its usual group rows.
 Membership is the server-owned `groupName` field, set by `thread.group.set` and gated on the
 `threadGroups` capability; a name a thread holds but the setting lacks (an agent can create one)
 still lists. Renaming moves each thread and the setting's key. The project-scoped setting

@@ -590,9 +590,10 @@ appears in the inbox. Pick **Hidden** under **Show** in the filter menu, describ
 thread** from a thread's menu, or the eye on its row on web and desktop, to put it back. Hidden threads are saved on the server, so they stay
 hidden on your other devices.
 
-On web and desktop, **Settings → General → Thread views** lets you choose detailed cards or
-compact rows separately for active, pinned, working, grouped, hidden, snoozed, and settled
-threads. Hidden threads start with detailed cards so their project and branch remain visible.
+On web and desktop, **Settings → General → Thread groups** lets you choose detailed cards or
+compact rows for each built-in page: pinned, working and active threads under **Threads**, then
+**Snoozed**, **Hidden** and **Settled**. Hidden threads start with detailed cards so their project
+and branch remain visible.
 
 ## Group threads
 
@@ -615,8 +616,7 @@ settled threads in groups** on mobile.
 
 On web and desktop, **Rows** in the same dialog picks Detailed or Compact rows for that group's
 page, and **Settings → General → Thread groups** has the same choice for each group. **Default**
-follows **Grouped threads** under the sidebar's thread view settings. That section can also create,
-edit and delete groups.
+follows **Your groups** at the top of that section, which can also create, edit and delete groups.
 
 To file a project's new threads automatically, open the project's settings and pick a group under
 **New threads → Thread group**. Every new thread in that project starts in the group, however it
