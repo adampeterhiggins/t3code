@@ -81,7 +81,7 @@ import { scopedIdleCompaction } from "./scopedSettings";
 import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
 import { ThreadTitleInstructionsSettings } from "./ThreadTitleInstructionsSettings";
 import { SnoozePresetsRow } from "./SnoozePresetsSettings";
-import { ThreadGroupSettingsRows } from "./ThreadGroupSettings";
+import { ThreadGroupSettingsRow } from "./ThreadGroupSettings";
 import { useDesktopUpdateState } from "../../state/desktopUpdate";
 import {
   getCustomModelOptionsByInstance,
@@ -933,7 +933,7 @@ export function GeneralSettingsPanel() {
                 }
               />
             ))}
-            <ThreadGroupSettingsRows />
+            <ThreadGroupSettingsRow />
             <SettingsRow
               {...searchableSetting("sidebar-tabs")}
               description={`List a chat's tabs under it in the sidebar. Past the limit, the rest fold behind a "more" row.`}
