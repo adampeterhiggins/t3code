@@ -608,6 +608,9 @@ To use a group as a label instead, turn on **Also show its threads in Threads, S
 Settled** when creating or editing it. Its threads then stay in your live list (or Snoozed or
 Settled), and picking the group under **Show** still lists all of them.
 
+**Show settled threads** is on unless you turn it off. Turning it off lists that group's settled
+threads under Settled instead of in the group. Snoozed threads stay in the group.
+
 On web and desktop, **Rows** in the same dialog picks Detailed or Compact rows for that group's
 page. **Default** follows **Grouped threads** under the sidebar's thread view settings.
 

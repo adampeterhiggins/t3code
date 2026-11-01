@@ -30,7 +30,7 @@ import {
   settlePromise,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { threadGroupsShownInThreads } from "@t3tools/contracts/settings";
+import { threadGroupsHidingSettled, threadGroupsShownInThreads } from "@t3tools/contracts/settings";
 import { sanitizeComposerContextLabel } from "@t3tools/shared/composerContextReferences";
 import { useAtomValue } from "@effect/atom-react";
 import * as Option from "effect/Option";
@@ -768,6 +768,7 @@ function useSidebarSiblingTabs(
   const capabilities = serverConfig?.environment.capabilities;
   const { groups } = useThreadGroups();
   const groupsShownInThreads = threadGroupsShownInThreads(groups);
+  const groupsHidingSettled = threadGroupsHidingSettled(groups);
   const providerEntries = serverConfig
     ? deriveProviderEntriesByEnvironment([
         [environmentId, serverConfig.providers, serverConfig.settings],
@@ -787,6 +788,7 @@ function useSidebarSiblingTabs(
         // oxlint-disable-next-line react/purity -- Matches the sidebar, which samples the clock each render.
         now: new Date().toISOString(),
         groupsShownInThreads,
+        groupsHidingSettled,
       })
     : "active";
   const { shown, hidden } = sidebarSiblingTabs(group.tabs, {

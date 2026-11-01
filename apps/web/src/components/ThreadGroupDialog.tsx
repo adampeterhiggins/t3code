@@ -65,6 +65,7 @@ function finish(result: ThreadGroupDialogResult) {
 
 export function ThreadGroupDialogHost() {
   const request = useRequest((state) => state.request);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- clears a pending group request when the host unmounts
   useEffect(() => () => finish(null), []);
   return request ? <ThreadGroupDialog initial={request.initial} /> : null;
 }
@@ -202,6 +203,16 @@ function ThreadGroupDialog(props: { initial: ThreadGroupDraft | null }) {
                   onCheckedChange={(checked) => {
                     const { showInThreads: _showInThreads, ...rest } = style;
                     setStyle(checked ? { ...rest, showInThreads: true } : rest);
+                  }}
+                />
+              </label>
+              <label className="flex items-center justify-between gap-3 text-sm">
+                <span>Show settled threads</span>
+                <Switch
+                  checked={style.showSettled !== false}
+                  onCheckedChange={(checked) => {
+                    const { showSettled: _showSettled, ...rest } = style;
+                    setStyle(checked ? rest : { ...rest, showSettled: false });
                   }}
                 />
               </label>

@@ -37,6 +37,7 @@ import {
   THREAD_LIST_V2_SETTLED_INITIAL_COUNT,
   THREAD_LIST_V2_SETTLED_PAGE_COUNT,
   threadListInboxReturns,
+  threadListV2Pages,
 } from "./threadListV2";
 import { useThreadListNow } from "./use-thread-list-now";
 import { useThreadListV2ShelfPreferences } from "./use-thread-list-v2-shelf-preferences";
@@ -172,7 +173,7 @@ function ThreadArrangementSheet(props: { onClose: () => void }) {
   const threads = useAtomValue(environmentThreadShells.navigationThreadShellsAtom);
   const configs = useAtomValue(environmentServerConfigsAtom);
   const listEnvironments = useAtomValue(threadListEnvironmentsAtom);
-  const { groupsShownInThreads } = listEnvironments;
+  const { groupsShownInThreads, groupsHidingSettled } = listEnvironments;
   const queuedThreadKeys = useAtomValue(queuedThreadKeysAtom);
   const pendingOrder = useAtomValue(pendingThreadOrderAtom);
   const dropBusy = useAtomValue(threadDropBusyAtom);
@@ -196,6 +197,7 @@ function ThreadArrangementSheet(props: { onClose: () => void }) {
       queuedThreadKeys,
       pendingOrder,
       groupsShownInThreads,
+      groupsHidingSettled,
       settlementEnvironmentIds: new Set(configs.keys()),
       snoozeEnvironmentIds: new Set(configs.keys()),
     };
@@ -203,14 +205,14 @@ function ThreadArrangementSheet(props: { onClose: () => void }) {
     const active = getThreadListV2OrderedSection({ ...shared, section: "active" });
     const visible = new Set([...pinned, ...active].map(keyOf));
     // Hidden and grouped threads live on their own pages, so they are not
-    // arrangeable.
-    const parked = threads.filter(
-      (thread) =>
-        thread.archivedAt === null &&
-        thread.hiddenAt == null &&
-        (thread.groupName == null || groupsShownInThreads.has(thread.groupName)) &&
-        !visible.has(keyOf(thread)),
-    );
+    // arrangeable. Settled threads of a group that hides them stay on Settled.
+    const parked = threads.filter((thread) => {
+      if (thread.archivedAt !== null || thread.hiddenAt != null || visible.has(keyOf(thread))) {
+        return false;
+      }
+      if (thread.groupName == null || groupsShownInThreads.has(thread.groupName)) return true;
+      return threadListV2Pages(thread, shared)[0] === "settled";
+    });
     return {
       pinned,
       active: workingShelfEnabled
@@ -227,6 +229,7 @@ function ThreadArrangementSheet(props: { onClose: () => void }) {
     pendingOrder,
     workingShelfEnabled,
     groupsShownInThreads,
+    groupsHidingSettled,
   ]);
   const listedSettled = sections.settled.filter(olderSettledShelf.isListed);
   useOlderSettledShelfGrowth(olderSettledShelf, listedSettled);

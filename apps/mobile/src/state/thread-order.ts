@@ -73,6 +73,7 @@ export function beginPendingThreadOrder(pending: PendingThreadOrder) {
       now: new Date(nowMs).toISOString(),
       queuedThreadKeys: appAtomRegistry.get(queuedThreadKeysAtom),
       groupsShownInThreads: appAtomRegistry.get(threadListEnvironmentsAtom).groupsShownInThreads,
+      groupsHidingSettled: appAtomRegistry.get(threadListEnvironmentsAtom).groupsHidingSettled,
       settlementEnvironmentIds: new Set(configs.keys()),
       snoozeEnvironmentIds: new Set(configs.keys()),
     });

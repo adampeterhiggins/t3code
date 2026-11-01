@@ -40,6 +40,7 @@ export function partitionSidebarThreads(input: {
   threads: ReadonlyArray<EnvironmentThreadShell>;
   tabThreadGroups: ReadonlyMap<string, string>;
   groupsShownInThreads: ReadonlySet<string>;
+  groupsHidingSettled: ReadonlySet<string>;
   serverConfigs: ReadonlyMap<EnvironmentId, Pick<ServerConfig, "environment">>;
   scopedProjectKeys: ReadonlySet<string> | null;
   optimisticDrop: SidebarOptimisticDrop | null;
@@ -55,6 +56,7 @@ export function partitionSidebarThreads(input: {
     threads,
     tabThreadGroups,
     groupsShownInThreads,
+    groupsHidingSettled,
     serverConfigs,
     scopedProjectKeys,
     optimisticDrop,
@@ -130,12 +132,18 @@ export function partitionSidebarThreads(input: {
         workingShelfEnabled,
         now: preciseNow,
         groupsShownInThreads,
+        groupsHidingSettled,
         working: inboxObservation.isWorking(thread),
       });
     }
     const page = sidebarShelfPage(shelf, row.groupName);
     const alsoGroupedIn =
-      shelf !== "grouped" && shelf !== "hidden" && row.groupName != null ? row.groupName : null;
+      shelf !== "grouped" &&
+      shelf !== "hidden" &&
+      row.groupName != null &&
+      !(shelf === "settled" && groupsHidingSettled.has(row.groupName))
+        ? row.groupName
+        : null;
     facetThreads.push({
       environmentId: thread.environmentId,
       projectId: thread.projectId,

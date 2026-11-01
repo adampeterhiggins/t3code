@@ -659,6 +659,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     saveGroup,
     deleteGroup,
     groupsShownInThreads,
+    groupsHidingSettled,
     sidebarPages,
     setSidebarPages,
     availablePages,
@@ -690,6 +691,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     threads,
     tabThreadGroups,
     groupsShownInThreads,
+    groupsHidingSettled,
     serverConfigs,
     scopedProjectKeys,
     optimisticDrop,
@@ -1691,7 +1693,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     const canonicalSection =
       thread.hiddenAt != null
         ? "hidden"
-        : isSidebarThreadGroupedAway(thread.groupName, groupsShownInThreads)
+        : isSidebarThreadGroupedAway(thread.groupName, groupsShownInThreads, {
+              groupsHidingSettled,
+              settled:
+                thread.scheduledTaskId == null &&
+                !effectiveSnoozed(thread, { now: snoozeNow }) &&
+                thread.settledOverride === "settled",
+            })
           ? "grouped"
           : thread.scheduledTaskId != null
             ? "automations"

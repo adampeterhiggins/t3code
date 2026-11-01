@@ -5,7 +5,11 @@ import {
   type ServerConfig,
   type ServerProvider,
 } from "@t3tools/contracts";
-import { threadGroupsShownInThreads, type ThreadGroups } from "@t3tools/contracts/settings";
+import {
+  threadGroupsHidingSettled,
+  threadGroupsShownInThreads,
+  type ThreadGroups,
+} from "@t3tools/contracts/settings";
 import { Atom } from "effect/reactivity";
 
 import { mergeThreadGroups } from "../features/threads/thread-groups";
@@ -60,8 +64,9 @@ function sameProviders(
 }
 
 function sameShownGroups(left: ThreadGroups, right: ThreadGroups) {
-  const shown = (groups: ThreadGroups) => [...threadGroupsShownInThreads(groups)].join("\0");
-  return left === right || shown(left) === shown(right);
+  const listing = (groups: ThreadGroups) =>
+    `${[...threadGroupsShownInThreads(groups)].join("\0")}\n${[...threadGroupsHidingSettled(groups)].join("\0")}`;
+  return left === right || listing(left) === listing(right);
 }
 
 function collectEnvironments(environments: ReadonlyMap<EnvironmentId, ListEnvironment>) {
@@ -88,9 +93,11 @@ function collectEnvironments(environments: ReadonlyMap<EnvironmentId, ListEnviro
     if (isConnected) reorderableEnvironmentIds.add(id);
   }
   // Groups whose threads stay on the Threads, Snoozed and Settled pages as well as their own.
-  const groupsShownInThreads = threadGroupsShownInThreads(
-    mergeThreadGroups([...environments.values()].map((environment) => environment.threadGroups)),
+  const threadGroups = mergeThreadGroups(
+    [...environments.values()].map((environment) => environment.threadGroups),
   );
+  const groupsShownInThreads = threadGroupsShownInThreads(threadGroups);
+  const groupsHidingSettled = threadGroupsHidingSettled(threadGroups);
   return {
     providersByEnvironmentId,
     machineByEnvironmentId,
@@ -101,6 +108,7 @@ function collectEnvironments(environments: ReadonlyMap<EnvironmentId, ListEnviro
     hidingEnvironmentIds,
     groupEnvironmentIds,
     groupsShownInThreads,
+    groupsHidingSettled,
     pinReorderEnvironmentIds: reorderableEnvironmentIds,
     activeReorderEnvironmentIds: reorderableEnvironmentIds,
     titleRegenerationEnvironmentIds: loadedEnvironmentIds,

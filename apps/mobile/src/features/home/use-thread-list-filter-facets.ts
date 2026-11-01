@@ -70,6 +70,7 @@ export function useThreadListFilterFacets(input: FacetInput) {
           hidingEnvironmentIds: listEnvironments.hidingEnvironmentIds,
           groupEnvironmentIds: listEnvironments.groupEnvironmentIds,
           groupsShownInThreads: listEnvironments.groupsShownInThreads,
+          groupsHidingSettled: listEnvironments.groupsHidingSettled,
           queuedThreadKeys,
         },
       }),

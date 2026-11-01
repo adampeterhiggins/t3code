@@ -1,5 +1,5 @@
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
-import { threadGroupsShownInThreads } from "@t3tools/contracts/settings";
+import { threadGroupsHidingSettled, threadGroupsShownInThreads } from "@t3tools/contracts/settings";
 import { useThreadGroups } from "../../hooks/useThreadGroups";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { collectThreadGroupNames } from "../threadActionMenu.logic";
@@ -14,6 +14,7 @@ const NO_COLLAPSED_PAGES: readonly string[] = [];
 export function useSidebarOrganization(threads: readonly EnvironmentThreadShell[]) {
   const { groups: threadGroups, saveGroup, deleteGroup } = useThreadGroups();
   const groupsShownInThreads = threadGroupsShownInThreads(threadGroups);
+  const groupsHidingSettled = threadGroupsHidingSettled(threadGroups);
   const [storedSidebarPages, setSidebarPages] = useLocalStorage(
     SIDEBAR_PAGES_KEY,
     DEFAULT_SIDEBAR_PAGES,
@@ -37,6 +38,7 @@ export function useSidebarOrganization(threads: readonly EnvironmentThreadShell[
     saveGroup,
     deleteGroup,
     groupsShownInThreads,
+    groupsHidingSettled,
     sidebarPages,
     setSidebarPages,
     availablePages,

@@ -3322,6 +3322,49 @@ describe("sidebarThreadShelf groups", () => {
       sidebarThreadShelf(thread(automation), { ...base, groupsShownInThreads: new Set(["Docs"]) }),
     ).toBe("automations");
   });
+
+  it("sends settled threads of a group that hides them to Settled", () => {
+    const hiding = new Set(["Docs"]);
+    expect(
+      sidebarThreadShelf(thread({ settledOverride: "settled" }), {
+        ...base,
+        groupsHidingSettled: hiding,
+      }),
+    ).toBe("settled");
+    expect(
+      sidebarThreadShelf(thread({ settledOverride: "settled" }), {
+        ...base,
+        groupsShownInThreads: new Set(["Docs"]),
+        groupsHidingSettled: hiding,
+      }),
+    ).toBe("settled");
+    expect(sidebarThreadShelf(thread({}), { ...base, groupsHidingSettled: hiding })).toBe(
+      "grouped",
+    );
+    expect(
+      sidebarThreadShelf(
+        thread({
+          snoozedUntil: "2026-06-03T00:00:00.000Z",
+          snoozedAt: base.now,
+          hasPendingApprovals: false,
+          hasPendingUserInput: false,
+        }),
+        { ...base, groupsHidingSettled: hiding },
+      ),
+    ).toBe("grouped");
+    expect(
+      sidebarThreadShelf(thread({ hiddenAt: base.now, settledOverride: "settled" }), {
+        ...base,
+        groupsHidingSettled: hiding,
+      }),
+    ).toBe("hidden");
+    expect(
+      sidebarThreadShelf(
+        thread({ scheduledTaskId: "scheduled-task:daily", settledOverride: "settled" }),
+        { ...base, groupsHidingSettled: hiding },
+      ),
+    ).toBe("grouped");
+  });
 });
 
 describe("pendingSidebarRouteReveal", () => {

@@ -281,13 +281,14 @@ export function getThreadListV2OrderedSection(input: {
   readonly hidingEnvironmentIds?: ReadonlySet<EnvironmentId>;
   readonly groupEnvironmentIds?: ReadonlySet<EnvironmentId>;
   readonly groupsShownInThreads?: ReadonlySet<string>;
+  readonly groupsHidingSettled?: ReadonlySet<string>;
   readonly queuedThreadKeys?: ReadonlySet<string>;
 }): EnvironmentThreadShell[] {
   const queuedThreadKeys = input.queuedThreadKeys?.size ? input.queuedThreadKeys : undefined;
   const threads = input.threads.filter((thread) => {
     if (thread.archivedAt !== null || !isListedThreadLineage(thread.lineage)) return false;
     if (isThreadListV2Hidden(thread, input.hidingEnvironmentIds)) return false;
-    if (isThreadListV2Grouped(thread, input.groupEnvironmentIds, input.groupsShownInThreads)) {
+    if (isThreadListV2Grouped(thread, { ...input, queuedThreadKeys })) {
       return false;
     }
     if (
@@ -440,14 +441,47 @@ function threadListV2GroupName(
 }
 
 /** Grouped threads leave the Threads, Snoozed and Settled pages for their
-    group's page (hidden still wins), unless the group is shown in Threads. */
+    group's page (hidden still wins), unless the group is shown in Threads.
+    A group that hides settled threads leaves those on Settled. */
 function isThreadListV2Grouped(
-  thread: Pick<EnvironmentThreadShell, "environmentId" | "groupName">,
-  groupEnvironmentIds: ReadonlySet<EnvironmentId> | undefined,
-  groupsShownInThreads: ReadonlySet<string> | undefined,
+  thread: EnvironmentThreadShell,
+  input: ThreadListV2Classification,
 ): boolean {
-  const groupName = threadListV2GroupName(thread, groupEnvironmentIds);
-  return groupName !== null && groupsShownInThreads?.has(groupName) !== true;
+  const groupName = threadListV2GroupName(thread, input.groupEnvironmentIds);
+  if (groupName === null || settledThreadLeavesGroup(thread, input)) return false;
+  return input.groupsShownInThreads?.has(groupName) !== true;
+}
+
+/** The thread would be listed on Settled if its group did not take it. */
+function isThreadListV2SettledListing(
+  thread: EnvironmentThreadShell,
+  input: ThreadListV2Classification,
+): boolean {
+  if (isThreadListV2Hidden(thread, input.hidingEnvironmentIds)) return false;
+  if (thread.scheduledTaskId != null) return false;
+  if (
+    (input.snoozeEnvironmentIds?.has(thread.environmentId) ?? true) &&
+    effectiveSnoozed(thread, { now: input.now })
+  ) {
+    return false;
+  }
+  return (
+    (input.settlementEnvironmentIds?.has(thread.environmentId) ?? true) &&
+    thread.settledOverride === "settled" &&
+    input.queuedThreadKeys?.has(`${thread.environmentId}:${thread.id}`) !== true
+  );
+}
+
+function settledThreadLeavesGroup(
+  thread: EnvironmentThreadShell,
+  input: ThreadListV2Classification,
+): boolean {
+  const groupName = threadListV2GroupName(thread, input.groupEnvironmentIds);
+  return (
+    groupName !== null &&
+    input.groupsHidingSettled?.has(groupName) === true &&
+    isThreadListV2SettledListing(thread, input)
+  );
 }
 
 /** Whether a thread matches the list's search: by title, tab group, linked pull request, or a
@@ -477,6 +511,7 @@ type ThreadListV2Classification = Pick<
   | "hidingEnvironmentIds"
   | "groupEnvironmentIds"
   | "groupsShownInThreads"
+  | "groupsHidingSettled"
   | "queuedThreadKeys"
 >;
 
@@ -488,7 +523,10 @@ export function threadListV2Pages(
 ): ReadonlyArray<ThreadListPage> {
   const page = threadListV2Page(thread, input);
   const groupName = threadListV2GroupName(thread, input.groupEnvironmentIds);
-  return groupName === null || page === "hidden" || page.startsWith("group:")
+  return groupName === null ||
+    page === "hidden" ||
+    page.startsWith("group:") ||
+    settledThreadLeavesGroup(thread, input)
     ? [page]
     : [page, threadListGroupPage(groupName)];
 }
@@ -501,7 +539,7 @@ function threadListV2Page(
   input: ThreadListV2Classification,
 ): ThreadListPage {
   if (isThreadListV2Hidden(thread, input.hidingEnvironmentIds)) return "hidden";
-  if (isThreadListV2Grouped(thread, input.groupEnvironmentIds, input.groupsShownInThreads)) {
+  if (isThreadListV2Grouped(thread, input)) {
     return threadListGroupPage(thread.groupName!);
   }
   if (thread.scheduledTaskId != null) return "automations";
@@ -933,6 +971,8 @@ export function buildThreadListV2Items(input: {
   /** Groups whose threads keep their Threads, Snoozed or Settled place and also list under
       the group's page when that place isn't picked. */
   readonly groupsShownInThreads?: ReadonlySet<string>;
+  /** Groups whose settled threads stay on Settled instead of the group's page. */
+  readonly groupsHidingSettled?: ReadonlySet<string>;
   /** Pages picked in the filter menu. Absent = Threads, Snoozed and Settled
       (tests). */
   readonly pages?: ReadonlyArray<ThreadListPage>;
@@ -1027,16 +1067,17 @@ export function buildThreadListV2Items(input: {
       continue;
     }
     // A group outranks snooze, settlement and pinning, unless it is shown in Threads.
-    if (isThreadListV2Grouped(thread, input.groupEnvironmentIds, input.groupsShownInThreads)) {
+    if (isThreadListV2Grouped(thread, { ...input, queuedThreadKeys })) {
       const groupName = thread.groupName!;
       grouped.set(groupName, [...(grouped.get(groupName) ?? []), thread]);
       continue;
     }
     const shownGroupName = threadListV2GroupName(thread, input.groupEnvironmentIds);
-    if (shownGroupName !== null) {
+    const classification = { ...input, queuedThreadKeys };
+    if (shownGroupName !== null && !settledThreadLeavesGroup(thread, classification)) {
       shownGrouped.push({
         groupName: shownGroupName,
-        page: threadListV2Page(thread, input),
+        page: threadListV2Page(thread, classification),
         thread,
       });
     }
@@ -1121,11 +1162,7 @@ export function buildThreadListV2Items(input: {
         snoozed: snoozedThreads.has(thread),
         pinned: pinnedThreads.has(thread),
         hidden: hidden.includes(thread),
-        grouped: isThreadListV2Grouped(
-          thread,
-          input.groupEnvironmentIds,
-          input.groupsShownInThreads,
-        ),
+        grouped: isThreadListV2Grouped(thread, { ...input, queuedThreadKeys }),
         wokeAt: slim.has(thread) ? null : resolveThreadListV2WokeAt(thread, { now }),
         isLast: index === results.length - 1,
       })),

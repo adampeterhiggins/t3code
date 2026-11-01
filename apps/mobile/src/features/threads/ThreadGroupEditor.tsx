@@ -68,6 +68,7 @@ export function requestThreadGroup(
 
 export function ThreadGroupEditorHost() {
   const [request, setRequest] = useState<Request | null>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers the module presenter until unmount
   useEffect(() => {
     presentRequest = (next) =>
       setRequest((current) => {
@@ -202,7 +203,7 @@ function ThreadGroupEditor(props: {
                 )}
                 onPress={() => setAccent(undefined)}
               >
-                <AppText className="text-xs text-foreground-tertiary">—</AppText>
+                <AppText className="text-xs text-foreground-tertiary">-</AppText>
               </Pressable>
               {PROJECT_ICON_COLORS.map((color) => (
                 <Pressable
@@ -230,6 +231,19 @@ function ThreadGroupEditor(props: {
               onValueChange={(checked) => {
                 const { showInThreads: _showInThreads, ...rest } = style;
                 setStyle(checked ? { ...rest, showInThreads: true } : rest);
+              }}
+            />
+          </View>
+          <View className="flex-row items-center justify-between gap-3">
+            <AppText className="flex-1 text-sm text-foreground-secondary">
+              Show settled threads
+            </AppText>
+            <ThemedSwitch
+              accessibilityLabel="Show settled threads"
+              value={style.showSettled !== false}
+              onValueChange={(checked) => {
+                const { showSettled: _showSettled, ...rest } = style;
+                setStyle(checked ? rest : { ...rest, showSettled: false });
               }}
             />
           </View>
