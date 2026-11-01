@@ -7,7 +7,6 @@ import {
 import {
   MAX_SIDEBAR_TAB_LIMIT,
   MIN_SIDEBAR_TAB_LIMIT,
-  SidebarThreadView,
   type PullRequestOpenTarget,
   DEFAULT_UNIFIED_SETTINGS,
   type DiffLayout,
@@ -873,66 +872,6 @@ export function GeneralSettingsPanel() {
       <SettingsSection id="sidebar" title="Sidebar">
         {settings.legacySidebarEnabled ? null : (
           <>
-            <SettingsRow
-              {...searchableSetting("sidebar-thread-views")}
-              description="Choose detailed cards or compact rows independently for each thread category."
-              resetAction={
-                !Equal.equals(
-                  settings.sidebarThreadViews,
-                  DEFAULT_UNIFIED_SETTINGS.sidebarThreadViews,
-                ) ? (
-                  <SettingResetButton
-                    label="thread views"
-                    onClick={() =>
-                      updateSettings({
-                        sidebarThreadViews: DEFAULT_UNIFIED_SETTINGS.sidebarThreadViews,
-                      })
-                    }
-                  />
-                ) : undefined
-              }
-            />
-            {(
-              [
-                ["active", "Active"],
-                ["pinned", "Pinned"],
-                ["working", "Working"],
-                ["grouped", "Grouped"],
-                ["hidden", "Hidden"],
-                ["snoozed", "Snoozed"],
-                ["settled", "Settled"],
-              ] as const
-            ).map(([category, label]) => (
-              <SettingsRow
-                key={category}
-                title={`${label} threads`}
-                control={
-                  <Select
-                    value={settings.sidebarThreadViews[category]}
-                    onValueChange={(value) => {
-                      if (value === "card" || value === "slim") {
-                        updateSettings({
-                          sidebarThreadViews: { ...settings.sidebarThreadViews, [category]: value },
-                        });
-                      }
-                    }}
-                  >
-                    <SelectTrigger aria-label={`${label} thread view`} size="sm">
-                      <SelectValue>
-                        {settings.sidebarThreadViews[category] === "card" ? "Detailed" : "Compact"}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectPopup>
-                      {SidebarThreadView.literals.map((view) => (
-                        <SelectItem key={view} value={view}>
-                          {view === "card" ? "Detailed" : "Compact"}
-                        </SelectItem>
-                      ))}
-                    </SelectPopup>
-                  </Select>
-                }
-              />
-            ))}
             <SettingsRow
               {...searchableSetting("sidebar-tabs")}
               description={`List a chat's tabs under it in the sidebar. Past the limit, the rest fold behind a "more" row.`}

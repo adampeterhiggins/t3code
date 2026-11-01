@@ -3,13 +3,18 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { ScopedThreadRef } from "@t3tools/contracts";
-import { SidebarThreadView } from "@t3tools/contracts/settings";
-import { EllipsisIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import {
+  DEFAULT_UNIFIED_SETTINGS,
+  SidebarThreadView,
+  type SidebarThreadViews,
+} from "@t3tools/contracts/settings";
+import { EllipsisIcon, LayersIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 
 import { useThreadActions } from "../../hooks/useThreadActions";
 import { useQuietThreadShells } from "../../state/entities";
 import { THREAD_GROUP_VIEW_LABELS } from "../ThreadGroupDialog";
 import { createSidebarGroupActions } from "../sidebar/groupActions";
+import { BUILT_IN_PAGES } from "../sidebar/SidebarFilterMenu";
 import { ThreadGroupIcon } from "../sidebar/ThreadGroupIcon";
 import { useSidebarOrganization } from "../sidebar/useSidebarOrganization";
 import { Button } from "../ui/button";
@@ -25,10 +30,102 @@ import {
   MenuTrigger,
 } from "../ui/menu";
 import { stackedThreadToast, toastManager } from "../ui/toast";
-import { SettingsRow, SettingsSection } from "./settingsLayout";
+import { SettingResetButton, SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
+import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
 
-/** Creates, renames, deletes and configures thread groups. */
+type ThreadViewCategory = keyof SidebarThreadViews;
+
+const BUILT_IN_GROUPS: ReadonlyArray<{
+  readonly title: string;
+  readonly Icon: typeof LayersIcon;
+  readonly description?: string;
+  readonly views: ReadonlyArray<readonly [ThreadViewCategory, string]>;
+}> = [
+  {
+    ...BUILT_IN_PAGES.threads,
+    title: BUILT_IN_PAGES.threads.label,
+    views: [
+      ["pinned", "Pinned rows"],
+      ["working", "Working rows"],
+      ["active", "Active rows"],
+    ],
+  },
+  { ...BUILT_IN_PAGES.snoozed, title: BUILT_IN_PAGES.snoozed.label, views: [["snoozed", "Rows"]] },
+  { ...BUILT_IN_PAGES.hidden, title: BUILT_IN_PAGES.hidden.label, views: [["hidden", "Rows"]] },
+  { ...BUILT_IN_PAGES.settled, title: BUILT_IN_PAGES.settled.label, views: [["settled", "Rows"]] },
+  {
+    title: "Your groups",
+    Icon: LayersIcon,
+    description: "Rows for your groups set to Default.",
+    views: [["grouped", "Rows"]],
+  },
+];
+
+/** Row style for the built-in pages, and the default your own groups follow. */
+function BuiltInThreadGroupRows() {
+  const threadViews = useScopedSettings((settings) => settings.sidebarThreadViews);
+  const updateSettings = useUpdateScopedSettings();
+  const setViews = (views: Partial<SidebarThreadViews>) =>
+    updateSettings({ sidebarThreadViews: { ...threadViews, ...views } });
+
+  return BUILT_IN_GROUPS.map(({ title, Icon, description, views }) => {
+    const defaults: Partial<SidebarThreadViews> = Object.fromEntries(
+      views.map(([category]) => [category, DEFAULT_UNIFIED_SETTINGS.sidebarThreadViews[category]]),
+    );
+    const isDefault = views.every(([category]) => threadViews[category] === defaults[category]);
+    return (
+      <SettingsRow
+        key={title}
+        title={
+          <span className="flex min-w-0 items-center gap-2">
+            <Icon aria-hidden className="size-3.5 shrink-0" />
+            <span className="truncate">{title}</span>
+          </span>
+        }
+        description={description}
+        resetAction={
+          isDefault ? undefined : (
+            <SettingResetButton label={`${title} rows`} onClick={() => setViews(defaults)} />
+          )
+        }
+        control={
+          <Menu>
+            <MenuTrigger
+              render={
+                <Button variant="ghost-muted" size="icon-sm" aria-label={`Options for ${title}`} />
+              }
+            >
+              <EllipsisIcon />
+            </MenuTrigger>
+            <MenuPopup align="end">
+              {views.map(([category, label], index) => (
+                <MenuGroup key={category}>
+                  {index > 0 ? <MenuSeparator /> : null}
+                  <MenuGroupLabel>{label}</MenuGroupLabel>
+                  <MenuRadioGroup
+                    value={threadViews[category]}
+                    onValueChange={(value) => {
+                      if (value === "card" || value === "slim") setViews({ [category]: value });
+                    }}
+                  >
+                    {SidebarThreadView.literals.map((view) => (
+                      <MenuRadioItem key={view} value={view}>
+                        {THREAD_GROUP_VIEW_LABELS[view]}
+                      </MenuRadioItem>
+                    ))}
+                  </MenuRadioGroup>
+                </MenuGroup>
+              ))}
+            </MenuPopup>
+          </Menu>
+        }
+      />
+    );
+  });
+}
+
+/** Configures the built-in pages' rows, and creates, renames, deletes and configures thread groups. */
 export function ThreadGroupSettingsSection() {
   const threads = useQuietThreadShells();
   const { setThreadGroup } = useThreadActions();
@@ -70,6 +167,7 @@ export function ThreadGroupSettingsSection() {
         </Button>
       }
     >
+      <BuiltInThreadGroupRows />
       {names.length === 0 ? (
         <SettingsRow
           title="No groups yet"
