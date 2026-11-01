@@ -13,6 +13,7 @@ import {
 import type { ThreadCheckpointSummary } from "@t3tools/client-runtime/state/thread-checkpoints";
 import {
   deriveProviderSubagentStatus,
+  deriveResumableRunId,
   deriveRunlessWorkStartedAt,
   deriveThreadActivityRun,
   deriveThreadRuntime,
@@ -413,6 +414,9 @@ export function useThreadComposerState() {
   // A stop or a restart holds the queue, completion wakes included, until it
   // is resumed; the queue sheet lists only the user's own messages.
   const queueHeld = queueWorkflow?.isHeld === true;
+  const resumableRunId = selectedThreadProjection
+    ? deriveResumableRunId(selectedThreadProjection.projection, selectedThreadRuntime)
+    : null;
 
   const runlessWorkStartedAt = selectedThreadProjection
     ? deriveRunlessWorkStartedAt(selectedThreadProjection.projection)
@@ -809,6 +813,7 @@ export function useThreadComposerState() {
     followUpBehavior,
     canSteerActiveTurn,
     queueHeld,
+    resumableRunId,
     queuedRunEdit,
     isSavingQueuedEdit,
     cancelQueuedRunEdit,

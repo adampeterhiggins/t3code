@@ -673,7 +673,7 @@ describe("EnvironmentThreads", () => {
     }),
   );
 
-  it.effect("loads a thread created after an earlier mount saw a 404", () =>
+  it.effect("asks the server again after an HTTP miss, since the thread may not exist yet", () =>
     Effect.gen(function* () {
       const resumeCache: NonNullable<Parameters<typeof makeEnvironmentThreadState>[1]> = {
         snapshot: undefined,
@@ -681,20 +681,21 @@ describe("EnvironmentThreads", () => {
       };
       yield* Effect.scoped(
         Effect.gen(function* () {
-          const draft = yield* makeHarness({ httpSnapshot: { _tag: "missing" }, resumeCache });
-          yield* awaitThreadState(draft.observed, (value) => value.status === "deleted");
+          const first = yield* makeHarness({ httpSnapshot: { _tag: "missing" }, resumeCache });
+          yield* awaitThreadState(first.observed, (value) => value.status === "deleted");
         }),
       );
-      const created = yield* makeHarness({
+      const resumed = yield* makeHarness({
+        resumeCache,
         httpSnapshot: {
           _tag: "present",
-          snapshot: { projection: BASE_PROJECTION, snapshotSequence: CACHED_SNAPSHOT_SEQUENCE },
+          snapshot: { snapshotSequence: CACHED_SNAPSHOT_SEQUENCE, projection: BASE_PROJECTION },
         },
-        resumeCache,
       });
-      const state = yield* awaitThreadState(created.observed, (value) => value.status === "live");
+      const state = yield* awaitThreadState(resumed.observed, (value) => value.status === "live");
       expect(Option.getOrThrow(state.data)).toEqual(BASE_PROJECTION);
-      expect(yield* SubscriptionRef.get(created.subscriptionCount)).toBe(1);
+      expect(yield* Ref.get(resumed.loaderCalls)).toBe(1);
+      expect(yield* SubscriptionRef.get(resumed.subscriptionCount)).toBe(1);
     }),
   );
 

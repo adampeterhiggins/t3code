@@ -7,6 +7,7 @@ import { sortSettledThreads } from "@t3tools/client-runtime/state/thread-sort";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentId, ServerConfig } from "@t3tools/contracts";
 import {
+  belongsInSidebarWorkingShelf,
   applySidebarThreadDrop,
   filterSidebarV2VisibleThreads,
   firstValidTimestampMs,
@@ -43,6 +44,7 @@ export function partitionSidebarThreads(input: {
   scopedProjectKeys: ReadonlySet<string> | null;
   optimisticDrop: SidebarOptimisticDrop | null;
   workingShelfEnabled: boolean;
+  disconnectedEnvironmentIds?: ReadonlySet<EnvironmentId>;
   /** Boring mode: folders list active threads by the user's latest message. */
   sortActiveBySend: boolean;
   clockKey: string;
@@ -74,7 +76,13 @@ export function partitionSidebarThreads(input: {
   const active: EnvironmentThreadShell[] = [];
   const working: EnvironmentThreadShell[] = [];
   const inbox = (thread: EnvironmentThreadShell) =>
-    workingShelfEnabled && isThreadWorking(thread) ? "working" : "active";
+    belongsInSidebarWorkingShelf(thread, {
+      enabled: workingShelfEnabled,
+      disconnectedEnvironmentIds: input.disconnectedEnvironmentIds ?? new Set(),
+      isWorking: isThreadWorking,
+    })
+      ? "working"
+      : "active";
   const snoozed: EnvironmentThreadShell[] = [];
   const hidden: EnvironmentThreadShell[] = [];
   const grouped: EnvironmentThreadShell[] = [];

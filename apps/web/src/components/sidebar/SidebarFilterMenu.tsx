@@ -1,3 +1,10 @@
+import { pickableProjectGroups } from "@t3tools/client-runtime/state/project-grouping";
+import { useAtomValue } from "@effect/atom-react";
+import { primaryServerKeybindingsAtom } from "../../state/server";
+import { shortcutLabelForCommand } from "../../keybindings";
+import { useOrderWhileOpen } from "../../hooks/useOrderWhileOpen";
+import { isProjectPinShortcut, ProjectPinButton } from "../ProjectPinButton";
+import { useProjectPin } from "../../hooks/useProjectGroupUpdate";
 import {
   AlarmClockIcon,
   BuildingIcon,
@@ -138,11 +145,19 @@ function SidebarProjectFilter(props: {
   onProjectSettings: (event: ReactMouseEvent<HTMLElement>, project: SidebarProjectSnapshot) => void;
   projectBadge: (project: SidebarProjectSnapshot) => ReactNode;
 }) {
+  const { canPinProjectGroup, toggleProjectGroupPin } = useProjectPin();
+  const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const [open, setOpen] = useState(false);
+  const projects = useOrderWhileOpen(
+    pickableProjectGroups(props.projects),
+    (project) => project.projectKey,
+    open,
+  );
   const scoped = new Set(props.scopedProjectKeys);
   const scopedProjects = props.projects.filter((project) => scoped.has(project.projectKey));
   const single = scopedProjects.length === 1 ? scopedProjects[0]! : null;
   return (
-    <MenuSub>
+    <MenuSub open={open} onOpenChange={setOpen}>
       <MenuSubTrigger>
         {single ? (
           <ProjectFavicon project={single} className="size-3.5" />
@@ -160,7 +175,7 @@ function SidebarProjectFilter(props: {
       </MenuSubTrigger>
       <MenuSubPopup className="max-w-[min(18rem,var(--available-width))] min-w-56">
         <MenuSearch
-          items={props.projects}
+          items={projects}
           getText={(project) => project.displayName}
           placeholder="Search projects"
         >
@@ -188,6 +203,13 @@ function SidebarProjectFilter(props: {
                         : props.scopedProjectKeys.filter((key) => key !== project.projectKey),
                     )
                   }
+                  onKeyDown={(event) => {
+                    if (!isProjectPinShortcut(event, keybindings) || !canPinProjectGroup(project))
+                      return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    void toggleProjectGroupPin(project);
+                  }}
                   onContextMenu={(event) => props.onProjectSettings(event, project)}
                 >
                   <span className="flex w-full min-w-0 items-center gap-2">
@@ -197,6 +219,14 @@ function SidebarProjectFilter(props: {
                       query={query}
                       onOnly={() => props.onOnly(project.projectKey)}
                     />
+                    {canPinProjectGroup(project) ? (
+                      <ProjectPinButton
+                        name={project.displayName}
+                        pinned={project.pinned}
+                        shortcutLabel={shortcutLabelForCommand(keybindings, "thread.pin")}
+                        onToggle={() => void toggleProjectGroupPin(project)}
+                      />
+                    ) : null}
                     {props.projectBadge(project)}
                     <ChoiceCount count={props.counts.get(project.projectKey) ?? 0} />
                     <Button

@@ -1,6 +1,6 @@
 import { cn } from "~/lib/utils";
 import { InfoIcon } from "lucide-react";
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type Ref, type ReactNode } from "react";
 
 import { Button } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
@@ -64,15 +64,17 @@ export function ComposerBannerStack({
 function NoticeDetails({
   children,
   label,
+  buttonRef,
 }: {
   readonly children: ReactNode;
   readonly label: string;
+  readonly buttonRef?: Ref<HTMLButtonElement>;
 }) {
   return (
     <Popover>
       <PopoverTrigger
         openOnHover
-        render={<Button size="icon-xs" variant="ghost-muted" aria-label={label} />}
+        render={<Button ref={buttonRef} size="icon-xs" variant="ghost-muted" aria-label={label} />}
       >
         <InfoIcon />
       </PopoverTrigger>
@@ -82,9 +84,7 @@ function NoticeDetails({
         side="top"
         className="max-w-[min(30rem,calc(100vw-2rem))] whitespace-normal wrap-anywhere [--inline-button-text-align:start] [--inline-button-white-space:normal] [&_[data-slot=inline-button]]:max-w-full"
       >
-        <ComposerBanner.Scroll className="max-h-[min(var(--available-height),24rem,40dvh)]">
-          {children}
-        </ComposerBanner.Scroll>
+        <ComposerBanner.Scroll>{children}</ComposerBanner.Scroll>
       </PopoverPopup>
     </Popover>
   );
@@ -173,7 +173,9 @@ export function NoticeText({
       </span>
       {showDetails ? (
         <span className="absolute end-0 top-1/2 z-10 -translate-y-1/2">
-          <NoticeDetails label={detailsLabel}>{children}</NoticeDetails>
+          <NoticeDetails label={detailsLabel} buttonRef={detailsRef}>
+            {children}
+          </NoticeDetails>
         </span>
       ) : null}
     </span>

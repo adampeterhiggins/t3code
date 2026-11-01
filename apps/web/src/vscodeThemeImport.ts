@@ -1,3 +1,5 @@
+import { parse, type ParseError } from "jsonc-parser";
+
 import {
   createVividThemeColors,
   getStandardThemeColors,
@@ -14,16 +16,7 @@ import {
   type ThemeDefinition,
 } from "./themePalette";
 
-/**
- * Best-effort import of a VS Code color theme (`*-color-theme.json`).
- *
- * VS Code themes describe editor chrome, not an app palette: they carry a few
- * hundred workbench keys, leave most of them unset, and freely use 8-digit
- * hex with alpha for overlays. The conversion derives a complete palette from
- * a visible accent and the editor background, then layers usable workbench
- * colors on top. Foregrounds must remain readable, while authored focus and
- * control candidates must remain distinct from adjacent surfaces and states.
- */
+// VS Code workbench colors are sparse and may carry alpha; derive a complete readable palette.
 
 /**
  * VS Code's own ANSI defaults (terminalColorRegistry), in index order. Themes
@@ -186,6 +179,15 @@ export function isVsCodeThemeFile(value: unknown): boolean {
   const hasWorkbenchColors =
     isRecord(value.colors) && Object.keys(value.colors).some((key) => key.includes("."));
   return hasWorkbenchColors || Array.isArray(value.tokenColors);
+}
+
+export function parseThemeImport(source: string): ThemeDefinition {
+  const errors: ParseError[] = [];
+  const value: unknown = parse(source, errors, { allowTrailingComma: true });
+  if (errors.length > 0) throw new Error("That theme file is not valid JSON.");
+  return isVsCodeThemeFile(value)
+    ? parseVsCodeThemeFile(value)
+    : parseThemeFile(JSON.parse(source));
 }
 
 function resolveAppearance(value: Record<string, unknown>, canvas: VsCodeRgb): ThemeAppearance {

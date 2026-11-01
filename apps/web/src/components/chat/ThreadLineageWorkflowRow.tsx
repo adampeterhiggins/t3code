@@ -15,6 +15,7 @@ import { useState, type ReactNode } from "react";
 import { AgentElapsed } from "./AgentElapsed";
 import { ContextPreviewHover } from "../contextPreviewRegistry";
 import { ThreadRelationshipIcon } from "./ThreadRelationshipIcon";
+import type { ProviderInstanceEntry } from "../../providerInstances";
 import { cn } from "../../lib/utils";
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
 import { CollapsibleSectionHeader, SectionHeaderStatus } from "../ui/collapsible-section-header";
@@ -58,21 +59,21 @@ function WorkflowMemberRow({
   ownerThreadId,
   providerInstanceId,
   provider,
+  providerEntries,
   driver,
   onOpen,
-  isThreadAvailable,
 }: {
   member: RuntimeSubagent;
   environmentId: EnvironmentId;
   ownerThreadId: ThreadId;
   providerInstanceId: ProviderInstanceId;
   provider: ServerProvider | undefined;
+  providerEntries: ReadonlyArray<ProviderInstanceEntry>;
   driver: ProviderDriverKind | undefined;
   onOpen: (threadId: string) => void;
-  isThreadAvailable: (threadId: string) => boolean;
 }) {
   const threadId = member.childThreadId;
-  const canOpen = threadId !== null && isThreadAvailable(threadId);
+  const canOpen = threadId !== null;
   return (
     <li>
       <ContextPreviewHover
@@ -98,7 +99,12 @@ function WorkflowMemberRow({
             disabled={!canOpen}
             onClick={() => canOpen && onOpen(threadId)}
           >
-            <ThreadRelationshipIcon driver={driver} provider={provider} status={member.status} />
+            <ThreadRelationshipIcon
+              driver={driver}
+              provider={provider}
+              providerEntries={providerEntries}
+              status={member.status}
+            />
             <span className="min-w-0 flex-1 truncate">{member.title}</span>
             <span className="sr-only">{member.status}</span>
             {member.startedAt ? (
@@ -120,9 +126,9 @@ export function ThreadLineageWorkflowRow({
   ownerThreadId,
   providerInstanceId,
   provider,
+  providerEntries,
   driver,
   onOpenThread,
-  isThreadAvailable,
   onStop,
   stopping,
   stopDisabled,
@@ -134,9 +140,9 @@ export function ThreadLineageWorkflowRow({
   readonly ownerThreadId: ThreadId;
   readonly providerInstanceId: ProviderInstanceId;
   readonly provider: ServerProvider | undefined;
+  readonly providerEntries: ReadonlyArray<ProviderInstanceEntry>;
   readonly driver: ProviderDriverKind | undefined;
   readonly onOpenThread: (threadId: string) => void;
-  readonly isThreadAvailable: (threadId: string) => boolean;
   readonly onStop?: (() => void) | undefined;
   readonly stopping: boolean;
   readonly stopDisabled: boolean;
@@ -233,9 +239,9 @@ export function ThreadLineageWorkflowRow({
                         ownerThreadId={ownerThreadId}
                         providerInstanceId={providerInstanceId}
                         provider={provider}
+                        providerEntries={providerEntries}
                         driver={driver}
                         onOpen={onOpenThread}
-                        isThreadAvailable={isThreadAvailable}
                       />
                     ))}
                   </ul>
@@ -251,9 +257,9 @@ export function ThreadLineageWorkflowRow({
               ownerThreadId={ownerThreadId}
               providerInstanceId={providerInstanceId}
               provider={provider}
+              providerEntries={providerEntries}
               driver={driver}
               onOpen={onOpenThread}
-              isThreadAvailable={isThreadAvailable}
             />
           ))}
           {phases.length === 0 && group.unphasedMembers.length === 0 ? (

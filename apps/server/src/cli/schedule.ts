@@ -170,6 +170,7 @@ export const describeSchedule = (schedule: ScheduledTaskSchedule): string => {
   if (schedule.type === "interval") {
     return `Every ${formatDuration(schedule.everyMs)}`;
   }
+  if (schedule.type === "once") return `Once at ${schedule.runAt}`;
   const weekdays = schedule.weekdays ?? [];
   const days =
     weekdays.length === 0

@@ -9,7 +9,10 @@ import { Pressable, View } from "react-native";
 import { AppText as Text } from "../../components/ui/AppText";
 import { cn } from "../../lib/cn";
 import { tryOpenExternalUrl, type ExternalUrlTarget } from "../../lib/openExternalUrl";
-import { formatScheduledTaskInterval } from "../settings/scheduledTaskPresentation";
+import {
+  describeSchedule,
+  formatScheduledTaskInterval,
+} from "../settings/scheduledTaskPresentation";
 
 const MAX_SLACK_MESSAGES = 5;
 const MAX_RECORDS = 8;
@@ -160,6 +163,7 @@ function GenericBody(props: {
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
 function scheduleText(schedule: ScheduledTaskSchedule): string {
+  if (schedule.type === "once") return describeSchedule({ schedule });
   if (schedule.type === "webhook") return "On webhook";
   if (schedule.type === "interval") return formatScheduledTaskInterval(schedule.everyMs);
   const weekdays = schedule.weekdays ?? [];

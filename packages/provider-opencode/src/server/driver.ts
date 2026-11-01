@@ -1,17 +1,3 @@
-/**
- * OpenCodeDriver — `ProviderDriver` for the OpenCode runtime.
- *
- * Mirrors the Codex / Claude drivers: a plain value whose `create()`
- * bundles `snapshot` / `adapter` / `textGeneration` closures over the
- * per-instance `OpenCodeSettings`.
- *
- * Two instances with different `serverUrl`s therefore talk to independent
- * OpenCode servers; when no `serverUrl` is set, the adapter + text-generation
- * shares spin up their own scoped child processes, and those child
- * processes are released when the registry scope closes.
- *
- * @module provider/Drivers/OpenCodeDriver
- */
 import { ProviderDriverKind, type ServerProvider } from "@t3tools/contracts";
 import { OpenCodeSettings } from "../settings.ts";
 import * as Crypto from "effect/Crypto";
@@ -418,6 +404,16 @@ export const OpenCodeDriver: ProviderDriver<
       setup: providerSetup,
     });
 
+    const checkUsageLimits = readOpenCodeGoUsageLimits({
+      enabled: effectiveConfig.enabled,
+      serverUrl: effectiveConfig.serverUrl,
+      environment: processEnv,
+    }).pipe(
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(Path.Path, pathService),
+      Effect.provideService(HttpClient.HttpClient, httpClient),
+      Effect.provideService(Crypto.Crypto, crypto),
+    );
     const checkProvider = Effect.all(
       {
         provider: checkOpenCodeProviderStatus(
@@ -429,11 +425,7 @@ export const OpenCodeDriver: ProviderDriver<
           Effect.annotateLogs({ providerInstanceId: instanceId }),
           Effect.annotateSpans({ providerInstanceId: instanceId }),
         ),
-        usageLimits: readOpenCodeGoUsageLimits({
-          enabled: effectiveConfig.enabled,
-          serverUrl: effectiveConfig.serverUrl,
-          environment: processEnv,
-        }),
+        usageLimits: checkUsageLimits,
       },
       { concurrency: "unbounded" },
     ).pipe(
@@ -441,10 +433,6 @@ export const OpenCodeDriver: ProviderDriver<
       Effect.map(stampSetup),
       Effect.map(stampIdentity),
       Effect.flatMap(authMethodPersistence.stamp),
-      Effect.provideService(FileSystem.FileSystem, fileSystem),
-      Effect.provideService(Path.Path, pathService),
-      Effect.provideService(HttpClient.HttpClient, httpClient),
-      Effect.provideService(Crypto.Crypto, crypto),
       Effect.provideService(OpenCodeServerOwner.OpenCodeServerOwner, serverOwner),
       Effect.provideService(OpenCodeRuntime.OpenCodeRuntime, openCodeRuntime),
     );
@@ -533,6 +521,7 @@ export const OpenCodeDriver: ProviderDriver<
           Effect.map(stampIdentity),
         ),
       checkProvider,
+      checkUsageLimits,
       enrichSnapshot: ({ settings, snapshot, publishSnapshot }) =>
         resolveMaintenance().pipe(
           Effect.flatMap((maintenanceCapabilities) =>

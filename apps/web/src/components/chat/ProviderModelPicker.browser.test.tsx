@@ -145,7 +145,7 @@ describe("ProviderModelPicker", () => {
     const legacyFavorite = page.getByRole("option", { name: /Legacy favorite/ });
     const currentFavorite = page.getByRole("option", { name: /Current favorite/ });
     const current = page.getByRole("option", { name: /Current model/ });
-    const legacySection = page.getByRole("option", { name: /Legacy models/ });
+    const legacySection = page.getByRole("option", { name: /Show more|Show less/ });
 
     await expect.element(legacyFavorite).toBeVisible();
     await expect.element(currentFavorite).toBeVisible();
@@ -162,7 +162,7 @@ describe("ProviderModelPicker", () => {
     await click(legacySection);
     await expect.element(legacyFavorite).toBeVisible();
     await expect.element(page.getByRole("option", { name: /Other legacy/ })).toBeVisible();
-    expect(legacyFavorite.element().getBoundingClientRect().top).toBeGreaterThan(
+    expect(legacyFavorite.element().getBoundingClientRect().top).toBeLessThan(
       legacySection.element().getBoundingClientRect().top,
     );
     await expect
@@ -177,7 +177,7 @@ describe("ProviderModelPicker", () => {
     await expect
       .element(page.getByRole("option", { name: /Other legacy/ }))
       .not.toBeInTheDocument();
-    await click(page.getByRole("option", { name: /Legacy models/ }));
+    await click(page.getByRole("option", { name: /Show more|Show less/ }));
     await expect.element(page.getByRole("option", { name: /Other legacy/ })).toBeVisible();
   });
 
@@ -461,5 +461,8 @@ it("keeps a docked picker open after a pick and hands focus to that model's effo
   await expect.element(page.getByRole("radio", { name: "Medium" })).toHaveFocus();
 
   await page.getByRole("option", { name: /Plain model/ }).click();
+  await page.getByRole("option", { name: /Second model/ }).click();
+  await expect.element(page.getByRole("radio", { name: "Medium" })).toHaveFocus();
+  await userEvent.keyboard("{Escape}");
   await expect.element(search).not.toBeInTheDocument();
 });
