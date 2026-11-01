@@ -40,6 +40,8 @@ const BUILT_IN_GROUPS: ReadonlyArray<{
   readonly title: string;
   readonly Icon: typeof EllipsisIcon;
   readonly views: ReadonlyArray<readonly [ThreadViewCategory, string]>;
+  /** Offers the Settled threads choice that `automationsShowSettled` stores. */
+  readonly settledChoice?: true;
 }> = [
   {
     ...BUILT_IN_PAGES.threads,
@@ -54,20 +56,22 @@ const BUILT_IN_GROUPS: ReadonlyArray<{
     ...BUILT_IN_PAGES.automations,
     title: BUILT_IN_PAGES.automations.label,
     views: [["automations", "Rows"]],
+    settledChoice: true,
   },
   { ...BUILT_IN_PAGES.snoozed, title: BUILT_IN_PAGES.snoozed.label, views: [["snoozed", "Rows"]] },
   { ...BUILT_IN_PAGES.hidden, title: BUILT_IN_PAGES.hidden.label, views: [["hidden", "Rows"]] },
   { ...BUILT_IN_PAGES.settled, title: BUILT_IN_PAGES.settled.label, views: [["settled", "Rows"]] },
 ];
 
-/** Row style for each built-in page. */
+/** Row style for each built-in page, and where settled automation threads list. */
 function BuiltInThreadGroupRows() {
   const threadViews = useScopedSettings((settings) => settings.sidebarThreadViews);
+  const automationsShowSettled = useScopedSettings((settings) => settings.automationsShowSettled);
   const updateSettings = useUpdateScopedSettings();
   const setViews = (views: Partial<SidebarThreadViews>) =>
     updateSettings({ sidebarThreadViews: { ...threadViews, ...views } });
 
-  return BUILT_IN_GROUPS.map(({ title, Icon, views }) => {
+  return BUILT_IN_GROUPS.map(({ title, Icon, views, settledChoice }) => {
     const defaults: Partial<SidebarThreadViews> = Object.fromEntries(
       views.map(([category]) => [category, DEFAULT_UNIFIED_SETTINGS.sidebarThreadViews[category]]),
     );
@@ -114,6 +118,23 @@ function BuiltInThreadGroupRows() {
                   </MenuRadioGroup>
                 </MenuGroup>
               ))}
+              {settledChoice ? (
+                <>
+                  <MenuSeparator />
+                  <MenuGroup>
+                    <MenuGroupLabel>Settled threads</MenuGroupLabel>
+                    <MenuRadioGroup
+                      value={automationsShowSettled ? "show" : "hide"}
+                      onValueChange={(value) =>
+                        updateSettings({ automationsShowSettled: value === "show" })
+                      }
+                    >
+                      <MenuRadioItem value="show">Show in {title}</MenuRadioItem>
+                      <MenuRadioItem value="hide">Move to Settled</MenuRadioItem>
+                    </MenuRadioGroup>
+                  </MenuGroup>
+                </>
+              ) : null}
             </MenuPopup>
           </Menu>
         }

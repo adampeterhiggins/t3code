@@ -52,6 +52,7 @@ export function useThreadListV2(input: {
   readonly groupEnvironmentIds: LayoutInput["groupEnvironmentIds"];
   readonly groupsShownInThreads: LayoutInput["groupsShownInThreads"];
   readonly groupsHidingSettled: LayoutInput["groupsHidingSettled"];
+  readonly automationsHidingSettledEnvironmentIds: LayoutInput["automationsHidingSettledEnvironmentIds"];
   readonly pages: LayoutInput["pages"];
   readonly draftCounts: Parameters<typeof buildThreadListV2ListItems>[0]["draftCounts"];
   readonly searchQuery: string;
@@ -103,6 +104,7 @@ export function useThreadListV2(input: {
         groupEnvironmentIds: input.groupEnvironmentIds,
         groupsShownInThreads: input.groupsShownInThreads,
         groupsHidingSettled: input.groupsHidingSettled,
+        automationsHidingSettledEnvironmentIds: input.automationsHidingSettledEnvironmentIds,
         queuedThreadKeys: input.queuedThreadKeys,
       }),
     });
@@ -132,6 +134,7 @@ export function useThreadListV2(input: {
     groupEnvironmentIds: input.groupEnvironmentIds,
     groupsShownInThreads: input.groupsShownInThreads,
     groupsHidingSettled: input.groupsHidingSettled,
+    automationsHidingSettledEnvironmentIds: input.automationsHidingSettledEnvironmentIds,
     queuedThreadKeys: input.queuedThreadKeys,
     settledLimit: input.settledLimit,
     now: input.now,

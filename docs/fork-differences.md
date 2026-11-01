@@ -864,8 +864,11 @@ deleting the task releases it. Each bound run files its thread again, so tasks s
 change catch up on their next run. Threads a task's runs started keep the id after the task is
 deleted, and a fork does not inherit it. The web sidebar and mobile thread list show these threads
 under a built-in **Automations** page, picked by default, which ranks below Hidden and user groups
-and above snooze, settlement, and pins. Automations rows use the Grouped thread view and cannot be
-dragged.
+and above snooze, settlement, and pins. Automations rows have their own thread view and cannot be
+dragged. The shared server setting `automationsShowSettled` (default on) set to false sends that
+environment's settled automation threads to Settled instead; web and desktop set it from
+Automations' menu under **Settings → General → Thread groups**, mobile beside its groups' settled
+switches.
 
 Code: `thread.scheduled-task.set` in
 [`Orchestrator.ts`](../apps/server/src/orchestration-v2/Orchestrator.ts), `fileThread` in

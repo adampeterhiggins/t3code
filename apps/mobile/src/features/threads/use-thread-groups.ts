@@ -38,5 +38,22 @@ export function useThreadGroups() {
     [environments, groups, updateSettings],
   );
 
-  return { groups, setGroup };
+  /** Whether Automations lists its settled threads; off on any environment counts as off. */
+  const automationsShowSettled = [...serverConfigs.values()].every(
+    (config) => config.settings.automationsShowSettled,
+  );
+  const setAutomationsShowSettled = useCallback(
+    (value: boolean) => {
+      for (const environment of environments) {
+        if (!supportsSharedSettingsSync(environment)) continue;
+        void updateSettings({
+          environmentId: environment.environmentId,
+          input: { patch: { automationsShowSettled: value } },
+        });
+      }
+    },
+    [environments, updateSettings],
+  );
+
+  return { groups, setGroup, automationsShowSettled, setAutomationsShowSettled };
 }

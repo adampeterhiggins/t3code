@@ -282,6 +282,7 @@ export function getThreadListV2OrderedSection(input: {
   readonly groupEnvironmentIds?: ReadonlySet<EnvironmentId>;
   readonly groupsShownInThreads?: ReadonlySet<string>;
   readonly groupsHidingSettled?: ReadonlySet<string>;
+  readonly automationsHidingSettledEnvironmentIds?: ReadonlySet<EnvironmentId>;
   readonly queuedThreadKeys?: ReadonlySet<string>;
 }): EnvironmentThreadShell[] {
   const queuedThreadKeys = input.queuedThreadKeys?.size ? input.queuedThreadKeys : undefined;
@@ -458,7 +459,12 @@ function isThreadListV2SettledListing(
   input: ThreadListV2Classification,
 ): boolean {
   if (isThreadListV2Hidden(thread, input.hidingEnvironmentIds)) return false;
-  if (thread.scheduledTaskId != null) return false;
+  if (
+    thread.scheduledTaskId != null &&
+    input.automationsHidingSettledEnvironmentIds?.has(thread.environmentId) !== true
+  ) {
+    return false;
+  }
   if (
     (input.snoozeEnvironmentIds?.has(thread.environmentId) ?? true) &&
     effectiveSnoozed(thread, { now: input.now })
@@ -512,6 +518,7 @@ type ThreadListV2Classification = Pick<
   | "groupEnvironmentIds"
   | "groupsShownInThreads"
   | "groupsHidingSettled"
+  | "automationsHidingSettledEnvironmentIds"
   | "queuedThreadKeys"
 >;
 
@@ -542,7 +549,9 @@ function threadListV2Page(
   if (isThreadListV2Grouped(thread, input)) {
     return threadListGroupPage(thread.groupName!);
   }
-  if (thread.scheduledTaskId != null) return "automations";
+  if (thread.scheduledTaskId != null && !isThreadListV2SettledListing(thread, input)) {
+    return "automations";
+  }
   if (
     (input.snoozeEnvironmentIds?.has(thread.environmentId) ?? true) &&
     effectiveSnoozed(thread, { now: input.now })
@@ -973,6 +982,8 @@ export function buildThreadListV2Items(input: {
   readonly groupsShownInThreads?: ReadonlySet<string>;
   /** Groups whose settled threads stay on Settled instead of the group's page. */
   readonly groupsHidingSettled?: ReadonlySet<string>;
+  /** Environments whose settled automation threads list under Settled instead of Automations. */
+  readonly automationsHidingSettledEnvironmentIds?: ReadonlySet<EnvironmentId>;
   /** Pages picked in the filter menu. Absent = Threads, Snoozed and Settled
       (tests). */
   readonly pages?: ReadonlyArray<ThreadListPage>;
@@ -1081,8 +1092,9 @@ export function buildThreadListV2Items(input: {
         thread,
       });
     }
-    // A scheduled task's thread files under Automations, settled or not, so its runs stay together.
-    if (thread.scheduledTaskId != null) {
+    // A scheduled task's thread files under Automations, settled or not, so its runs stay
+    // together, unless the environment sends settled automation threads to Settled.
+    if (thread.scheduledTaskId != null && !isThreadListV2SettledListing(thread, classification)) {
       automations.push(thread);
       continue;
     }

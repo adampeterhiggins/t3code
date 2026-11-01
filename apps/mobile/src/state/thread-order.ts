@@ -74,6 +74,8 @@ export function beginPendingThreadOrder(pending: PendingThreadOrder) {
       queuedThreadKeys: appAtomRegistry.get(queuedThreadKeysAtom),
       groupsShownInThreads: appAtomRegistry.get(threadListEnvironmentsAtom).groupsShownInThreads,
       groupsHidingSettled: appAtomRegistry.get(threadListEnvironmentsAtom).groupsHidingSettled,
+      automationsHidingSettledEnvironmentIds: appAtomRegistry.get(threadListEnvironmentsAtom)
+        .automationsHidingSettledEnvironmentIds,
       settlementEnvironmentIds: new Set(configs.keys()),
       snoozeEnvironmentIds: new Set(configs.keys()),
     });

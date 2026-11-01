@@ -15,6 +15,7 @@ const SHARED_SERVER_SETTING_KEYS = [
   "sidebarAutoSettleAfterDays",
   "sidebarAutoSettleOnMerge",
   "threadGroups",
+  "automationsShowSettled",
   "organisations",
   "stopAtSubscriptionLimit",
   "autoResumeLimitedThreads",

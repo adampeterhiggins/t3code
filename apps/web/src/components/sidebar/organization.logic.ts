@@ -285,25 +285,28 @@ export function sidebarThreadShelf(
     groupsShownInThreads?: ReadonlySet<string>;
     /** Groups whose settled threads stay on Settled instead of the group's page. */
     groupsHidingSettled?: ReadonlySet<string>;
+    /** Settled automation threads go to Settled instead of Automations. */
+    automationsHidingSettled?: boolean;
   },
 ): SidebarThreadShelf {
   // Snooze outranks settlement and pinning until the thread wakes. Only servers
   // that understand hiding ever set hiddenAt, so it needs no capability check.
   const snoozed = input.supportsSnooze && effectiveSnoozed(thread, { now: input.now });
+  const settled = input.supportsSettlement && thread.settledOverride === "settled";
+  const automation = isSidebarAutomationThread(thread, {
+    settled: settled && !snoozed,
+    automationsHidingSettled: input.automationsHidingSettled,
+  });
   const section = resolveSidebarThreadSection({
     hidden: thread.hiddenAt != null,
     grouped: isSidebarThreadGroupedAway(thread.groupName, input.groupsShownInThreads, {
       groupsHidingSettled: input.groupsHidingSettled,
       // Snooze and Automations keep a grouped thread; only a Settled-shelf thread leaves.
-      settled:
-        input.supportsSettlement &&
-        thread.settledOverride === "settled" &&
-        !snoozed &&
-        thread.scheduledTaskId == null,
+      settled: settled && !snoozed && !automation,
     }),
-    automation: thread.scheduledTaskId != null,
+    automation,
     snoozed,
-    settled: input.supportsSettlement && thread.settledOverride === "settled",
+    settled,
     pinned: thread.pinnedAt != null,
   });
   if (section !== "active") return section;
@@ -311,6 +314,21 @@ export function sidebarThreadShelf(
   return input.workingShelfEnabled && (input.working ?? isThreadWorking(thread))
     ? "working"
     : "active";
+}
+
+/** Whether a scheduled task's thread lists on Automations rather than leaving for Settled. */
+export function isSidebarAutomationThread(
+  thread: Pick<SidebarThreadSummary, "scheduledTaskId">,
+  options: {
+    /** Settled and not snoozed, so it would list on Settled. */
+    readonly settled: boolean;
+    readonly automationsHidingSettled?: boolean | undefined;
+  },
+): boolean {
+  return (
+    thread.scheduledTaskId != null &&
+    !(options.settled && options.automationsHidingSettled === true)
+  );
 }
 
 /** Whether a thread's group takes it off the Threads, Snoozed and Settled pages. */

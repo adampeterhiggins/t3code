@@ -206,15 +206,20 @@ export function WorkingSectionSettings() {
   );
 }
 
-/** Per-group switches for whether a group's page lists its settled threads. */
+/** Switches for whether Automations and each group's page list their settled threads. */
 export function ThreadGroupSettledSection() {
-  const { groups, setGroup } = useThreadGroups();
+  const { groups, setGroup, automationsShowSettled, setAutomationsShowSettled } = useThreadGroups();
   const names = Object.keys(groups).sort((a, b) => a.localeCompare(b));
-  if (names.length === 0) return null;
 
   return (
     <View className="gap-3">
       <SettingsSection title="Show settled threads in groups">
+        <SettingsSwitchRow
+          icon="calendar.badge.clock"
+          label="Automations"
+          value={automationsShowSettled}
+          onValueChange={setAutomationsShowSettled}
+        />
         {names.map((name) => {
           const { showSettled: _showSettled, ...rest } = groups[name]!;
           return (

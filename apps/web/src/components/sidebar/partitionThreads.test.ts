@@ -21,6 +21,7 @@ it("classifies groups and Automations while keeping unscoped threads in filter c
     tabThreadGroups: new Map([[`${environmentId}:${tab.id}`, "group"]]),
     groupsShownInThreads: new Set(["Work"]),
     groupsHidingSettled: new Set(),
+    automationsHidingSettledEnvironmentIds: new Set(),
     serverConfigs: new Map(),
     scopedProjectKeys: new Set([`${environmentId}:${projectId}`]),
     optimisticDrop: null,
@@ -47,7 +48,7 @@ it("classifies groups and Automations while keeping unscoped threads in filter c
   });
 });
 
-it("keeps settled threads of a group that hides them on Settled", () => {
+it("keeps settled threads of a group, or of Automations, that hides them on Settled", () => {
   const environmentId = EnvironmentId.make("local");
   const projectId = ProjectId.make("selected");
   const thread = (id: string) =>
@@ -72,11 +73,27 @@ it("keeps settled threads of a group that hides them on Settled", () => {
     settledOverride: "settled" as const,
     settledAt: "2026-01-03T00:00:00.000Z",
   };
+  const automationLive = { ...thread("automation-live"), scheduledTaskId: "task" };
+  const automationSettled = {
+    ...thread("automation-settled"),
+    scheduledTaskId: "task",
+    settledOverride: "settled" as const,
+    settledAt: "2026-01-04T00:00:00.000Z",
+  };
   const result = partitionSidebarThreads({
-    threads: [quietLive, quietSettled, quietSnoozed, workLive, workSettled],
+    threads: [
+      quietLive,
+      quietSettled,
+      quietSnoozed,
+      workLive,
+      workSettled,
+      automationLive,
+      automationSettled,
+    ],
     tabThreadGroups: new Map(),
     groupsShownInThreads: new Set(["Work"]),
     groupsHidingSettled: new Set(["Quiet", "Work"]),
+    automationsHidingSettledEnvironmentIds: new Set([environmentId]),
     serverConfigs: new Map<EnvironmentId, Pick<ServerConfig, "environment">>([
       [
         environmentId,
@@ -93,16 +110,17 @@ it("keeps settled threads of a group that hides them on Settled", () => {
     inboxReturns: createInboxReturnTracker(),
   });
   const ids = (threads: ReadonlyArray<{ id: string }>) => threads.map((entry) => entry.id).sort();
-  expect(ids(result.settledThreads)).toEqual(["quiet-settled", "work-settled"]);
+  expect(ids(result.settledThreads)).toEqual([
+    "automation-settled",
+    "quiet-settled",
+    "work-settled",
+  ]);
+  expect(ids(result.automationThreads)).toEqual(["automation-live"]);
   expect(ids(result.groupedThreads)).toEqual(["quiet-live", "quiet-snoozed"]);
   expect(result.snoozedThreads).toEqual([]);
   expect(ids(result.activeThreads)).toEqual(["work-live"]);
   expect(result.shownGroupThreads).toEqual([{ thread: workLive, page: "threads" }]);
-  expect(result.facetThreads).toContainEqual({
-    environmentId,
-    projectId,
-    pages: ["settled"],
-  });
+  expect(result.facetThreads.filter((facet) => facet.pages[0] === "settled")).toHaveLength(3);
   expect(
     result.facetThreads
       .filter((facet) => facet.pages.includes("group:Quiet"))

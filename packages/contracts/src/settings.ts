@@ -1748,6 +1748,8 @@ export const ServerSettings = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(false)),
   ),
   sidebarAutoSettleOnMerge: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  /** Lists settled automation threads on Automations. False sends them to Settled instead. */
+  automationsShowSettled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   threadGroups: ThreadGroups.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   organisations: Organisations.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   /** The group new threads start in. Set per project; null starts them ungrouped. */
@@ -2149,6 +2151,7 @@ export const ServerSettingsPatch = Schema.Struct({
   idleCompaction: Schema.optionalKey(IdleCompactionMode),
   sidebarAutoSettleKeepPullRequests: Schema.optionalKey(Schema.Boolean),
   sidebarAutoSettleOnMerge: Schema.optionalKey(Schema.Boolean),
+  automationsShowSettled: Schema.optionalKey(Schema.Boolean),
   /** Replaces the whole map, so a removed group style stays removed. */
   threadGroups: Schema.optionalKey(ThreadGroups),
   /** Replaces the whole map, so a cleared organisation style stays cleared. */

@@ -632,9 +632,12 @@ on your servers, so they appear on your other devices.
 ## Automation threads
 
 Threads that scheduled tasks start, and threads a task posts into, are listed under
-**Automations** instead of your live threads, settled or not, so a task's runs stay together. It
+**Automations** instead of your live threads, settled or not by default, so a task's runs stay together. It
 appears below your live threads by default; untick **Automations** under **Show** to leave it out.
-Hiding a thread or moving it into one of your groups takes it out of Automations.
+Hiding a thread or moving it into one of your groups takes it out of Automations. To list settled
+automation threads under Settled instead, choose **Move to Settled** under Automations in
+**Settings → General → Thread groups** on web and desktop, or turn off **Automations** under **Show
+settled threads in groups** on mobile.
 
 When you delete a task, the thread it posted into returns to your live list. Threads its runs
 started stay under Automations as its history; archive them to clear them away. Threads from runs

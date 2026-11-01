@@ -645,6 +645,23 @@ describe("buildThreadListV2Items", () => {
         pages: ["threads"],
       }).items.map((item) => item.thread.id),
     ).toEqual(["active"]);
+    // An environment that sends settled automation threads to Settled lists them there.
+    const automationsHidingSettledEnvironmentIds = new Set([threads[1]!.environmentId]);
+    const hidingSettled = buildThreadListV2Items({
+      threads,
+      environmentId: null,
+      searchQuery: "",
+      now: NOW,
+      pages: ["automations", "settled"],
+      automationsHidingSettledEnvironmentIds,
+    });
+    expect(hidingSettled.items.map((item) => item.thread.id)).toEqual([
+      "bound-pinned",
+      "run-settled",
+    ]);
+    expect(
+      threadListV2Pages(threads[1]!, { now: NOW, automationsHidingSettledEnvironmentIds }),
+    ).toEqual(["settled"]);
   });
 
   it("hides snoozed threads and counts them — visibility parity with web", () => {
