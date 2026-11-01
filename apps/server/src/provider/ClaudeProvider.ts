@@ -42,7 +42,7 @@ import {
   makeClaudeEnvironment,
   resolveClaudeHomePath,
 } from "./Drivers/ClaudeHome.ts";
-import { discoverClaudeSkills } from "./Drivers/ClaudeSkills.ts";
+import { discoverClaudeSkills, readClaudeSettingsBaseUrl } from "./Drivers/ClaudeSkills.ts";
 import type { ProviderWorkspaceSnapshot } from "@t3tools/provider-core/server/driver";
 import { makeUnavailableUsageLimits } from "@t3tools/provider-core/server/usageLimits";
 import {
@@ -84,11 +84,10 @@ function claudeSubscriptionLabel(subscriptionType: string | undefined): string |
 
   switch (normalized) {
     case "claudemaxsubscription":
-      return "Max";
     case "claudemax5xsubscription":
-      return "Max 5x";
+      return "Max";
     case "claudemax20xsubscription":
-      return "Max 20x";
+      return "Ultra";
     case "claudeenterprisesubscription":
       return "Enterprise";
     case "claudeteamsubscription":
@@ -99,11 +98,10 @@ function claudeSubscriptionLabel(subscriptionType: string | undefined): string |
       return "Free";
     case "max":
     case "maxplan":
-      return "Max";
     case "max5":
-      return "Max 5x";
+      return "Max";
     case "max20":
-      return "Max 20x";
+      return "Ultra";
     case "enterprise":
       return "Enterprise";
     case "team":
@@ -639,7 +637,10 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
   }
 
   // First-party account fields cannot verify custom endpoint credentials.
-  const endpoint = URL.parse(resolvedEnvironment.ANTHROPIC_BASE_URL?.trim() ?? "");
+  const baseUrl =
+    (yield* readClaudeSettingsBaseUrl(claudeSettings, cwd, resolvedEnvironment)) ??
+    resolvedEnvironment.ANTHROPIC_BASE_URL;
+  const endpoint = URL.parse(baseUrl?.trim() ?? "");
   const customApiEndpoint =
     endpoint !== null &&
     (endpoint.protocol === "http:" || endpoint.protocol === "https:") &&
@@ -651,6 +652,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
       enabled: claudeSettings.enabled,
       checkedAt,
       models,
+      updateRequiredModels,
       slashCommands: dedupedSlashCommands,
       skills,
       probe: {
@@ -677,17 +679,17 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     externalAuthSource !== undefined ||
     (capabilities.apiProvider !== undefined && capabilities.apiProvider !== "firstParty");
   const authMetadata =
-    externalAuthSource !== undefined
+    apiProviderAuthMetadata(capabilities.apiProvider) ??
+    (customApiEndpoint ? { type: "customEndpoint", label: "Custom API endpoint" } : undefined) ??
+    (externalAuthSource !== undefined
       ? { type: "environment", label: externalAuthSource }
-      : (claudeAuthMetadata({
+      : claudeAuthMetadata({
           subscriptionType: capabilities.subscriptionType,
           authMethod:
             capabilities.tokenSource !== "none"
               ? capabilities.tokenSource
               : capabilities.apiKeySource,
-        }) ??
-        apiProviderAuthMetadata(capabilities.apiProvider) ??
-        (customApiEndpoint ? { type: "customEndpoint", label: "Custom API endpoint" } : undefined));
+        }));
   const usageCheckedAt = capabilities.usageCheckedAt ?? checkedAt;
   const usageLimits = !capabilities.usage
     ? makeUnavailableUsageLimits({ checkedAt, reason: "probeFailed" })

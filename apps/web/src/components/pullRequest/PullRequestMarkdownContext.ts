@@ -1,4 +1,4 @@
-import type { ReferenceAutolink } from "@t3tools/client-runtime/source-control-clients";
+import type { PluggableList } from "unified";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { createContext, useContext } from "react";
 
@@ -10,7 +10,8 @@ import { useLinkClickHandler } from "~/browser/useOpenLink";
  * markdown renderer so presentation pieces can read it without importing chat markdown.
  */
 export const PullRequestMarkdownContext = createContext<{
-  autolinks: ((text: string) => ReadonlyArray<ReferenceAutolink>) | null;
+  remarkPlugins: PluggableList;
+  lineBreaks: boolean;
   threadRef: ScopedThreadRef | null;
 } | null>(null);
 

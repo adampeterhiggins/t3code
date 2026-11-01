@@ -2,7 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { useCallback, useMemo, useState } from "react";
 
-import { threadListEnvironmentsAtom } from "../../state/server";
+import { threadListEnvironmentsAtom } from "../../state/presentation";
 import {
   availableThreadListPages,
   collectThreadGroupNames,

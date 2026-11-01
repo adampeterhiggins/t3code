@@ -1,7 +1,6 @@
-import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { act, render } from "../../../test/render";
 import { EnvironmentId, ProjectId } from "@t3tools/contracts";
-import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
+import { expect, it, vi } from "vite-plus/test";
 
 const mocks = vi.hoisted(() => ({
   importThreads: vi.fn(),
@@ -32,6 +31,8 @@ vi.mock("../../onboarding/firstRun", () => ({ completeOnboarding: mocks.complete
 vi.mock("../../state/entities", () => ({
   useProjects: () => mocks.projects,
   readProjects: () => mocks.projects,
+  waitForProject: (ref: { projectId: string }) =>
+    Promise.resolve(mocks.projects.find((project) => project.id === ref.projectId)),
 }));
 vi.mock("../../state/environments", () => {
   const environment = {
@@ -98,10 +99,7 @@ vi.mock("../ui/toast", () => ({
 
 import { WelcomeWizard } from "./WelcomeWizard";
 
-let root: Root;
-let container: HTMLDivElement;
-
-beforeEach(() => {
+function setup() {
   vi.clearAllMocks();
   vi.stubGlobal(
     "ResizeObserver",
@@ -122,15 +120,12 @@ beforeEach(() => {
     _tag: "Success",
     value: { importedCount: 28, skippedCount: 1 },
   });
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  container = document.createElement("div");
-  document.body.append(container);
-  root = createRoot(container);
-});
-afterEach(async () => {
-  await act(async () => root.unmount());
-  container.remove();
-});
+  return {
+    [Symbol.dispose]() {
+      vi.unstubAllGlobals();
+    },
+  };
+}
 
 async function click(label: string) {
   const button = [...document.querySelectorAll("button")].find(
@@ -141,12 +136,16 @@ async function click(label: string) {
 }
 
 it("enters the workspace after a partial import and warns after navigation finishes", async () => {
+  using _fixture = setup();
   let finishNavigation = () => {};
   const navigation = new Promise<void>((resolve) => {
     finishNavigation = resolve;
   });
   const onDone = vi.fn(() => navigation);
-  await act(async () => root.render(<WelcomeWizard localAvailable onDone={onDone} />));
+  // The wizard reports navigation through onDone and does not need a route.
+  await using _screen = await render(<WelcomeWizard localAvailable onDone={onDone} />, {
+    router: false,
+  });
   await click("Continue");
   await click("Continue");
   await click("Import 1 project");
@@ -176,12 +175,16 @@ it.each([
 ] as const)(
   "finishes setup with %i imported and %i skipped threads",
   async (importedCount, skippedCount, warning) => {
+    using _fixture = setup();
     mocks.importThreads.mockResolvedValue({
       _tag: "Success",
       value: { importedCount, skippedCount },
     });
     const onDone = vi.fn();
-    await act(async () => root.render(<WelcomeWizard localAvailable onDone={onDone} />));
+    // The wizard reports navigation through onDone and does not need a route.
+    await using _screen = await render(<WelcomeWizard localAvailable onDone={onDone} />, {
+      router: false,
+    });
     await click("Continue");
     await click("Continue");
     await click("Import 1 project");
@@ -202,9 +205,13 @@ it.each([
 );
 
 it("keeps setup open when saving completion fails and preserves the import warning on retry", async () => {
+  using _fixture = setup();
   mocks.complete.mockRejectedValueOnce(new Error("settings unavailable"));
   const onDone = vi.fn();
-  await act(async () => root.render(<WelcomeWizard localAvailable onDone={onDone} />));
+  // The wizard reports navigation through onDone and does not need a route.
+  await using _screen = await render(<WelcomeWizard localAvailable onDone={onDone} />, {
+    router: false,
+  });
   await click("Continue");
   await click("Continue");
   await click("Import 1 project");
@@ -224,8 +231,12 @@ it("keeps setup open when saving completion fails and preserves the import warni
 });
 
 it("requires explicit Close to complete local setup", async () => {
+  using _fixture = setup();
   const onDone = vi.fn();
-  await act(async () => root.render(<WelcomeWizard localAvailable onDone={onDone} />));
+  // The wizard reports navigation through onDone and does not need a route.
+  await using _screen = await render(<WelcomeWizard localAvailable onDone={onDone} />, {
+    router: false,
+  });
   await act(async () => {
     document.activeElement?.dispatchEvent(
       new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),

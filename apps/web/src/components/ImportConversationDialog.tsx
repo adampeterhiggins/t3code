@@ -175,6 +175,7 @@ function ImportConversationDialog({
 }
 
 const PROVIDER_LABEL: Record<AgentSessionSummary["provider"], string> = {
+  pi: "Pi",
   claudeAgent: "Claude Code",
   codex: "Codex",
 };
@@ -484,6 +485,7 @@ function ImportConversationList({
     total: number;
   } | null>(null);
   const importRun = useRef<{ cancelled: boolean } | null>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- cancels the pending import when the dialog unmounts
   useEffect(
     () => () => {
       if (importRun.current) importRun.current.cancelled = true;
@@ -947,7 +949,7 @@ function ImportConversationList({
                             <TooltipPopup>{row.workspace.branch ?? "No branch"}</TooltipPopup>
                           </Tooltip>
                         ) : (
-                          <div className="text-muted-foreground/50">—</div>
+                          <div className="text-muted-foreground/50">None</div>
                         )}
                       </TableCell>
                       {showProject ? (

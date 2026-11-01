@@ -158,6 +158,7 @@ export const CodexDriver: ProviderDriver<
     const httpClient = yield* HttpClient.HttpClient;
     const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
     const host = yield* ProviderHost.ProviderHost;
+    const installation = yield* CodexInstallation.CodexInstallation;
     const modelCatalog = yield* ModelCatalog.ModelCatalog;
     const currentCatalog = modelCatalog.current(DRIVER_KIND);
     const processEnv = yield* mergeProviderInstanceEnvironment(environment);
@@ -283,6 +284,7 @@ export const CodexDriver: ProviderDriver<
           settings: host.settings,
           guards: yield* Effect.serviceOption(SubscriptionLimitGuards.SubscriptionLimitGuards),
         }),
+        compatibility: installation.compatibility,
       },
     ).pipe(
       Effect.mapError(

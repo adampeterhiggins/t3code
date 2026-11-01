@@ -93,6 +93,8 @@ const ThreadMcpLive = toolkitRegistration(
   ),
 );
 
+import * as ProjectCloneTracker from "../project/ProjectCloneTracker.ts";
+
 const RoutesLive = Layer.mergeAll(AgentAccessMcpServer.layer, ThreadMcpLive).pipe(
   Layer.provide(
     Layer.mergeAll(
@@ -111,6 +113,7 @@ const RoutesLive = Layer.mergeAll(AgentAccessMcpServer.layer, ThreadMcpLive).pip
       Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
       Layer.mock(SecretRequests.SecretRequests)({}),
       Layer.mock(ProjectService.ProjectService)({}),
+      Layer.mock(ProjectCloneTracker.ProjectCloneTracker)({}),
       Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({ namedProjectsRoot: "/projects" }),
       Layer.mock(SourceControlRepositoryService.SourceControlRepositoryService)({}),
       Layer.mock(ServerSettings.ServerSettingsService)({}),

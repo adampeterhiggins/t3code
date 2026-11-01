@@ -993,7 +993,7 @@ function PullRequestCodeTab({
           rangeLabel={`${draft.path}:${getReviewPositionAnchor(draft.position).line}`}
           text=""
           submitLabel={canCommentOnLines ? "Add to review" : "Add to agent"}
-          {...(canCommentOnLines && onAddToAgentSelection
+          {...(onAddToAgentSelection
             ? {
                 agentAction: {
                   send: (text: string) =>
@@ -1019,26 +1019,24 @@ function PullRequestCodeTab({
             setDraft(null);
             setSelectedLines(null);
           }}
-          onComment={(body) => {
-            if (!canCommentOnLines) {
-              if (onAddToAgentSelection) {
-                finishSelection(draft, body, (comment) =>
-                  onAddToAgentSelection({ comment, request: body, delivery: "composer" }),
-                );
+          {...(canCommentOnLines
+            ? {
+                onComment: (body: string) => {
+                  addComment(reviewKey, {
+                    id: nextPendingReviewCommentId(),
+                    path: draft.path,
+                    ...(draft.oldPath === null ? {} : { oldPath: draft.oldPath }),
+                    ...(draft.startPosition === undefined
+                      ? {}
+                      : { startPosition: draft.startPosition }),
+                    position: draft.position,
+                    body,
+                  });
+                  setDraft(null);
+                  setSelectedLines(null);
+                },
               }
-              return;
-            }
-            addComment(reviewKey, {
-              id: nextPendingReviewCommentId(),
-              path: draft.path,
-              ...(draft.oldPath === null ? {} : { oldPath: draft.oldPath }),
-              ...(draft.startPosition === undefined ? {} : { startPosition: draft.startPosition }),
-              position: draft.position,
-              body,
-            });
-            setDraft(null);
-            setSelectedLines(null);
-          }}
+            : {})}
         />
       ) : null}
     </div>

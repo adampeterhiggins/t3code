@@ -2,8 +2,9 @@ import { useAtomValue } from "@effect/atom-react";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
 import { useMemo } from "react";
 
+import { useThreadListNow } from "../threads/use-thread-list-now";
 import { useThreadSearch } from "../../state/queries";
-import { threadListEnvironmentsAtom } from "../../state/server";
+import { threadListEnvironmentsAtom } from "../../state/presentation";
 import { useQueuedThreadKeys } from "../../state/use-thread-outbox";
 import { useWorkspaceState } from "../../state/workspace";
 import { buildThreadListFilterFacets } from "./thread-list-filter-facets";
@@ -48,6 +49,7 @@ export function useThreadListFilterFacets(input: FacetInput) {
     pages,
     searchQuery,
   } = input;
+  const now = useThreadListNow(threads);
   return useMemo(
     () =>
       buildThreadListFilterFacets({
@@ -62,7 +64,7 @@ export function useThreadListFilterFacets(input: FacetInput) {
         searchQuery,
         matchedThreadKeys,
         classification: {
-          now: new Date().toISOString(),
+          now,
           settlementEnvironmentIds: listEnvironments.settlementEnvironmentIds,
           snoozeEnvironmentIds: listEnvironments.snoozeEnvironmentIds,
           hidingEnvironmentIds: listEnvironments.hidingEnvironmentIds,
@@ -72,6 +74,7 @@ export function useThreadListFilterFacets(input: FacetInput) {
         },
       }),
     [
+      now,
       environmentId,
       listEnvironments,
       matchedThreadKeys,

@@ -130,7 +130,7 @@ vi.mock(import("./ProviderWizardAuthenticationStep"), async (original) => ({
   ),
 }));
 
-import { appAtomRegistry } from "~/rpc/atomRegistry";
+import { AppAtomRegistryProvider, appAtomRegistry } from "~/rpc/atomRegistry";
 import { AddProviderInstanceDialog } from "./AddProviderInstanceDialog";
 
 const remoteEnvironmentId = EnvironmentId.make("remote-device");
@@ -144,12 +144,14 @@ function deferred<T>() {
 }
 
 const dialog = () => (
-  <AddProviderInstanceDialog
-    open
-    environmentId={remoteEnvironmentId}
-    environmentLabel="Remote device"
-    onOpenChange={actions.onOpenChange}
-  />
+  <AppAtomRegistryProvider>
+    <AddProviderInstanceDialog
+      open
+      environmentId={remoteEnvironmentId}
+      environmentLabel="Remote device"
+      onOpenChange={actions.onOpenChange}
+    />
+  </AppAtomRegistryProvider>
 );
 function button(label: string) {
   const found = [...document.querySelectorAll("button")].find(
@@ -231,6 +233,26 @@ describe("AddProviderInstanceDialog environment routing", () => {
         displayName: "Codex",
         config: { setupMode: "existing" },
       },
+    });
+  });
+
+  it("includes the explicitly added default accent color when creating a provider", async () => {
+    setup();
+    await using _screen = await render(dialog());
+    await click("Show more");
+    await click("Use Kilo Code");
+    await act(async () =>
+      document
+        .querySelector<HTMLButtonElement>('button[aria-label="Add accent color for Kilo Code"]')!
+        .click(),
+    );
+    await click("Add color");
+    await click("Continue to sign-in");
+
+    expect(settingsHooks.mutate).toHaveBeenCalledWith({
+      operation: "create",
+      instanceId: "acpRegistry_kilo_code",
+      instance: expect.objectContaining({ accentColor: "#2563eb" }),
     });
   });
 
@@ -339,6 +361,7 @@ describe("AddProviderInstanceDialog environment routing", () => {
     setup();
     settingsHooks.mutate.mockResolvedValueOnce({ _tag: "Failure", cause: new Error("Conflict") });
     await using _screen = await render(dialog());
+    await click("Show more");
     await click("Use Kilo Code");
     await click("Continue to sign-in");
 
@@ -351,7 +374,7 @@ describe("AddProviderInstanceDialog environment routing", () => {
 
   it("adds an instance with the selected environment's provider grant alone", async () => {
     setup();
-    await prepareCodexInstance();
+    await using _screen = await prepareCodexInstance();
     await click("Add instance");
 
     expect(settingsHooks.mutate).toHaveBeenCalledWith({
@@ -379,7 +402,7 @@ describe("AddProviderInstanceDialog environment routing", () => {
 
   it("continues a created CLI-sign-in provider to its sign-in step", async () => {
     setup();
-    await prepareCodexInstance();
+    await using _screen = await prepareCodexInstance();
     await click("Add instance");
     await act(async () =>
       appAtomRegistry.set(server.providers, [

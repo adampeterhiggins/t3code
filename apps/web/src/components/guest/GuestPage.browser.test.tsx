@@ -119,8 +119,9 @@ const view: GuestShareView = {
 const opening = (
   runs: ReadonlyArray<OrchestrationV2Run>,
   turnItems: ReadonlyArray<OrchestrationV2TurnItem>,
+  share = view,
 ): ReadonlyArray<GuestStreamEvent> => [
-  { type: "view", view },
+  { type: "view", view: share },
   {
     type: "thread",
     item: {
@@ -283,7 +284,9 @@ describe("GuestPage", () => {
   });
 
   it("follows the end as replies stream, and shows the guest's own message even after they scrolled up", async () => {
-    using _page = visit(`/guest?share=${SHARE_ID}`);
+    const shareId = GuestShareId.make("share-follow");
+    const followView = { ...view, shareId };
+    using _page = visit(`/guest?share=${shareId}`);
     using _session = vi
       .spyOn(window, "fetch")
       .mockImplementation(async () => new Response(null, { status: 204 }));
@@ -299,7 +302,10 @@ describe("GuestPage", () => {
     using _stream = vi
       .spyOn(window, "EventSource")
       .mockImplementation(
-        fakeEventSource(opening([run("run-1", 1, "running")], longItems), sources) as never,
+        fakeEventSource(
+          opening([run("run-1", 1, "running")], longItems, followView),
+          sources,
+        ) as never,
       );
     const send = (event: GuestStreamEvent) =>
       sources.at(-1)!.dispatchEvent(new MessageEvent("message", { data: encodeEvent(event) }));
@@ -348,14 +354,14 @@ describe("GuestPage", () => {
       status: "pending" as const,
       submittedAt: "2026-10-23T10:01:00.000Z",
     };
-    send({ type: "view", view: { ...view, messages: [waiting] } });
+    send({ type: "view", view: { ...followView, messages: [waiting] } });
     await expect.element(screen.getByText(waiting.text)).toBeInTheDocument();
     await expectAtEnd();
 
     // The owner sends it: the run ends, the message becomes a row, and a new run's reply grows.
     const sent = { ...waiting, status: "sent" as const };
     send(threadEvent(3, { type: "run.updated", payload: run("run-1", 1, "completed") }));
-    send({ type: "view", view: { ...view, messages: [sent] } });
+    send({ type: "view", view: { ...followView, messages: [sent] } });
     send(threadEvent(4, { type: "run.updated", payload: run("run-2", 2, "running") }));
     send(
       threadEvent(5, {

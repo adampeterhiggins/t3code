@@ -8,7 +8,6 @@ import {
   type ScopedThreadRef,
 } from "@t3tools/contracts";
 import { useContext } from "react";
-import type { Options as ReactMarkdownOptions } from "react-markdown";
 
 import { useLinkClickHandler } from "~/browser/useOpenLink";
 import { useAssetUrlRefresh, useAssetUrlState } from "~/assets/assetUrls";
@@ -17,8 +16,9 @@ import { PULL_REQUESTS_PANEL_REF } from "~/rightPanelStore";
 
 import ChatMarkdown from "../ChatMarkdown";
 import { MediaVideoPlayer } from "../media/MediaVideoPlayer";
+export { PullRequestMarkdownContext } from "./PullRequestMarkdownContext";
 import { PullRequestMarkdownContext } from "./PullRequestMarkdownContext";
-import { remarkPullRequestAutolinks, splitPullRequestBody } from "./pullRequestMarkdown.logic";
+import { splitPullRequestBody } from "./pullRequestMarkdown.logic";
 
 function PullRequestHostVideo({
   environmentId,
@@ -53,22 +53,20 @@ export function PullRequestMarkdown({
   cwd,
   environmentId,
   threadRef,
+  lineBreaks,
   className,
 }: {
   text: string;
   cwd: string;
   environmentId: EnvironmentId;
   threadRef?: ScopedThreadRef | null;
+  lineBreaks?: boolean;
   className?: string;
 }) {
   const segments = splitPullRequestBody(text);
   const context = useContext(PullRequestMarkdownContext);
-  const autolinks = context?.autolinks;
   const resolvedThreadRef = threadRef ?? context?.threadRef ?? undefined;
   const onLinkClick = useLinkClickHandler(resolvedThreadRef);
-  const extraRemarkPlugins: NonNullable<ReactMarkdownOptions["remarkPlugins"]> = autolinks
-    ? [[remarkPullRequestAutolinks, { autolinks }]]
-    : [];
   return (
     <div
       className={cn(
@@ -87,7 +85,8 @@ export function PullRequestMarkdown({
               threadRef={resolvedThreadRef}
               pullRequestPanelRef={resolvedThreadRef ?? PULL_REQUESTS_PANEL_REF}
               environmentId={environmentId}
-              extraRemarkPlugins={extraRemarkPlugins}
+              {...(context ? { extraRemarkPlugins: context.remarkPlugins } : {})}
+              lineBreaks={lineBreaks ?? context?.lineBreaks ?? false}
               sourceControlMedia
             />
           );

@@ -28,6 +28,11 @@ vi.mock("./server", async () => {
   const { Atom } = await import("effect/reactivity");
   return {
     environmentServerConfigsAtom: Atom.make(new Map()).pipe(Atom.keepAlive),
+  };
+});
+vi.mock("./presentation", async () => {
+  const { Atom } = await import("effect/reactivity");
+  return {
     threadListEnvironmentsAtom: Atom.make({ groupsShownInThreads: new Set<string>() }).pipe(
       Atom.keepAlive,
     ),

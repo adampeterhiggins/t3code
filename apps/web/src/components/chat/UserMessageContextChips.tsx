@@ -51,6 +51,7 @@ import { ContextChip, ContextChipLabel } from "../ContextChip";
 import { createContextPresentationRegistry } from "../contextPresentationRegistry";
 import { buttonContextChip, ContextPreviewHover } from "../contextPreviewRegistry";
 import type { ChatMarkdownContextReference } from "../ChatMarkdown";
+import { userMessageFileLabel } from "./TimelineUserMessageRow.logic";
 import { messageSkillByName, messageSkillChip } from "./SkillInlineText";
 import { type ReviewCommentContext } from "../../reviewCommentContext";
 import { TimelineRowCtx, type TimelineRowSharedState } from "./timelineRowContext";
@@ -223,10 +224,11 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
       if (record.kind !== "file" || attachment === null || attachment.type !== "file") return null;
       const isVideo = isVideoAttachment(attachment);
       const size = formatAttachmentSize(record.sizeBytes);
+      const label = userMessageFileLabel(attachment);
       return {
         trigger: (
           <FileChip
-            name={record.name}
+            name={label}
             svgPreview={
               isSvgAttachment(attachment)
                 ? { environmentId: context.environmentId, attachmentId: attachment.id }
@@ -243,6 +245,7 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
             onOpen={() =>
               isVideo ? context.onExpandVideo(attachment) : context.onOpenFile(attachment)
             }
+            tooltip={`${label}\n${size}`}
           />
         ),
         accessibleLabel: `File attachment, ${record.name}`,

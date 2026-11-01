@@ -16,11 +16,11 @@ import { ComposerPermissionsSection, type RuntimeModeOption } from "./ComposerFo
 import type { ProviderInstanceEntry } from "../../providerInstances";
 
 export const CompactComposerControlsMenu = memo(function CompactComposerControlsMenu(props: {
+  traitsMenuContent?: ReactNode;
   interactionMode: ProviderInteractionMode;
   runtimeMode: RuntimeMode;
   runtimeModeOptions: ReadonlyArray<RuntimeModeOption>;
   showInteractionModeToggle: boolean;
-  traitsMenuContent?: ReactNode;
   showPermissions?: boolean;
   accountMenu?: {
     activeInstanceId: ProviderInstanceId;

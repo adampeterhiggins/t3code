@@ -1,8 +1,10 @@
+import { WORKING_EXIT_GRACE_MS } from "@t3tools/client-runtime/state/thread-inbox";
+import { fakeTimers } from "../../test/render";
 import type { ClientSettings } from "@t3tools/contracts/settings";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 
-import { Atom, AtomRegistry } from "effect/reactivity";
+import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
 import { EnvironmentId } from "@t3tools/contracts";
 import type { AnyRouter } from "@tanstack/react-router";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -22,7 +24,7 @@ const state = vi.hoisted(() => ({
   turnError: false,
   limited: false,
   subagent: false,
-  background: [] as Array<{ taskId: string; kind: "command" | "monitor" }>,
+  background: [] as Array<{ taskId: string; kind: "command" | "monitor"; awaited?: boolean }>,
   mutedEvents: [] as ClientSettings["mutedNotificationEvents"],
   mutedProjects: [] as ClientSettings["mutedNotificationProjects"],
   conflicting: false,
@@ -145,7 +147,11 @@ vi.mock(import("../state/shell"), async (original) => {
   const actual = await original();
   return {
     ...actual,
-    environmentShell: { ...actual.environmentShell, stateValueAtom: (() => shellAtom) as never },
+    environmentShell: {
+      ...actual.environmentShell,
+      stateValueAtom: (() => shellAtom) as never,
+      stateAtom: (() => Atom.make((get) => AsyncResult.success(get(shellAtom)))) as never,
+    },
   };
 });
 vi.mock(import("../state/presentation"), async (original) => {
@@ -206,10 +212,12 @@ async function render() {
 async function complete() {
   state.completedAt = "2026-09-13T10:00:00.000Z";
   await render();
+  vi.advanceTimersByTime(WORKING_EXIT_GRACE_MS);
 }
 
 function setup() {
   vi.clearAllMocks();
+  const timers = fakeTimers();
   Object.assign(state, {
     mode: "off",
     inApp: true,
@@ -244,6 +252,7 @@ function setup() {
       stop?.();
       registry.dispose();
       settingsListeners.clear();
+      timers[Symbol.dispose]();
       vi.restoreAllMocks();
       vi.unstubAllGlobals();
     },
@@ -342,17 +351,19 @@ describe("thread notifications", () => {
       body: "Fix the login form",
       tag: expect.any(String),
       silent: true,
+      requireInteraction: false,
     });
   });
 
-  it("alerts when only a dev server is left running, not while a monitor can wake the agent", async () => {
+  it("alerts when only a dev server is left running, not while the agent awaits a monitor", async () => {
     using _fixture = setup();
     await render();
-    state.background = [{ taskId: "watch", kind: "monitor" }];
+    state.background = [{ taskId: "watch", kind: "monitor", awaited: true }];
     await complete();
     expect(state.add).not.toHaveBeenCalled();
     state.background = [{ taskId: "dev", kind: "command" }];
     await render();
+    vi.advanceTimersByTime(WORKING_EXIT_GRACE_MS);
     expect(state.add).toHaveBeenCalledTimes(1);
     expect(state.add).toHaveBeenLastCalledWith(
       expect.objectContaining({ title: "Thread completed" }),
@@ -456,13 +467,14 @@ describe("thread notifications", () => {
       body: "Fix the login form",
       tag: expect.any(String),
       silent: true,
+      requireInteraction: false,
     });
   });
 
   it("reveals the desktop window and opens the thread when a system alert is clicked", async () => {
     using _fixture = setup();
     const revealWindow = vi.fn(() => Promise.resolve());
-    vi.stubGlobal("desktopBridge", { revealWindow });
+    vi.stubGlobal("desktopBridge", { revealWindow, onNotificationBadgeClear: () => () => {} });
     state.mode = "notifications";
     state.focused = false;
     await render();

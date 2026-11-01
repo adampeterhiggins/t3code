@@ -1,8 +1,9 @@
+import { dispatchCommandPalette } from "../commandPaletteStore";
 import { useImperativeHandle, useRef } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 import { act, render } from "../../test/render";
-import { isMacPlatform, DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
+import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import { CommandPalette } from "./CommandPalette";
 import { useComposerHandleContext } from "../composerHandleContext";
 import { openCommandPalette } from "../commandPaletteBus";
@@ -124,18 +125,7 @@ describe("command palette focus restoration", () => {
     );
     const field = screen.getByRole("textbox", { name: "Settings field" });
     await userEvent.click(field);
-    const mac = isMacPlatform(navigator.platform);
-    await act(() =>
-      field.element().dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: "p",
-          ctrlKey: !mac,
-          metaKey: mac,
-          bubbles: true,
-          cancelable: true,
-        }),
-      ),
-    );
+    await act(() => dispatchCommandPalette({ _tag: "OpenFileSearch", query: "" }));
     await expect.element(page.getByRole("dialog", { name: "File picker" })).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
     await expect.element(page.getByRole("dialog", { name: "Command palette" })).toBeInTheDocument();

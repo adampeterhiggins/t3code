@@ -161,42 +161,6 @@ vi.mock(import("../ui/toast"), async (original) => {
     toastManager: { ...actual.toastManager, add: addToast, update: updateToast } as never,
   };
 });
-vi.mock(import("./PullRequestCodeTab"), async (original) => ({
-  ...(await original()),
-  default: (({
-    onAddToAgentSelection,
-    scrollerRef,
-  }: ComponentProps<typeof import("./PullRequestCodeTab").default>) => (
-    <div ref={scrollerRef} data-testid="code-scroller" className="h-full overflow-y-auto">
-      {[false, true].map((send) => (
-        <button
-          key={String(send)}
-          type="button"
-          onClick={() =>
-            onAddToAgentSelection?.({
-              request: "Fix this line",
-              delivery: send ? "send" : "composer",
-              comment: {
-                id: "note-1",
-                sectionId: "file:a.ts",
-                sectionTitle: "a.ts",
-                filePath: "a.ts",
-                startIndex: 0,
-                endIndex: 0,
-                rangeLabel: "L1",
-                text: "Please fix",
-                diff: "+broken()",
-              },
-            })
-          }
-        >
-          {send ? "Send to agent" : "Add to agent"}
-        </button>
-      ))}
-      <div className="h-[3000px]" />
-    </div>
-  )) as never,
-}));
 
 import { PullRequestDetailPanel } from "./PullRequestDetailPanel";
 import { pullRequestPanelContext } from "./pullRequestDetail.logic";
@@ -305,6 +269,7 @@ function render(props: Partial<ComponentProps<typeof PullRequestDetailPanel>> = 
 }
 
 function setup() {
+  window.localStorage.removeItem("t3code:diff-comment-agent-action:v1");
   activityDetail = null;
   currentDetail = detail;
   useComposerDraftStore.setState({ draftsByThreadKey: {} });
@@ -408,6 +373,15 @@ async function runAction(action: string) {
     await page.getByRole("menuitem", { name: new RegExp(`^${action}`) }).click();
     return;
   }
+  if (action.endsWith("to agent")) {
+    await page.getByRole("button", { name: "More ways to hand to the agent" }).click();
+    await page
+      .getByRole("menuitem", {
+        name: new RegExp(`^${action === "Add to agent" ? "Add to composer" : action}`),
+      })
+      .click();
+    return;
+  }
   await page.getByRole("button", { name: action, exact: true }).click();
 }
 
@@ -469,7 +443,7 @@ describe.each([
       expect(draft()?.reviewComments).toEqual([
         expect.objectContaining({
           text: "Fix this line",
-          diff: "+broken()",
+          diff: expect.stringContaining("+broken()"),
           pullRequest: expect.objectContaining({ number: detail.number }),
         }),
       ]);
@@ -506,7 +480,7 @@ it("offers both selection actions and queues a permitted host review locally", a
   const addToReview = page.getByRole("button", { name: "Add to review", exact: true });
   await expect.element(addToReview).toBeVisible();
   await expect
-    .element(page.getByRole("button", { name: "Add to agent", exact: true }))
+    .element(page.getByRole("button", { name: "Send to agent", exact: true }))
     .toBeVisible();
   await selectionDraft().fill("Fix this line before merging");
   await addToReview.click();
@@ -540,9 +514,9 @@ it("cancels an agent-only selection and submits a fresh one with the keyboard wi
   await selectionDraft().fill("Fix this line");
   await userEvent.keyboard("{Control>}{Enter}{/Control}");
   await expect.element(selectionDraft()).not.toBeInTheDocument();
-  expect(useComposerDraftStore.getState().getComposerDraft(draftId)?.prompt).toContain(
-    "Fix this line",
-  );
+  expect(useComposerDraftStore.getState().getComposerDraft(draftId)?.reviewComments).toEqual([
+    expect.objectContaining({ text: "Fix this line" }),
+  ]);
   expect(usePullRequestReviewStore.getState().drafts).toEqual({});
   expect(hostCommand).not.toHaveBeenCalled();
 });
@@ -607,6 +581,7 @@ it("restores the selected PR tab when switching threads and remounting the right
     return act(async () => {
       screen.rerender(
         <RightPanelSurfaceContent
+          sideChatParentPanel={{ openToolDiff: () => {}, runShellCommand: () => {} }}
           surface={selected}
           activeSurfaceId={selected?.id ?? null}
           threadRef={ref}

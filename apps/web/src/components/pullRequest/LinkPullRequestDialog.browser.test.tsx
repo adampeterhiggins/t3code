@@ -35,5 +35,7 @@ it("focuses the reference input when the dialog opens", async () => {
     }),
   );
 
-  await expect.element(page.getByPlaceholder("Pull request URL or #42")).toHaveFocus();
+  await expect
+    .element(page.getByRole("combobox", { name: "Search pull requests, or paste a URL or #123" }))
+    .toHaveFocus();
 });

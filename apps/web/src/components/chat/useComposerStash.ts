@@ -66,6 +66,7 @@ import {
   useState,
 } from "react";
 import { BackgroundThreadContext } from "./backgroundThread";
+import { isInSideChatPane } from "../../lib/sideChatPane";
 import { useStableCallback } from "../../hooks/useStableCallback";
 
 /**
@@ -723,7 +724,11 @@ export function useComposerStash(input: {
     if (backgroundThread || unfocusedSplitPane) return;
     return registerCommands(
       { "composer.stash": handleStashShortcut, "composer.saveDraft": handleSaveDraftShortcut },
-      { capture: true, context: readShortcutContext },
+      {
+        capture: true,
+        context: readShortcutContext,
+        when: (event) => !isInSideChatPane(event.target),
+      },
     );
   }, [
     backgroundThread,
