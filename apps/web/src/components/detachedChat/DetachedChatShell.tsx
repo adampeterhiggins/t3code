@@ -16,6 +16,7 @@ import {
   compactBackdropShouldDismiss,
   DETACHED_CHAT_CONTENT_MAX_WIDTH,
   dismissDetachedChat,
+  startDetachedFreshComposer,
   focusDetachedComposerInput,
   handleDetachedChatShow,
   adoptDetachedChatPresentation,
@@ -91,6 +92,7 @@ function DetachedChatFrame(props: { readonly children: ReactNode }) {
       handleDetachedChatShow(event, {
         adoptSettings: adoptClientSettings,
         adoptPresentation: adoptDetachedChatPresentation,
+        startFresh: startDetachedFreshComposer,
         focusInput: () => {
           const eligible = detachedComposerWindowCanFocus(document);
           noteDetachedComposerShow({

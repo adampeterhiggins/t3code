@@ -473,6 +473,10 @@ export type ModelPreferences = {
 const QuickMessageThemeSource = Schema.Literals(["app", "adapt", "theme"]);
 const QuickMessageAppearance = Schema.Literals(["app", "system", "light", "dark"]);
 const QuickMessageExtraContrast = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 100 }));
+/** Minutes hidden before the shortcut opens a new draft; null keeps the last one. */
+export const QuickMessageNewDraftAfterMinutes = Schema.NullOr(
+  Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+);
 
 const MIN_SIDEBAR_THREAD_PREVIEW_COUNT = 1;
 const MAX_SIDEBAR_THREAD_PREVIEW_COUNT = 15;
@@ -712,6 +716,9 @@ export const ClientSettingsSchema = Schema.Struct({
   quickMessageEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   quickMessageShortcut: GlobalShortcutChord.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_QUICK_MESSAGE_SHORTCUT)),
+  ),
+  quickMessageNewDraftAfterMinutes: QuickMessageNewDraftAfterMinutes.pipe(
+    Schema.withDecodingDefault(Effect.succeed(1)),
   ),
   wordWrap: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   // Opt-in TeX typesetting in rendered Markdown. Off keeps math parsing and
@@ -2372,6 +2379,7 @@ export const ClientSettingsPatch = Schema.Struct({
   quickMessageExtraContrast: Schema.optionalKey(QuickMessageExtraContrast),
   quickMessageEnabled: Schema.optionalKey(Schema.Boolean),
   quickMessageShortcut: Schema.optionalKey(GlobalShortcutChord),
+  quickMessageNewDraftAfterMinutes: Schema.optionalKey(QuickMessageNewDraftAfterMinutes),
   wordWrap: Schema.optionalKey(Schema.Boolean),
   mathRenderingEnabled: Schema.optionalKey(Schema.Boolean),
   showSubagentToolCallSteps: Schema.optionalKey(Schema.Boolean),

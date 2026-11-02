@@ -209,14 +209,21 @@ any app. Press the shortcut (`Option+/` on macOS and `Alt+/` elsewhere, until yo
 another). The window uses the local environment on this computer and the same composer as the
 main window. It follows the app's theme, fonts, and contrast.
 
-Press the shortcut again to reopen it. A draft you were writing is still there. Hide it with
-Escape or by clicking away from a compact composer. Start a new thread the same way you do in
-the main window.
+Hide it with Escape or by clicking away from a compact composer. Press the shortcut again within
+a minute and it reopens where you left it, with any draft you were writing. After a minute it
+opens a new draft in the same project. Change how long it waits, or choose every time or never,
+in **Settings → General → Quick message → Start a new draft**. Start a new thread the same way
+you do in the main window.
 
-From a thread that already exists, open it in the main window. The floating window stays on
-its current conversation. Settings and other app pages open in the main window rather than
-here. If the local environment is off, or you still need to sign in, the shortcut shows that
-notice. On Linux the shortcut does not work in a Wayland session.
+The bar under the floating composer, with the worktree, branch, and access level, is hidden at
+first. Show or hide it with the panel button in the composer or `mod+shift+u` (**Quick Message:
+Toggle Workspace Bar** in Keybindings). It stays as you left it.
+
+From a thread that already exists, open it in the main window; the floating window hides and
+next opens a new draft. Settings and other app pages open in the main window rather than here,
+and the floating window hides once the main window has them. If the local environment is off, or
+you still need to sign in, the shortcut shows that notice. On Linux the shortcut does not work in
+a Wayland session.
 
 ## Desktop quit shortcut
 

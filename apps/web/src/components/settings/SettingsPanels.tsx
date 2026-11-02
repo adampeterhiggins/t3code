@@ -28,7 +28,7 @@ import {
 } from "../ui/number-field";
 
 import { PythonEnvironmentSettings } from "./PythonEnvironmentSettings";
-import { QuickMessageSettingsRow } from "./QuickMessageSettings";
+import { QuickMessageNewDraftSettingsRow, QuickMessageSettingsRow } from "./QuickMessageSettings";
 import { RepositoryOwnersAddInput, RepositoryOwnersList } from "./RepositoryOwnersEditor";
 
 import { useAtomValue } from "@effect/atom-react";
@@ -1317,6 +1317,7 @@ export function GeneralSettingsPanel() {
       {isElectron ? (
         <SettingsSection title="Quick message">
           <QuickMessageSettingsRow />
+          <QuickMessageNewDraftSettingsRow />
         </SettingsSection>
       ) : null}
       <SettingsSection id="display" title="Display">

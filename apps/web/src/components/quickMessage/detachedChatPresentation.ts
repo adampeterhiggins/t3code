@@ -355,16 +355,37 @@ export function handleDetachedChatShow(
   event: {
     readonly clientSettings: ClientSettings;
     readonly presentation?: DetachedChatPresentation;
+    readonly fresh?: boolean;
   },
   actions: {
     readonly adoptSettings: (settings: ClientSettings) => void;
     readonly focusInput: () => void;
     readonly adoptPresentation: (presentation: DetachedChatPresentation) => void;
+    readonly startFresh: () => Promise<void>;
   },
 ): void {
   actions.adoptSettings(event.clientSettings);
   actions.adoptPresentation(event.presentation ?? "compact");
-  actions.focusInput();
+  if (!event.fresh) {
+    actions.focusInput();
+    return;
+  }
+  void actions.startFresh().then(actions.focusInput, actions.focusInput);
+}
+
+let freshComposerStarter: (() => Promise<void>) | null = null;
+
+/** The router-level new-thread command, so a show or a handoff can open a new draft. */
+export function setDetachedFreshComposerStarter(start: () => Promise<void>): () => void {
+  freshComposerStarter = start;
+  return () => {
+    if (freshComposerStarter === start) freshComposerStarter = null;
+  };
+}
+
+/** Moves the panel to a new draft in its current project, so the next shortcut starts fresh. */
+export function startDetachedFreshComposer(): Promise<void> {
+  return freshComposerStarter?.() ?? Promise.resolve();
 }
 
 function subscribeIdle(): () => void {

@@ -596,6 +596,52 @@ it.effect("focuses a visible unfocused panel and reopens the same presentation",
   ).pipe(Effect.provide(layerTest(null, []))),
 );
 
+it.effect("starts fresh and compact after the panel was hidden for the configured time", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const service = yield* DesktopQuickMessage.make;
+      yield* service.initialize;
+      const panel = yield* openReadyPanel(service);
+      const toggle = electron.shortcuts.get(ACCELERATOR)!;
+      yield* service.setPresentation("expanded");
+
+      toggle();
+      yield* TestClock.adjust(59_999);
+      toggle();
+      assert.deepEqual(panel.webContents.sent.at(-1), showEvent("expanded"));
+
+      toggle();
+      yield* TestClock.adjust(60_000);
+      toggle();
+      assert.deepEqual(panel.webContents.sent.at(-1), [
+        QUICK_MESSAGE_SHOW_EVENT_CHANNEL,
+        { clientSettings: enabled, presentation: "compact", fresh: true },
+      ]);
+      assert.equal(panel.bounds.at(-1)?.height, 520);
+      assert.deepEqual(yield* service.state, reportedState(true, null, "compact"));
+
+      const keepDraft = { ...enabled, quickMessageNewDraftAfterMinutes: null };
+      yield* service.configure(keepDraft);
+      toggle();
+      yield* TestClock.adjust(24 * 60 * 60_000);
+      toggle();
+      assert.deepEqual(panel.webContents.sent.at(-1), [
+        QUICK_MESSAGE_SHOW_EVENT_CHANNEL,
+        { clientSettings: keepDraft, presentation: "compact" },
+      ]);
+
+      const everyTime = { ...enabled, quickMessageNewDraftAfterMinutes: 0 };
+      yield* service.configure(everyTime);
+      toggle();
+      toggle();
+      assert.deepEqual(panel.webContents.sent.at(-1), [
+        QUICK_MESSAGE_SHOW_EVENT_CHANNEL,
+        { clientSettings: everyTime, presentation: "compact", fresh: true },
+      ]);
+    }),
+  ).pipe(Effect.provide(layerTest(null, []))),
+);
+
 it.effect("hides compact on blur, keeps expanded, and ignores menu-close focus ordering", () =>
   Effect.scoped(
     Effect.gen(function* () {

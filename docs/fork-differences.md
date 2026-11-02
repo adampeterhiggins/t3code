@@ -2462,12 +2462,17 @@ Code: `packages/client-runtime/src/work-log/webTool.ts`, rendered on web by
 A system-wide shortcut in the desktop app opens a floating window over any app, with the same
 composer as the main window, on the local environment of this computer. Turn it on and record the
 shortcut in **Settings → General → Quick message**. The window follows the app's theme, fonts, and
-contrast. Press the shortcut again to reopen it; a draft you were writing is still there.
+contrast. Press the shortcut again soon after hiding it and it reopens where it was, with any draft
+you were writing. Hidden for longer, it opens a new draft in the same project. **Start a new draft**
+in the same settings section sets how long that is: every time, a minute (the default), longer, or
+never.
+The bar under the composer (worktree, branch, access level) starts hidden; a button in the
+composer and `mod+shift+u` toggle it.
 
-Hide it and it keeps that draft. From a thread that already exists, open it in the main window. The
-floating window stays where it is. Settings and other pages that belong to the main window open
-there instead. If the local environment is off, or you still need to sign in, the shortcut shows
-that notice.
+From a thread that already exists, open it in the main window; the floating window hides and next
+opens a new draft. Settings and other pages that belong to the main window open there instead, and
+the floating window hides once the main window has them. If the local environment is off, or you
+still need to sign in, the shortcut shows that notice.
 
 See [the user guide](user/keybindings.md#quick-message).
 Code: [DesktopQuickMessage.ts](../apps/desktop/src/quickMessage/DesktopQuickMessage.ts) and

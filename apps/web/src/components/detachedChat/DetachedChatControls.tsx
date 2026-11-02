@@ -1,36 +1,65 @@
-import type { RuntimeMode, ScopedThreadRef } from "@t3tools/contracts";
+import type { ScopedThreadRef } from "@t3tools/contracts";
+import { useAtomValue } from "@effect/atom-react";
+import { Schema } from "effect";
+import { AppWindowIcon, PanelBottomCloseIcon, PanelBottomOpenIcon, XIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 
 import { DraftHeroHeadline } from "../chat/DraftHeroHeadline";
-import { resolveCompatibleRuntimeMode } from "../chat/runtimeModeConfig";
-import { ComposerContextPermissions } from "../ComposerContextPermissions";
-import { dismissDetachedChat } from "../quickMessage/detachedChatPresentation";
+import { useLocalStorage, writeLocalStorageValue } from "../../hooks/useLocalStorage";
+import { shortcutLabelForCommand } from "../../keybindings";
+import { primaryServerKeybindingsAtom } from "../../state/server";
+import {
+  dismissDetachedChat,
+  startDetachedFreshComposer,
+} from "../quickMessage/detachedChatPresentation";
 import { isDetachedChatWindow } from "../quickMessage/quickMessageWindow";
 import { Button } from "../ui/button";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { handoffIsolatedFloatingLocation, openExpandedThreadInMain } from "./openMainThread";
 
 export function DetachedChatHeaderActions(props: { readonly threadRef: ScopedThreadRef | null }) {
   if (!isDetachedChatWindow) return null;
   const { threadRef } = props;
   return (
-    <div className="ml-auto flex shrink-0 items-center gap-2">
+    <div className="ml-auto flex shrink-0 items-center gap-1">
       {threadRef ? (
-        <Button
-          variant="ghost"
-          size="sm"
+        <DetachedHeaderIconButton
+          label="Open in main window"
           onClick={() => {
             void openExpandedThreadInMain(threadRef, {
               open: (request) => window.desktopBridge?.openMainDestination?.(request),
+            }).then((result) => {
+              // The thread now lives in the main window; the shortcut should bring back a new draft.
+              if (result !== null && result.status !== "failed") void startDetachedFreshComposer();
             });
           }}
         >
-          Open in main
-        </Button>
+          <AppWindowIcon />
+        </DetachedHeaderIconButton>
       ) : null}
-      <Button variant="ghost" size="sm" onClick={dismissDetachedChat}>
-        Hide
-      </Button>
+      <DetachedHeaderIconButton label="Hide" onClick={dismissDetachedChat}>
+        <XIcon />
+      </DetachedHeaderIconButton>
     </div>
+  );
+}
+
+function DetachedHeaderIconButton(props: {
+  readonly label: string;
+  readonly onClick: () => void;
+  readonly children: ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button variant="ghost" size="icon-sm" aria-label={props.label} onClick={props.onClick} />
+        }
+      >
+        {props.children}
+      </TooltipTrigger>
+      <TooltipPopup side="bottom">{props.label}</TooltipPopup>
+    </Tooltip>
   );
 }
 
@@ -47,45 +76,67 @@ function DetachedComposerProject(
   );
 }
 
-function DetachedComposerAccess(props: {
-  readonly runtimeMode: RuntimeMode;
-  readonly supportedRuntimeModes: ReadonlyArray<RuntimeMode> | undefined;
-  readonly onOpen: () => void;
-}) {
+// Local to the floating window: its client settings are read-only there.
+const WORKSPACE_BAR_VISIBLE_KEY = "t3code:quick-message-workspace-bar-visible";
+
+/** Whether the floating composer shows its workspace bar (worktree, branch, access). */
+export function useQuickMessageWorkspaceBarVisible(): boolean {
+  return useLocalStorage(WORKSPACE_BAR_VISIBLE_KEY, false, Schema.Boolean)[0];
+}
+
+export function toggleQuickMessageWorkspaceBar(): void {
+  writeLocalStorageValue(WORKSPACE_BAR_VISIBLE_KEY, (visible) => !visible, false, Schema.Boolean);
+}
+
+function WorkspaceBarToggle() {
+  const visible = useQuickMessageWorkspaceBarVisible();
+  const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const shortcut = shortcutLabelForCommand(keybindings, "quickMessage.toggleWorkspaceBar", {
+    context: { terminalFocus: false, terminalOpen: false, modelPickerOpen: false },
+  });
+  const label = visible ? "Hide workspace bar" : "Show workspace bar";
   return (
-    <ComposerContextPermissions
-      runtimeMode={
-        resolveCompatibleRuntimeMode(props.runtimeMode, props.supportedRuntimeModes).mode
-      }
-      onOpen={props.onOpen}
-    />
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={label}
+            aria-pressed={visible}
+            onClick={toggleQuickMessageWorkspaceBar}
+          />
+        }
+      >
+        {visible ? <PanelBottomCloseIcon /> : <PanelBottomOpenIcon />}
+      </TooltipTrigger>
+      <TooltipPopup>
+        {label}
+        {shortcut ? ` (${shortcut})` : null}
+      </TooltipPopup>
+    </Tooltip>
   );
 }
 
-/** The compact floating composer's project picker and access control, in ChatComposer's slots. */
+/** The floating composer's workspace bar toggle, and the compact one's project picker, in ChatComposer's slots. */
 export function floatingComposerSlots(
-  compact: boolean,
-  input: ComponentProps<typeof DetachedComposerProject> & {
-    readonly runtimeMode: RuntimeMode;
-    readonly supportedRuntimeModes: ReadonlyArray<RuntimeMode> | undefined;
-    readonly onOpenPermissions: () => void;
-  },
+  surface: { readonly workspace: boolean; readonly compact: boolean },
+  input: ComponentProps<typeof DetachedComposerProject>,
 ): { headerLeading?: ReactNode; footerLeading?: ReactNode } {
-  if (!compact) return {};
+  if (surface.workspace) return {};
   return {
-    headerLeading: (
-      <DetachedComposerProject
-        draftId={input.draftId}
-        activeProjectRef={input.activeProjectRef}
-        activeProjectTitle={input.activeProjectTitle}
-      />
-    ),
-    footerLeading: (
-      <DetachedComposerAccess
-        runtimeMode={input.runtimeMode}
-        supportedRuntimeModes={input.supportedRuntimeModes}
-        onOpen={input.onOpenPermissions}
-      />
-    ),
+    ...(surface.compact
+      ? {
+          headerLeading: (
+            <DetachedComposerProject
+              draftId={input.draftId}
+              activeProjectRef={input.activeProjectRef}
+              activeProjectTitle={input.activeProjectTitle}
+            />
+          ),
+        }
+      : {}),
+    footerLeading: <WorkspaceBarToggle />,
   };
 }

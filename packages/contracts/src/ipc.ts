@@ -236,6 +236,8 @@ export const DesktopQuickMessageShowEvent = Schema.Struct({
    * Absent on older shells. Callers treat that as compact.
    */
   presentation: Schema.optionalKey(DesktopQuickMessagePresentation),
+  /** The panel was hidden long enough that it should open a new draft. */
+  fresh: Schema.optionalKey(Schema.Boolean),
 });
 export type DesktopQuickMessageShowEvent = typeof DesktopQuickMessageShowEvent.Type;
 
