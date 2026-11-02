@@ -44,6 +44,7 @@ const BLOCKED_DETACHED_SHORTCUTS = new Set([
   "terminal.splitVertical",
   "terminal.new",
   "terminal.close",
+  "threadPanel.toggle",
   "rightPanel.toggle",
   "rightPanel.new",
   "rightPanel.toggleMaximized",
