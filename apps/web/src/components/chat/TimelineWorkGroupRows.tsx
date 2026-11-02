@@ -582,6 +582,7 @@ export function LiveWorkEntryTimelineRow({
             )
           ) : row.entry.questionAnswer && hasQuestionAnswer(row.entry.questionAnswer) ? (
             <QuestionAnswerLabel
+              questionAnswer={row.entry.questionAnswer}
               question={label}
               answer={getQuestionAnswerPreview(row.entry.questionAnswer)}
             />
