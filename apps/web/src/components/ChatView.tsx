@@ -3883,7 +3883,7 @@ export default function ChatView(props: ChatViewProps) {
                   data-chat-composer-stack="true"
                   className="group/composer-stack pointer-events-auto relative z-10 mx-auto w-full max-w-(--chat-content-max-width)"
                 >
-                  {isDraftHeroState ? (
+                  {isDraftHeroState && !detachedCompact ? (
                     <div className={detachedCompact ? undefined : "absolute inset-x-0 bottom-full"}>
                       <div
                         className="pb-4 group-has-data-[composer-shoulder-tab]/composer-stack:pb-0"
@@ -3926,7 +3926,9 @@ export default function ChatView(props: ChatViewProps) {
                         : undefined
                     }
                   >
-                    <ComposerSurface.Shell contextRow={showComposerContextStrip}>
+                    <ComposerSurface.Shell
+                      contextRow={showComposerContextStrip && !detachedCompact}
+                    >
                       <ComposerSurface.Host
                         inert={queuedRunEdit.isSaving}
                         aria-busy={queuedRunEdit.isSaving}
@@ -3951,6 +3953,29 @@ export default function ChatView(props: ChatViewProps) {
                           ) : null}
                           {!composerMounted ? null : (
                             <ChatComposer
+                              headerLeading={
+                                detachedCompact ? (
+                                  <DraftHeroHeadline
+                                    compact
+                                    draftId={draftId}
+                                    activeProjectRef={activeProjectRef}
+                                    activeProjectTitle={activeProject?.title ?? null}
+                                  />
+                                ) : undefined
+                              }
+                              footerLeading={
+                                detachedCompact ? (
+                                  <ComposerContextPermissions
+                                    runtimeMode={
+                                      resolveCompatibleRuntimeMode(
+                                        runtimeMode,
+                                        activeProviderStatus?.supportedRuntimeModes,
+                                      ).mode
+                                    }
+                                    onOpen={openComposerPermissionsStable}
+                                  />
+                                ) : undefined
+                              }
                               createWithoutMessage={createWithoutMessage}
                               threadUsage={threadUsage}
                               canOperateThread={canOperateThread}
@@ -4139,7 +4164,7 @@ export default function ChatView(props: ChatViewProps) {
                           data-terminal-open={terminalUiState.terminalOpen ? "true" : undefined}
                           className="relative z-0"
                         >
-                          {showComposerContextStrip && (
+                          {showComposerContextStrip && (!detachedCompact || isGitRepo) && (
                             <div className="pointer-events-auto">
                               <BranchToolbar
                                 forceNewWorktree={multipleModelSelections !== null}
@@ -4180,7 +4205,7 @@ export default function ChatView(props: ChatViewProps) {
                                     : undefined
                                 }
                                 availableEnvironments={logicalProjectEnvironments}
-                                {...(isServerThread
+                                {...(isServerThread || detachedCompact
                                   ? {}
                                   : {
                                       trailing: (
@@ -4207,10 +4232,12 @@ export default function ChatView(props: ChatViewProps) {
                         </div>
                       ) : null}
                     </ComposerSurface.Shell>
-                    <div
-                      aria-hidden
-                      className="h-[calc(env(safe-area-inset-bottom)+1rem)] sm:h-[calc(env(safe-area-inset-bottom)+1.25rem)]"
-                    />
+                    {detachedCompact ? null : (
+                      <div
+                        aria-hidden
+                        className="h-[calc(env(safe-area-inset-bottom)+1rem)] sm:h-[calc(env(safe-area-inset-bottom)+1.25rem)]"
+                      />
+                    )}
                   </div>
                 </div>
               </div>

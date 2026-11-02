@@ -107,9 +107,7 @@ function DetachedChatFrame(props: { readonly children: ReactNode }) {
           if (compactBackdropShouldDismiss(event)) dismissDetachedChat();
         }}
       >
-        <div className="w-full max-w-(--chat-content-max-width) rounded-2xl bg-background p-4 shadow-lg">
-          {props.children}
-        </div>
+        <div className="w-full max-w-(--chat-content-max-width)">{props.children}</div>
       </div>
     ) : (
       <div className="flex h-full min-h-0 w-full flex-col bg-background">{props.children}</div>

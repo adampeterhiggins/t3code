@@ -1920,6 +1920,10 @@ html[data-detached-chat="compact"] body {
   background: transparent !important;
 }
 
+html[data-detached-chat="compact"] .chat-composer-lane {
+  padding-inline: 0;
+}
+
 html[data-detached-chat="compact"] [data-chat-canvas] {
   flex: none;
   height: auto;
