@@ -413,7 +413,8 @@ See [PreviewCornerAction.tsx](../apps/web/src/components/chat/PreviewCornerActio
 [AssistantCitationChip.tsx](../apps/web/src/components/chat/AssistantCitationChip.tsx).
 Syntax highlighting for tool arguments is limited to hover previews; expanded chat rows show
 plain text. Thoughts in the main chat and agent transcript preview the same way: the card renders
-the whole thought as markdown and follows it while it streams
+the whole thought as markdown and follows it while it streams. Hovering a grouped thought
+opens a list whose individual thoughts each preview their full text
 ([`ThoughtPreviewContent.tsx`](../apps/web/src/components/chat/ThoughtPreviewContent.tsx)).
 Answered questions do not preview
 ([`MessagesTimeline.tsx`](../apps/web/src/components/chat/MessagesTimeline.tsx),
