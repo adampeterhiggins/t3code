@@ -62,19 +62,37 @@ const senderWindow = (
   return Option.some(window);
 };
 
-export const resolveNativeInteractionOwner = Effect.fn(
-  "desktop.electron.resolveNativeInteractionOwner",
-)(function* (event: NativeInteractionSenderEvent | undefined) {
-  const electronWindow = yield* ElectronWindow.ElectronWindow;
-  const candidate = senderWindow(event);
-  if (Option.isSome(candidate) && !candidate.value.isDestroyed()) {
-    const main = yield* electronWindow.main;
-    const trustedMain = Option.isSome(main) && main.value === candidate.value;
-    if (trustedMain || ElectronWindow.isAuxiliaryWindow(candidate.value)) {
-      return candidate;
+const resolveNativeInteractionOwner = Effect.fn("desktop.electron.resolveNativeInteractionOwner")(
+  function* (event: NativeInteractionSenderEvent | undefined) {
+    const electronWindow = yield* ElectronWindow.ElectronWindow;
+    const candidate = senderWindow(event);
+    if (Option.isSome(candidate) && !candidate.value.isDestroyed()) {
+      const main = yield* electronWindow.main;
+      const trustedMain = Option.isSome(main) && main.value === candidate.value;
+      if (trustedMain || ElectronWindow.isAuxiliaryWindow(candidate.value)) {
+        return candidate;
+      }
     }
+    return yield* electronWindow.focusedMainOrFirst;
+  },
+);
+
+/**
+ * The window a native dialog or menu belongs to: the sending app window, else the focused main
+ * window. It counts as interacting until the IPC handler's scope closes, so give the handler
+ * `Effect.scoped`.
+ */
+export const senderOwner = Effect.fn("desktop.electron.senderOwner")(function* (
+  event: NativeInteractionSenderEvent | undefined,
+) {
+  const owner = yield* resolveNativeInteractionOwner(event);
+  if (Option.isSome(owner)) {
+    yield* Effect.acquireRelease(
+      Effect.sync(() => beginNativeWindowInteraction(owner.value)),
+      (end) => Effect.sync(end),
+    );
   }
-  return yield* electronWindow.focusedMainOrFirst;
+  return owner;
 });
 
 // The paste acknowledgement has to name its own window. A missing, destroyed,

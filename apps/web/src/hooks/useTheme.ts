@@ -1,12 +1,15 @@
 import { pipe } from "effect/Function";
-import type { DesktopAppearanceSnapshot, DesktopBridge } from "@t3tools/contracts";
+import type { DesktopBridge } from "@t3tools/contracts";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
 import * as Schema from "effect/Schema";
 import { useSyncExternalStore } from "react";
 import {
+  appearancePreferencesAreReadOnly,
   isPresentedAppearanceActive,
   notifyCommittedAppearanceChange,
-  readPresentedAppearance,
+  presentedAppearanceMode,
+  presentedTheme,
+  presentedThemeHalves,
 } from "../appearanceSnapshot";
 import {
   applyThemePalette,
@@ -14,11 +17,9 @@ import {
   invalidateCustomThemes,
   canonicalThemePreference,
   isKnownThemePreference,
-  getCommittedThemePreferenceMode,
   getThemePreferenceMode,
   getThemePreviewAppearance,
   parseThemeHalves,
-  readStoredCustomThemes,
   resolveDesktopTheme,
   resolveThemeAppearance,
   resolveThemeHalf,
@@ -33,7 +34,6 @@ import {
   type ThemePreferenceMode,
 } from "../themePalette";
 
-import { isQuickMessageWindow } from "../components/quickMessage/quickMessageWindow";
 import {
   resolveQuickMessageAppearance,
   type QuickMessageThemeSettings,
@@ -329,41 +329,15 @@ export function syncBrowserChromeTheme() {
   }
 }
 
-function presentedThemeHalves(halves: DesktopAppearanceSnapshot["halves"]): ThemeHalves | null {
-  if (halves === null) return null;
-  const next: { light?: string; dark?: string } = {};
-  if (halves.light !== undefined) next.light = halves.light;
-  if (halves.dark !== undefined) next.dark = halves.dark;
-  return next.light !== undefined || next.dark !== undefined ? next : null;
-}
-
-function activeTheme(): Theme {
-  return readPresentedAppearance()?.theme ?? getStored();
-}
-
-function activeAppearanceMode(theme: Theme): ThemePreferenceMode {
-  return readPresentedAppearance()?.appearanceMode ?? readAppearanceModePreference(theme);
-}
-
-function activeThemeHalves(): ThemeHalves | null {
-  const presented = readPresentedAppearance();
-  if (presented !== null) return presentedThemeHalves(presented.halves);
-  return readStoredThemeHalves();
-}
-
-function appearancePreferencesAreReadOnly(): boolean {
-  return isPresentedAppearanceActive() || isQuickMessageWindow;
-}
-
 function applyTheme(theme: Theme, { suppressTransitions = false, preservePreview = true } = {}) {
   if (typeof document === "undefined" || typeof window === "undefined") return;
   if (preservePreview && document.documentElement.dataset?.themeId === THEME_PREVIEW_ID) {
     return;
   }
-  const appearanceMode = activeAppearanceMode(theme);
+  const appearanceMode = presentedAppearanceMode(theme, readAppearanceModePreference);
   const followSystem = appearanceMode === "system";
   const systemDark = followSystem ? getSystemDark() : false;
-  const themeHalves = activeThemeHalves();
+  const themeHalves = presentedThemeHalves(readStoredThemeHalves);
   if (
     lastAppliedTheme?.theme === theme &&
     lastAppliedTheme.systemDark === systemDark &&
@@ -433,10 +407,7 @@ function syncDesktopTheme(
   followSystem?: boolean,
   appearanceMode?: ThemePreferenceMode,
 ) {
-  // The quick-message panel shares this page, and a presented renderer paints a
-  // snapshot it does not own. Either one calling setTheme races the main window.
-  if (typeof window === "undefined" || isQuickMessageWindow || isPresentedAppearanceActive())
-    return;
+  if (typeof window === "undefined" || appearancePreferencesAreReadOnly()) return;
   const bridge = window.desktopBridge;
   const halves = readStoredThemeHalves();
   const desktopTheme = resolveDesktopTheme(theme, followSystem, appearanceMode, halves);
@@ -470,11 +441,11 @@ function getSnapshot(): ThemeSnapshot {
   // Cache localStorage reads until signalled; useTheme calls this every render.
   if (!snapshotStale && lastSnapshot) return lastSnapshot;
   snapshotStale = false;
-  const theme = activeTheme();
-  const appearanceMode = activeAppearanceMode(theme);
+  const theme = presentedTheme(getStored);
+  const appearanceMode = presentedAppearanceMode(theme, readAppearanceModePreference);
   const followSystem = appearanceMode === "system";
   const systemDark = getSystemDark();
-  const themeHalves = activeThemeHalves();
+  const themeHalves = presentedThemeHalves(readStoredThemeHalves);
 
   const appAppearance = resolveThemeAppearance(
     theme,
@@ -511,13 +482,13 @@ function getServerSnapshot() {
 }
 
 function handleSystemAppearanceChange() {
-  const theme = activeTheme();
+  const storedTheme = presentedTheme(getStored);
   if (
-    activeAppearanceMode(theme) === "system" ||
+    presentedAppearanceMode(storedTheme, readAppearanceModePreference) === "system" ||
     quickMessageThemeSettings?.quickMessageAppearance === "system"
   ) {
     lastAppliedTheme = null;
-    applyTheme(theme, { suppressTransitions: true });
+    applyTheme(storedTheme, { suppressTransitions: true });
   }
   emitChange();
 }
@@ -738,60 +709,8 @@ function clearThemeHalves(): boolean {
 export function refreshTheme({ preservePreview = false } = {}): void {
   if (typeof window === "undefined") return;
   lastAppliedTheme = null;
-  applyTheme(activeTheme(), { suppressTransitions: true, preservePreview });
+  applyTheme(presentedTheme(getStored), { suppressTransitions: true, preservePreview });
   emitChange();
-}
-
-function committedThemeHalves(): DesktopAppearanceSnapshot["halves"] {
-  const raw = readThemeHalvesRaw();
-  if (raw.light === undefined && raw.dark === undefined) return null;
-  return {
-    ...(raw.light !== undefined ? { light: raw.light } : {}),
-    ...(raw.dark !== undefined ? { dark: raw.dark } : {}),
-  };
-}
-
-/**
- * The stored id is published as written, including an environment or custom id
- * this window cannot paint yet. Legacy aliases are canonicalized; a missing
- * key is system. Painting still goes through `readThemePreference`.
- */
-function readCommittedThemeId(): string {
-  if (typeof window === "undefined") return DEFAULT_THEME_SNAPSHOT.theme;
-  let raw: string | null;
-  try {
-    raw = window.localStorage.getItem(STORAGE_KEY);
-  } catch (cause) {
-    throw new ThemeStorageError({
-      operation: "read",
-      storageKey: STORAGE_KEY,
-      cause,
-    });
-  }
-  if (raw === null) return DEFAULT_THEME_SNAPSHOT.theme;
-  return canonicalThemePreference(raw);
-}
-
-function readCommittedAppearanceMode(theme: string): ThemePreferenceMode {
-  if (typeof window !== "undefined") {
-    try {
-      const raw = window.localStorage.getItem(THEME_APPEARANCE_MODE_STORAGE_KEY);
-      if (isThemePreferenceMode(raw)) return raw;
-    } catch {}
-  }
-
-  if (readStoredFollowSystem(theme)) return "system";
-  return getCommittedThemePreferenceMode(theme) ?? "light";
-}
-
-export function readCommittedAppearanceSnapshot(): DesktopAppearanceSnapshot {
-  const theme = readCommittedThemeId();
-  return {
-    theme,
-    appearanceMode: readCommittedAppearanceMode(theme),
-    halves: committedThemeHalves(),
-    customThemes: [...readStoredCustomThemes()],
-  };
 }
 
 export function useTheme() {
@@ -822,3 +741,10 @@ export function useTheme() {
     themeHalves: snapshot.themeHalves,
   } as const;
 }
+
+export {
+  DEFAULT_THEME_SNAPSHOT,
+  isThemePreferenceMode,
+  readStoredFollowSystem,
+  STORAGE_KEY as THEME_STORAGE_KEY,
+};

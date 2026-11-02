@@ -1,5 +1,5 @@
 import type { RuntimeMode, ScopedThreadRef } from "@t3tools/contracts";
-import type { ComponentProps } from "react";
+import type { ComponentProps, ReactNode } from "react";
 
 import { DraftHeroHeadline } from "../chat/DraftHeroHeadline";
 import { resolveCompatibleRuntimeMode } from "../chat/runtimeModeConfig";
@@ -35,7 +35,7 @@ export function DetachedChatHeaderActions(props: { readonly threadRef: ScopedThr
 }
 
 /** The floating window has no command palette, so adding a project continues in the main window. */
-export function DetachedComposerProject(
+function DetachedComposerProject(
   props: Omit<ComponentProps<typeof DraftHeroHeadline>, "compact" | "onAddProject">,
 ) {
   return (
@@ -47,7 +47,7 @@ export function DetachedComposerProject(
   );
 }
 
-export function DetachedComposerAccess(props: {
+function DetachedComposerAccess(props: {
   readonly runtimeMode: RuntimeMode;
   readonly supportedRuntimeModes: ReadonlyArray<RuntimeMode> | undefined;
   readonly onOpen: () => void;
@@ -60,4 +60,32 @@ export function DetachedComposerAccess(props: {
       onOpen={props.onOpen}
     />
   );
+}
+
+/** The compact floating composer's project picker and access control, in ChatComposer's slots. */
+export function floatingComposerSlots(
+  compact: boolean,
+  input: ComponentProps<typeof DetachedComposerProject> & {
+    readonly runtimeMode: RuntimeMode;
+    readonly supportedRuntimeModes: ReadonlyArray<RuntimeMode> | undefined;
+    readonly onOpenPermissions: () => void;
+  },
+): { headerLeading?: ReactNode; footerLeading?: ReactNode } {
+  if (!compact) return {};
+  return {
+    headerLeading: (
+      <DetachedComposerProject
+        draftId={input.draftId}
+        activeProjectRef={input.activeProjectRef}
+        activeProjectTitle={input.activeProjectTitle}
+      />
+    ),
+    footerLeading: (
+      <DetachedComposerAccess
+        runtimeMode={input.runtimeMode}
+        supportedRuntimeModes={input.supportedRuntimeModes}
+        onOpen={input.onOpenPermissions}
+      />
+    ),
+  };
 }

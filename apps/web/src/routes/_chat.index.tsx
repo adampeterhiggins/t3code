@@ -1,15 +1,14 @@
 import { workspaceAreaProps } from "../lib/workspaceFocus";
 import { RefreshIcon } from "~/components/ui/refresh-icon";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
-import type { ScopedProjectRef } from "@t3tools/contracts";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
-import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { isElectron } from "../env";
 import { NoProjectsHero } from "../components/NoProjectsHero";
-import { sortScopedProjectsForSidebar } from "../components/Sidebar.logic";
-import { restoreDetachedStartupDraft } from "../components/quickMessage/detachedChatPresentation";
+import { DetachedIndexDraftLanding } from "../components/detachedChat/DetachedIndexDraftLanding";
 import { isDetachedChatWindow } from "../components/quickMessage/quickMessageWindow";
+import { sortScopedProjectsForSidebar } from "../components/Sidebar.logic";
 import { Button } from "../components/ui/button";
 import { HostedEmptyState } from "../components/HostedEmptyState";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
@@ -18,23 +17,11 @@ import { WorkspacePageHeader } from "../components/WorkspacePageHeader";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import {
   readProject,
-  readThreadShell,
   useAllEnvironmentShellsBootstrapped,
   useProjects,
   useThreadShells,
 } from "../state/entities";
-import {
-  useEnvironments,
-  usePrimaryEnvironment,
-  usePrimaryEnvironmentId,
-} from "../state/environments";
-import {
-  isDetachedDraftStoreHydrated,
-  isDetachedPrimaryConnectionReady,
-  runDetachedIndexLanding,
-  selectDetachedLandingProject,
-  subscribeDetachedDraftStoreHydration,
-} from "./detachedChatBootstrap";
+import { useEnvironments } from "../state/environments";
 
 function ChatIndexRouteView() {
   const { authGateState } = Route.useRouteContext();
@@ -45,14 +32,14 @@ function ChatIndexRouteView() {
     if (environments.length === 0) return <HostedEmptyState />;
   }
 
-  return <IndexDraftLanding />;
+  return isDetachedChatWindow ? (
+    <DetachedIndexDraftLanding StartError={DraftStartError} />
+  ) : (
+    <IndexDraftLanding />
+  );
 }
 
 function IndexDraftLanding() {
-  return isDetachedChatWindow ? <DetachedIndexDraftLanding /> : <MainIndexDraftLanding />;
-}
-
-function MainIndexDraftLanding() {
   const projects = useProjects();
   const threads = useThreadShells();
   const bootstrapped = useAllEnvironmentShellsBootstrapped();
@@ -106,105 +93,6 @@ function MainIndexDraftLanding() {
     ) : null;
   }
   // A pending environment cannot prove the workspace is empty.
-  return bootstrapped ? <NoProjectsHero /> : null;
-}
-
-function DetachedIndexDraftLanding() {
-  const projects = useProjects();
-  const threads = useThreadShells();
-  const bootstrapped = useAllEnvironmentShellsBootstrapped();
-  const handleNewThread = useNewThreadHandler();
-  const router = useRouter();
-  const primaryEnvironmentId = usePrimaryEnvironmentId();
-  const primaryEnvironment = usePrimaryEnvironment();
-  const draftStoreHydrated = useSyncExternalStore(
-    subscribeDetachedDraftStoreHydration,
-    isDetachedDraftStoreHydrated,
-    isDetachedDraftStoreHydrated,
-  );
-  const isStillOnIndex = useEffectEvent(() => router.state.location.pathname === "/");
-  const startNewThread = useEffectEvent((projectRef: ScopedProjectRef) =>
-    handleNewThread(projectRef, { replace: true }),
-  );
-  const navigateToDraft = useEffectEvent(async (draftId: string) => {
-    await restoreDetachedStartupDraft({
-      navigate: () =>
-        router.navigate({
-          to: "/draft/$draftId",
-          params: { draftId },
-          replace: true,
-        }),
-      router,
-      draftId,
-    });
-  });
-  const consumedAttemptRef = useRef<number | null>(null);
-  const [startState, setStartState] = useState({ failed: false, retryRequest: 0 });
-  const attempt = startState.retryRequest;
-  const landingProject = selectDetachedLandingProject(projects, threads, primaryEnvironmentId);
-  const connectionPhase = primaryEnvironment?.connection.phase ?? null;
-  const hasServerConfig = primaryEnvironment?.serverConfig != null;
-  const primaryReady = isDetachedPrimaryConnectionReady({
-    primaryEnvironmentId,
-    phase: connectionPhase,
-    hasServerConfig,
-  });
-
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- restores or starts the floating window's startup draft once the router can navigate
-  useEffect(() => {
-    const projectRef =
-      landingProject === null
-        ? null
-        : scopeProjectRef(landingProject.environmentId, landingProject.id);
-    void runDetachedIndexLanding(
-      {
-        attempt,
-        consumedAttempt: consumedAttemptRef.current,
-        stillOnIndex: isStillOnIndex(),
-        draftStoreHydrated,
-        primaryEnvironmentId,
-        phase: connectionPhase,
-        hasServerConfig,
-        projectRef,
-        projectReadable: projectRef !== null && readProject(projectRef) !== null,
-      },
-      {
-        onConsume: (consumedAttempt) => {
-          consumedAttemptRef.current = consumedAttempt;
-        },
-        projectExists: (ref) => readProject(ref) !== null,
-        threadExists: (ref) => readThreadShell(ref) !== null,
-        navigateToDraft,
-        startNewThread,
-      },
-    ).then((outcome) => {
-      if (outcome === "failed") {
-        setStartState((state) => ({ ...state, failed: true }));
-      }
-    });
-  }, [
-    attempt,
-    connectionPhase,
-    draftStoreHydrated,
-    hasServerConfig,
-    landingProject,
-    primaryEnvironmentId,
-  ]);
-
-  if (!draftStoreHydrated || !primaryReady) return null;
-  if (startState.failed) {
-    return (
-      <DraftStartError
-        onRetry={() => {
-          setStartState((state) => ({
-            failed: false,
-            retryRequest: state.retryRequest + 1,
-          }));
-        }}
-      />
-    );
-  }
-  if (landingProject !== null) return null;
   return bootstrapped ? <NoProjectsHero /> : null;
 }
 
