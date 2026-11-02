@@ -2462,8 +2462,10 @@ Code: `packages/client-runtime/src/work-log/webTool.ts`, rendered on web by
 A system-wide shortcut in the desktop app opens a floating window over any app, with the same
 composer as the main window, on the local environment of this computer. Turn it on and record the
 shortcut in **Settings → General → Quick message**. The window follows the app's theme, fonts, and
-contrast. Press the shortcut again within a minute of hiding it and it reopens where it was, with
-any draft you were writing. Hidden for longer, it opens a new draft in the same project.
+contrast. Press the shortcut again soon after hiding it and it reopens where it was, with any draft
+you were writing. Hidden for longer, it opens a new draft in the same project. **Start a new draft**
+in the same settings section sets how long that is: every time, a minute (the default), longer, or
+never.
 
 From a thread that already exists, open it in the main window; the floating window hides and next
 opens a new draft. Settings and other pages that belong to the main window open there instead, and

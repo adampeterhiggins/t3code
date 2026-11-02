@@ -49,7 +49,6 @@ const RENDERER_RECOVERY_RELOAD_DELAY_MS = 500;
 const RENDERER_RECOVERY_MAX_ATTEMPTS = 3;
 const RENDERER_RECOVERY_WINDOW_MS = 60_000;
 /** Hidden this long, the shortcut opens a new draft instead of where the panel left off. */
-const QUICK_MESSAGE_FRESH_AFTER_HIDDEN_MS = 60_000;
 const RECOVERABLE_RENDERER_GONE_REASONS = new Set<Electron.RenderProcessGoneDetails["reason"]>([
   "crashed",
   "oom",
@@ -324,7 +323,11 @@ export const make = Effect.gen(function* () {
 
   const showPanel = (window: Electron.BrowserWindow) => {
     const now = Effect.runSyncWith(context)(Clock.currentTimeMillis);
-    const fresh = hiddenAt !== null && now - hiddenAt >= QUICK_MESSAGE_FRESH_AFTER_HIDDEN_MS;
+    const freshAfterMinutes = settings.quickMessageNewDraftAfterMinutes;
+    const fresh =
+      hiddenAt !== null &&
+      freshAfterMinutes !== null &&
+      now - hiddenAt >= freshAfterMinutes * 60_000;
     hiddenAt = null;
     // The renderer opens a new draft, which is compact; size for it now so the panel does not jump.
     if (fresh) presentation = "compact";

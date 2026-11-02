@@ -211,7 +211,9 @@ main window. It follows the app's theme, fonts, and contrast.
 
 Hide it with Escape or by clicking away from a compact composer. Press the shortcut again within
 a minute and it reopens where you left it, with any draft you were writing. After a minute it
-opens a new draft in the same project. Start a new thread the same way you do in the main window.
+opens a new draft in the same project. Change how long it waits, or choose every time or never,
+in **Settings → General → Quick message → Start a new draft**. Start a new thread the same way
+you do in the main window.
 
 From a thread that already exists, open it in the main window; the floating window hides and
 next opens a new draft. Settings and other app pages open in the main window rather than here,
