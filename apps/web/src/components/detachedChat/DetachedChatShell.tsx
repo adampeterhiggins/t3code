@@ -117,6 +117,23 @@ function DetachedChatFrame(props: { readonly children: ReactNode }) {
   );
 }
 
+export function DetachedConnectingNotice() {
+  useTheme();
+  return (
+    <div className="flex h-dvh w-full items-start justify-center px-6 pt-6">
+      <ComposerSurface.Shell>
+        <ComposerSurface.Host>
+          <ComposerSurface.Main>
+            <p className="px-4 py-4 text-muted-foreground text-sm" role="status">
+              Connecting to T3 Code…
+            </p>
+          </ComposerSurface.Main>
+        </ComposerSurface.Host>
+      </ComposerSurface.Shell>
+    </div>
+  );
+}
+
 export function DetachedLocalEnvironmentNotice() {
   useTheme();
   return (

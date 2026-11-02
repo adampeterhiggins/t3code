@@ -13,6 +13,8 @@ const KINDS: readonly IsolatedFloatingShellKind[] = [
   "sign-in",
   "chat",
   "not-found",
+  "error",
+  "connecting",
 ];
 
 describe("isolated floating shell", () => {
@@ -33,6 +35,22 @@ describe("isolated floating shell", () => {
         notFound: true,
       }),
     ).toBe("not-found");
+    expect(
+      isolatedFloatingShellKind({
+        localEnvironmentDisabled: false,
+        authenticated: false,
+        error: true,
+        connecting: true,
+        notFound: true,
+      }),
+    ).toBe("error");
+    expect(
+      isolatedFloatingShellKind({
+        localEnvironmentDisabled: true,
+        authenticated: false,
+        connecting: true,
+      }),
+    ).toBe("connecting");
 
     for (const kind of KINDS) {
       const plan = detachedChatShellPlan(isolatedFloatingShellHasFallback(kind));

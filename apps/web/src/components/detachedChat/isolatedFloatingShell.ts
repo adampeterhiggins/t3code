@@ -1,15 +1,25 @@
-export type IsolatedFloatingShellKind = "local-disabled" | "sign-in" | "chat" | "not-found";
+export type IsolatedFloatingShellKind =
+  | "local-disabled"
+  | "sign-in"
+  | "chat"
+  | "not-found"
+  | "error"
+  | "connecting";
 
 /**
- * What the isolated window may paint. Notices and the fail-closed page are
- * fallbacks: they still sit in the readiness frame, and they do not mount the
- * routed chat.
+ * Notices, connecting, the router error, and the fail-closed page stay in the
+ * readiness frame and do not mount routed chat. Error and connecting come
+ * before sign-in, while the session request has not settled.
  */
 export function isolatedFloatingShellKind(input: {
   readonly localEnvironmentDisabled: boolean;
   readonly authenticated: boolean;
   readonly notFound?: boolean;
+  readonly error?: boolean;
+  readonly connecting?: boolean;
 }): IsolatedFloatingShellKind {
+  if (input.error === true) return "error";
+  if (input.connecting === true) return "connecting";
   if (input.notFound === true) return "not-found";
   if (input.localEnvironmentDisabled) return "local-disabled";
   if (!input.authenticated) return "sign-in";
