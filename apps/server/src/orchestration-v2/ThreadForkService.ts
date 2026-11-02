@@ -92,8 +92,11 @@ export const layer: Layer.Layer<ThreadForkServiceV2> = Layer.succeed(
           cause: forkableSourceRunStatusError(sourceRun),
         });
       }
-      // A fork is the user's own conversation, not another run of the source's scheduled task.
-      const { scheduledTaskId: _scheduledTaskId, ...sourceThread } = input.sourceProjection.thread;
+      const {
+        scheduledTaskId: _scheduledTaskId,
+        delegatedFrom: _delegatedFrom,
+        ...sourceThread
+      } = input.sourceProjection.thread;
       const targetThread: OrchestrationV2AppThread = {
         ...sourceThread,
         // PR context follows the conversation; watching remains the source thread's responsibility.
@@ -128,6 +131,11 @@ export const layer: Layer.Layer<ThreadForkServiceV2> = Layer.succeed(
         snoozedAt: null,
         // A fork files alongside the thread it came from.
         groupName: input.sourceProjection.thread.groupName ?? null,
+        lastSnoozeWakeAt: null,
+        pinnedAt: null,
+        pinOrderKey: null,
+        activeOrderKey: null,
+        autoSettleDisabledAt: null,
         // A guest link belongs to the thread it was made for.
         guestShare: null,
         lastVisitedAt: null,

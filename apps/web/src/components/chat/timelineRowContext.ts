@@ -59,6 +59,7 @@ export interface TimelineRowSharedState {
   workspaceRoot: string | undefined;
   skills: ReadonlyArray<ServerProviderSkill>;
   runs: ReadonlyArray<HandoffTimelineRun>;
+  modelChangeRunIds: ReadonlySet<RunId>;
   activeThreadEnvironmentId: EnvironmentId;
   onRevertToTurnCount: (targetTurnCount: number, messageId: MessageId) => void;
   onForkFromMessage: ((messageId: MessageId) => void) | null;

@@ -122,6 +122,23 @@ export function useThreadShellsValue<T>(
   return useAtomValue(environmentThreadShells.threadShellsAtom, select);
 }
 
+/** Whether any connected environment is hiding tagged threads right now. */
+export function useAnyEnvironmentHiding(): boolean {
+  return useAtomValue(environmentThreadShells.anyEnvironmentHidingAtom);
+}
+
+/** Keys of threads the tag filter hides from display, by `threadKey`. */
+export function useHiddenThreadKeys(): ReadonlySet<string> {
+  return useAtomValue(environmentThreadShells.hiddenThreadKeysAtom);
+}
+
+/** Thread shells minus those the tag filter hides, for lists that show threads to the user. */
+export function useVisibleThreadShells(enabled = true): ReadonlyArray<EnvironmentThreadShell> {
+  return useAtomValue(
+    enabled ? environmentThreadShells.visibleThreadShellsAtom : EMPTY_THREAD_SHELLS_ATOM,
+  );
+}
+
 export function useAllEnvironmentShellsBootstrapped(): boolean {
   return useAtomValue(allEnvironmentShellsBootstrappedAtom);
 }
@@ -160,7 +177,12 @@ export function useQuietThreadShell(ref: ScopedThreadRef | null): EnvironmentThr
 
 /** Every thread shell, held through streaming ticks; see quietThreadShellAtom. */
 export function useQuietThreadShells(): ReadonlyArray<EnvironmentThreadShell> {
-  return useAtomValue(environmentThreadShells.quietThreadShellsAtom);
+  const shells = useAtomValue(environmentThreadShells.quietThreadShellsAtom);
+  const hiddenKeys = useHiddenThreadKeys();
+  return shells.filter(
+    (shell) =>
+      !hiddenKeys.has(threadKey({ environmentId: shell.environmentId, threadId: shell.id })),
+  );
 }
 
 export function useChildThreadInputs(ref: ScopedThreadRef | null) {
