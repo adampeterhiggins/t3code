@@ -1888,8 +1888,8 @@ body {
    backdrop blur only sees this page, not the apps behind the window, so the glass stays opaque.
    The theme writes the chrome colour inline on html and body, hence the !important. */
 html[data-quick-message] {
-  --glass-opacity: 100%;
-  --glass-blur: 0px;
+  --glass-opacity: 100% !important;
+  --glass-blur: 0px !important;
 }
 
 /* The chat column fits this footer beside the round send button. While the draft
@@ -1911,8 +1911,8 @@ html[data-quick-message] body {
    composer. The page's own backdrop blur cannot see the apps behind the window,
    so the composer glass is opaque. Expanded clears this and paints the thread. */
 html[data-detached-chat="compact"] {
-  --glass-opacity: 100%;
-  --glass-blur: 0px;
+  --glass-opacity: 100% !important;
+  --glass-blur: 0px !important;
   background: transparent !important;
 }
 
