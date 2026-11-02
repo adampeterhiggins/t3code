@@ -19,6 +19,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { v2Projection } from "./orchestrationV2TestFixtures.ts";
 import {
+  deriveActiveRunAwaitsSubagents,
   deriveReportedModelSelection,
   deriveLatestThreadRun,
   deriveProviderSubagentStatus,
@@ -334,6 +335,99 @@ describe("presentRunStop", () => {
     },
   ])("presents $name", ({ runs, turnItems, state }) => {
     expect(presentRunStop({ runs, turnItems })?.state ?? null).toBe(state);
+  });
+});
+
+describe("deriveActiveRunAwaitsSubagents", () => {
+  const running = run("run-awaiting", 1, "running");
+  const base = {
+    threadId: v2Projection.thread.id,
+    runId: running.id,
+    nodeId: null,
+    providerThreadId: null,
+    providerTurnId: null,
+    nativeItemRef: null,
+    parentItemId: null,
+    title: null,
+    startedAt: now,
+    completedAt: null,
+    updatedAt: now,
+  };
+  const subagent = (ordinal: number, status: "running" | "completed") => ({
+    ...base,
+    id: TurnItemId.make(`subagent-${ordinal}`),
+    ordinal,
+    status,
+    type: "subagent" as const,
+    subagentId: NodeId.make(`subagent-${ordinal}`),
+    origin: "provider_native" as const,
+    driver: ProviderDriverKind.make("claudeAgent"),
+    providerInstanceId: v2Projection.thread.providerInstanceId,
+    childThreadId: null,
+    prompt: "Review the changes",
+    result: null,
+  });
+  const command = (ordinal: number) => ({
+    ...base,
+    id: TurnItemId.make(`command-${ordinal}`),
+    ordinal,
+    status: "running" as const,
+    type: "command_execution" as const,
+    input: "vp test",
+  });
+  const notice = (ordinal: number) => ({
+    ...base,
+    id: TurnItemId.make(`notice-${ordinal}`),
+    ordinal,
+    status: "completed" as const,
+    type: "system_notice" as const,
+    message: "Context compacted",
+  });
+
+  it.each([
+    {
+      name: "a live subagent is the newest work",
+      items: [command(1), subagent(2, "running")],
+      awaits: true,
+    },
+    {
+      name: "parallel subagents, the newest done",
+      items: [subagent(1, "running"), subagent(2, "completed")],
+      awaits: true,
+    },
+    {
+      name: "a notice after a live subagent",
+      items: [subagent(1, "running"), notice(2)],
+      awaits: true,
+    },
+    {
+      name: "the parent works after launching one",
+      items: [subagent(1, "running"), command(2)],
+      awaits: false,
+    },
+    { name: "every trailing subagent finished", items: [subagent(1, "completed")], awaits: false },
+    {
+      name: "a child item of a subagent",
+      items: [
+        command(1),
+        { ...subagent(2, "running"), parentItemId: TurnItemId.make("command-1") },
+      ],
+      awaits: false,
+    },
+  ])("$name", ({ items, awaits }) => {
+    expect(
+      deriveActiveRunAwaitsSubagents({ ...v2Projection, runs: [running], turnItems: items }),
+    ).toBe(awaits);
+  });
+
+  it("is false once the run is no longer running", () => {
+    expect(
+      deriveActiveRunAwaitsSubagents({
+        ...v2Projection,
+        runs: [{ ...running, status: "completed" }],
+        turnItems: [subagent(1, "running")],
+      }),
+    ).toBe(false);
   });
 });
 

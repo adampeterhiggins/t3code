@@ -263,6 +263,17 @@ Code: `steerTurn` in
 `Run.steer` in
 [`CursorAgentSdk.ts`](../packages/provider-cursor/src/server/CursorAgentSdk.ts).
 
+## Follow-ups steer a turn waiting on subagents
+
+With **Follow-up behavior** set to Queue, a follow-up still steers the running turn when the
+agent's newest work is subagents it is waiting on, so the message reaches the agent without
+**Send now**. A Claude steer moves those subagents to the background first. Turn it off with
+**Steer while waiting on subagents** under Settings → Chat (web and desktop) or Settings → Chat
+(mobile). Upstream queues the message until the turn ends.
+
+Code: `deriveActiveRunAwaitsSubagents` in
+[`threadExecution.ts`](../packages/client-runtime/src/state/threadExecution.ts).
+
 ## Agents panel drilldowns
 
 Upstream makes every subagent a child thread, lists a thread's subagents under **Lineage** in the

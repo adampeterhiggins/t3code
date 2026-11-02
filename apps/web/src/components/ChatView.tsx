@@ -103,6 +103,7 @@ import {
   RuntimeMode,
 } from "@t3tools/contracts";
 import {
+  deriveActiveRunAwaitsSubagents,
   deriveProviderSubagentStatus,
   deriveReportedModelSelection,
   deriveResumableRunId,
@@ -845,6 +846,14 @@ export default function ChatView(props: ChatViewProps) {
     serverProjection === null ? null : deriveRunlessWorkStartedAt(serverProjection);
   const providerSubagentStatus =
     serverProjection === null ? null : deriveProviderSubagentStatus(serverProjection);
+  // Fork: a turn blocked on its subagents takes the follow-up now instead of queueing it.
+  const followUpBehavior =
+    settings.followUpBehavior === "queue" &&
+    settings.steerWhileAwaitingSubagents &&
+    serverProjection !== null &&
+    deriveActiveRunAwaitsSubagents(serverProjection)
+      ? "steer"
+      : settings.followUpBehavior;
   const isProviderSubagent =
     serverThread !== null && isProviderNativeSubagentThread(serverThread.source);
   const supportsProviderSwitchingViaHandoff = threadSupportsProviderHandoff(serverProjection);
@@ -3314,7 +3323,7 @@ export default function ChatView(props: ChatViewProps) {
           threadRef={scopeThreadRef(activeThread.environmentId, activeThread.id)}
           running={phase === "running"}
           canSteer={!isCompacting}
-          followUpBehavior={settings.followUpBehavior}
+          followUpBehavior={followUpBehavior}
           onOpen={openMessageDraftStable}
         />
         <QueuedRunsControl
@@ -4006,6 +4015,7 @@ export default function ChatView(props: ChatViewProps) {
                               environmentUnavailable={activeEnvironmentUnavailableState}
                               activePendingApproval={activePendingApproval}
                               pendingApprovals={pendingApprovals}
+                              followUpBehavior={followUpBehavior}
                               onHeldRequestIdsChange={onHeldRequestIdsChange}
                               pendingUserInputs={pendingUserInputs}
                               activePendingProgress={activePendingProgress}

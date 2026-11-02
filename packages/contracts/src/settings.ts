@@ -635,6 +635,10 @@ export const ClientSettingsSchema = Schema.Struct({
   followUpBehavior: Schema.Literals(["queue", "steer"]).pipe(
     Schema.withDecodingDefault(Effect.succeed("steer")),
   ),
+  // Fork: with Queue, a follow-up still steers a turn that only waits on its subagents.
+  steerWhileAwaitingSubagents: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(true)),
+  ),
   proactivePanelsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   showSkillsInSlashMenu: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   boringSidebarEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
@@ -2338,6 +2342,7 @@ export const ClientSettingsPatch = Schema.Struct({
   composerRichTextEnabled: Schema.optionalKey(Schema.Boolean),
   sendShortcut: Schema.optionalKey(Schema.Literals(["enter", "mod-enter-multiline", "mod-enter"])),
   followUpBehavior: Schema.optionalKey(Schema.Literals(["queue", "steer"])),
+  steerWhileAwaitingSubagents: Schema.optionalKey(Schema.Boolean),
   proactivePanelsEnabled: Schema.optionalKey(Schema.Boolean),
   showSkillsInSlashMenu: Schema.optionalKey(Schema.Boolean),
   boringSidebarEnabled: Schema.optionalKey(Schema.Boolean),
