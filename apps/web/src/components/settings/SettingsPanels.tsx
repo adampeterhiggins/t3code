@@ -565,6 +565,10 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.followUpBehavior !== DEFAULT_UNIFIED_SETTINGS.followUpBehavior
       ? ["Follow-up behavior"]
       : []),
+    ...(settings.steerWhileAwaitingSubagents !==
+    DEFAULT_UNIFIED_SETTINGS.steerWhileAwaitingSubagents
+      ? ["Steer while waiting on subagents"]
+      : []),
     ...(settings.contextWindowMeterEnabled !== DEFAULT_UNIFIED_SETTINGS.contextWindowMeterEnabled
       ? ["Context window indicator"]
       : []),
@@ -696,6 +700,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       composerRichTextEnabled: DEFAULT_UNIFIED_SETTINGS.composerRichTextEnabled,
       sendShortcut: DEFAULT_UNIFIED_SETTINGS.sendShortcut,
       followUpBehavior: DEFAULT_UNIFIED_SETTINGS.followUpBehavior,
+      steerWhileAwaitingSubagents: DEFAULT_UNIFIED_SETTINGS.steerWhileAwaitingSubagents,
       contextWindowMeterEnabled: DEFAULT_UNIFIED_SETTINGS.contextWindowMeterEnabled,
       environmentIdentificationMode: DEFAULT_UNIFIED_SETTINGS.environmentIdentificationMode,
       glassOpacity: DEFAULT_UNIFIED_SETTINGS.glassOpacity,
@@ -1523,6 +1528,35 @@ export function ChatSettingsPanel() {
             </Select>
           }
         />
+        {settings.followUpBehavior === "queue" ? (
+          <SettingsRow
+            {...searchableSetting("steer-while-awaiting-subagents")}
+            description="When the agent is only waiting on its subagents, steer instead of queueing, so your message reaches it right away."
+            resetAction={
+              settings.steerWhileAwaitingSubagents !==
+              DEFAULT_UNIFIED_SETTINGS.steerWhileAwaitingSubagents ? (
+                <SettingResetButton
+                  label="steer while waiting on subagents"
+                  onClick={() =>
+                    updateSettings({
+                      steerWhileAwaitingSubagents:
+                        DEFAULT_UNIFIED_SETTINGS.steerWhileAwaitingSubagents,
+                    })
+                  }
+                />
+              ) : null
+            }
+            control={
+              <Switch
+                checked={settings.steerWhileAwaitingSubagents}
+                onCheckedChange={(checked) =>
+                  updateSettings({ steerWhileAwaitingSubagents: Boolean(checked) })
+                }
+                aria-label="Steer while waiting on subagents"
+              />
+            }
+          />
+        ) : null}
       </SettingsSection>
     </SettingsPageContainer>
   );

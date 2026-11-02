@@ -468,6 +468,8 @@ export interface ChatComposerProps {
 
   activePendingApproval: PendingApproval | null;
   pendingApprovals: PendingApproval[];
+  /** The thread's follow-up behavior for this moment; settings may steer a turn awaiting subagents. */
+  followUpBehavior: UnifiedSettings["followUpBehavior"];
   onHeldRequestIdsChange: (requestIds: ReadonlySet<string>) => void;
   pendingUserInputs: PendingUserInput[];
   activePendingProgress: {
@@ -628,6 +630,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     environmentUnavailable,
     activePendingApproval: incomingPendingApproval,
     pendingApprovals,
+    followUpBehavior: threadFollowUpBehavior,
     onHeldRequestIdsChange,
     pendingUserInputs: incomingPendingUserInputs,
     activePendingProgress: incomingPendingProgress,
@@ -1359,7 +1362,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     (approval) => !heldRequestIds.has(approval.requestId),
   )
     ? "steer"
-    : settings.followUpBehavior;
+    : threadFollowUpBehavior;
   const composerSuggestionsVisible = composerMenuOpen;
   const composerSuggestionListVisible = composerSuggestionsVisible && composerMenuItems.length > 0;
   const activePendingUserInput = pendingUserInputs[0] ?? null;

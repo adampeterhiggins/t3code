@@ -707,6 +707,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["queue steer running turn send default behavior composer"],
   },
   {
+    id: "steer-while-awaiting-subagents",
+    title: "Steer while waiting on subagents",
+    to: "/settings/chat",
+    searchTerms: ["queue steer subagent agent waiting blocked follow-up send now"],
+  },
+  {
     id: "provider-update-checks",
     title: "Provider update checks",
     to: "/settings/maintenance",

@@ -12,6 +12,7 @@ import {
 } from "@t3tools/client-runtime/handoff";
 import type { ThreadCheckpointSummary } from "@t3tools/client-runtime/state/thread-checkpoints";
 import {
+  deriveActiveRunAwaitsSubagents,
   deriveProviderSubagentStatus,
   deriveResumableRunId,
   deriveRunlessWorkStartedAt,
@@ -92,7 +93,10 @@ import { Atom } from "effect/reactivity";
 import { AsyncResult } from "effect/reactivity";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { prepareTurnAttachments } from "../lib/attachmentUpload";
-import { DEFAULT_FOLLOW_UP_BEHAVIOR } from "../lib/followUpBehavior";
+import {
+  DEFAULT_FOLLOW_UP_BEHAVIOR,
+  DEFAULT_STEER_WHILE_AWAITING_SUBAGENTS,
+} from "../lib/followUpBehavior";
 import { mobilePreferencesAtom } from "./preferences";
 import { environmentThreadDetails } from "./threads";
 import {
@@ -305,9 +309,22 @@ export function useThreadComposerState() {
   })();
 
   const preferencesResult = useAtomValue(mobilePreferencesAtom);
-  const followUpBehavior = AsyncResult.isSuccess(preferencesResult)
+  const preferredFollowUpBehavior = AsyncResult.isSuccess(preferencesResult)
     ? (preferencesResult.value.followUpBehavior ?? DEFAULT_FOLLOW_UP_BEHAVIOR)
     : DEFAULT_FOLLOW_UP_BEHAVIOR;
+  const steerWhileAwaitingSubagents = AsyncResult.isSuccess(preferencesResult)
+    ? (preferencesResult.value.steerWhileAwaitingSubagents ??
+      DEFAULT_STEER_WHILE_AWAITING_SUBAGENTS)
+    : DEFAULT_STEER_WHILE_AWAITING_SUBAGENTS;
+  // Fork: a turn blocked on its subagents takes the follow-up now instead of queueing it.
+  const followUpBehavior =
+    preferredFollowUpBehavior === "queue" &&
+    steerWhileAwaitingSubagents &&
+    selectedThreadProjection !== null &&
+    selectedThreadProjection !== undefined &&
+    deriveActiveRunAwaitsSubagents(selectedThreadProjection.projection)
+      ? "steer"
+      : preferredFollowUpBehavior;
   const queueWorkflow = useAtomValue(
     selectedThreadDetailRef === null
       ? EMPTY_QUEUE_WORKFLOW_ATOM
