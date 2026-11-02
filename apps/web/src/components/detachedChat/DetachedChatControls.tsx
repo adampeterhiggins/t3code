@@ -1,4 +1,5 @@
 import type { RuntimeMode, ScopedThreadRef } from "@t3tools/contracts";
+import { AppWindowIcon, XIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 
 import { DraftHeroHeadline } from "../chat/DraftHeroHeadline";
@@ -7,30 +8,52 @@ import { ComposerContextPermissions } from "../ComposerContextPermissions";
 import { dismissDetachedChat } from "../quickMessage/detachedChatPresentation";
 import { isDetachedChatWindow } from "../quickMessage/quickMessageWindow";
 import { Button } from "../ui/button";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { handoffIsolatedFloatingLocation, openExpandedThreadInMain } from "./openMainThread";
 
 export function DetachedChatHeaderActions(props: { readonly threadRef: ScopedThreadRef | null }) {
   if (!isDetachedChatWindow) return null;
   const { threadRef } = props;
   return (
-    <div className="ml-auto flex shrink-0 items-center gap-2">
+    <div className="ml-auto flex shrink-0 items-center gap-1">
       {threadRef ? (
-        <Button
-          variant="ghost"
-          size="sm"
+        <DetachedHeaderIconButton
+          label="Open in main window"
           onClick={() => {
             void openExpandedThreadInMain(threadRef, {
               open: (request) => window.desktopBridge?.openMainDestination?.(request),
+            }).then((result) => {
+              // The panel floats above every window, so it would cover the thread it just opened.
+              if (result !== null && result.status !== "failed") dismissDetachedChat();
             });
           }}
         >
-          Open in main
-        </Button>
+          <AppWindowIcon />
+        </DetachedHeaderIconButton>
       ) : null}
-      <Button variant="ghost" size="sm" onClick={dismissDetachedChat}>
-        Hide
-      </Button>
+      <DetachedHeaderIconButton label="Hide" onClick={dismissDetachedChat}>
+        <XIcon />
+      </DetachedHeaderIconButton>
     </div>
+  );
+}
+
+function DetachedHeaderIconButton(props: {
+  readonly label: string;
+  readonly onClick: () => void;
+  readonly children: ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button variant="ghost" size="icon-sm" aria-label={props.label} onClick={props.onClick} />
+        }
+      >
+        {props.children}
+      </TooltipTrigger>
+      <TooltipPopup side="bottom">{props.label}</TooltipPopup>
+    </Tooltip>
   );
 }
 
