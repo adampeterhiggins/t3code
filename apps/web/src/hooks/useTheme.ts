@@ -1,14 +1,12 @@
 import { pipe } from "effect/Function";
-import { DesktopAppearanceSnapshot, type DesktopBridge } from "@t3tools/contracts";
+import type { DesktopAppearanceSnapshot, DesktopBridge } from "@t3tools/contracts";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
-import * as Equal from "effect/Equal";
 import * as Schema from "effect/Schema";
 import { useSyncExternalStore } from "react";
 import {
   isPresentedAppearanceActive,
   notifyCommittedAppearanceChange,
   readPresentedAppearance,
-  setPresentedAppearanceSnapshot,
 } from "../appearanceSnapshot";
 import {
   applyThemePalette,
@@ -17,13 +15,10 @@ import {
   canonicalThemePreference,
   isKnownThemePreference,
   getCommittedThemePreferenceMode,
-  getCustomThemes,
   getThemePreferenceMode,
   getThemePreviewAppearance,
   parseThemeHalves,
-  clearPresentedCustomThemes,
   readStoredCustomThemes,
-  replacePresentedCustomThemes,
   resolveDesktopTheme,
   resolveThemeAppearance,
   resolveThemeHalf,
@@ -37,8 +32,6 @@ import {
   type ThemeHalves,
   type ThemePreferenceMode,
 } from "../themePalette";
-
-export { subscribeCommittedAppearanceChanges } from "../appearanceSnapshot";
 
 import { isQuickMessageWindow } from "../components/quickMessage/quickMessageWindow";
 import {
@@ -799,45 +792,6 @@ export function readCommittedAppearanceSnapshot(): DesktopAppearanceSnapshot {
     halves: committedThemeHalves(),
     customThemes: [...readStoredCustomThemes()],
   };
-}
-
-const decodePresentedAppearance = Schema.decodeUnknownSync(DesktopAppearanceSnapshot);
-
-export function adoptPresentedAppearance(snapshot: unknown): void {
-  const presented = decodePresentedAppearance(snapshot);
-  const current = readPresentedAppearance();
-  const previousThemes = current === null ? null : getCustomThemes();
-  setPresentedAppearanceSnapshot(presented);
-  const nextThemes = replacePresentedCustomThemes(presented.customThemes);
-  // A republished snapshot is a new object with the same preference. Repainting
-  // it is the wasted frame this client already refuses for environment palettes.
-  if (
-    current !== null &&
-    current.theme === presented.theme &&
-    current.appearanceMode === presented.appearanceMode &&
-    Equal.equals(current.halves, presented.halves) &&
-    previousThemes !== null &&
-    Equal.equals(previousThemes, nextThemes)
-  ) {
-    return;
-  }
-  lastAppliedTheme = null;
-  if (typeof window === "undefined") return;
-  // The snapshot is already the committed state of another window. Do not publish it again.
-  applyTheme(presented.theme, { suppressTransitions: true });
-  emitChange();
-}
-
-export function releasePresentedAppearance(): void {
-  // Drop the cached library while the overlay still answers theme reads, so
-  // this invalidation cannot paint stored colors over the presented snapshot.
-  invalidateCustomThemes();
-  setPresentedAppearanceSnapshot(null);
-  clearPresentedCustomThemes();
-  lastAppliedTheme = null;
-  if (typeof window === "undefined") return;
-  applyTheme(getStored(), { suppressTransitions: true });
-  emitChange();
 }
 
 export function useTheme() {

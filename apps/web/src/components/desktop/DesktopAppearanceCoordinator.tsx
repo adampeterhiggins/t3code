@@ -1,11 +1,9 @@
 import { useEffect } from "react";
 
 import { adoptClientSettings } from "~/hooks/useSettings";
-import {
-  adoptPresentedAppearance,
-  readCommittedAppearanceSnapshot,
-  subscribeCommittedAppearanceChanges,
-} from "~/hooks/useTheme";
+import { adoptPresentedAppearance } from "~/appearancePresentation";
+import { subscribeCommittedAppearanceChanges } from "~/appearanceSnapshot";
+import { readCommittedAppearanceSnapshot } from "~/hooks/useTheme";
 
 import {
   startDesktopAppearanceSession,

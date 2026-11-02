@@ -5,15 +5,13 @@ import {
   Link,
   redirect,
   createRootRoute,
-  rootRouteId,
   type ErrorComponentProps,
   useLocation,
   useNavigate,
   useRouter,
-  useRouterState,
 } from "@tanstack/react-router";
 import { Check, Copy } from "lucide";
-import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { APP_DISPLAY_NAME, APP_VERSION } from "../branding";
 import { AppSidebarLayout } from "../components/AppSidebarLayout";
@@ -38,23 +36,13 @@ import { ConnectOnboardingDialog } from "../components/cloud/ConnectOnboardingDi
 import { RelayClientInstallDialog } from "../components/cloud/RelayClientInstallDialog";
 import { SshPasswordPromptDialog } from "../components/desktop/SshPasswordPromptDialog";
 import { SnapShotCoordinator } from "../components/desktop/SnapShotCoordinator";
-import {
-  DesktopAppearanceCoordinator,
-  FloatingEnvironmentThemeSync,
-} from "../components/desktop/DesktopAppearanceCoordinator";
+import { DesktopAppearanceCoordinator } from "../components/desktop/DesktopAppearanceCoordinator";
 import { desktopAppearanceCoordinatorRole } from "../components/desktop/desktopAppearanceSession";
 import { MainDestinationCoordinator } from "../components/desktop/MainDestinationCoordinator";
 import {
-  DetachedChatReadinessShell,
-  DetachedChatShell,
-  DetachedConnectingNotice,
-  DetachedLocalEnvironmentNotice,
-} from "../components/detachedChat/DetachedChatShell";
-import {
-  isolatedFloatingShellHasFallback,
-  isolatedFloatingShellKind,
-} from "../components/detachedChat/isolatedFloatingShell";
-import { QuickMessageSignInNotice } from "../components/quickMessage/QuickMessageSignInNotice";
+  DetachedRootBranch,
+  detachedRootRouteOptions,
+} from "../components/detachedChat/DetachedRootViews";
 import {
   isDetachedChatWindow,
   isQuickMessageWindow,
@@ -159,25 +147,15 @@ export const Route = createRootRoute({
   component: RootRouteView,
   errorComponent: RootRouteErrorView,
   notFoundComponent: RootRouteNotFoundView,
-  // The floating window stays hidden until its frame is ready. pendingMinMs 0
-  // replaces a fast session immediately. wrapInSuspense keeps pending, error,
-  // and not-found inside the match. The shell is the one frame outside that
-  // suspense boundary, so show stays subscribed while those views swap.
   ...(isDetachedChatWindow
-    ? {
-        pendingComponent: RootRoutePendingView,
-        pendingMs: 0,
-        pendingMinMs: 0,
-        wrapInSuspense: true,
-        shellComponent: DetachedChatReadinessShell,
-      }
+    ? detachedRootRouteOptions({ NotFound: RootRouteNotFoundView, Error: RootRouteErrorView })
     : {}),
   head: () => ({
     meta: [{ name: "title", content: APP_DISPLAY_NAME }],
   }),
 });
 
-function RootRouteNotFoundMessage() {
+function RootRouteNotFoundView() {
   return (
     <main className="flex min-h-0 min-w-0 flex-1 items-center justify-center p-6">
       <div className="flex max-w-sm flex-col items-center gap-4 text-center">
@@ -192,90 +170,23 @@ function RootRouteNotFoundMessage() {
   );
 }
 
-function RootRouteNotFoundView() {
-  if (isDetachedChatWindow) {
-    return <IsolatedFloatingWindow authenticated={false} notFound={<RootRouteNotFoundMessage />} />;
-  }
-  return <RootRouteNotFoundMessage />;
-}
-
-function IsolatedFloatingAppearance() {
-  const role = desktopAppearanceCoordinatorRole({
-    detached: true,
-    authenticatedMainShell: false,
-  });
-  return (
-    <>
-      <FloatingEnvironmentThemeSync />
-      {role === null ? null : <DesktopAppearanceCoordinator role={role} />}
-    </>
-  );
-}
-
-function IsolatedFloatingWindow(props: {
-  readonly authenticated: boolean;
-  readonly notFound?: ReactNode;
-  readonly error?: ReactNode;
-  readonly connecting?: boolean;
-}) {
-  const kind = isolatedFloatingShellKind({
-    localEnvironmentDisabled: isLocalEnvironmentDisabled(),
-    authenticated: props.authenticated,
-    notFound: props.notFound !== undefined,
-    error: props.error !== undefined,
-    connecting: props.connecting === true,
-  });
-  const fallback = isolatedFloatingShellHasFallback(kind) ? (
-    kind === "error" ? (
-      props.error
-    ) : kind === "connecting" ? (
-      <DetachedConnectingNotice />
-    ) : kind === "local-disabled" ? (
-      <DetachedLocalEnvironmentNotice />
-    ) : kind === "sign-in" ? (
-      <QuickMessageSignInNotice />
-    ) : (
-      props.notFound
-    )
-  ) : undefined;
-  return (
-    <DetachedChatShell {...(fallback === undefined ? {} : { fallback })}>
-      <IsolatedFloatingAppearance />
-    </DetachedChatShell>
-  );
-}
-
 function RootRouteView() {
   // Above every branch: app services raise toasts for the whole page, so the surface they write to
   // must not unmount when the root switches branches (for example /welcome to the app shell).
   return (
     <ToastProvider>
       <AnchoredToastProvider>
-        <RootRouteBranch />
+        {isDetachedChatWindow ? (
+          <DetachedRootBranch NotFound={RootRouteNotFoundView} />
+        ) : (
+          <RootRouteBranch />
+        )}
       </AnchoredToastProvider>
     </ToastProvider>
   );
 }
 
 function RootRouteBranch() {
-  const rootGlobalNotFound = useRouterState({
-    select: (state) =>
-      state.matches.some((match) => match.routeId === rootRouteId && match.globalNotFound === true),
-  });
-  // beforeLoad notFound leaves the root match successful with an empty context
-  // so the shell can render. Reading auth here throws and the error page wins.
-  if (isDetachedChatWindow && rootGlobalNotFound) {
-    return (
-      <>
-        <IsolatedFloatingAppearance />
-        <RootRouteNotFoundMessage />
-      </>
-    );
-  }
-  return <RootRouteResolvedBranch />;
-}
-
-function RootRouteResolvedBranch() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { authGateState } = Route.useRouteContext();
   const primaryEnvironmentAuthenticated = authGateState.status === "authenticated";
@@ -285,12 +196,8 @@ function RootRouteResolvedBranch() {
   const [returningFromWelcome, setReturningFromWelcome] = useState(pathname === "/welcome");
   if (pathname === "/welcome" && !returningFromWelcome) setReturningFromWelcome(true);
   const hostedPromptLinkLanding = useHostedPromptLinkLanding(
-    !isDetachedChatWindow && authGateState.status === "hosted-static",
+    authGateState.status === "hosted-static",
   );
-
-  if (isDetachedChatWindow) {
-    return <IsolatedFloatingWindow authenticated={primaryEnvironmentAuthenticated} />;
-  }
 
   if (pathname === GUEST_PAGE_PATH) return <Outlet />;
 
@@ -389,25 +296,7 @@ function RootRouteResolvedBranch() {
   );
 }
 
-function RootRoutePendingView() {
-  const rootPending = useRouterState({
-    select: (state) =>
-      state.matches.some((match) => match.routeId === rootRouteId && match.status === "pending"),
-  });
-  // A child load with no pending view also uses this suspense fallback.
-  if (!rootPending) return null;
-  return <IsolatedFloatingWindow authenticated={false} connecting />;
-}
-
 function RootRouteErrorView({ error }: ErrorComponentProps) {
-  const content = <RootRouteErrorContent error={error} />;
-  if (isDetachedChatWindow) {
-    return <IsolatedFloatingWindow authenticated={false} error={content} />;
-  }
-  return content;
-}
-
-function RootRouteErrorContent({ error }: { readonly error: unknown }) {
   const router = useRouter();
   const message = errorMessage(error);
   // Router pathname rather than window.location: desktop uses hash history, where the window path is always "/".

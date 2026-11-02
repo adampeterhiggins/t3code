@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 vi.mock("~/components/quickMessage/quickMessageWindow", () => ({
   isQuickMessageWindow: true,
+  isDetachedChatWindow: false,
 }));
 
 const persistenceMocks = vi.hoisted(() => ({

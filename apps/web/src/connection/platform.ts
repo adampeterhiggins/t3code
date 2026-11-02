@@ -62,6 +62,11 @@ import {
   type DesktopSecondaryBootstrapsRead,
 } from "./desktopLocal";
 import * as ConnectionStorage from "./storage";
+import {
+  connectionStorageForWindow,
+  detachedSshGateway,
+  secondaryBootstrapsForWindow,
+} from "./detachedConnectionPolicy";
 import { clientPresentationMetadata } from "./clientMetadata";
 
 let nextObservedRpcRequestId = 0;
@@ -323,68 +328,6 @@ const analyticsDevice = {
   }).pipe(Effect.option),
 };
 
-function detachedSshBlocked() {
-  return new ConnectionBlockedError({
-    reason: "unsupported",
-    detail: "SSH environments are not available in the floating chat.",
-  });
-}
-
-/**
- * The floating chat only connects to this computer. SSH setup would open a
- * tunnel and then persist that machine into the shared desktop catalog.
- */
-export function makeDesktopSshGateway(detached: boolean) {
-  return {
-    provision: Effect.fn("web.connectionPlatform.ssh.provision")(function* (
-      target: DesktopSshEnvironmentTarget,
-      expectedEnvironmentId?: EnvironmentId,
-    ) {
-      if (detached) return yield* detachedSshBlocked();
-      const bridge = window.desktopBridge;
-      if (bridge === undefined) {
-        return yield* new ConnectionBlockedError({
-          reason: "unsupported",
-          detail: "SSH environments are only available in the desktop app.",
-        });
-      }
-      return yield* provisionDesktopSshEnvironment(bridge, target, expectedEnvironmentId);
-    }),
-    prepare: Effect.fn("web.connectionPlatform.ssh.prepare")(function* (input: {
-      readonly connectionId: string;
-      readonly expectedEnvironmentId: EnvironmentId;
-      readonly target: DesktopSshEnvironmentTarget;
-      readonly bearerToken?: string;
-    }) {
-      if (detached) return yield* detachedSshBlocked();
-      const bridge = window.desktopBridge;
-      if (bridge === undefined) {
-        return yield* new ConnectionBlockedError({
-          reason: "unsupported",
-          detail: "SSH environments are only available in the desktop app.",
-        });
-      }
-      return yield* prepareDesktopSshEnvironment(bridge, input);
-    }),
-    disconnect: Effect.fn("web.connectionPlatform.ssh.disconnect")(function* (
-      target: DesktopSshEnvironmentTarget,
-    ) {
-      if (detached) return;
-      const bridge = window.desktopBridge;
-      if (bridge === undefined) return;
-      pendingSshSetups.delete(sshTargetKey(target));
-      yield* Effect.tryPromise({
-        try: () => bridge.disconnectSshEnvironment(target),
-        catch: (cause) =>
-          new ConnectionTransientError({
-            reason: "remote-unavailable",
-            detail: `Could not disconnect the SSH environment: ${String(cause)}`,
-          }),
-      });
-    }),
-  };
-}
-
 const layerCapabilities = Layer.effectContext(
   Effect.sync(() => {
     const presentation = ClientCapabilities.ClientPresentation.of({
@@ -433,9 +376,46 @@ const layerCapabilities = Layer.effectContext(
           }),
       }).pipe(Effect.map(Option.fromNullishOr)),
     });
-    const ssh = ClientCapabilities.SshEnvironmentGateway.of(
-      makeDesktopSshGateway(isDetachedChatWindow),
-    );
+    const desktopSsh = ClientCapabilities.SshEnvironmentGateway.of({
+      provision: Effect.fn("web.connectionPlatform.ssh.provision")(
+        function* (target, expectedEnvironmentId) {
+          const bridge = window.desktopBridge;
+          if (bridge === undefined) {
+            return yield* new ConnectionBlockedError({
+              reason: "unsupported",
+              detail: "SSH environments are only available in the desktop app.",
+            });
+          }
+          return yield* provisionDesktopSshEnvironment(bridge, target, expectedEnvironmentId);
+        },
+      ),
+      prepare: Effect.fn("web.connectionPlatform.ssh.prepare")(function* (input) {
+        const bridge = window.desktopBridge;
+        if (bridge === undefined) {
+          return yield* new ConnectionBlockedError({
+            reason: "unsupported",
+            detail: "SSH environments are only available in the desktop app.",
+          });
+        }
+        return yield* prepareDesktopSshEnvironment(bridge, input);
+      }),
+      disconnect: Effect.fn("web.connectionPlatform.ssh.disconnect")(function* (target) {
+        const bridge = window.desktopBridge;
+        if (bridge === undefined) {
+          return;
+        }
+        pendingSshSetups.delete(sshTargetKey(target));
+        yield* Effect.tryPromise({
+          try: () => bridge.disconnectSshEnvironment(target),
+          catch: (cause) =>
+            new ConnectionTransientError({
+              reason: "remote-unavailable",
+              detail: `Could not disconnect the SSH environment: ${String(cause)}`,
+            }),
+        });
+      }),
+    });
+    const ssh = isDetachedChatWindow ? detachedSshGateway : desktopSsh;
 
     return Context.make(ClientCapabilities.CloudSession, cloudSession).pipe(
       Context.add(ClientCapabilities.AnalyticsDevice, analyticsDevice),
@@ -648,62 +628,6 @@ export function secondaryRegistrationsToRetainAfterTopologyRead(
   );
 }
 
-const DETACHED_CATALOG_MESSAGE = "The floating chat only connects to this computer.";
-
-function detachedCatalogWriteError(
-  operation: Persistence.ConnectionPersistenceError["operation"],
-): Persistence.ConnectionPersistenceError {
-  return new Persistence.ConnectionPersistenceError({
-    operation,
-    message: DETACHED_CATALOG_MESSAGE,
-  });
-}
-
-/** Saved relay, SSH, and URL connections stay in the shared catalog and out of this window. */
-export function persistedTargetsForDetachedCatalog<Target>(
-  detached: boolean,
-  targets: ReadonlyArray<Target>,
-): ReadonlyArray<Target> {
-  return detached ? [] : targets;
-}
-
-export function includeSecondaryPlatformRegistrations(detached: boolean): boolean {
-  return !detached;
-}
-
-type ConnectionTargetStoreService = Persistence.ConnectionTargetStore["Service"];
-type ConnectionRegistrationStoreService = Persistence.ConnectionRegistrationStore["Service"];
-
-/**
- * The registry acquires environments from these stores at startup. Filtering
- * here, and refusing later writes, keeps the shared desktop document intact:
- * a filtered copy written back would delete the main window's remotes.
- */
-export function isolateDetachedConnectionCatalog(stores: {
-  readonly targets: ConnectionTargetStoreService;
-  readonly registrations: ConnectionRegistrationStoreService;
-}): {
-  readonly targets: ConnectionTargetStoreService;
-  readonly registrations: ConnectionRegistrationStoreService;
-} {
-  return {
-    targets: {
-      list: stores.targets.list.pipe(
-        Effect.map((targets) => persistedTargetsForDetachedCatalog(true, targets)),
-      ),
-      listDisabled: stores.targets.listDisabled.pipe(
-        Effect.map((environmentIds) => persistedTargetsForDetachedCatalog(true, environmentIds)),
-      ),
-    },
-    registrations: {
-      register: () => Effect.fail(detachedCatalogWriteError("register-connection")),
-      setRoutes: () => Effect.fail(detachedCatalogWriteError("set-connection-routes")),
-      remove: () => Effect.fail(detachedCatalogWriteError("remove-connection")),
-      setEnabled: () => Effect.fail(detachedCatalogWriteError("set-connection-enabled")),
-    },
-  };
-}
-
 const layerPlatformConnectionSource = Layer.effect(
   PlatformConnectionSource.PlatformConnectionSource,
   Effect.gen(function* () {
@@ -760,94 +684,45 @@ const layerPlatformConnectionSource = Layer.effect(
         }
       }
 
-      // WSL and other desktop-local backends are separate machines. This window
-      // keeps only the primary registration collected above.
-      if (includeSecondaryPlatformRegistrations(isDetachedChatWindow)) {
-        const topologyRead = readDesktopSecondaryBootstrapsResult();
-        for (const [id, cached] of secondaryRegistrationsToRetainAfterTopologyRead(
-          previous,
-          topologyRead,
-          nowEpochMs,
-        )) {
-          next.set(id, cached);
-          registrations.push(cached.registration);
-        }
+      const topologyRead = secondaryBootstrapsForWindow(
+        isDetachedChatWindow,
+        readDesktopSecondaryBootstrapsResult,
+      );
+      for (const [id, cached] of secondaryRegistrationsToRetainAfterTopologyRead(
+        previous,
+        topologyRead,
+        nowEpochMs,
+      )) {
+        next.set(id, cached);
+        registrations.push(cached.registration);
+      }
 
-        if (topologyRead._tag === "Failure") {
-          yield* Effect.logWarning("Could not read the desktop-local backend topology.", {
-            cause: topologyRead.cause,
-          });
-        } else {
-          const rejected = yield* Ref.get(rejectedRef);
-          const nextRejected = new Map<string, RejectedSecondaryBootstrap>();
-          for (const bootstrap of topologyRead.bootstraps) {
-            // Token rotation only controls exchange retries; dropping endpoint bearers also clears drafts.
-            const endpointSignature = `${bootstrap.httpBaseUrl}|${bootstrap.wsBaseUrl}`;
-            const signature = `${endpointSignature}|${bootstrap.bootstrapToken ?? ""}`;
-            const cached = previous.get(bootstrap.id);
-            // Rotation may mean a restart; retain the old bearer if the new exchange fails.
+      if (topologyRead._tag === "Failure") {
+        yield* Effect.logWarning("Could not read the desktop-local backend topology.", {
+          cause: topologyRead.cause,
+        });
+      } else {
+        const rejected = yield* Ref.get(rejectedRef);
+        const nextRejected = new Map<string, RejectedSecondaryBootstrap>();
+        for (const bootstrap of topologyRead.bootstraps) {
+          // Token rotation only controls exchange retries; dropping endpoint bearers also clears drafts.
+          const endpointSignature = `${bootstrap.httpBaseUrl}|${bootstrap.wsBaseUrl}`;
+          const signature = `${endpointSignature}|${bootstrap.bootstrapToken ?? ""}`;
+          const cached = previous.get(bootstrap.id);
+          // Rotation may mean a restart; retain the old bearer if the new exchange fails.
+          if (
+            cached !== undefined &&
+            cached.bootstrapToken === bootstrap.bootstrapToken &&
+            canReuseCachedPlatformRegistration(cached, endpointSignature, nowEpochMs)
+          ) {
+            next.set(bootstrap.id, cached);
+            registrations.push(cached.registration);
+            continue;
+          }
+          const previouslyRejected = rejected.get(bootstrap.id);
+          if (isRejectedSecondaryBootstrap(previouslyRejected, signature, nowEpochMs)) {
+            nextRejected.set(bootstrap.id, previouslyRejected);
             if (
-              cached !== undefined &&
-              cached.bootstrapToken === bootstrap.bootstrapToken &&
-              canReuseCachedPlatformRegistration(cached, endpointSignature, nowEpochMs)
-            ) {
-              next.set(bootstrap.id, cached);
-              registrations.push(cached.registration);
-              continue;
-            }
-            const previouslyRejected = rejected.get(bootstrap.id);
-            if (isRejectedSecondaryBootstrap(previouslyRejected, signature, nowEpochMs)) {
-              nextRejected.set(bootstrap.id, previouslyRejected);
-              if (
-                cached !== undefined &&
-                canRetainCachedPlatformRegistrationAfterRefreshFailure(
-                  cached,
-                  endpointSignature,
-                  nowEpochMs,
-                )
-              ) {
-                next.set(bootstrap.id, cached);
-                registrations.push(cached.registration);
-              }
-              continue;
-            }
-            const built = yield* loadSecondaryConnectionRegistration(bootstrap).pipe(
-              Effect.tapError((error) =>
-                Effect.logWarning("Could not connect a desktop-local backend.", {
-                  id: bootstrap.id,
-                  error,
-                }),
-              ),
-              Effect.tapError((error) =>
-                isRejectedBootstrapCredentialError(error)
-                  ? // Start backoff at rejection; this poll can outlast the first delay.
-                    Clock.currentTimeMillis.pipe(
-                      Effect.map((rejectedAtEpochMs) =>
-                        nextRejected.set(
-                          bootstrap.id,
-                          nextRejectedSecondaryBootstrap(
-                            previouslyRejected,
-                            signature,
-                            rejectedAtEpochMs,
-                          ),
-                        ),
-                      ),
-                    )
-                  : Effect.void,
-              ),
-              Effect.option,
-            );
-            if (Option.isSome(built)) {
-              const cacheEntry = {
-                signature: endpointSignature,
-                ...(bootstrap.bootstrapToken === undefined
-                  ? {}
-                  : { bootstrapToken: bootstrap.bootstrapToken }),
-                ...built.value,
-              };
-              next.set(bootstrap.id, cacheEntry);
-              registrations.push(built.value.registration);
-            } else if (
               cached !== undefined &&
               canRetainCachedPlatformRegistrationAfterRefreshFailure(
                 cached,
@@ -858,9 +733,57 @@ const layerPlatformConnectionSource = Layer.effect(
               next.set(bootstrap.id, cached);
               registrations.push(cached.registration);
             }
+            continue;
           }
-          yield* Ref.set(rejectedRef, nextRejected);
+          const built = yield* loadSecondaryConnectionRegistration(bootstrap).pipe(
+            Effect.tapError((error) =>
+              Effect.logWarning("Could not connect a desktop-local backend.", {
+                id: bootstrap.id,
+                error,
+              }),
+            ),
+            Effect.tapError((error) =>
+              isRejectedBootstrapCredentialError(error)
+                ? // Start backoff at rejection; this poll can outlast the first delay.
+                  Clock.currentTimeMillis.pipe(
+                    Effect.map((rejectedAtEpochMs) =>
+                      nextRejected.set(
+                        bootstrap.id,
+                        nextRejectedSecondaryBootstrap(
+                          previouslyRejected,
+                          signature,
+                          rejectedAtEpochMs,
+                        ),
+                      ),
+                    ),
+                  )
+                : Effect.void,
+            ),
+            Effect.option,
+          );
+          if (Option.isSome(built)) {
+            const cacheEntry = {
+              signature: endpointSignature,
+              ...(bootstrap.bootstrapToken === undefined
+                ? {}
+                : { bootstrapToken: bootstrap.bootstrapToken }),
+              ...built.value,
+            };
+            next.set(bootstrap.id, cacheEntry);
+            registrations.push(built.value.registration);
+          } else if (
+            cached !== undefined &&
+            canRetainCachedPlatformRegistrationAfterRefreshFailure(
+              cached,
+              endpointSignature,
+              nowEpochMs,
+            )
+          ) {
+            next.set(bootstrap.id, cached);
+            registrations.push(cached.registration);
+          }
         }
+        yield* Ref.set(rejectedRef, nextRejected);
       }
 
       yield* Ref.set(cacheRef, next);
@@ -903,26 +826,8 @@ const layerRpcRequestObserver = Layer.succeed(
   }),
 );
 
-const layerConnectionStorage: typeof ConnectionStorage.layer = Layer.effectContext(
-  Effect.gen(function* () {
-    const context = yield* Layer.build(ConnectionStorage.layer);
-    if (!isDetachedChatWindow) return context;
-    const isolated = isolateDetachedConnectionCatalog({
-      targets: Context.get(context, Persistence.ConnectionTargetStore),
-      registrations: Context.get(context, Persistence.ConnectionRegistrationStore),
-    });
-    return context.pipe(
-      Context.add(
-        Persistence.ConnectionTargetStore,
-        Persistence.ConnectionTargetStore.of(isolated.targets),
-      ),
-      Context.add(
-        Persistence.ConnectionRegistrationStore,
-        Persistence.ConnectionRegistrationStore.of(isolated.registrations),
-      ),
-    );
-  }),
-);
+const layerConnectionStorage: typeof ConnectionStorage.layer =
+  connectionStorageForWindow(isDetachedChatWindow);
 
 type ConnectionPlatformLayerSource =
   | typeof layerConnectionStorage

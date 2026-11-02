@@ -49,7 +49,6 @@ import {
 } from "../ui/combobox";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { Button, InlineButton } from "../ui/button";
-import { handoffIsolatedFloatingLocation } from "../detachedChat/openMainThread";
 import { DraftProjectName } from "./DraftProjectName";
 import { DraftHeroProjectHeading } from "./DraftHeroProjectHeading";
 import { TriageDraftHero } from "./TriageDraftHero";
@@ -67,6 +66,7 @@ interface PickerItem {
 
 interface DraftHeroHeadlineProps {
   readonly compact?: boolean;
+  readonly onAddProject?: () => void;
   readonly draftId: DraftId | null;
   readonly activeProjectRef: ScopedProjectRef | null;
   readonly activeProjectTitle: string | null;
@@ -74,6 +74,7 @@ interface DraftHeroHeadlineProps {
 
 export function DraftHeroHeadline({
   compact = false,
+  onAddProject,
   draftId,
   activeProjectRef,
   activeProjectTitle,
@@ -95,10 +96,7 @@ export function DraftHeroHeadline({
   );
   const applyStickyState = useComposerDraftStore((store) => store.applyStickyState);
   const setModelSelection = useComposerDraftStore((store) => store.setModelSelection);
-  const openAddProject = () =>
-    compact
-      ? handoffIsolatedFloatingLocation("/settings/projects")
-      : openCommandPalette({ open: "add-project" });
+  const openAddProject = onAddProject ?? (() => openCommandPalette({ open: "add-project" }));
   const { scratchEnvironmentId, scratchWorkspaceRootFor, openScratchProject } = useScratchProject();
   const openProjectDraft = useNewThreadHandler();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);

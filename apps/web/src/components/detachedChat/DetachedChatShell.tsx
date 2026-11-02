@@ -1,3 +1,5 @@
+import "./detachedChat.css";
+
 import { Outlet } from "@tanstack/react-router";
 import { type CSSProperties, type ReactNode, useLayoutEffect } from "react";
 

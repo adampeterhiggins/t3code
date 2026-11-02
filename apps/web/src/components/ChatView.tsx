@@ -1,9 +1,9 @@
-import { Button } from "./ui/button";
-import { openExpandedThreadInMain } from "./detachedChat/openMainThread";
 import {
-  dismissDetachedChat,
-  useDetachedChatPresentation,
-} from "./quickMessage/detachedChatPresentation";
+  DetachedChatHeaderActions,
+  DetachedComposerAccess,
+  DetachedComposerProject,
+} from "./detachedChat/DetachedChatControls";
+import { useDetachedChatPresentation } from "./quickMessage/detachedChatPresentation";
 import { isDetachedChatWindow } from "./quickMessage/quickMessageWindow";
 import { useChatViewSplitPane } from "./chat/useChatViewSplitPane";
 import { useChatViewIntegrationShortcuts } from "./chat/useChatViewIntegrationShortcuts";
@@ -3595,11 +3595,8 @@ export default function ChatView(props: ChatViewProps) {
   const content = (
     <div
       ref={setWorkspaceLayoutElement}
-      className={
-        detachedCompact
-          ? "relative flex h-auto w-full flex-none flex-col overflow-visible bg-transparent"
-          : "relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background"
-      }
+      data-chat-workspace
+      className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background"
     >
       {embedded || isDetachedChatWindow ? null : (
         <DeviceSetupDialogHost
@@ -3611,10 +3608,8 @@ export default function ChatView(props: ChatViewProps) {
       {rightPanelControlsAtRoot && !embedded ? panelLayoutControls : null}
       <div
         className={cn(
-          "flex min-w-0 flex-col",
-          detachedCompact
-            ? "h-auto w-full flex-none overflow-visible bg-transparent"
-            : cn("min-h-0 overflow-x-hidden", rightPanelMaximized ? "w-0 flex-none" : "flex-1"),
+          "flex min-h-0 min-w-0 flex-col overflow-x-hidden",
+          rightPanelMaximized ? "w-0 flex-none" : "flex-1",
         )}
         data-chat-column-maximized-away={rightPanelMaximized ? "true" : "false"}
         data-chat-column
@@ -3663,36 +3658,11 @@ export default function ChatView(props: ChatViewProps) {
                 : {})}
               {...(threadFindEnabled ? { onFindInThread: openThreadFindStable } : {})}
             />
-            {isDetachedChatWindow ? (
-              <div className="ml-auto flex shrink-0 items-center gap-2">
-                {isServerThread && activeThreadRef ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      void openExpandedThreadInMain(activeThreadRef, {
-                        open: (request) => window.desktopBridge?.openMainDestination?.(request),
-                      });
-                    }}
-                  >
-                    Open in main
-                  </Button>
-                ) : null}
-                <Button variant="ghost" size="sm" onClick={dismissDetachedChat}>
-                  Hide
-                </Button>
-              </div>
-            ) : null}
+            <DetachedChatHeaderActions threadRef={isServerThread ? activeThreadRef : null} />
           </header>
         )}
 
-        <div
-          className={
-            detachedCompact
-              ? "relative flex w-full flex-none flex-col"
-              : "relative flex min-h-0 min-w-0 flex-1"
-          }
-        >
+        <div data-chat-canvas-layout className="relative flex min-h-0 min-w-0 flex-1">
           <ThreadFindCanvas
             findOptions={{
               skills: timelineSkills,
@@ -3732,9 +3702,8 @@ export default function ChatView(props: ChatViewProps) {
             />
             <div
               {...conversationArea}
-              className={
-                detachedCompact ? "hidden" : "relative flex min-h-0 flex-1 flex-col bg-background"
-              }
+              data-chat-conversation
+              className="relative flex min-h-0 flex-1 flex-col bg-background"
             >
               <ThreadTimeline
                 pendingModelChange={pendingModelChange}
@@ -3871,11 +3840,9 @@ export default function ChatView(props: ChatViewProps) {
               inert={isRevertingCheckpoint}
               data-chat-composer-overlay="true"
               className={
-                detachedCompact
-                  ? "pointer-events-none relative z-20 flex w-full flex-col"
-                  : isDraftHeroState
-                    ? "pointer-events-none absolute inset-0 z-20 flex items-center"
-                    : "pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-1.5 sm:pt-2"
+                isDraftHeroState
+                  ? "pointer-events-none absolute inset-0 z-20 flex items-center"
+                  : "pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-1.5 sm:pt-2"
               }
             >
               <div ref={draftHeroTransitionGroupRef} className="chat-composer-lane w-full">
@@ -3884,7 +3851,7 @@ export default function ChatView(props: ChatViewProps) {
                   className="group/composer-stack pointer-events-auto relative z-10 mx-auto w-full max-w-(--chat-content-max-width)"
                 >
                   {isDraftHeroState && !detachedCompact ? (
-                    <div className={detachedCompact ? undefined : "absolute inset-x-0 bottom-full"}>
+                    <div className="absolute inset-x-0 bottom-full">
                       <div
                         className="pb-4 group-has-data-[composer-shoulder-tab]/composer-stack:pb-0"
                         style={
@@ -3955,8 +3922,7 @@ export default function ChatView(props: ChatViewProps) {
                             <ChatComposer
                               headerLeading={
                                 detachedCompact ? (
-                                  <DraftHeroHeadline
-                                    compact
+                                  <DetachedComposerProject
                                     draftId={draftId}
                                     activeProjectRef={activeProjectRef}
                                     activeProjectTitle={activeProject?.title ?? null}
@@ -3965,12 +3931,10 @@ export default function ChatView(props: ChatViewProps) {
                               }
                               footerLeading={
                                 detachedCompact ? (
-                                  <ComposerContextPermissions
-                                    runtimeMode={
-                                      resolveCompatibleRuntimeMode(
-                                        runtimeMode,
-                                        activeProviderStatus?.supportedRuntimeModes,
-                                      ).mode
+                                  <DetachedComposerAccess
+                                    runtimeMode={runtimeMode}
+                                    supportedRuntimeModes={
+                                      activeProviderStatus?.supportedRuntimeModes
                                     }
                                     onOpen={openComposerPermissionsStable}
                                   />
@@ -4232,12 +4196,11 @@ export default function ChatView(props: ChatViewProps) {
                         </div>
                       ) : null}
                     </ComposerSurface.Shell>
-                    {detachedCompact ? null : (
-                      <div
-                        aria-hidden
-                        className="h-[calc(env(safe-area-inset-bottom)+1rem)] sm:h-[calc(env(safe-area-inset-bottom)+1.25rem)]"
-                      />
-                    )}
+                    <div
+                      aria-hidden
+                      data-chat-composer-bottom-inset
+                      className="h-[calc(env(safe-area-inset-bottom)+1rem)] sm:h-[calc(env(safe-area-inset-bottom)+1.25rem)]"
+                    />
                   </div>
                 </div>
               </div>

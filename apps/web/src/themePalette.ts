@@ -310,12 +310,6 @@ export function replacePresentedCustomThemes(
   return themes;
 }
 
-export function clearPresentedCustomThemes(): void {
-  if (presentedCustomThemes === null) return;
-  presentedCustomThemes = null;
-  notifyCustomThemeListeners();
-}
-
 function publishedThemeColors(
   theme: EnvironmentTheme,
   appearance: ThemeAppearance,
