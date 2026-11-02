@@ -5,6 +5,11 @@ import { AsyncResult } from "effect/reactivity";
 import { expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
+vi.mock(import("../ThreadHoverCard"), async (original) => ({
+  ...(await original()),
+  ThreadPreview: ({ record }) => <span>{record.title}</span>,
+}));
+
 vi.mock(import("./agentReferences"), async (original) => ({
   ...(await original()),
   useAgentHandles: () => new Map(),

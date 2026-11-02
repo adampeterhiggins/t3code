@@ -26,9 +26,13 @@ vi.mock("../../state/use-atom-command", () => ({
         ? mocks.createProject
         : mocks.refresh,
 }));
+vi.mock("../../hooks/useScratchProject", () => ({
+  useScratchProject: () => ({ scratchWorkspaceRootFor: () => null }),
+}));
 vi.mock("../../hooks/useSettings", () => ({ useUpdateEnvironmentSettings: () => vi.fn() }));
 vi.mock("../../onboarding/firstRun", () => ({ completeOnboarding: mocks.complete }));
 vi.mock("../../state/entities", () => ({
+  useServerConfigs: () => new Map(),
   useProjects: () => mocks.projects,
   readProjects: () => mocks.projects,
   waitForProject: (ref: { projectId: string }) =>
@@ -44,6 +48,7 @@ vi.mock("../../state/environments", () => {
   return {
     useEnvironments: () => ({ environments: [environment] }),
     usePrimaryEnvironment: () => environment,
+    usePrimaryEnvironmentId: () => environment.environmentId,
   };
 });
 vi.mock("../../state/server", () => ({

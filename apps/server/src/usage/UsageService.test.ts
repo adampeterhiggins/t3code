@@ -2979,6 +2979,7 @@ describe("UsageService", () => {
 
   it.live("reads each Cursor instance's own sign-in and counts one account once", () =>
     Effect.gen(function* () {
+      yield* TestClock.setTime(CURSOR_NOW);
       const { settings, home } = yield* setup;
       const jwt = (subject: string) =>
         `header.${Buffer.from(JSON.stringify({ sub: subject })).toString("base64url")}.signature`;
@@ -3061,7 +3062,7 @@ describe("UsageService", () => {
         .filter((bucket) => bucket.provider === "cursor")
         .reduce((sum, bucket) => sum + bucket.totals.outputTokens, 0);
       assert.equal(output, 7 + 11);
-    }).pipe(Effect.scoped),
+    }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
   );
 
   it.live("keeps Devin catalog rates when LiteLLM loads on the first scan", () =>
