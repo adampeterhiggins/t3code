@@ -1,7 +1,13 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { Schema } from "effect";
-import { AppWindowIcon, PanelBottomCloseIcon, PanelBottomOpenIcon, XIcon } from "lucide-react";
+import {
+  AppWindowIcon,
+  PanelBottomCloseIcon,
+  PanelBottomOpenIcon,
+  SquarePenIcon,
+  XIcon,
+} from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 
 import { DraftHeroHeadline } from "../chat/DraftHeroHeadline";
@@ -10,6 +16,7 @@ import { shortcutLabelForCommand } from "../../keybindings";
 import { primaryServerKeybindingsAtom } from "../../state/server";
 import {
   dismissDetachedChat,
+  focusDetachedComposerInput,
   startDetachedFreshComposer,
 } from "../quickMessage/detachedChatPresentation";
 import { isDetachedChatWindow } from "../quickMessage/quickMessageWindow";
@@ -22,6 +29,16 @@ export function DetachedChatHeaderActions(props: { readonly threadRef: ScopedThr
   const { threadRef } = props;
   return (
     <div className="ml-auto flex shrink-0 items-center gap-1">
+      {threadRef ? (
+        <DetachedHeaderIconButton
+          label="New quick message"
+          onClick={() => {
+            void startDetachedFreshComposer().then(() => focusDetachedComposerInput(document));
+          }}
+        >
+          <SquarePenIcon />
+        </DetachedHeaderIconButton>
+      ) : null}
       {threadRef ? (
         <DetachedHeaderIconButton
           label="Open in main window"
