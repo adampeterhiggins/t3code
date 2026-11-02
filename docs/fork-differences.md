@@ -2464,9 +2464,9 @@ composer as the main window, on the local environment of this computer. Turn it 
 shortcut in **Settings → General → Quick message**. The window follows the app's theme, fonts, and
 contrast. Press the shortcut again to reopen it; a draft you were writing is still there.
 
-Hide it and it keeps that draft. From a thread that already exists, open it in the main window. The
-floating window stays where it is. Settings and other pages that belong to the main window open
-there instead. If the local environment is off, or you still need to sign in, the shortcut shows
+Hide it and it keeps that draft. From a thread that already exists, open it in the main window.
+Settings and other pages that belong to the main window open there instead. Either way the
+floating window hides once the main window has it. If the local environment is off, or you still need to sign in, the shortcut shows
 that notice.
 
 See [the user guide](user/keybindings.md#quick-message).

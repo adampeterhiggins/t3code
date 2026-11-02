@@ -213,9 +213,9 @@ Press the shortcut again to reopen it. A draft you were writing is still there. 
 Escape or by clicking away from a compact composer. Start a new thread the same way you do in
 the main window.
 
-From a thread that already exists, open it in the main window. The floating window stays on
-its current conversation. Settings and other app pages open in the main window rather than
-here. If the local environment is off, or you still need to sign in, the shortcut shows that
+From a thread that already exists, open it in the main window. Settings and other app pages
+open in the main window rather than here. Either way the floating window hides once the main
+window has it, and the shortcut brings it back on the same conversation. If the local environment is off, or you still need to sign in, the shortcut shows that
 notice. On Linux the shortcut does not work in a Wayland session.
 
 ## Desktop quit shortcut
