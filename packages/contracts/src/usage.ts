@@ -1,18 +1,4 @@
-/**
- * Usage reporting contract.
- *
- * Each environment scans native session files and databases — the provider
- * CLIs' own on-disk session transcripts (`~/.claude/projects/**\/*.jsonl`,
- * `~/.codex/sessions/**\/*.jsonl`, `~/.grok/sessions/**\/updates.jsonl`) and
- * T3's Devin ACP event logs — including work driven outside T3 Code, rather
- * than relying on T3 Code's own orchestration projections. Source status
- * describes gaps in local coverage.
- *
- * Environments return pre-aggregated `(day, hourStart?, provider, model, sourcePath?)`
- * buckets. Raw transcript records never cross the wire.
- *
- * @module usage
- */
+/** Usage buckets aggregate native session records; raw transcripts stay in their environment. */
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
@@ -165,6 +151,23 @@ export const UsageAccountConsumption = Schema.Struct({
 });
 export type UsageAccountConsumption = typeof UsageAccountConsumption.Type;
 
+/**
+ * Matches a provider's original model ID, before usage model aliases apply. Omit provider to
+ * match any; a string provider lets older clients carry selectors for providers they lack.
+ */
+export const UsageModelSelector = Schema.Struct({
+  provider: Schema.optional(TrimmedNonEmptyString),
+  model: TrimmedNonEmptyString,
+});
+export type UsageModelSelector = typeof UsageModelSelector.Type;
+
+/** Keeps records matching `include` (all when omitted) and not matching `exclude`. */
+export const UsageModelFilter = Schema.Struct({
+  include: Schema.optional(Schema.Array(UsageModelSelector)),
+  exclude: Schema.optional(Schema.Array(UsageModelSelector)),
+});
+export type UsageModelFilter = typeof UsageModelFilter.Type;
+
 export const UsageSummaryInput = Schema.Struct({
   sinceDay: UsageDay,
   untilDay: UsageDay,
@@ -174,6 +177,7 @@ export const UsageSummaryInput = Schema.Struct({
   sinceTime: Schema.optional(TrimmedNonEmptyString),
   untilTime: Schema.optional(TrimmedNonEmptyString),
   awaitRefresh: Schema.optional(Schema.Boolean),
+  modelFilter: Schema.optional(UsageModelFilter),
 });
 export type UsageSummaryInput = typeof UsageSummaryInput.Type;
 
@@ -190,6 +194,8 @@ export const UsageSummary = Schema.Struct({
   accountUsage: Schema.optional(UsageAccountConsumption),
   /** Wall-clock cost of the scan, surfaced in diagnostics. */
   scanDurationMs: NonNegativeInt,
+  /** The filter the server applied; absent means unfiltered, including servers that predate filters. */
+  modelFilter: Schema.optional(UsageModelFilter),
 });
 export type UsageSummary = typeof UsageSummary.Type;
 

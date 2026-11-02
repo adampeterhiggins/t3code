@@ -6,7 +6,10 @@ import * as Layer from "effect/Layer";
 import { vi } from "vite-plus/test";
 import * as CursorSdk from "./CursorSdk.ts";
 
-vi.mock("./sdk.ts", () => ({ Agent: {}, createAgentPlatform: {}, SqliteLocalAgentStore: {} }));
+vi.mock("./sdk.ts", () => ({
+  loadCursorSdk: () => ({ Agent: {}, createAgentPlatform: {} }),
+  loadCursorSqlite: () => ({ SqliteLocalAgentStore: {} }),
+}));
 
 const cursorSdkUrl = new URL("./CursorSdk.ts", import.meta.url).href;
 const sdkUrl = new URL("./sdk.ts", import.meta.url).href;
@@ -52,7 +55,8 @@ registerHooks({
 });
 
 const { layer } = await import(${JSON.stringify(cursorSdkUrl)});
-const { createAgentPlatform } = await import(${JSON.stringify(sdkUrl)});
+const { loadCursorSdk } = await import(${JSON.stringify(sdkUrl)});
+const { createAgentPlatform } = loadCursorSdk();
 const Effect = await import("effect/Effect");
 const Layer = await import("effect/Layer");
 const Exit = await import("effect/Exit");

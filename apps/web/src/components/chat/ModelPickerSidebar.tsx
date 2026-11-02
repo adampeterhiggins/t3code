@@ -14,7 +14,8 @@ import { providerBrandLabel } from "./providerAccountSelection";
  */
 function describeUnavailableProvider(entry: ProviderInstanceEntry): string {
   const label = providerBrandLabel(entry.driverKind);
-  if (!entry.enabled || entry.status === "disabled") {
+  // An unavailable instance (a driver this build lacks or the policy leaves out) says why instead.
+  if ((!entry.enabled && entry.isAvailable) || entry.status === "disabled") {
     return `${label}: Disabled in settings.`;
   }
   if (entry.status === "ready" && entry.isAvailable) {

@@ -4,6 +4,7 @@ import {
 } from "@t3tools/client-runtime/state/thread-execution";
 import { isOrchestrationV2WorkActive } from "@t3tools/contracts";
 import { ArrowUpLeftIcon, AtSignIcon } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { tickTextContent } from "~/lib/tickTextContent";
 import type { ProviderInstanceEntry } from "../../providerInstances";
@@ -21,6 +22,7 @@ export function ProviderSubagentBar(props: {
       "Subagent of" divider shows its `@handle`. */
   readonly onAttachToParent: (() => void) | null;
   readonly onOpenParent: (() => void) | null;
+  readonly actions?: ReactNode;
 }) {
   const { status } = props;
   const live = status !== null && isOrchestrationV2WorkActive(status.status);
@@ -85,6 +87,8 @@ export function ProviderSubagentBar(props: {
           <TooltipPopup>Attach to parent chat</TooltipPopup>
         </Tooltip>
       ) : null}
+      {props.actions}
+
       {props.onOpenParent ? (
         <Button size="sm" variant="ghost" onClick={props.onOpenParent}>
           <ArrowUpLeftIcon />

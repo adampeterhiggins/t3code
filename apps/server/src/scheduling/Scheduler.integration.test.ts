@@ -1,3 +1,4 @@
+import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, expect, it } from "@effect/vitest";
 import {
@@ -94,6 +95,7 @@ it.effect.each(["on time", "after restart"])(
       const commands = yield* Ref.make<ReadonlyArray<OrchestrationV2ServerCommand>>([]);
       const receipts = yield* Queue.unbounded<"task" | "retry">();
       const layerDependencies = Layer.mergeAll(
+        ManagedPolicy.layerTest(),
         NodeCrypto.layer,
         Layer.mock(Orchestrator.OrchestratorV2)({}),
         Layer.mock(ThreadLaunchService.ThreadLaunchService)({

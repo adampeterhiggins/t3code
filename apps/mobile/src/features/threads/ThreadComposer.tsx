@@ -69,7 +69,7 @@ import {
 } from "../../state/use-composer-drafts";
 import { appAtomRegistry } from "../../state/atom-registry";
 import type { ComposerDocumentAttachment } from "../../lib/composerContext";
-import { useProject, useProjects, useThreadShells } from "../../state/entities";
+import { useProject, useProjects, useVisibleThreadShells } from "../../state/entities";
 import { useMentionableEnvironments } from "../../state/environments";
 import { useLinkedEnvironments } from "../../state/peerLinks";
 import { environmentThreadDetails } from "../../state/threads";
@@ -613,7 +613,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     ownerKey: composerOwnerKey,
     draftKey: composerDraftKey,
     environmentId: props.environmentId,
-    threadShells: useThreadShells(),
+    threadShells: useVisibleThreadShells(),
     projects: useProjects(),
     environments: offersLinkedEnvironments(props.serverConfig)
       ? mentionableEnvironments

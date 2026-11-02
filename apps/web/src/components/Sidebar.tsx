@@ -3124,6 +3124,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
             <SidebarThreadHeader
               hasProjects={projectGroups.length > 0}
               attentionInbox={<SidebarAttentionInbox />}
+
               onNewProject={openAddProjectCommandPalette}
               onNewThread={handleNewThreadClick}
               newThreadDisabled={projects.length === 0}
