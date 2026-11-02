@@ -12,7 +12,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type {
-  DesktopQuickMessageStartFrom,
+  ComposerStartFromSelection,
   EnvironmentId,
   GitHubIssueStateFilter,
   GitHubIssueSummary,
@@ -44,6 +44,11 @@ import { CommandPaletteContent } from "../CommandPaletteContent";
 import { LinearIcon } from "../Icons";
 import type { EnvironmentPullRequestEntry } from "../pullRequest/pullRequestList.logic";
 import { PULL_REQUEST_STATE_PRESENTATION } from "../pullRequest/pullRequestIcons";
+import {
+  applyDetachedPresentationMilestone,
+  detachedOpenExpandsThread,
+} from "../quickMessage/detachedChatPresentation";
+import { isDetachedChatWindow } from "../quickMessage/quickMessageWindow";
 import { setPendingScheduledTaskDraft } from "../settings/scheduledTaskDraftSeed";
 import {
   type ComposerAutomationSource,
@@ -175,17 +180,26 @@ export function StartFromPickerHost(props: StartFromPickerHostProps) {
       githubIssuesAvailable={props.githubIssuesAvailable}
       linkThreadRef={threadRef}
       onPick={applyPick}
-      onOpen={(href) => void navigate({ href })}
-      onNewAutomation={() => {
-        const source = props.readAutomationSource();
-        if (source === null) return false;
-        setPendingScheduledTaskDraft({
-          environmentId,
-          seed: scheduledTaskSeedFromComposer(source),
-        });
-        void navigate({ to: "/settings/scheduled-tasks", search: { environmentId } });
-        return true;
+      onOpen={(href) => {
+        if (detachedOpenExpandsThread(href)) {
+          applyDetachedPresentationMilestone("existing-thread-opened");
+        }
+        void navigate({ href });
       }}
+      {...(isDetachedChatWindow
+        ? {}
+        : {
+            onNewAutomation: () => {
+              const source = props.readAutomationSource();
+              if (source === null) return false;
+              setPendingScheduledTaskDraft({
+                environmentId,
+                seed: scheduledTaskSeedFromComposer(source),
+              });
+              void navigate({ to: "/settings/scheduled-tasks", search: { environmentId } });
+              return true;
+            },
+          })}
       onClose={closeStartFromPicker}
     />
   );
@@ -196,7 +210,7 @@ export function StartFromPickerHost(props: StartFromPickerHostProps) {
  * is already checked out in; works on a branch where `resolveBranchStart` says; attaches and
  * links an issue. Resolves whether the pick took.
  */
-export function useApplyStartFrom(props: {
+function useApplyStartFrom(props: {
   readonly environmentId: EnvironmentId;
   readonly workspaceRoot: string;
   readonly threadRef: ScopedThreadRef;
@@ -212,7 +226,7 @@ export function useApplyStartFrom(props: {
   const attachGitHubIssue = useAttachGitHubIssue();
   const linkGitHubIssue = useLinkGitHubIssue();
 
-  return async (pick: DesktopQuickMessageStartFrom): Promise<boolean> => {
+  return async (pick: ComposerStartFromSelection): Promise<boolean> => {
     switch (pick.type) {
       case "branch":
         onCheckout({ branch: pick.branch, worktreePath: pick.worktreePath, envMode: pick.envMode });
@@ -277,7 +291,7 @@ interface StartFromPickerDialogProps {
    * Resolves whether the pick took. The picker stays open until then, so nothing is sent from
    * the old checkout in the meantime.
    */
-  readonly onPick: (pick: DesktopQuickMessageStartFrom) => Promise<boolean>;
+  readonly onPick: (pick: ComposerStartFromSelection) => Promise<boolean>;
   /** Opens an app path, such as a thread already working on the pick. */
   readonly onOpen: (href: string) => void;
   /** Starts a new automation from the composer; returns whether it did. */
@@ -291,7 +305,7 @@ interface ExistingThreadsPrompt {
   readonly startNew: () => void;
 }
 
-export function StartFromPickerDialog(props: StartFromPickerDialogProps) {
+function StartFromPickerDialog(props: StartFromPickerDialogProps) {
   const { environmentId, projectRef, projectId, workspaceRoot, linkThreadRef, onClose } = props;
   const router = useRouter();
   const tabs = props.githubIssuesAvailable ? ALL_TABS : TABS_WITHOUT_GITHUB_ISSUES;
@@ -394,7 +408,7 @@ export function StartFromPickerDialog(props: StartFromPickerDialogProps) {
     if (!busy) onClose();
   };
 
-  const pick = async (next: DesktopQuickMessageStartFrom) => {
+  const pick = async (next: ComposerStartFromSelection) => {
     setBusy(true);
     const applied = await props.onPick(next);
     setBusy(false);

@@ -1,9 +1,10 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ComponentProps } from "react";
 import type { ChatComposerProps } from "./ChatComposer";
 import { ComposerAttachMenu, openComposerAttachPicker } from "./ComposerAttachMenu";
 import { ComposerModelChipPicker } from "./ComposerModelChipPicker";
 import { attachModelToChat } from "./modelReferences";
+import { openDetachedComposerFileChooser } from "../quickMessage/detachedFileChooser";
 import { useComposerCheckoutItems } from "./useComposerCheckoutItems";
 
 export function useComposerAttachControls(
@@ -43,6 +44,15 @@ export function useComposerAttachControls(
     modelOptionsByInstance,
   } = input;
   const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const fileChooserCleanupRef = useRef<(() => void) | null>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- releases the native file-chooser lease if the menu unmounts first
+  useEffect(
+    () => () => {
+      fileChooserCleanupRef.current?.();
+      fileChooserCleanupRef.current = null;
+    },
+    [],
+  );
   const [isModelChipPickerOpen, setIsModelChipPickerOpen] = useState(false);
   const [attachMenuAnchor, setAttachMenuAnchor] = useState<HTMLSpanElement | null>(null);
   const attachCheckouts = useComposerCheckoutItems(environmentId, { enabled: true, query: "" });
@@ -70,7 +80,12 @@ export function useComposerAttachControls(
           pullRequestsAvailable={pullRequestProjectId !== null}
           githubIssuesAvailable={githubIssueCwd !== null}
           checkoutsAvailable={attachCheckouts.hasLocalCandidates}
-          onAttachFiles={() => attachmentInputRef.current?.click()}
+          onAttachFiles={() => {
+            fileChooserCleanupRef.current?.();
+            fileChooserCleanupRef.current = openDetachedComposerFileChooser(
+              attachmentInputRef.current,
+            );
+          }}
           onPick={(picker) => openComposerAttachPicker(picker, routeThreadRef)}
           onPickModel={() => setIsModelChipPickerOpen(true)}
         />

@@ -2459,23 +2459,19 @@ Code: `packages/client-runtime/src/work-log/webTool.ts`, rendered on web by
 
 ## Quick message
 
-A system-wide shortcut in the desktop app opens a floating composer over any app and starts a new
-thread from it, like the ChatGPT desktop app's companion window. Turn it on and record the shortcut
-in **Settings → General → Quick message**. The panel is a separate transparent window with the
-in-app composer's controls. **Settings → Appearance → Quick message** can follow the app theme,
-adapt its palette with extra text and border contrast, or choose an independent theme. Adapted
-and independent themes can use a separate light, dark, or system appearance; themes with only one
-appearance keep that mode. A preview shows the result over light and dark backgrounds. The panel collects the message, files,
-project, model, account and modes. Choose **No project** in its project selector to start without a
-checkout on the selected environment. Its **⋯** and attach menu open their pickers in the panel
-itself, including **Model**, which names a model in the new message. The main window then opens a
-draft, applies the picked start point and attachments to it as its own pickers would, and sends it
-through its own composer.
+A system-wide shortcut in the desktop app opens a floating window over any app, with the same
+composer as the main window, on the local environment of this computer. Turn it on and record the
+shortcut in **Settings → General → Quick message**. The window follows the app's theme, fonts, and
+contrast. Press the shortcut again to reopen it; a draft you were writing is still there.
+
+Hide it and it keeps that draft. From a thread that already exists, open it in the main window. The
+floating window stays where it is. Settings and other pages that belong to the main window open
+there instead. If the local environment is off, or you still need to sign in, the shortcut shows
+that notice.
 
 See [the user guide](user/keybindings.md#quick-message).
-Code: [DesktopQuickMessage.ts](../apps/desktop/src/quickMessage/DesktopQuickMessage.ts),
-[QuickMessagePanel.tsx](../apps/web/src/components/quickMessage/QuickMessagePanel.tsx), and
-[QuickMessageCoordinator.tsx](../apps/web/src/components/desktop/QuickMessageCoordinator.tsx).
+Code: [DesktopQuickMessage.ts](../apps/desktop/src/quickMessage/DesktopQuickMessage.ts) and
+[DetachedChatShell.tsx](../apps/web/src/components/detachedChat/DetachedChatShell.tsx).
 
 ## HTML pages can link a generated bundle
 

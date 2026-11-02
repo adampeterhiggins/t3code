@@ -3,6 +3,8 @@ import { formatProviderSkillDisplayName, matchInlineSkills } from "@t3tools/shar
 import { Children, cloneElement, isValidElement, type ReactNode } from "react";
 
 import { useRightPanelStore } from "~/rightPanelStore";
+import { openTimelineWorkspaceFile } from "../quickMessage/detachedTimelineActions";
+import { isDetachedChatWindow } from "../quickMessage/quickMessageWindow";
 import {
   buttonContextChip,
   ContextPreviewHover,
@@ -55,8 +57,13 @@ export function messageSkillChip(input: {
       label,
       description: skill ? skillPreviewDescription(skill) : null,
       onOpenInstructions:
-        path && threadRef
-          ? () => useRightPanelStore.getState().openFile(threadRef, path)
+        path && threadRef && !isDetachedChatWindow
+          ? () => {
+              const instructionsPath = path;
+              openTimelineWorkspaceFile(() =>
+                useRightPanelStore.getState().openFile(threadRef, instructionsPath),
+              );
+            }
           : undefined,
     },
   });

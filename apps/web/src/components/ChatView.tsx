@@ -1,3 +1,4 @@
+import { isDetachedChatWindow } from "./quickMessage/quickMessageWindow";
 import { useChatViewSplitPane } from "./chat/useChatViewSplitPane";
 import { useChatViewIntegrationShortcuts } from "./chat/useChatViewIntegrationShortcuts";
 import { useChatViewTabs } from "./chat/useChatViewTabs";
@@ -1590,10 +1591,8 @@ export default function ChatView(props: ChatViewProps) {
   };
   const downloadFileAttachmentStable = useStableCallback(downloadFileAttachment);
   const openFileAttachment = (attachment: ChatFileAttachment) => {
-    if (activeThreadRef) {
-      useRightPanelStore.getState().openAttachment(activeThreadRef, attachment);
-      return;
-    }
+    if (!activeThreadRef || isDetachedChatWindow) return;
+    useRightPanelStore.getState().openAttachment(activeThreadRef, attachment);
   };
   const openFileAttachmentStable = useStableCallback(openFileAttachment);
   const { timelineAttachmentUrlById } = useAttachmentPreviewHandoff({
@@ -3061,6 +3060,7 @@ export default function ChatView(props: ChatViewProps) {
   });
   // A maximized panel covers the terminal drawer the command runs in.
   const runSideChatShellCommandStable = useStableCallback((command: string) => {
+    if (isDetachedChatWindow) return;
     if (activeThreadRef) useRightPanelStore.getState().setMaximized(activeThreadRef, false);
     runShellCommandStable(command);
   });
@@ -3706,7 +3706,12 @@ export default function ChatView(props: ChatViewProps) {
                 citationHistory={citationHistory}
                 onCiteAssistantText={citeAssistantTextStable}
                 {...(activeProject
-                  ? { onRunShellCommand: parentPanel?.runShellCommand ?? runShellCommandStable }
+                  ? {
+                      onRunShellCommand: (command: string) => {
+                        if (isDetachedChatWindow) return;
+                        (parentPanel?.runShellCommand ?? runShellCommandStable)(command);
+                      },
+                    }
                   : {})}
                 isWorking={isWorking}
                 runlessWorkActive={runlessWorkStartedAt !== null}
@@ -4367,7 +4372,6 @@ export default function ChatView(props: ChatViewProps) {
         routeThreadRef={routeThreadRef}
         pointDraftAtCheckout={pointDraftAtCheckout}
         readAutomationSource={readAutomationSource}
-        isLocalDraftThread={isLocalDraftThread}
       />
       <ThreadVisitWatermark threadRef={routeThreadRef} />
       <ExpandedImageDialogHost threadKey={routeThreadKey} />

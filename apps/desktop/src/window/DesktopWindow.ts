@@ -88,6 +88,12 @@ export type DesktopWindowError =
 
 export type MainWindowZoomDirection = "in" | "out" | "reset";
 export type MainWindowContentsCommand = "reload" | "forceReload" | "toggleDevTools";
+export type DesktopMenuDispatchTarget = "main" | "focused-trusted";
+
+export interface DesktopMenuDispatchOptions {
+  readonly reveal?: boolean;
+  readonly target?: DesktopMenuDispatchTarget;
+}
 
 export class DesktopWindow extends Context.Service<
   DesktopWindow,
@@ -104,7 +110,7 @@ export class DesktopWindow extends Context.Service<
     readonly prepareCaptureReveal: Effect.Effect<void>;
     readonly dispatchMenuAction: (
       action: string,
-      options?: { readonly reveal?: boolean },
+      options?: DesktopMenuDispatchOptions,
     ) => Effect.Effect<void, DesktopWindowError>;
     readonly dispatchSnapShotEvent: (
       event: DesktopSnapShotEvent,
@@ -331,6 +337,21 @@ export const make = Effect.gen(function* () {
 
   const currentMainWindow = electronWindow.currentMainOrFirst.pipe(Effect.flatMap(withoutSplash));
   const focusedMainWindow = electronWindow.focusedMainOrFirst.pipe(Effect.flatMap(withoutSplash));
+
+  // focusedMainOrFirst skips auxiliary windows. Paste has to reach a marked
+  // quick-message panel, and it must ignore an unregistered popup or webview host.
+  const focusedTrustedAppWindow = Effect.fn("desktop.window.focusedTrustedAppWindow")(function* () {
+    const focused = Electron.BrowserWindow.getFocusedWindow();
+    if (focused === null || focused === undefined || focused.isDestroyed()) {
+      return Option.none<Electron.BrowserWindow>();
+    }
+    const main = yield* electronWindow.main;
+    if (Option.isSome(main) && !main.value.isDestroyed() && main.value === focused) {
+      return Option.some(focused);
+    }
+    if (ElectronWindow.isAuxiliaryWindow(focused)) return Option.some(focused);
+    return Option.none();
+  });
 
   const zoomWindow = Effect.fn("desktop.window.zoomWindow")(function* (
     window: Electron.BrowserWindow,
@@ -943,9 +964,25 @@ export const make = Effect.gen(function* () {
   const dispatchRendererEvent = Effect.fn("desktop.window.dispatchRendererEvent")(function* (
     channel: string,
     payload: unknown,
-    { reveal = true }: { readonly reveal?: boolean } = {},
+    { reveal = true, target = "main" }: DesktopMenuDispatchOptions = {},
   ) {
     if (yield* Ref.get(desktopState.quitting)) return;
+    if (target === "focused-trusted") {
+      // The composer is already focused. Revealing here would raise another window.
+      const focused = yield* focusedTrustedAppWindow();
+      if (Option.isNone(focused)) return;
+      const targetWindow = focused.value;
+      if (targetWindow.isDestroyed() || targetWindow.webContents.isDestroyed()) return;
+      const send = Effect.sync(() => {
+        if (!targetWindow.isDestroyed()) targetWindow.webContents.send(channel, payload);
+      });
+      if (targetWindow.webContents.isLoadingMainFrame()) {
+        targetWindow.webContents.once("did-finish-load", () => void runPromise(send));
+        return;
+      }
+      yield* send;
+      return;
+    }
     const existingWindow = yield* reveal ? focusedMainWindow : electronWindow.main;
     if (Option.isNone(existingWindow) && (!reveal || (yield* waitingForBackend))) return;
     const window = Option.isSome(existingWindow) ? existingWindow : yield* ensureMain;
@@ -1006,7 +1043,10 @@ export const make = Effect.gen(function* () {
       Effect.withSpan("desktop.window.flushMainWindowBounds"),
     ),
     dispatchMenuAction: Effect.fn("desktop.window.dispatchMenuAction")(function* (action, options) {
-      yield* Effect.annotateCurrentSpan({ action });
+      yield* Effect.annotateCurrentSpan({
+        action,
+        target: options?.target ?? "main",
+      });
       yield* dispatchRendererEvent(MENU_ACTION_CHANNEL, action, options);
     }),
     dispatchSnapShotEvent: Effect.fn("desktop.window.dispatchSnapShotEvent")(function* (event) {

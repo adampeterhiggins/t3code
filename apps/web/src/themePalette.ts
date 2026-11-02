@@ -1,5 +1,7 @@
 import type { EnvironmentTheme, EnvironmentThemeFile } from "@t3tools/contracts";
 import * as Equal from "effect/Equal";
+import { isPresentedAppearanceActive, notifyCommittedAppearanceChange } from "./appearanceSnapshot";
+import { isQuickMessageWindow } from "./components/quickMessage/quickMessageWindow";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { Atom } from "effect/reactivity";
@@ -113,6 +115,8 @@ type CustomThemeLibrarySnapshot =
   | Readonly<{ status: "unavailable"; reason: "storage-unavailable"; cause: unknown }>;
 
 let customThemeLibrarySnapshot: CustomThemeLibrarySnapshot | null = null;
+// null means the stored library. An array, including empty, is a presented snapshot.
+let presentedCustomThemes: ReadonlyArray<ThemeDefinition> | null = null;
 const themePreviewListeners = new Set<() => void>();
 let themePreviewAppearance: ThemeAppearance | null = null;
 
@@ -276,8 +280,40 @@ export function invalidateCustomThemes() {
 const EMPTY_CUSTOM_THEMES: ReadonlyArray<ThemeDefinition> = [];
 
 export function getCustomThemes(): ReadonlyArray<ThemeDefinition> {
+  if (presentedCustomThemes !== null) return presentedCustomThemes;
   const snapshot = getCustomThemeLibrarySnapshot();
   return snapshot.status === "ready" ? snapshot.themes : EMPTY_CUSTOM_THEMES;
+}
+
+const EMPTY_STORED_CUSTOM_THEMES: ReadonlyArray<unknown> = [];
+
+/** Raw stored library, including entries the parser will drop. Ignores a presented overlay. */
+export function readStoredCustomThemes(): ReadonlyArray<unknown> {
+  const snapshot = getCustomThemeLibrarySnapshot();
+  return snapshot.status === "ready" ? snapshot.storedThemes : EMPTY_STORED_CUSTOM_THEMES;
+}
+
+/**
+ * In-memory library for a renderer that was handed a snapshot. Invalid entries
+ * are dropped by the stored-theme parser. This does not write localStorage or
+ * publish a committed appearance change.
+ */
+export function replacePresentedCustomThemes(
+  storedThemes: ReadonlyArray<unknown>,
+): ReadonlyArray<ThemeDefinition> {
+  const themes = parseStoredThemes(storedThemes);
+  if (presentedCustomThemes !== null && Equal.equals(presentedCustomThemes, themes)) {
+    return presentedCustomThemes;
+  }
+  presentedCustomThemes = themes;
+  notifyCustomThemeListeners();
+  return themes;
+}
+
+export function clearPresentedCustomThemes(): void {
+  if (presentedCustomThemes === null) return;
+  presentedCustomThemes = null;
+  notifyCustomThemeListeners();
 }
 
 function publishedThemeColors(
@@ -859,6 +895,31 @@ export function getThemePreferenceMode(theme: ThemePreference): ThemeAppearance 
   return getThemeDefinition(theme)?.appearance ?? null;
 }
 
+/**
+ * Mode implied by a committed theme id. Painting uses `getThemePreferenceMode`,
+ * which follows the presented overlay; this one reads the stored library so a
+ * base theme the overlay does not carry still infers its own mode.
+ */
+export function getCommittedThemePreferenceMode(theme: string): ThemeAppearance | null {
+  if (theme === "system") return null;
+  if (theme === "light" || theme === "dark") return theme;
+  const legacyMode = legacyThemeMode(theme);
+  if (legacyMode) return legacyMode;
+  return committedThemeDefinition(theme)?.appearance ?? null;
+}
+
+function committedThemeDefinition(theme: string): ThemeDefinition | null {
+  const themeId = themeIdFromPreference(theme);
+  const snapshot = getCustomThemeLibrarySnapshot();
+  const storedThemes = snapshot.status === "ready" ? snapshot.themes : EMPTY_CUSTOM_THEMES;
+  return (
+    BUILT_IN_THEME_DEFINITIONS.find((definition) => definition.id === themeId) ??
+    storedThemes.find((definition) => definition.id === themeId) ??
+    getEnvironmentThemes().find((definition) => definition.id === themeId) ??
+    null
+  );
+}
+
 export function themeIdFromName(name: string): string {
   const label = name.trim().toLowerCase();
   const normalized = label
@@ -891,10 +952,17 @@ export class ThemeLibraryStorageError extends Schema.TaggedError<ThemeLibrarySto
   }
 }
 
+function assertCustomThemeLibraryWritable(): void {
+  if (isPresentedAppearanceActive() || isQuickMessageWindow) {
+    throw new Error("Installed themes are read-only in this window.");
+  }
+}
+
 function saveCustomThemes(
   storedThemes: ReadonlyArray<unknown>,
   themes: ReadonlyArray<ThemeDefinition>,
 ): void {
+  assertCustomThemeLibraryWritable();
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(CUSTOM_THEMES_STORAGE_KEY, JSON.stringify(storedThemes));
@@ -908,6 +976,7 @@ function saveCustomThemes(
     });
   }
   notifyCustomThemeListeners();
+  notifyCommittedAppearanceChange();
 }
 
 function requireWritableCustomThemeLibrary(
@@ -948,6 +1017,7 @@ function storedThemeHasCollectionId(storedTheme: unknown, collectionId: string):
 }
 
 export function installCustomTheme(theme: ThemeDefinition): ThemeDefinition {
+  assertCustomThemeLibraryWritable();
   if (RESERVED_THEME_IDS.has(theme.id)) {
     throw new Error(`The theme id "${theme.id}" is reserved.`);
   }
@@ -965,6 +1035,7 @@ export function installCustomTheme(theme: ThemeDefinition): ThemeDefinition {
 }
 
 export function updateCustomTheme(theme: ThemeDefinition): ThemeDefinition {
+  assertCustomThemeLibraryWritable();
   if (RESERVED_THEME_IDS.has(theme.id)) {
     throw new Error(`The theme id "${theme.id}" is reserved.`);
   }
@@ -999,6 +1070,7 @@ export function replaceCustomThemeCollection(
   themes: ReadonlyArray<ThemeDefinition>,
   options?: { expectedCollection?: ReadonlyArray<ThemeDefinition> },
 ): ReadonlyArray<ThemeDefinition> {
+  assertCustomThemeLibraryWritable();
   if (themes.length === 0) throw new Error("A theme collection cannot be empty.");
 
   const validated = themes.map((theme) => parseStoredTheme(theme));
@@ -1056,6 +1128,7 @@ export function removeCustomTheme(themeId: string): void {
 }
 
 export function removeCustomThemes(themeIds: ReadonlyArray<string>): void {
+  assertCustomThemeLibraryWritable();
   const removedIds = new Set(themeIds);
   if (removedIds.size === 0) return;
   const library = getWritableCustomThemeLibrary();

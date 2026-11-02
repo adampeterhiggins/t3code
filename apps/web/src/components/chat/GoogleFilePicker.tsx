@@ -36,7 +36,6 @@ import {
   CommandItem,
   CommandList,
 } from "../ui/command";
-import { useComposerAttachRedirect } from "./composerAttachRedirect";
 import {
   addDays,
   dayFromKey,
@@ -123,7 +122,6 @@ function GoogleFilePickerDialog({
   );
   const navigate = useNavigate();
   const attachPage = useAttachGoogleFile();
-  const redirect = useComposerAttachRedirect();
   const linkPage = useLinkGoogleFile();
   const [source, setSource] = useState<GoogleFilePickerSource>("drive");
   const [views, setViews] = useState(DEFAULT_GOOGLE_FILE_PICKER_VIEWS);
@@ -186,11 +184,6 @@ function GoogleFilePickerDialog({
       : [];
   const pick = async (page: GoogleFileSummary) => {
     if (attaching) return;
-    if (redirect) {
-      redirect({ type: "google-file", fileId: page.url, label: page.title });
-      closePicker();
-      return;
-    }
     setAttaching(true);
     const choose = mode === "link" ? linkPage : attachPage;
     const picked = await settlePromise(() => choose(threadRef, page.url));

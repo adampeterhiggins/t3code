@@ -48,7 +48,6 @@ import {
   GitHubIssueHoverPreview,
 } from "./GitHubIssueHoverPreview";
 import { SourceTabs } from "./SourceTabs";
-import { useComposerAttachRedirect } from "./composerAttachRedirect";
 
 // Each search runs `gh` on the server, so typing settles before one goes out.
 const SEARCH_DEBOUNCE_MS = 300;
@@ -271,7 +270,6 @@ function GitHubIssuePickerDialog(props: {
   const navigate = useNavigate();
   const attachIssue = useAttachGitHubIssue();
   const linkIssue = useLinkGitHubIssue();
-  const redirect = useComposerAttachRedirect();
   const [query, setQuery] = useState("");
   const [state, setState] = useState<GitHubIssueStateFilter>("open");
   const [attaching, setAttaching] = useState(false);
@@ -286,11 +284,6 @@ function GitHubIssuePickerDialog(props: {
 
   async function select(issue: GitHubIssueSummary) {
     if (attaching) return;
-    if (redirect) {
-      redirect({ type: "github-issue", url: issue.url, label: `#${issue.number} ${issue.title}` });
-      closeGitHubIssuePicker();
-      return;
-    }
     setAttaching(true);
     const done = await (mode === "link" ? linkIssue : attachIssue)(threadRef, issue.url);
     setAttaching(false);

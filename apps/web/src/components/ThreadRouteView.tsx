@@ -1,3 +1,8 @@
+import {
+  floatingSplitPartnerInput,
+  useDetachedChatPresentation,
+} from "./quickMessage/detachedChatPresentation";
+import { isDetachedChatWindow } from "./quickMessage/quickMessageWindow";
 import { SplitChatPanes } from "./chat/SplitChatPanes";
 import { SPLIT_VIEW_HIDDEN_MEDIA_QUERY, useSplitPartner } from "./chat/splitPane";
 import { useMediaQuery } from "../hooks/useMediaQuery";
@@ -91,8 +96,13 @@ export function ThreadRouteView({
     draftThreadExists: draftThread !== null,
   });
   const splitHidden = useMediaQuery(SPLIT_VIEW_HIDDEN_MEDIA_QUERY);
+  const detachedPresentation = useDetachedChatPresentation();
   const splitPartner = useSplitPartner(
-    target.kind === "server" && !splitHidden ? target.threadRef : null,
+    floatingSplitPartnerInput({
+      detached: isDetachedChatWindow,
+      splitHidden,
+      serverThreadRef: target.kind === "server" ? target.threadRef : null,
+    }),
   );
   const environmentHasAnyThreads = environmentThreadRefs.length > 0 || environmentHasDraftThreads;
 
@@ -164,7 +174,11 @@ export function ThreadRouteView({
 
   return (
     <SidebarInset
-      className="h-svh min-h-0 overflow-hidden overscroll-y-none md:h-dvh"
+      className={
+        detachedPresentation === "compact"
+          ? "h-auto min-h-0 flex-none self-start overflow-visible"
+          : "h-svh min-h-0 overflow-hidden overscroll-y-none md:h-dvh"
+      }
       inert={background}
     >
       <BackgroundThreadContext value={background}>{view}</BackgroundThreadContext>

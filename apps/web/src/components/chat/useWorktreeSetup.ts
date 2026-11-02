@@ -17,6 +17,7 @@ import { useTerminalUiStateStore } from "../../terminalUiStateStore";
 import type { Thread } from "../../types";
 import { focusTerminal } from "../../lib/terminalFocus";
 import { resolveVisibleWorktreeSetup, resolveWorktreeSetupProgress } from "../ChatView.logic";
+import { timelineWorktreeTerminalOpener } from "../quickMessage/detachedTimelineActions";
 import { worktreeSetupAgentStarted } from "@t3tools/client-runtime/worktree-setup";
 
 // Share in-flight preparation retries across ChatView instances.
@@ -158,12 +159,13 @@ export function useWorktreeSetup(input: {
   // Failed bootstrap deletes threads and terminals; expose terminals only for active threads.
   const setupThreadRef =
     worktreeSetup && threadRef && worktreeSetup.threadId === threadRef.threadId ? threadRef : null;
-  const openSetupTerminal = setupThreadRef
-    ? (terminalId: string) => {
-        storeEnsureTerminal(setupThreadRef, terminalId, { open: true, active: true });
-        focusTerminal(setupThreadRef, terminalId);
-      }
-    : null;
+  const openSetupTerminal = timelineWorktreeTerminalOpener({
+    threadRef: setupThreadRef,
+    ensureTerminal: (threadRef, terminalId, options) => {
+      storeEnsureTerminal(threadRef, terminalId, options);
+      focusTerminal(threadRef, terminalId);
+    },
+  });
 
   return {
     worktreeSetup,

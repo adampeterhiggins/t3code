@@ -12,7 +12,10 @@ import { retainThreadOverlaysForThread } from "./components/chat/threadOverlayRe
 import { startBackgroundThreadAnnouncements } from "./components/BackgroundThreadAnnouncer";
 import { startSshPasswordPromptQueue } from "./components/desktop/SshPasswordPromptDialog";
 import { startHostFreezeToasts } from "./components/HostFreezeToastCoordinator";
-import { isQuickMessageWindow } from "./components/quickMessage/quickMessageWindow";
+import {
+  isDetachedChatWindow,
+  isQuickMessageWindow,
+} from "./components/quickMessage/quickMessageWindow";
 import { startKeybindingsUpdateToasts } from "./components/KeybindingsUpdateToast";
 import { startLegacyThreadMigrationToast } from "./components/LegacyThreadMigrationToast";
 import { startPermissionUpdateNotices } from "./components/PermissionUpdateNotice";
@@ -80,11 +83,13 @@ function startClientAppearance(): void {
     if (previous?.chatWidth !== settings.chatWidth) {
       root.dataset.chatWidth = settings.chatWidth;
     }
-    // The quick message panel gets its contrast from useTheme, and index.css keeps it opaque.
-    if (!isQuickMessageWindow && previous?.appearanceContrast !== settings.appearanceContrast) {
+    // The legacy panel gets its contrast from useTheme. The floating chat uses
+    // the same client settings as the main window, on its own partition.
+    const legacyQuickMessageWindow = isQuickMessageWindow && !isDetachedChatWindow;
+    if (!legacyQuickMessageWindow && previous?.appearanceContrast !== settings.appearanceContrast) {
       applyAppearanceContrast(root, settings.appearanceContrast);
     }
-    if (!isQuickMessageWindow && previous?.glassOpacity !== settings.glassOpacity) {
+    if (!legacyQuickMessageWindow && previous?.glassOpacity !== settings.glassOpacity) {
       root.style.setProperty("--glass-opacity", `${settings.glassOpacity}%`);
       if (settings.glassOpacity === 100) {
         root.style.setProperty("--glass-blur", "0px");
@@ -183,17 +188,23 @@ export function startAppServices(): AppRouter {
 
   startClientAppearance();
   startEnvironmentThemeRepaint();
-  if (isQuickMessageWindow) return router;
+  // The legacy panel shares the main profile and must not run draft writers.
+  // The floating chat has its own partition, so reconciliation is safe there.
+  if (isQuickMessageWindow && !isDetachedChatWindow) return router;
   startDocumentTitle();
   startBrowserChromeThemeSync(router);
-  startDefaultThemeAdoption();
-  startSharedThemeFollow();
+  if (!isDetachedChatWindow) {
+    startDefaultThemeAdoption();
+    startSharedThemeFollow();
+  }
   startThemeSync();
   startModelPreferencesMigration();
-  startAgentOpenedPreviews();
-  if (isElectron) startElectronBrowserHost();
-  startPreviewTitleRecording();
-  startBrowserProfileReporting();
+  if (!isDetachedChatWindow) {
+    startAgentOpenedPreviews();
+    if (isElectron) startElectronBrowserHost();
+    startPreviewTitleRecording();
+    startBrowserProfileReporting();
+  }
   installChatRouteCommands(router);
   installCommandPaletteCommands(router);
   registerOpenFavoriteEditorCommand();

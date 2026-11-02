@@ -5,7 +5,6 @@ import { CheckoutAttachPickerHost } from "./CheckoutAttachPicker";
 import { LinearIssuePickerHost } from "./LinearIssuePicker";
 import { type ScopedThreadRef } from "@t3tools/contracts";
 import { PullRequestAttachPickerHost } from "./PullRequestAttachPicker";
-import { QuickMessageDraftApplier } from "../desktop/QuickMessageDraftApplier";
 import { RepositoryAttachPickerHost } from "./RepositoryAttachPicker";
 import { StartFromPickerHost } from "./StartFromPicker";
 import { ThreadAttachPickerHost } from "./ThreadAttachPicker";
@@ -25,7 +24,6 @@ export function ChatViewIntegrationHosts(input: {
   readAutomationSource: NonNullable<
     ComponentProps<typeof StartFromPickerHost>["readAutomationSource"]
   >;
-  isLocalDraftThread: boolean;
 }) {
   const {
     activeWorktreePath,
@@ -38,7 +36,6 @@ export function ChatViewIntegrationHosts(input: {
     routeThreadRef,
     pointDraftAtCheckout,
     readAutomationSource,
-    isLocalDraftThread,
   } = input;
   return (
     <>
@@ -64,14 +61,6 @@ export function ChatViewIntegrationHosts(input: {
           threadRef={routeThreadRef}
           onCheckout={pointDraftAtCheckout}
           readAutomationSource={readAutomationSource}
-        />
-      ) : null}
-      {isLocalDraftThread && activeProject ? (
-        <QuickMessageDraftApplier
-          environmentId={activeProject.environmentId}
-          workspaceRoot={activeProject.workspaceRoot}
-          threadRef={routeThreadRef}
-          onCheckout={pointDraftAtCheckout}
         />
       ) : null}
     </>

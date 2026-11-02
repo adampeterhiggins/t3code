@@ -1,9 +1,7 @@
-import { DesktopQuickMessageState, DesktopQuickMessageSubmission } from "@t3tools/contracts";
+import { DesktopQuickMessagePresentation, DesktopQuickMessageState } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import * as ElectronWindow from "../../electron/ElectronWindow.ts";
 import * as DesktopQuickMessage from "../../quickMessage/DesktopQuickMessage.ts";
 import * as IpcChannels from "../channels.ts";
 import * as DesktopIpc from "../DesktopIpc.ts";
@@ -45,26 +43,6 @@ export const setQuickMessageShortcutSuppressed = DesktopIpc.makeIpcMethod({
   }),
 });
 
-export const setQuickMessageReceiverReady = DesktopIpc.makeIpcMethod({
-  channel: IpcChannels.SET_QUICK_MESSAGE_RECEIVER_READY_CHANNEL,
-  payload: Schema.Boolean,
-  result: Schema.Void,
-  handler: Effect.fn("desktop.ipc.quickMessage.setReceiverReady")(function* (ready, event) {
-    const main = yield* (yield* ElectronWindow.ElectronWindow).main;
-    if (
-      event === undefined ||
-      Option.isNone(main) ||
-      main.value.webContents.id !== event.sender.id
-    ) {
-      return yield* new QuickMessageIpcUnauthorizedSenderError();
-    }
-    yield* (yield* DesktopQuickMessage.DesktopQuickMessage).setReceiverReady(
-      main.value.webContents,
-      ready,
-    );
-  }),
-});
-
 export const setQuickMessagePanelReady = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.SET_QUICK_MESSAGE_PANEL_READY_CHANNEL,
   payload: Schema.Void,
@@ -74,20 +52,20 @@ export const setQuickMessagePanelReady = DesktopIpc.makeIpcMethod({
   }),
 });
 
-export const submitQuickMessage = DesktopIpc.makeIpcMethod({
-  channel: IpcChannels.SUBMIT_QUICK_MESSAGE_CHANNEL,
-  payload: DesktopQuickMessageSubmission,
-  result: Schema.Void,
-  handler: Effect.fn("desktop.ipc.quickMessage.submit")(function* (submission, event) {
-    yield* (yield* ensurePanelSender(event)).submit(submission);
-  }),
-});
-
 export const dismissQuickMessage = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.DISMISS_QUICK_MESSAGE_CHANNEL,
   payload: Schema.Void,
   result: Schema.Void,
   handler: Effect.fn("desktop.ipc.quickMessage.dismiss")(function* (_, event) {
     yield* (yield* ensurePanelSender(event)).dismiss;
+  }),
+});
+
+export const setQuickMessagePresentation = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.SET_QUICK_MESSAGE_PRESENTATION_CHANNEL,
+  payload: DesktopQuickMessagePresentation,
+  result: Schema.Void,
+  handler: Effect.fn("desktop.ipc.quickMessage.setPresentation")(function* (presentation, event) {
+    yield* (yield* ensurePanelSender(event)).setPresentation(presentation);
   }),
 });

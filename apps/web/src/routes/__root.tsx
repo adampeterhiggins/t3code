@@ -11,7 +11,7 @@ import {
   useRouter,
 } from "@tanstack/react-router";
 import { Check, Copy } from "lucide";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 
 import { APP_DISPLAY_NAME, APP_VERSION } from "../branding";
 import { AppSidebarLayout } from "../components/AppSidebarLayout";
@@ -36,8 +36,25 @@ import { ConnectOnboardingDialog } from "../components/cloud/ConnectOnboardingDi
 import { RelayClientInstallDialog } from "../components/cloud/RelayClientInstallDialog";
 import { SshPasswordPromptDialog } from "../components/desktop/SshPasswordPromptDialog";
 import { SnapShotCoordinator } from "../components/desktop/SnapShotCoordinator";
-import { QuickMessageCoordinator } from "../components/desktop/QuickMessageCoordinator";
-import { QuickMessageSignInNotice } from "../components/quickMessage/QuickMessagePanel";
+import {
+  DesktopAppearanceCoordinator,
+  FloatingEnvironmentThemeSync,
+} from "../components/desktop/DesktopAppearanceCoordinator";
+import { desktopAppearanceCoordinatorRole } from "../components/desktop/desktopAppearanceSession";
+import { MainDestinationCoordinator } from "../components/desktop/MainDestinationCoordinator";
+import {
+  DetachedChatShell,
+  DetachedLocalEnvironmentNotice,
+} from "../components/detachedChat/DetachedChatShell";
+import {
+  isolatedFloatingShellHasFallback,
+  isolatedFloatingShellKind,
+} from "../components/detachedChat/isolatedFloatingShell";
+import { QuickMessageSignInNotice } from "../components/quickMessage/QuickMessageSignInNotice";
+import {
+  isDetachedChatWindow,
+  isQuickMessageWindow,
+} from "../components/quickMessage/quickMessageWindow";
 import { DesktopAppActivationCoordinator } from "../components/desktop/DesktopAppActivationCoordinator";
 import { DesktopWebLinkCoordinator } from "../components/desktop/DesktopWebLinkCoordinator";
 import { RunningThreadKeepAlive } from "../components/desktop/RunningThreadKeepAlive";
@@ -59,8 +76,10 @@ import {
   selectProjectGroupingSettings,
 } from "@t3tools/client-runtime/state/project-grouping";
 import { useUiStateStore } from "../uiStateStore";
-import { configureQuickMessageAppearance } from "../hooks/useTheme";
 import { configureClientTracing } from "../observability/clientTracing";
+import { guardDesktopRootLocation } from "./rootLocationGuards";
+import { appAtomRegistry } from "../rpc/atomRegistry";
+import { pendingScheduledTaskDraftAtom } from "../components/settings/scheduledTaskDraftSeed";
 import { resolveInitialServerAuthGateState } from "../environments/primary";
 import { GUEST_PAGE_PATH } from "../guestPage";
 import { hasHostedPairingRequest, isHostedStaticApp } from "../hostedPairing";
@@ -75,6 +94,16 @@ import { shouldResumeSnapShotSetupOnStartup } from "../lib/snapShotSetupResume";
 
 export const Route = createRootRoute({
   beforeLoad: async ({ location }) => {
+    // Before pair, auth, snapshot resume, and child routes. Hiding Outlet in the
+    // renderer would still let those run, and ChatView writes drafts on mount.
+    guardDesktopRootLocation({
+      isQuickMessageWindow,
+      isDetachedChatWindow,
+      pathname: location.pathname,
+      href: location.href,
+      pendingAutomationSeed: appAtomRegistry.get(pendingScheduledTaskDraftAtom) !== null,
+    });
+
     // Guest links open on the owner's tunnel host in a browser with no T3 session, and must
     // not trigger pairing or an environment connection.
     if (location.pathname === GUEST_PAGE_PATH) {
@@ -111,7 +140,11 @@ export const Route = createRootRoute({
       getDesktopSnapShotBridge() &&
       shouldResumeSnapShotSetupOnStartup() &&
       location.pathname !== "/settings/snap-shot" &&
-      location.pathname !== "/quick-message"
+      location.pathname !== "/quick-message" &&
+      // Role, not the hash. A legacy panel and an isolated window both stay out
+      // of the main window's snapshot resume.
+      !isQuickMessageWindow &&
+      !isDetachedChatWindow
     ) {
       throw redirect({ to: "/settings/snap-shot", replace: true });
     }
@@ -127,7 +160,7 @@ export const Route = createRootRoute({
   }),
 });
 
-function RootRouteNotFoundView() {
+function RootRouteNotFoundMessage() {
   return (
     <main className="flex min-h-0 min-w-0 flex-1 items-center justify-center p-6">
       <div className="flex max-w-sm flex-col items-center gap-4 text-center">
@@ -139,6 +172,51 @@ function RootRouteNotFoundView() {
         <Button render={<Link to="/" replace />}>Go home</Button>
       </div>
     </main>
+  );
+}
+
+function RootRouteNotFoundView() {
+  if (isDetachedChatWindow) {
+    return <IsolatedFloatingWindow authenticated={false} notFound={<RootRouteNotFoundMessage />} />;
+  }
+  return <RootRouteNotFoundMessage />;
+}
+
+function IsolatedFloatingAppearance() {
+  const role = desktopAppearanceCoordinatorRole({
+    detached: true,
+    authenticatedMainShell: false,
+  });
+  return (
+    <>
+      <FloatingEnvironmentThemeSync />
+      {role === null ? null : <DesktopAppearanceCoordinator role={role} />}
+    </>
+  );
+}
+
+function IsolatedFloatingWindow(props: {
+  readonly authenticated: boolean;
+  readonly notFound?: ReactNode;
+}) {
+  const kind = isolatedFloatingShellKind({
+    localEnvironmentDisabled: isLocalEnvironmentDisabled(),
+    authenticated: props.authenticated,
+    notFound: props.notFound !== undefined,
+  });
+  const fallback = isolatedFloatingShellHasFallback(kind) ? (
+    kind === "local-disabled" ? (
+      <DetachedLocalEnvironmentNotice />
+    ) : kind === "sign-in" ? (
+      <QuickMessageSignInNotice />
+    ) : (
+      props.notFound
+    )
+  ) : undefined;
+  return (
+    <DetachedChatShell {...(fallback === undefined ? {} : { fallback })}>
+      <IsolatedFloatingAppearance />
+    </DetachedChatShell>
   );
 }
 
@@ -164,8 +242,12 @@ function RootRouteBranch() {
   const [returningFromWelcome, setReturningFromWelcome] = useState(pathname === "/welcome");
   if (pathname === "/welcome" && !returningFromWelcome) setReturningFromWelcome(true);
   const hostedPromptLinkLanding = useHostedPromptLinkLanding(
-    authGateState.status === "hosted-static",
+    !isDetachedChatWindow && authGateState.status === "hosted-static",
   );
+
+  if (isDetachedChatWindow) {
+    return <IsolatedFloatingWindow authenticated={primaryEnvironmentAuthenticated} />;
+  }
 
   if (pathname === GUEST_PAGE_PATH) return <Outlet />;
 
@@ -174,13 +256,7 @@ function RootRouteBranch() {
   }
 
   if (pathname === "/quick-message") {
-    return (
-      <>
-        <QuickMessageAppearanceSync />
-
-        {primaryEnvironmentAuthenticated ? <Outlet /> : <QuickMessageSignInNotice />}
-      </>
-    );
+    return <Outlet />;
   }
 
   // Handle links before onboarding redirects lose them.
@@ -227,7 +303,14 @@ function RootRouteBranch() {
         {primaryEnvironmentAuthenticated || localEnvironmentDisabled ? (
           <DesktopWebLinkCoordinator />
         ) : null}
-        {primaryEnvironmentAuthenticated ? <QuickMessageCoordinator /> : null}
+        {primaryEnvironmentAuthenticated ? <MainDestinationCoordinator /> : null}
+        {desktopAppearanceCoordinatorRole({
+          detached: false,
+          authenticatedMainShell:
+            primaryEnvironmentAuthenticated || authGateState.status === "hosted-static",
+        }) === "main" ? (
+          <DesktopAppearanceCoordinator role="main" />
+        ) : null}
         {isElectron ? <RunningThreadKeepAlive /> : null}
         <RelayClientInstallDialog />
         <ConnectOnboardingDialog />
@@ -261,28 +344,6 @@ function RootRouteBranch() {
       </FirstRunGate>
     </>
   );
-}
-
-function QuickMessageAppearanceSync() {
-  const settings = useClientSettings();
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- configures the quick-message document theme while its window is mounted
-  useEffect(() => {
-    configureQuickMessageAppearance({
-      quickMessageThemeSource: settings.quickMessageThemeSource,
-      quickMessageTheme: settings.quickMessageTheme,
-      quickMessageAppearance: settings.quickMessageAppearance,
-      quickMessageExtraContrast: settings.quickMessageExtraContrast,
-      appearanceContrast: settings.appearanceContrast,
-    });
-    return () => configureQuickMessageAppearance(null);
-  }, [
-    settings.quickMessageThemeSource,
-    settings.quickMessageTheme,
-    settings.quickMessageAppearance,
-    settings.quickMessageExtraContrast,
-    settings.appearanceContrast,
-  ]);
-  return null;
 }
 
 function RootRouteErrorView({ error }: ErrorComponentProps) {
