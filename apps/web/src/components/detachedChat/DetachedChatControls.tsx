@@ -22,9 +22,6 @@ export function DetachedChatHeaderActions(props: { readonly threadRef: ScopedThr
           onClick={() => {
             void openExpandedThreadInMain(threadRef, {
               open: (request) => window.desktopBridge?.openMainDestination?.(request),
-            }).then((result) => {
-              // The panel floats above every window, so it would cover the thread it just opened.
-              if (result !== null && result.status !== "failed") dismissDetachedChat();
             });
           }}
         >

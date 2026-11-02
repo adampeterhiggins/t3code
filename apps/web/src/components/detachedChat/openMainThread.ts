@@ -1,6 +1,7 @@
 import type { DesktopMainDestinationResult, ScopedThreadRef } from "@t3tools/contracts";
 
 import { randomUUID } from "../../lib/utils";
+import { dismissDetachedChat } from "../quickMessage/detachedChatPresentation";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 
 function toastFailure(title: string, description: string) {
@@ -30,6 +31,8 @@ async function invoke<Request extends { readonly requestId: string }>(
       notifyFailure();
       return { requestId: request.requestId, status: "failed" };
     }
+    // The panel floats above every window, so it would cover what the main window just opened.
+    dismissDetachedChat();
     return result;
   } catch {
     notifyFailure();
