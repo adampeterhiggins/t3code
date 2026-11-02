@@ -5,10 +5,11 @@ import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 export function ComposerStartFromButton({
+  inline = false,
   onStartFrom,
   keybindings,
   terminalOpen,
-}: Pick<ChatComposerProps, "onStartFrom" | "keybindings" | "terminalOpen">) {
+}: Pick<ChatComposerProps, "onStartFrom" | "keybindings" | "terminalOpen"> & { inline?: boolean }) {
   const startFromShortcutLabel = onStartFrom
     ? shortcutLabelForCommand(keybindings, "chat.startFrom", {
         context: { terminalFocus: false, terminalOpen, modelPickerOpen: false },
@@ -22,7 +23,7 @@ export function ComposerStartFromButton({
             type="button"
             variant="ghost"
             size="icon-sm"
-            className="absolute end-2 top-2 z-10 sm:end-2.5 sm:top-2.5"
+            className={inline ? "shrink-0" : "absolute end-2 top-2 z-10 sm:end-2.5 sm:top-2.5"}
             aria-label="Start from a pull request, branch, issue, or automation"
             onClick={onStartFrom}
           />

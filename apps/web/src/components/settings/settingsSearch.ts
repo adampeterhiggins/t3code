@@ -697,10 +697,23 @@ export const SETTINGS_SEARCH_ITEMS = [
     desktopOnly: true,
   },
   {
+    id: "quick-message-new-draft",
+    title: "Start a new draft",
+    to: "/settings/general",
+    searchTerms: ["quick message floating composer reopen resume previous draft fresh minutes"],
+    desktopOnly: true,
+  },
+  {
     id: "follow-up-behavior",
     title: "Follow-up behavior",
     to: "/settings/chat",
     searchTerms: ["queue steer running turn send default behavior composer"],
+  },
+  {
+    id: "steer-while-awaiting-subagents",
+    title: "Steer while waiting on subagents",
+    to: "/settings/chat",
+    searchTerms: ["queue steer subagent agent waiting blocked follow-up send now"],
   },
   {
     id: "provider-update-checks",

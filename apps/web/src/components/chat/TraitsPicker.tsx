@@ -292,19 +292,6 @@ export function getReasoningTraitStep(input: {
   return change?.modelOptions ? { prompt: change.prompt, modelOptions: change.modelOptions } : null;
 }
 
-export function shouldRenderTraitsControls(input: {
-  provider: ProviderDriverKind;
-  models: ReadonlyArray<ServerProviderModel>;
-  model: string | null | undefined;
-  promptUltrathink?: PromptUltrathink | undefined;
-  modelOptions: ProviderOptions | null | undefined;
-  allowPromptInjectedEffort?: boolean;
-  planModeEnabled: boolean;
-  descriptorIds?: ReadonlyArray<string> | undefined;
-}): boolean {
-  return getTraitsSectionVisibility(input).hasAnyControls;
-}
-
 export interface TraitsMenuContentProps {
   provider: ProviderDriverKind;
   instanceId?: ProviderInstanceId;

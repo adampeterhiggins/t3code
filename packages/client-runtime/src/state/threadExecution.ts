@@ -109,6 +109,31 @@ export function deriveThreadActivityRun(projection: ThreadStructure): ThreadRunS
   return run === null ? null : summarizeThreadRun(projection, run);
 }
 
+const AMBIENT_TURN_ITEM_TYPES = new Set(["notification", "system_notice"]);
+
+/**
+ * True when the running turn's newest work is subagents, at least one still live: the parent is
+ * blocked on them, so a follow-up can steer it without cutting into its own work.
+ */
+export function deriveActiveRunAwaitsSubagents(projection: ThreadStructure): boolean {
+  const run = latestMatchingRun(projection, (candidate) => candidate.status === "running");
+  if (run === null) return false;
+  const trailing = projection.turnItems.filter(
+    (item) =>
+      item.runId === run.id &&
+      item.parentItemId === null &&
+      !AMBIENT_TURN_ITEM_TYPES.has(item.type),
+  );
+  trailing.sort((a, b) => a.ordinal - b.ordinal);
+  let awaitsLiveSubagent = false;
+  for (let index = trailing.length - 1; index >= 0; index -= 1) {
+    const item = trailing[index]!;
+    if (item.type !== "subagent") break;
+    awaitsLiveSubagent ||= isOrchestrationV2WorkActive(item.status);
+  }
+  return awaitsLiveSubagent;
+}
+
 /**
  * Provider-native subagent threads never get app runs: their work is a runless
  * root turn whose status follows the subagent.

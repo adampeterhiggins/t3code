@@ -21,16 +21,13 @@ import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
 import { ContextWindowMeter, ContextWindowMeterPlaceholder } from "./ContextWindowMeter";
 import { resolveModelPickerSelectedModel } from "./ModelPickerContent";
 import { ProviderModelPicker } from "./ProviderModelPicker";
-import { runtimeModeConfig, runtimeModeOptions } from "./runtimeModeConfig";
+import { runtimeModeConfig } from "./runtimeModeConfig";
 import { useComposerMenuState } from "./useComposerMenuState";
 
 export type RuntimeModeOption = {
   mode: RuntimeMode;
   disabledReason?: string;
 } & (typeof runtimeModeConfig)[RuntimeMode];
-export const composerRuntimeModeOptions: ReadonlyArray<RuntimeModeOption> = runtimeModeOptions.map(
-  (mode) => ({ mode, ...runtimeModeConfig[mode] }),
-);
 const supervisedRuntimeModeOption: RuntimeModeOption = {
   mode: "approval-required" as const,
   ...runtimeModeConfig["approval-required"],

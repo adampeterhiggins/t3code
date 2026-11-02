@@ -173,13 +173,19 @@ const bootstrap = Effect.gen(function* () {
 
   const settings = yield* desktopSettings.get;
   const electronProtocol = yield* ElectronProtocol.ElectronProtocol;
-  yield* electronProtocol.registerDesktopProtocol({
+  const desktopProtocol = {
     scheme: ElectronProtocol.getDesktopScheme(environment.isDevelopment),
     ...(environment.isDevelopment
       ? { targetOrigin: Option.getOrThrow(environment.devServerUrl) }
       : { assetDirectory: environment.clientAssetsDir }),
     clerkFrontendApiHostname: DesktopClerk.desktopClerkFrontendApiHostname,
-  });
+  };
+  yield* electronProtocol.registerDesktopProtocol(desktopProtocol);
+  // Same scheme and policy as the default session, on the quick-message
+  // partition. This scope owns the handler; a nested Effect.scoped would
+  // unhandle it before the first window. The local-environment return below
+  // still needs the partition, or the shortcut has no page to show.
+  yield* DesktopQuickMessage.registerQuickMessagePartitionProtocol(desktopProtocol);
   yield* installDesktopIpcHandlers();
   yield* logBootstrapInfo("bootstrap ipc handlers registered");
   // Before any window: the preload merges these items before the app reads storage.

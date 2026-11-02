@@ -38,7 +38,6 @@ import {
   narrowPickerPullRequests,
   PullRequestPickerFilterBar,
 } from "./StartFromPullRequestFilters";
-import { useComposerAttachRedirect } from "./composerAttachRedirect";
 
 const SEARCH_DEBOUNCE_MS = 300;
 const PULL_REQUEST_LIMIT = 50;
@@ -112,7 +111,6 @@ function PullRequestList(props: {
   onPickComment: (entry: EnvironmentPullRequestEntry) => void;
 }) {
   const { environmentId, projectId, threadRef } = props;
-  const redirect = useComposerAttachRedirect();
   const [query, setQuery] = useState("");
   // The row the context menu was opened on; the menu is closed whenever this is null.
   const [menuEntry, setMenuEntry] = useState<EnvironmentPullRequestEntry | null>(null);
@@ -142,11 +140,7 @@ function PullRequestList(props: {
 
   const select = (entry: EnvironmentPullRequestEntry) => {
     const comment = buildPullRequestReferenceContext(entry);
-    if (redirect) {
-      redirect({ type: "pull-request", comment, label: `#${entry.number} ${entry.title}` });
-    } else {
-      useComposerDraftStore.getState().addReviewComment(threadRef, comment);
-    }
+    useComposerDraftStore.getState().addReviewComment(threadRef, comment);
     closePullRequestAttachPicker();
   };
 
@@ -253,7 +247,6 @@ function PullRequestCommentList(props: {
   onBack: () => void;
 }) {
   const { entry, threadRef } = props;
-  const redirect = useComposerAttachRedirect();
   const [query, setQuery] = useState("");
   const activity = useEnvironmentQuery(
     pullRequestEnvironment.activity({
@@ -282,15 +275,7 @@ function PullRequestCommentList(props: {
 
   const select = (choice: PullRequestCommentChoice) => {
     const comment = buildPullRequestCommentReferenceContext(entry, choice);
-    if (redirect) {
-      redirect({
-        type: "pull-request",
-        comment,
-        label: `#${entry.number} · ${choice.comment.author?.login ?? "comment"}`,
-      });
-    } else {
-      useComposerDraftStore.getState().addReviewComment(threadRef, comment);
-    }
+    useComposerDraftStore.getState().addReviewComment(threadRef, comment);
     closePullRequestAttachPicker();
   };
 

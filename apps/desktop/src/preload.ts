@@ -1,4 +1,5 @@
 import type {
+  DesktopAppearanceSnapshot,
   DesktopBridge,
   DesktopPreviewOpenLinkEvent,
   DesktopPreviewPointerEvent,
@@ -10,7 +11,16 @@ import { exposeClerkBridge } from "@clerk/electron/preload";
 import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 
 import * as IpcChannels from "./ipc/channels.ts";
+import {
+  BEGIN_NATIVE_WINDOW_INTERACTION_CHANNEL,
+  END_NATIVE_WINDOW_INTERACTION_CHANNEL,
+} from "./ipc/nativeWindowInteractionChannels.ts";
 import { mergeLegacyLocalStorage } from "./legacyLocalStorageMerge.ts";
+import {
+  consumesLegacyLocalStorage,
+  parseDesktopWindowRole,
+  parseQuickMessageSessionIsolated,
+} from "./windowRole.ts";
 
 const SNAP_SHOT_EVENT_TYPES = new Set([
   "requested",
@@ -19,6 +29,30 @@ const SNAP_SHOT_EVENT_TYPES = new Set([
   "failed",
   "shortcut-changed",
 ]);
+function isOptionalThemeId(value: unknown): boolean {
+  return value === undefined || typeof value === "string";
+}
+
+function isAppearanceSnapshot(value: unknown): value is DesktopAppearanceSnapshot {
+  if (typeof value !== "object" || value === null) return false;
+  if (!("theme" in value) || typeof value.theme !== "string") return false;
+  if (
+    !("appearanceMode" in value) ||
+    (value.appearanceMode !== "light" &&
+      value.appearanceMode !== "dark" &&
+      value.appearanceMode !== "system")
+  ) {
+    return false;
+  }
+  if (!("halves" in value)) return false;
+  if (value.halves !== null) {
+    if (typeof value.halves !== "object") return false;
+    const halves = value.halves as { light?: unknown; dark?: unknown };
+    if (!isOptionalThemeId(halves.light) || !isOptionalThemeId(halves.dark)) return false;
+  }
+  return "customThemes" in value && Array.isArray(value.customThemes);
+}
+
 function isSnapShotEvent(value: unknown): value is DesktopSnapShotEvent {
   if (typeof value !== "object" || value === null) return false;
   const { type, id } = value as { type?: unknown; id?: unknown };
@@ -31,15 +65,23 @@ function isSnapShotEvent(value: unknown): value is DesktopSnapShotEvent {
 
 exposeClerkBridge({ passkeys: true });
 
-// Runs before any app script reads localStorage. See DesktopLegacyLocalStorage.
-try {
-  const legacyItems: unknown = ipcRenderer.sendSync(IpcChannels.TAKE_LEGACY_LOCAL_STORAGE_CHANNEL);
-  if (typeof legacyItems === "object" && legacyItems !== null) {
-    if (mergeLegacyLocalStorage(window.localStorage, legacyItems as Record<string, string>)) {
-      void ipcRenderer.invoke(IpcChannels.COMPLETE_LEGACY_LOCAL_STORAGE_CHANNEL);
+// Known before any app script. Electron keeps additionalArguments on this renderer across reloads.
+const windowRole = parseDesktopWindowRole(process.argv);
+const quickMessageSessionIsolated = parseQuickMessageSessionIsolated(process.argv);
+
+// The quick-message window shares this profile and must not take the one-time import.
+if (consumesLegacyLocalStorage(windowRole)) {
+  try {
+    const legacyItems: unknown = ipcRenderer.sendSync(
+      IpcChannels.TAKE_LEGACY_LOCAL_STORAGE_CHANNEL,
+    );
+    if (typeof legacyItems === "object" && legacyItems !== null) {
+      if (mergeLegacyLocalStorage(window.localStorage, legacyItems as Record<string, string>)) {
+        void ipcRenderer.invoke(IpcChannels.COMPLETE_LEGACY_LOCAL_STORAGE_CHANNEL);
+      }
     }
-  }
-} catch {}
+  } catch {}
+}
 
 // oxlint-disable-next-line t3code/no-global-process-runtime -- Electron exposes the client platform in its sandboxed preload process.
 const clientPlatform = process.platform;
@@ -84,6 +126,8 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     ipcRenderer.sendSync(IpcChannels.GET_RELAY_TELEMETRY_ENABLED_CHANNEL) === true,
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
   getClientPlatform: () => clientPlatform,
+  getWindowRole: () => windowRole,
+  isQuickMessageSessionIsolated: () => quickMessageSessionIsolated,
   setNotificationBadge: (badge) =>
     ipcRenderer.invoke(IpcChannels.SET_NOTIFICATION_BADGE_CHANNEL, badge),
   onNotificationBadgeClear: (listener) => {
@@ -122,6 +166,16 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   getClientSettings: () => ipcRenderer.invoke(IpcChannels.GET_CLIENT_SETTINGS_CHANNEL),
   setClientSettings: (settings) =>
     ipcRenderer.invoke(IpcChannels.SET_CLIENT_SETTINGS_CHANNEL, settings),
+  onClientSettings: (listener) => {
+    const wrappedListener = (_event: Electron.IpcRendererEvent, settings: unknown) => {
+      if (typeof settings !== "object" || settings === null) return;
+      listener(settings as Parameters<typeof listener>[0]);
+    };
+    ipcRenderer.on(IpcChannels.CLIENT_SETTINGS_EVENT_CHANNEL, wrappedListener);
+    return () => {
+      ipcRenderer.removeListener(IpcChannels.CLIENT_SETTINGS_EVENT_CHANNEL, wrappedListener);
+    };
+  },
   requestSnapShotPermissions: (includeAccessibility) =>
     ipcRenderer.invoke(IpcChannels.REQUEST_SNAP_SHOT_PERMISSIONS_CHANNEL, includeAccessibility),
   getSnapShotState: () => ipcRenderer.invoke(IpcChannels.GET_SNAP_SHOT_STATE_CHANNEL),
@@ -195,6 +249,19 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   showSavedFileInFolder: (path) =>
     ipcRenderer.invoke(IpcChannels.SHOW_SAVED_FILE_IN_FOLDER_CHANNEL, path),
   setTheme: (theme) => ipcRenderer.invoke(IpcChannels.SET_THEME_CHANNEL, theme),
+  getAppearanceSnapshot: () => ipcRenderer.invoke(IpcChannels.GET_APPEARANCE_SNAPSHOT_CHANNEL),
+  publishAppearanceSnapshot: (snapshot) =>
+    ipcRenderer.invoke(IpcChannels.PUBLISH_APPEARANCE_SNAPSHOT_CHANNEL, snapshot),
+  onAppearanceSnapshot: (listener) => {
+    const wrappedListener = (_event: Electron.IpcRendererEvent, snapshot: unknown) => {
+      if (!isAppearanceSnapshot(snapshot)) return;
+      listener(snapshot);
+    };
+    ipcRenderer.on(IpcChannels.APPEARANCE_SNAPSHOT_CHANNEL, wrappedListener);
+    return () => {
+      ipcRenderer.removeListener(IpcChannels.APPEARANCE_SNAPSHOT_CHANNEL, wrappedListener);
+    };
+  },
   showContextMenu: (items, position) =>
     ipcRenderer.invoke(IpcChannels.CONTEXT_MENU_CHANNEL, {
       items,
@@ -308,22 +375,10 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     getState: () => ipcRenderer.invoke(IpcChannels.GET_QUICK_MESSAGE_STATE_CHANNEL),
     setShortcutSuppressed: (suppressed) =>
       ipcRenderer.invoke(IpcChannels.SET_QUICK_MESSAGE_SHORTCUT_SUPPRESSED_CHANNEL, suppressed),
-    setReceiverReady: (ready) =>
-      ipcRenderer.invoke(IpcChannels.SET_QUICK_MESSAGE_RECEIVER_READY_CHANNEL, ready),
-    onSubmit: (listener) => {
-      const wrappedListener = (_event: Electron.IpcRendererEvent, submission: unknown) => {
-        if (typeof submission !== "object" || submission === null) return;
-        listener(submission as Parameters<typeof listener>[0]);
-      };
-      ipcRenderer.on(IpcChannels.QUICK_MESSAGE_SUBMIT_EVENT_CHANNEL, wrappedListener);
-      return () => {
-        ipcRenderer.removeListener(IpcChannels.QUICK_MESSAGE_SUBMIT_EVENT_CHANNEL, wrappedListener);
-      };
-    },
     setPanelReady: () => ipcRenderer.invoke(IpcChannels.SET_QUICK_MESSAGE_PANEL_READY_CHANNEL),
-    submit: (submission) =>
-      ipcRenderer.invoke(IpcChannels.SUBMIT_QUICK_MESSAGE_CHANNEL, submission),
     dismiss: () => ipcRenderer.invoke(IpcChannels.DISMISS_QUICK_MESSAGE_CHANNEL),
+    setPresentation: (presentation) =>
+      ipcRenderer.invoke(IpcChannels.SET_QUICK_MESSAGE_PRESENTATION_CHANNEL, presentation),
     onShow: (listener) => {
       const wrappedListener = (_event: Electron.IpcRendererEvent, event: unknown) => {
         if (typeof event !== "object" || event === null) return;
@@ -352,6 +407,38 @@ contextBridge.exposeInMainWorld("desktopBridge", {
           wrappedListener,
         );
       };
+    },
+  },
+  openMainDestination: (request) =>
+    ipcRenderer.invoke(IpcChannels.OPEN_MAIN_DESTINATION_CHANNEL, request),
+  onMainDestination: (listener) => {
+    const wrappedListener = (_event: Electron.IpcRendererEvent, request: unknown) => {
+      if (typeof request !== "object" || request === null) return;
+      listener(request as Parameters<typeof listener>[0]);
+    };
+    ipcRenderer.on(IpcChannels.MAIN_DESTINATION_EVENT_CHANNEL, wrappedListener);
+    return () => {
+      ipcRenderer.removeListener(IpcChannels.MAIN_DESTINATION_EVENT_CHANNEL, wrappedListener);
+    };
+  },
+  setMainDestinationReceiverReady: (ready) =>
+    ipcRenderer.invoke(IpcChannels.SET_MAIN_DESTINATION_RECEIVER_READY_CHANNEL, ready),
+  completeMainDestination: (result) =>
+    ipcRenderer.invoke(IpcChannels.COMPLETE_MAIN_DESTINATION_CHANNEL, result),
+  nativeWindowInteraction: {
+    begin: () => {
+      try {
+        return ipcRenderer.sendSync(BEGIN_NATIVE_WINDOW_INTERACTION_CHANNEL) === true;
+      } catch {
+        return false;
+      }
+    },
+    end: () => {
+      try {
+        ipcRenderer.sendSync(END_NATIVE_WINDOW_INTERACTION_CHANNEL);
+      } catch {
+        // A missing handler must not throw into the click that still opens the chooser.
+      }
     },
   },
   preview: {

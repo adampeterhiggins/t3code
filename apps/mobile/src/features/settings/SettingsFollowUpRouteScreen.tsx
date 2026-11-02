@@ -5,10 +5,15 @@ import { Platform, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText as Text } from "../../components/ui/AppText";
-import { DEFAULT_FOLLOW_UP_BEHAVIOR, type FollowUpBehavior } from "../../lib/followUpBehavior";
+import {
+  DEFAULT_FOLLOW_UP_BEHAVIOR,
+  DEFAULT_STEER_WHILE_AWAITING_SUBAGENTS,
+  type FollowUpBehavior,
+} from "../../lib/followUpBehavior";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 import { ListChoiceRow as SettingsChoiceRow } from "../../components/ui/ListChoiceRow";
 import { SettingsSection } from "./components/SettingsSection";
+import { SettingsSwitchRow } from "./components/SettingsSwitchRow";
 import { SettingsScreen } from "./components/SettingsScreen";
 
 const FOLLOW_UP_OPTIONS: ReadonlyArray<{
@@ -36,6 +41,10 @@ export function SettingsFollowUpRouteScreen() {
   const selectedBehavior = AsyncResult.isSuccess(preferencesResult)
     ? (preferencesResult.value.followUpBehavior ?? DEFAULT_FOLLOW_UP_BEHAVIOR)
     : null;
+  const steerWhileAwaitingSubagents = AsyncResult.isSuccess(preferencesResult)
+    ? (preferencesResult.value.steerWhileAwaitingSubagents ??
+      DEFAULT_STEER_WHILE_AWAITING_SUBAGENTS)
+    : null;
 
   const content = (
     <ScrollView
@@ -58,6 +67,17 @@ export function SettingsFollowUpRouteScreen() {
           />
         ))}
       </SettingsSection>
+      {selectedBehavior === "queue" ? (
+        <SettingsSection>
+          <SettingsSwitchRow
+            label="Steer while waiting on subagents"
+            subtitle="When the agent is only waiting on its subagents, your message reaches it right away."
+            disabled={!preferencesReady}
+            value={steerWhileAwaitingSubagents}
+            onValueChange={(value) => savePreferences({ steerWhileAwaitingSubagents: value })}
+          />
+        </SettingsSection>
+      ) : null}
       <Text className="px-2 text-sm text-foreground-muted">
         Long-press the send button to use the other option for a single message. With a hardware
         keyboard, hold Command while sending.

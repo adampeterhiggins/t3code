@@ -204,22 +204,26 @@ Keep that condition when remapping them if you want the same behavior.
 
 ## Quick message
 
-In the desktop app, turn on **Settings → General → Quick message** to start a new thread from
+In the desktop app, turn on **Settings → General → Quick message** to open a floating chat over
 any app. Press the shortcut (`Option+/` on macOS and `Alt+/` elsewhere, until you record
-another) and a floating composer opens over whatever you are doing. Pick a project and
-model, type, and press Enter: the thread starts in T3 Code, which comes to the front with it open.
-Press Escape or click away to close the composer; what you typed is still there next time.
+another). The window uses the local environment on this computer and the same composer as the
+main window. It follows the app's theme, fonts, and contrast.
 
-The composer opens on the project you used most recently, with that project's default model,
-effort and access mode. Paste, drop or attach files there, or attach a thread, an issue, a pull
-request, a model, and the rest of the attach menu. Use **⋯** to start from a PR, branch or issue.
-Picks show above your message and are applied to the new thread when you send. On Linux the
-shortcut does not work in a Wayland session.
+Hide it with Escape or by clicking away from a compact composer. Press the shortcut again within
+a minute and it reopens where you left it, with any draft you were writing. After a minute it
+opens a new draft in the same project. Change how long it waits, or choose every time or never,
+in **Settings → General → Quick message → Start a new draft**. Start a new thread the same way
+you do in the main window.
 
-Use **Settings → Appearance → Quick message** to give the floating composer its own appearance.
-Choose **Follow app**, **Adapt app theme** with extra contrast, or **Choose theme** from your theme
-library. Adapted and independent themes can use light, dark, or system appearance where the theme
-supports it. The preview lets you compare the composer over light and dark backgrounds.
+The bar under the floating composer, with the worktree, branch, and access level, is hidden at
+first. Show or hide it with the panel button in the composer or `mod+shift+u` (**Quick Message:
+Toggle Workspace Bar** in Keybindings). It stays as you left it.
+
+From a thread that already exists, open it in the main window; the floating window hides and
+next opens a new draft. Settings and other app pages open in the main window rather than here,
+and the floating window hides once the main window has them. If the local environment is off, or
+you still need to sign in, the shortcut shows that notice. On Linux the shortcut does not work in
+a Wayland session.
 
 ## Desktop quit shortcut
 

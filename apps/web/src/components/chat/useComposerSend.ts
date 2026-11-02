@@ -59,7 +59,11 @@ import {
 import { createModelSelection } from "@t3tools/shared/model";
 import { type SetStateAction, useLayoutEffect, useRef, type Dispatch } from "react";
 import { flushSync } from "react-dom";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useRouter } from "@tanstack/react-router";
+import {
+  applyDetachedSendMilestone,
+  openDetachedExistingThread,
+} from "../quickMessage/detachedChatPresentation";
 import {
   isAtomCommandInterrupted,
   settlePromise,
@@ -365,6 +369,7 @@ export function useComposerSend(input: ComposerSendInput) {
     (store) => store.setLogicalProjectDraftThreadId,
   );
   const navigate = useNavigate();
+  const router = useRouter();
   const clientSettingsHydrated = useClientSettingsHydrated();
   const planModeEnabled = useEnvironmentSettings(environmentId, selectPlanModeEnabled);
   const startThreadTurn = useOrchestrationCommand(threadEnvironment.startTurn, {
@@ -545,12 +550,25 @@ export function useComposerSend(input: ComposerSendInput) {
         }
       }
       setThreadError(threadId, error instanceof Error ? error.message : "Failed to create thread.");
+      applyDetachedSendMilestone("draft-send-failed", {
+        routeThreadKey,
+        currentRouteThreadKey: currentRouteThreadKeyRef.current,
+      });
       return;
     }
     // With no message or turn, the draft route has no reason to hand over by itself.
+    // Expand only while this draft is still the route, so a newer route keeps its size.
     const threadRef = scopeThreadRef(activeThread.environmentId, threadId);
     if (currentRouteThreadKeyRef.current === routeThreadKey) {
       await waitForThreadShell(threadRef);
+      if (currentRouteThreadKeyRef.current !== routeThreadKey) {
+        finalizePromotedDraftThreadByRef(threadRef);
+        return;
+      }
+      applyDetachedSendMilestone("thread-created-without-message", {
+        routeThreadKey,
+        currentRouteThreadKey: currentRouteThreadKeyRef.current,
+      });
       await navigate({
         to: "/$environmentId/$threadId",
         params: buildThreadRouteParams(threadRef),
@@ -1430,6 +1448,10 @@ export function useComposerSend(input: ComposerSendInput) {
       usesAttachmentUploads: turnUsesAttachmentUploads,
     });
     if (multipleModelSelections !== null) {
+      applyDetachedSendMilestone("fanout", {
+        routeThreadKey,
+        currentRouteThreadKey: currentRouteThreadKeyRef.current,
+      });
       await sendToMultipleModels({
         threadId: threadIdForSend,
         project: activeProject,
@@ -1598,7 +1620,13 @@ export function useComposerSend(input: ComposerSendInput) {
         submissionIntent === "background" && isLocalDraftThread
           ? scopeThreadRef(environmentId, threadIdForSend)
           : null;
-      if (backgroundThreadRef) beginBackgroundDraftSubmissionByRef(backgroundThreadRef);
+      if (backgroundThreadRef) {
+        beginBackgroundDraftSubmissionByRef(backgroundThreadRef);
+        applyDetachedSendMilestone("background-draft", {
+          routeThreadKey,
+          currentRouteThreadKey: currentRouteThreadKeyRef.current,
+        });
+      }
       const startPromise = startThreadTurn({
         environmentId,
         input: {
@@ -1651,6 +1679,12 @@ export function useComposerSend(input: ComposerSendInput) {
         failure = startResult;
       } else {
         turnStartSucceeded = true;
+        if (sentDraftThreadRef && !backgroundThreadRef) {
+          applyDetachedSendMilestone("foreground-draft-turn-started", {
+            routeThreadKey,
+            currentRouteThreadKey: currentRouteThreadKeyRef.current,
+          });
+        }
         useThreadTabContextStore.getState().clear(threadIdForSend);
         useIssueContextStore.getState().clear(threadIdForSend);
         useRepositoryContextStore.getState().clear(threadIdForSend);
@@ -1678,9 +1712,15 @@ export function useComposerSend(input: ComposerSendInput) {
                 actionProps: {
                   children: "Open",
                   onClick: () => {
-                    void navigate({
-                      to: "/$environmentId/$threadId",
-                      params: buildThreadRouteParams(backgroundThreadRef),
+                    const threadRef = backgroundThreadRef;
+                    void openDetachedExistingThread({
+                      navigate: () =>
+                        navigate({
+                          to: "/$environmentId/$threadId",
+                          params: buildThreadRouteParams(threadRef),
+                        }),
+                      router,
+                      destination: threadRef,
                     });
                   },
                 },
@@ -1698,6 +1738,12 @@ export function useComposerSend(input: ComposerSendInput) {
     }
 
     if (failure !== null) {
+      if (isLocalDraftThread) {
+        applyDetachedSendMilestone("draft-send-failed", {
+          routeThreadKey,
+          currentRouteThreadKey: currentRouteThreadKeyRef.current,
+        });
+      }
       if (isLocalDraftThread && draftId && draftThread) {
         restoreFailedDraftThread(
           draftId,

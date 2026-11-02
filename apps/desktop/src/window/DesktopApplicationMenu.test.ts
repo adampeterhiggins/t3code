@@ -73,7 +73,13 @@ const layerDesktopUpdates = Layer.succeed(DesktopUpdates.DesktopUpdates, {
   installPrepared: () => Effect.die("unexpected installPrepared"),
 } satisfies DesktopUpdates.DesktopUpdates["Service"]);
 
-const layerDesktopWindow = (selectedAction: Deferred.Deferred<string>) =>
+const layerDesktopWindow = (
+  selectedAction: Deferred.Deferred<string>,
+  dispatches?: Array<{
+    readonly action: string;
+    readonly options: DesktopWindow.DesktopMenuDispatchOptions | undefined;
+  }>,
+) =>
   Layer.succeed(DesktopWindow.DesktopWindow, {
     createMain: Effect.die("unexpected createMain"),
     ensureMain: Effect.die("unexpected ensureMain"),
@@ -85,7 +91,10 @@ const layerDesktopWindow = (selectedAction: Deferred.Deferred<string>) =>
     handleBackendNotReady: Effect.void,
     flushMainWindowBounds: Effect.void,
     prepareCaptureReveal: Effect.void,
-    dispatchMenuAction: (action) => Deferred.succeed(selectedAction, action).pipe(Effect.asVoid),
+    dispatchMenuAction: (action, options) =>
+      Effect.sync(() => {
+        dispatches?.push({ action, options });
+      }).pipe(Effect.andThen(Deferred.succeed(selectedAction, action).pipe(Effect.asVoid))),
     dispatchSnapShotEvent: () => Effect.void,
     zoomMain: (direction) =>
       Deferred.succeed(selectedAction, `zoom-${direction}`).pipe(Effect.asVoid),
@@ -114,6 +123,10 @@ const configureMenu = (
   applicationMenuTemplate: Deferred.Deferred<readonly Electron.MenuItemConstructorOptions[]>,
   environment: Partial<DesktopEnvironment.MakeDesktopEnvironmentInput> = {},
   nativeAction?: Deferred.Deferred<string>,
+  dispatches?: Array<{
+    readonly action: string;
+    readonly options: DesktopWindow.DesktopMenuDispatchOptions | undefined;
+  }>,
 ) =>
   Effect.gen(function* () {
     const menu = yield* DesktopApplicationMenu.DesktopApplicationMenu;
@@ -122,7 +135,7 @@ const configureMenu = (
     Effect.provide(
       DesktopApplicationMenu.layer.pipe(
         Layer.provideMerge(layerElectronMenu(applicationMenuTemplate, nativeAction)),
-        Layer.provideMerge(layerDesktopWindow(selectedAction)),
+        Layer.provideMerge(layerDesktopWindow(selectedAction, dispatches)),
         Layer.provideMerge(layerDesktopUpdates),
         Layer.provideMerge(layerElectronDialog),
         Layer.provideMerge(layerElectronApp),
@@ -174,8 +187,12 @@ describe("DesktopApplicationMenu", () => {
       const selectedAction = yield* Deferred.make<string>();
       const applicationMenuTemplate =
         yield* Deferred.make<readonly Electron.MenuItemConstructorOptions[]>();
+      const dispatches: Array<{
+        readonly action: string;
+        readonly options: DesktopWindow.DesktopMenuDispatchOptions | undefined;
+      }> = [];
 
-      yield* configureMenu(selectedAction, applicationMenuTemplate);
+      yield* configureMenu(selectedAction, applicationMenuTemplate, {}, undefined, dispatches);
 
       const template = yield* Deferred.await(applicationMenuTemplate);
       const fileMenu = template.find((item) => item.label === "File");
@@ -192,6 +209,7 @@ describe("DesktopApplicationMenu", () => {
 
       settingsClick({} as Electron.MenuItem, {} as Electron.BrowserWindow, {} as KeyboardEvent);
       assert.equal(yield* Deferred.await(selectedAction), "open-settings");
+      assert.deepEqual(dispatches, [{ action: "open-settings", options: undefined }]);
     }),
   );
 
@@ -200,8 +218,18 @@ describe("DesktopApplicationMenu", () => {
       const selectedAction = yield* Deferred.make<string>();
       const applicationMenuTemplate =
         yield* Deferred.make<readonly Electron.MenuItemConstructorOptions[]>();
+      const dispatches: Array<{
+        readonly action: string;
+        readonly options: DesktopWindow.DesktopMenuDispatchOptions | undefined;
+      }> = [];
 
-      yield* configureMenu(selectedAction, applicationMenuTemplate, { platform: "darwin" });
+      yield* configureMenu(
+        selectedAction,
+        applicationMenuTemplate,
+        { platform: "darwin" },
+        undefined,
+        dispatches,
+      );
 
       const template = yield* Deferred.await(applicationMenuTemplate);
       const editMenu = template.find((item) => item.label === "Edit");
@@ -223,6 +251,12 @@ describe("DesktopApplicationMenu", () => {
         {} as KeyboardEvent,
       );
       assert.equal(yield* Deferred.await(selectedAction), "paste-as-text");
+      assert.deepEqual(dispatches, [
+        {
+          action: "paste-as-text",
+          options: { reveal: false, target: "focused-trusted" },
+        },
+      ]);
     }),
   );
 
@@ -258,13 +292,18 @@ describe("DesktopApplicationMenu", () => {
   );
 
   // On Windows/Linux Chromium pastes for the accelerator on its own. Dispatching
+  // the renderer action would also call pasteAsText and duplicate that paste.
   it.effect("leaves the accelerator to Chromium instead of injecting a paste", () =>
     Effect.gen(function* () {
       const selectedAction = yield* Deferred.make<string>();
       const applicationMenuTemplate =
         yield* Deferred.make<readonly Electron.MenuItemConstructorOptions[]>();
+      const dispatches: Array<{
+        readonly action: string;
+        readonly options: DesktopWindow.DesktopMenuDispatchOptions | undefined;
+      }> = [];
 
-      yield* configureMenu(selectedAction, applicationMenuTemplate);
+      yield* configureMenu(selectedAction, applicationMenuTemplate, {}, undefined, dispatches);
 
       const template = yield* Deferred.await(applicationMenuTemplate);
       const editMenu = template.find((item) => item.label === "Edit");
@@ -284,6 +323,7 @@ describe("DesktopApplicationMenu", () => {
         } as unknown as KeyboardEvent,
       );
       assert.isFalse(yield* Deferred.isDone(selectedAction));
+      assert.deepEqual(dispatches, []);
     }),
   );
 

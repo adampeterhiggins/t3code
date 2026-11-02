@@ -69,23 +69,6 @@ export function attachModelToChat(
   });
 }
 
-/**
- * Puts a chip for a model chosen before the draft existed, such as in the quick message panel.
- * Traits are left unset; the draft's chip can still be edited after it lands.
- */
-export function attachStoredModelToChat(
-  composerRef: ScopedThreadRef,
-  input: {
-    providerInstanceId: ProviderInstanceId;
-    driver: string;
-    instanceName: string;
-    model: string;
-    modelName: string;
-  },
-): ModelContextRecord {
-  return insertModelChip(composerRef, { ...input, options: [] });
-}
-
 function insertModelChip(
   composerRef: ScopedThreadRef,
   input: {

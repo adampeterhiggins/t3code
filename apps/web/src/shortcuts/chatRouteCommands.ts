@@ -25,6 +25,13 @@ import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../termina
 import { useThreadSelectionStore } from "../threadSelectionStore";
 import { resolveThreadRouteTarget } from "../threadRoutes";
 import { useUiStateStore } from "../uiStateStore";
+import { isDetachedChatWindow } from "../components/quickMessage/quickMessageWindow";
+import { setDetachedFreshComposerStarter } from "../components/quickMessage/detachedChatPresentation";
+import {
+  applyChatNewShortcut,
+  resolveDetachedChatNewProjectRef,
+  selectPreferredPrimaryProjectRef,
+} from "../routes/detachedChatBootstrap";
 import { type CommandHandler, registerCommands } from "./dispatcher";
 
 const CHAT_ROUTE_ID = "/_chat";
@@ -78,6 +85,36 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
       handleNewThread,
     };
   };
+  const readDetachedNewThreadInput = () => {
+    const context = readThreadContext();
+    const primaryEnvironmentId = appAtomRegistry.get(primaryEnvironmentIdAtom);
+    return {
+      activeThread: context.activeThread
+        ? {
+            environmentId: context.activeThread.environmentId,
+            projectId: context.activeThread.projectId,
+          }
+        : null,
+      activeDraftThread: context.activeDraftThread
+        ? {
+            environmentId: context.activeDraftThread.environmentId,
+            projectId: context.activeDraftThread.projectId,
+          }
+        : null,
+      primaryEnvironmentId,
+      preferredPrimaryProjectRef: selectPreferredPrimaryProjectRef({
+        projects: readProjects(),
+        primaryEnvironmentId,
+        projectOrder: useUiStateStore.getState().projectOrder,
+      }),
+    };
+  };
+  const stopFreshComposer = isDetachedChatWindow
+    ? setDetachedFreshComposerStarter(async () => {
+        const projectRef = resolveDetachedChatNewProjectRef(readDetachedNewThreadInput());
+        if (projectRef !== null) await handleNewThread(projectRef, { replace: true });
+      })
+    : () => undefined;
   // Grouped like the sidebar, so the shortcut and the New thread button agree.
   const readProjectGroups = () =>
     buildSidebarProjectSnapshots({
@@ -111,7 +148,7 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
       if (threadRef && canOperatePreview(threadRef.environmentId)) dispatchPreviewAction(action);
     };
 
-  return registerCommands(
+  const stopCommands = registerCommands(
     {
       "chat.newLocal": startNewLocal,
       "chat.startFrom": (event) => {
@@ -131,6 +168,24 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
         void scratch.startScratchThread(environmentId);
       },
       "chat.new": (event) => {
+        if (isDetachedChatWindow) {
+          const context = readThreadContext();
+          applyChatNewShortcut(
+            event,
+            {
+              detached: true,
+              legacySidebarEnabled: false,
+              projectChoiceCount: 0,
+              ...readDetachedNewThreadInput(),
+            },
+            {
+              openCommandPalette: () => openCommandPalette({ open: "new-thread-in" }),
+              startNewThread: (projectRef) => handleNewThread(projectRef),
+              startNewThreadFromContext: () => startNewThreadFromContext(context),
+            },
+          );
+          return;
+        }
         // The boring sidebar's folders already show the context, so it starts in
         // the current project like the legacy sidebar did.
         const { boringSidebarEnabled, legacySidebarEnabled } = getClientSettings();
@@ -200,4 +255,8 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
       },
     },
   );
+  return () => {
+    stopCommands();
+    stopFreshComposer();
+  };
 }

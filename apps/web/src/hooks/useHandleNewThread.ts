@@ -36,7 +36,10 @@ import {
 } from "../lib/chatThreadActions";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { readT3ProjectFile } from "../lib/t3ProjectFileDefaults";
+import { noteDetachedNewDraftOpened } from "../components/quickMessage/detachedChatPresentation";
+import { isDetachedChatWindow } from "../components/quickMessage/quickMessageWindow";
 import { appAtomRegistry } from "../rpc/atomRegistry";
+import { primaryEnvironmentIdAtom } from "../state/primaryEnvironment";
 import { environmentSummaries } from "../state/presentation";
 import { environmentServerConfigsAtom } from "../state/server";
 import { resolveThreadRouteTarget } from "../threadRoutes";
@@ -87,6 +90,13 @@ export function createNewThreadHandler(router: AnyRouter) {
       prompt?: string;
     },
   ): Promise<{ draftId: DraftId; threadId: ThreadId } | null> => {
+    // Scratch and project routes on another machine would leave this window.
+    if (isDetachedChatWindow) {
+      const primaryEnvironmentId = appAtomRegistry.get(primaryEnvironmentIdAtom);
+      if (primaryEnvironmentId === null || projectRef.environmentId !== primaryEnvironmentId) {
+        return Promise.resolve(null);
+      }
+    }
     const projects = readProjects();
     const projectGroupingSettings = selectProjectGroupingSettings(getClientSettings());
     // Read at call time; status pushes replace the config map and would recreate every sidebar handler.
@@ -322,6 +332,7 @@ export function createNewThreadHandler(router: AnyRouter) {
           routeTargetAfterWrites?.kind === "draft" &&
           routeTargetAfterWrites.draftId === emptyStoredDraftThread.draftId
         ) {
+          noteDetachedNewDraftOpened(opened);
           return opened;
         }
         await router.navigate({
@@ -329,6 +340,7 @@ export function createNewThreadHandler(router: AnyRouter) {
           params: { draftId: emptyStoredDraftThread.draftId },
           replace: options?.replace ?? false,
         });
+        noteDetachedNewDraftOpened(opened);
         return opened;
       })();
     }
@@ -390,7 +402,9 @@ export function createNewThreadHandler(router: AnyRouter) {
           params: { draftId: racedDraft.draftId },
           replace: options?.replace ?? false,
         });
-        return { draftId: racedDraft.draftId, threadId: racedDraft.threadId };
+        const opened = { draftId: racedDraft.draftId, threadId: racedDraft.threadId };
+        noteDetachedNewDraftOpened(opened);
+        return opened;
       }
       setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, draftId, {
         threadId,
@@ -418,7 +432,9 @@ export function createNewThreadHandler(router: AnyRouter) {
         params: { draftId },
         replace: options?.replace ?? false,
       });
-      return { draftId, threadId };
+      const opened = { draftId, threadId };
+      noteDetachedNewDraftOpened(opened);
+      return opened;
     })();
   };
 }

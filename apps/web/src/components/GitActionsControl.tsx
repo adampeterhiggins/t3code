@@ -1651,13 +1651,12 @@ export default function GitActionsControl({
         </div>
       )}
 
-      {showChanges && isRepo && !quietEmptyDraft ? (
+      {showChanges && isRepo && !quietEmptyDraft && onOpenChanges ? (
         <ThreadDetailsControl
           type="button"
           variant="ghost"
           size="sm"
           part="row"
-          disabled={!onOpenChanges}
           onClick={onOpenChanges}
         >
           <FileDiffIcon className={THREAD_DETAILS_PANEL_ICON_CLASS} aria-hidden />

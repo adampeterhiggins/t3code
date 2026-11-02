@@ -45,9 +45,20 @@ async function isWindowsBrowserWindowForeground(window: Electron.BrowserWindow):
 // macOS, so a "first window" fallback that found one would never recreate the main window, and
 // a theme sync would paint over their transparent background.
 const auxiliaryWindows = new WeakSet<Electron.BrowserWindow>();
+// A property, not only the WeakSet: the desktop test runner can load this
+// module twice, and the set in the other copy would miss the mark.
+const AUXILIARY_WINDOW = Symbol.for("t3code.desktop.auxiliaryWindow");
 
 export function markAuxiliaryWindow(window: Electron.BrowserWindow): void {
   auxiliaryWindows.add(window);
+  (window as Electron.BrowserWindow & { [AUXILIARY_WINDOW]?: true })[AUXILIARY_WINDOW] = true;
+}
+
+export function isAuxiliaryWindow(window: Electron.BrowserWindow): boolean {
+  return (
+    auxiliaryWindows.has(window) ||
+    (window as Electron.BrowserWindow & { [AUXILIARY_WINDOW]?: true })[AUXILIARY_WINDOW] === true
+  );
 }
 
 const ElectronWindowCreateOptions = Schema.Struct({
@@ -152,7 +163,6 @@ export const make = Effect.gen(function* () {
   const captureRevealWindows = new Set<number>();
   yield* Effect.addFinalizer(() => Effect.sync(() => windowsForegroundFocus?.close()));
   const mainWindowRef = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
-  const auxiliaryWindows = new WeakSet<Electron.BrowserWindow>();
 
   const listWindows = Effect.try({
     try: () => Electron.BrowserWindow.getAllWindows(),
@@ -194,7 +204,7 @@ export const make = Effect.gen(function* () {
     }
 
     const first = Option.fromNullishOr(
-      (yield* listWindows).find((window) => !auxiliaryWindows.has(window)) ?? null,
+      (yield* listWindows).find((window) => !isAuxiliaryWindow(window)) ?? null,
     );
     if (Option.isNone(first) || (yield* isWindowDestroyed(first.value))) {
       return Option.none<Electron.BrowserWindow>();
@@ -216,7 +226,7 @@ export const make = Effect.gen(function* () {
     }).pipe(Effect.orDie);
     if (
       Option.isSome(focused) &&
-      !auxiliaryWindows.has(focused.value) &&
+      !isAuxiliaryWindow(focused.value) &&
       !(yield* isWindowDestroyed(focused.value))
     ) {
       return focused;
@@ -252,7 +262,7 @@ export const make = Effect.gen(function* () {
       return Effect.try({
         try: () => {
           const window = new Electron.BrowserWindow(options);
-          if (behavior?.auxiliary === true) auxiliaryWindows.add(window);
+          if (behavior?.auxiliary === true) markAuxiliaryWindow(window);
           return window;
         },
         catch: (cause) => new ElectronWindowCreateError({ options: diagnosticOptions, cause }),
@@ -399,7 +409,7 @@ export const make = Effect.gen(function* () {
     ) {
       const windows = yield* listWindows;
       for (const window of windows) {
-        if (auxiliaryWindows.has(window) || (yield* isWindowDestroyed(window))) {
+        if (isAuxiliaryWindow(window) || (yield* isWindowDestroyed(window))) {
           continue;
         }
         yield* sync(window);

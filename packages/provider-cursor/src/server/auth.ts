@@ -125,7 +125,16 @@ export const makeCursorAuth = Effect.fn("makeCursorAuth")(function* (options: Cu
           "Remove CURSOR_API_KEY from this provider's environment before using browser sign-in.",
       });
     }
-    const { Cursor, InMemoryCredentialStore } = loadCursorSdk();
+    const { Cursor, InMemoryCredentialStore } = yield* Effect.try({
+      try: loadCursorSdk,
+      catch: (cause) =>
+        new ProviderSetupError({
+          instanceId: options.instanceId,
+          operation: "start",
+          detail: "Could not load the Cursor SDK. Try signing in again.",
+          cause,
+        }),
+    });
     const pendingStore = new InMemoryCredentialStore();
     const urls = yield* Queue.unbounded<string>();
     yield* Queue.take(urls).pipe(

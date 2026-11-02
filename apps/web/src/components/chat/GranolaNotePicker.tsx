@@ -42,7 +42,6 @@ import {
   CommandItem,
   CommandList,
 } from "../ui/command";
-import { useComposerAttachRedirect } from "./composerAttachRedirect";
 
 type GranolaNotePickerMode = "attach" | "link";
 /** The thread the picker acts on, and whether picking attaches the note or links it. */
@@ -140,7 +139,6 @@ function GranolaNotePickerDialog({
   );
   const navigate = useNavigate();
   const attachNote = useAttachGranolaNote();
-  const redirect = useComposerAttachRedirect();
   const linkNote = useLinkGranolaNote();
   const [query, setQuery] = useState("");
   const [attaching, setAttaching] = useState(false);
@@ -233,11 +231,6 @@ function GranolaNotePickerDialog({
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={async () => {
                           if (attaching) return;
-                          if (redirect) {
-                            redirect({ type: "granola-note", noteId: note.id, label: note.title });
-                            closePicker();
-                            return;
-                          }
                           setAttaching(true);
                           const pick = mode === "link" ? linkNote : attachNote;
                           await pick(threadRef, note.id)

@@ -6,6 +6,7 @@ import { isPreviewFocused } from "../lib/previewFocus";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { isModelPickerOpen } from "../modelPickerVisibility";
 import { appAtomRegistry } from "../rpc/atomRegistry";
+import { detachedChatShortcutRuns } from "../components/quickMessage/detachedChatPresentation";
 import { primaryServerKeybindingsAtom } from "../state/server";
 
 /** Return `false` to let the next scope handle the event. */
@@ -67,7 +68,8 @@ function runScope(scope: CommandScope, event: KeyboardEvent): boolean {
     { context: { ...readFocusContext(event), ...options.context?.() } },
   );
   const handler = command === null ? undefined : commands[command];
-  if (handler === undefined) return false;
+  if (handler === undefined || (command !== null && !detachedChatShortcutRuns(command)))
+    return false;
   if (isInsideConfirmation(event.target)) {
     event.preventDefault();
     return true;

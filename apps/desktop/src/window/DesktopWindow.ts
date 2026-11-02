@@ -37,6 +37,10 @@ import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as DesktopRendererHistory from "../telemetry/DesktopRendererHistory.ts";
 import { makeQuitShortcutHandler } from "./QuitHold.ts";
 import { copyContextMenuImage } from "./ContextMenuImage.ts";
+import {
+  type DesktopMenuDispatchOptions,
+  sendToFocusedTrustedWindow,
+} from "./focusedTrustedDispatch.ts";
 
 const TITLEBAR_HEIGHT = 40;
 // Match --workspace-topbar-height in apps/web/src/index.css; native macOS buttons stay 14 points at any zoom.
@@ -89,6 +93,7 @@ export type DesktopWindowError =
 
 export type MainWindowZoomDirection = "in" | "out" | "reset";
 export type MainWindowContentsCommand = "reload" | "forceReload" | "toggleDevTools";
+export type { DesktopMenuDispatchOptions };
 
 export class DesktopWindow extends Context.Service<
   DesktopWindow,
@@ -105,7 +110,7 @@ export class DesktopWindow extends Context.Service<
     readonly prepareCaptureReveal: Effect.Effect<void>;
     readonly dispatchMenuAction: (
       action: string,
-      options?: { readonly reveal?: boolean },
+      options?: DesktopMenuDispatchOptions,
     ) => Effect.Effect<void, DesktopWindowError>;
     readonly dispatchSnapShotEvent: (
       event: DesktopSnapShotEvent,
@@ -965,9 +970,11 @@ export const make = Effect.gen(function* () {
   const dispatchRendererEvent = Effect.fn("desktop.window.dispatchRendererEvent")(function* (
     channel: string,
     payload: unknown,
-    { reveal = true }: { readonly reveal?: boolean } = {},
+    { reveal = true, target = "main" }: DesktopMenuDispatchOptions = {},
   ) {
     if (yield* Ref.get(desktopState.quitting)) return;
+    if (target === "focused-trusted")
+      return sendToFocusedTrustedWindow(yield* electronWindow.main, channel, payload);
     const existingWindow = yield* reveal ? focusedMainWindow : electronWindow.main;
     if (Option.isNone(existingWindow) && (!reveal || (yield* waitingForBackend))) return;
     const window = Option.isSome(existingWindow) ? existingWindow : yield* ensureMain;
@@ -1033,7 +1040,7 @@ export const make = Effect.gen(function* () {
       Effect.withSpan("desktop.window.flushMainWindowBounds"),
     ),
     dispatchMenuAction: Effect.fn("desktop.window.dispatchMenuAction")(function* (action, options) {
-      yield* Effect.annotateCurrentSpan({ action });
+      yield* Effect.annotateCurrentSpan({ action, target: options?.target ?? "main" });
       yield* dispatchRendererEvent(MENU_ACTION_CHANNEL, action, options);
     }),
     dispatchSnapShotEvent: Effect.fn("desktop.window.dispatchSnapShotEvent")(function* (event) {
