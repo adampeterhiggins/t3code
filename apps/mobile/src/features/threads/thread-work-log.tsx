@@ -18,6 +18,7 @@ import { QuestionAnswerHistory } from "./QuestionAnswerHistory";
 import { ThreadCommandOutput, useCommandOutputStreaming } from "./thread-command-output";
 import {
   getQuestionAnswerPreview,
+  getQuestionAnswerRows,
   hasQuestionAnswer,
 } from "@t3tools/client-runtime/work-log/user-input";
 import * as Haptics from "expo-haptics";
@@ -1184,36 +1185,43 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
               )}
             </WorkLogIconSlot>
             {answerPreview && !isSystemNotice ? (
-              <View className="min-w-0 flex-1">
-                <Text
-                  selectable={false}
-                  numberOfLines={2}
-                  className="text-sm text-foreground-muted"
-                >
-                  {displayText}
-                </Text>
-                <View className="flex-row items-center gap-1.5">
-                  <SymbolView
-                    name="arrow.turn.down.right"
-                    size={12}
-                    tintColor={props.iconSubtleColor}
-                    type="monochrome"
-                  />
-                  <Text
-                    selectable={false}
-                    numberOfLines={1}
-                    className={cn(
-                      "min-w-0 flex-1 text-sm",
-                      !expanded &&
-                        row.workEntry.questionAnswer &&
-                        hasQuestionAnswer(row.workEntry.questionAnswer)
-                        ? "text-foreground"
-                        : "text-foreground-subtle",
-                    )}
-                  >
-                    {answerPreview}
-                  </Text>
-                </View>
+              <View className="min-w-0 flex-1 gap-2">
+                {(row.workEntry.questionAnswer
+                  ? getQuestionAnswerRows(row.workEntry.questionAnswer)
+                  : [{ id: "preview", question: displayText, answer: answerPreview }]
+                ).map((questionRow) => (
+                  <View key={questionRow.id}>
+                    <Text
+                      selectable={false}
+                      numberOfLines={2}
+                      className="text-sm text-foreground-muted"
+                    >
+                      {questionRow.question}
+                    </Text>
+                    <View className="flex-row items-center gap-1.5">
+                      <SymbolView
+                        name="arrow.turn.down.right"
+                        size={12}
+                        tintColor={props.iconSubtleColor}
+                        type="monochrome"
+                      />
+                      <Text
+                        selectable={false}
+                        numberOfLines={1}
+                        className={cn(
+                          "min-w-0 flex-1 text-sm",
+                          !expanded &&
+                            row.workEntry.questionAnswer &&
+                            hasQuestionAnswer(row.workEntry.questionAnswer)
+                            ? "text-foreground"
+                            : "text-foreground-subtle",
+                        )}
+                      >
+                        {questionRow.answer}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
               </View>
             ) : (
               <WorkLogLabel

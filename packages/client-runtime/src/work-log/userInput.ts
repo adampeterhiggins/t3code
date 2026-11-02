@@ -1,4 +1,4 @@
-import { type UserInputAttachmentAnswerPayload } from "@t3tools/contracts";
+import type { UserInputAttachmentAnswerPayload } from "@t3tools/contracts";
 
 function record(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -41,4 +41,22 @@ export function hasQuestionAnswer(answer: UserInputAttachmentAnswerPayload): boo
     Object.values(answer.answers).some(getQuestionAnswerText) ||
     Object.values(answer.attachmentsByQuestionId).some((attachments) => attachments.length > 0)
   );
+}
+
+export function getQuestionAnswerRows(answer: UserInputAttachmentAnswerPayload) {
+  const ids = new Set([
+    ...Object.keys(answer.questionTextById ?? {}),
+    ...Object.keys(answer.answers),
+    ...Object.keys(answer.attachmentsByQuestionId),
+  ]);
+  return Array.from(ids, (id) => ({
+    id,
+    question: answer.questionTextById?.[id]?.replace(/\s+/g, " ").trim() ?? id,
+    answer: (
+      getQuestionAnswerText(answer.answers[id]) ||
+      (answer.attachmentsByQuestionId[id] ?? []).map((attachment) => attachment.name).join(", ")
+    )
+      .replace(/\s+/g, " ")
+      .trim(),
+  }));
 }

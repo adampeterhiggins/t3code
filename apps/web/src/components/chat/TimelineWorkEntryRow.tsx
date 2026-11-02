@@ -2,6 +2,7 @@ import { TimelinePendingApprovalRow } from "./TimelinePendingApprovalRow";
 import { WorkLogDetails, WorkLogRow } from "./WorkLog";
 import {
   getQuestionAnswerPreview,
+  getQuestionAnswerRows,
   getQuestionAnswerText,
   getQuestionTextPreview,
   hasQuestionAnswer,
@@ -550,6 +551,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
       label={
         answerPreview !== null ? (
           <QuestionAnswerLabel
+            questionAnswer={workEntry.questionAnswer}
             question={previewText}
             answer={answerPreview}
             className={headingClass}
@@ -791,16 +793,33 @@ function WorkEntryDuration({
 }
 
 export function QuestionAnswerLabel({
+  questionAnswer,
   question,
   answer,
   className,
   answerMuted = false,
 }: {
+  questionAnswer?: import("@t3tools/contracts").UserInputAttachmentAnswerPayload;
   question: ReactNode;
   answer: string;
   className?: string;
   answerMuted?: boolean;
 }) {
+  if (questionAnswer) {
+    return (
+      <span className="flex min-w-0 flex-col gap-2">
+        {getQuestionAnswerRows(questionAnswer).map((row) => (
+          <QuestionAnswerLabel
+            key={row.id}
+            question={row.question}
+            answer={row.answer}
+            className={className}
+            answerMuted={answerMuted}
+          />
+        ))}
+      </span>
+    );
+  }
   return (
     <span className="flex min-w-0 flex-col">
       <span className={cn("line-clamp-2 break-words", className)}>{question}</span>
