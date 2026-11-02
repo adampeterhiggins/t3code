@@ -142,7 +142,7 @@ export function selectPreferredPrimaryProjectRef<
   return preferred === undefined ? null : scopeProjectRef(preferred.environmentId, preferred.id);
 }
 
-function resolveDetachedChatNewProjectRef(input: {
+export function resolveDetachedChatNewProjectRef(input: {
   readonly activeThread: ThreadProjectContext | null;
   readonly activeDraftThread: ThreadProjectContext | null;
   readonly primaryEnvironmentId: EnvironmentId | null;

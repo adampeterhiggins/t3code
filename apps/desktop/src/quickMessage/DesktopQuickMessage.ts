@@ -48,6 +48,8 @@ const EXPANDED_PANEL_HEIGHT = 760;
 const RENDERER_RECOVERY_RELOAD_DELAY_MS = 500;
 const RENDERER_RECOVERY_MAX_ATTEMPTS = 3;
 const RENDERER_RECOVERY_WINDOW_MS = 60_000;
+/** Hidden this long, the shortcut opens a new draft instead of where the panel left off. */
+const QUICK_MESSAGE_FRESH_AFTER_HIDDEN_MS = 60_000;
 const RECOVERABLE_RENDERER_GONE_REASONS = new Set<Electron.RenderProcessGoneDetails["reason"]>([
   "crashed",
   "oom",
@@ -258,6 +260,7 @@ export const make = Effect.gen(function* () {
   let panel: Electron.BrowserWindow | null = null;
   let panelReady = false;
   let showWhenReady = false;
+  let hiddenAt: number | null = null;
   let appQuitting = false;
   // True from a renderer death until reload() or loadURL actually runs. Ready
   // signals in between belong to the dead page.
@@ -320,13 +323,22 @@ export const make = Effect.gen(function* () {
   };
 
   const showPanel = (window: Electron.BrowserWindow) => {
+    const now = Effect.runSyncWith(context)(Clock.currentTimeMillis);
+    const fresh = hiddenAt !== null && now - hiddenAt >= QUICK_MESSAGE_FRESH_AFTER_HIDDEN_MS;
+    hiddenAt = null;
+    // The renderer opens a new draft, which is compact; size for it now so the panel does not jump.
+    if (fresh) presentation = "compact";
     applyPresentationBounds(window);
     // Chromium can count a transparent floating window as occluded, which pauses its frames
     // and leaves menus stuck mid-animation. Hidden, it goes back to being throttled.
     window.webContents.setBackgroundThrottling(false);
     window.show();
     window.focus();
-    const event: DesktopQuickMessageShowEvent = { clientSettings: settings, presentation };
+    const event: DesktopQuickMessageShowEvent = {
+      clientSettings: settings,
+      presentation,
+      ...(fresh ? { fresh } : {}),
+    };
     window.webContents.send(QUICK_MESSAGE_SHOW_EVENT_CHANNEL, event);
   };
 
@@ -472,6 +484,7 @@ export const make = Effect.gen(function* () {
     window.on("hide", () => {
       // Dismissed while a reload is in flight: do not show again when it lands.
       showWhenReady = false;
+      hiddenAt = Effect.runSyncWith(context)(Clock.currentTimeMillis);
       if (presentation === "expanded") rememberExpandedOrigin(window);
       if (!window.isDestroyed()) window.webContents.setBackgroundThrottling(true);
     });

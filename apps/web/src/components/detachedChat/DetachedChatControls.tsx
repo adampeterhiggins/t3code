@@ -5,7 +5,10 @@ import type { ComponentProps, ReactNode } from "react";
 import { DraftHeroHeadline } from "../chat/DraftHeroHeadline";
 import { resolveCompatibleRuntimeMode } from "../chat/runtimeModeConfig";
 import { ComposerContextPermissions } from "../ComposerContextPermissions";
-import { dismissDetachedChat } from "../quickMessage/detachedChatPresentation";
+import {
+  dismissDetachedChat,
+  startDetachedFreshComposer,
+} from "../quickMessage/detachedChatPresentation";
 import { isDetachedChatWindow } from "../quickMessage/quickMessageWindow";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -22,6 +25,9 @@ export function DetachedChatHeaderActions(props: { readonly threadRef: ScopedThr
           onClick={() => {
             void openExpandedThreadInMain(threadRef, {
               open: (request) => window.desktopBridge?.openMainDestination?.(request),
+            }).then((result) => {
+              // The thread now lives in the main window; the shortcut should bring back a new draft.
+              if (result !== null && result.status !== "failed") void startDetachedFreshComposer();
             });
           }}
         >

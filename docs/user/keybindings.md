@@ -209,14 +209,15 @@ any app. Press the shortcut (`Option+/` on macOS and `Alt+/` elsewhere, until yo
 another). The window uses the local environment on this computer and the same composer as the
 main window. It follows the app's theme, fonts, and contrast.
 
-Press the shortcut again to reopen it. A draft you were writing is still there. Hide it with
-Escape or by clicking away from a compact composer. Start a new thread the same way you do in
-the main window.
+Hide it with Escape or by clicking away from a compact composer. Press the shortcut again within
+a minute and it reopens where you left it, with any draft you were writing. After a minute it
+opens a new draft in the same project. Start a new thread the same way you do in the main window.
 
-From a thread that already exists, open it in the main window. Settings and other app pages
-open in the main window rather than here. Either way the floating window hides once the main
-window has it, and the shortcut brings it back on the same conversation. If the local environment is off, or you still need to sign in, the shortcut shows that
-notice. On Linux the shortcut does not work in a Wayland session.
+From a thread that already exists, open it in the main window; the floating window hides and
+next opens a new draft. Settings and other app pages open in the main window rather than here,
+and the floating window hides once the main window has them. If the local environment is off, or
+you still need to sign in, the shortcut shows that notice. On Linux the shortcut does not work in
+a Wayland session.
 
 ## Desktop quit shortcut
 

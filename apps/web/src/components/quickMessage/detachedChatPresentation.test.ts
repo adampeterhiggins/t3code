@@ -136,15 +136,18 @@ describe("detached chat presentation", () => {
   it("adopts a shown presentation without asking the shell to resize again", () => {
     const adoptSettings = vi.fn();
     const focusInput = vi.fn();
+    const startFresh = vi.fn(() => Promise.resolve());
     handleDetachedChatShow(
       { clientSettings: settings, presentation: "expanded" },
       {
         adoptSettings,
         adoptPresentation: adoptDetachedChatPresentation,
+        startFresh,
         focusInput,
       },
     );
     expect(adoptSettings).toHaveBeenCalledWith(settings);
+    expect(startFresh).not.toHaveBeenCalled();
     expect(focusInput).toHaveBeenCalledOnce();
     expect(readDetachedChatPresentation()).toBe("expanded");
     expect(setPresentation).not.toHaveBeenCalled();
@@ -156,11 +159,32 @@ describe("detached chat presentation", () => {
       {
         adoptSettings: vi.fn(),
         adoptPresentation: adoptDetachedChatPresentation,
+        startFresh: vi.fn(() => Promise.resolve()),
         focusInput: vi.fn(),
       },
     );
     expect(readDetachedChatPresentation()).toBe("compact");
     expect(setPresentation).not.toHaveBeenCalled();
+  });
+
+  it("opens a new draft before focusing on a fresh show", async () => {
+    let open = () => {};
+    const opened = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    const focusInput = vi.fn();
+    handleDetachedChatShow(
+      { clientSettings: settings, presentation: "compact", fresh: true },
+      {
+        adoptSettings: vi.fn(),
+        adoptPresentation: adoptDetachedChatPresentation,
+        startFresh: () => opened,
+        focusInput,
+      },
+    );
+    expect(focusInput).not.toHaveBeenCalled();
+    open();
+    await vi.waitFor(() => expect(focusInput).toHaveBeenCalledOnce());
   });
 
   it("compacts after a new draft opens and ignores a failed open", () => {
