@@ -31,8 +31,8 @@ export function isolatedFloatingShellHasFallback(kind: IsolatedFloatingShellKind
 }
 
 /**
- * The frame is always mounted. The navigation guard wraps routed chat only,
- * so a notice or a fail-closed page can still mark the panel ready.
+ * The root readiness shell mounts the frame for every kind. The navigation
+ * guard wraps routed chat only, so a notice can mark the panel ready.
  */
 export function detachedChatShellPlan(hasFallback: boolean): {
   readonly frame: true;

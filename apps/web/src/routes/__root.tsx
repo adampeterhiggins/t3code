@@ -45,6 +45,7 @@ import {
 import { desktopAppearanceCoordinatorRole } from "../components/desktop/desktopAppearanceSession";
 import { MainDestinationCoordinator } from "../components/desktop/MainDestinationCoordinator";
 import {
+  DetachedChatReadinessShell,
   DetachedChatShell,
   DetachedConnectingNotice,
   DetachedLocalEnvironmentNotice,
@@ -159,14 +160,16 @@ export const Route = createRootRoute({
   errorComponent: RootRouteErrorView,
   notFoundComponent: RootRouteNotFoundView,
   // The floating window stays hidden until its frame is ready. pendingMinMs 0
-  // replaces a fast session immediately. wrapInSuspense keeps the pending view
-  // inside the root match so the shell's route hooks can run.
+  // replaces a fast session immediately. wrapInSuspense keeps pending, error,
+  // and not-found inside the match. The shell is the one frame outside that
+  // suspense boundary, so show stays subscribed while those views swap.
   ...(isDetachedChatWindow
     ? {
         pendingComponent: RootRoutePendingView,
         pendingMs: 0,
         pendingMinMs: 0,
         wrapInSuspense: true,
+        shellComponent: DetachedChatReadinessShell,
       }
     : {}),
   head: () => ({
@@ -255,6 +258,24 @@ function RootRouteView() {
 }
 
 function RootRouteBranch() {
+  const rootGlobalNotFound = useRouterState({
+    select: (state) =>
+      state.matches.some((match) => match.routeId === rootRouteId && match.globalNotFound === true),
+  });
+  // beforeLoad notFound leaves the root match successful with an empty context
+  // so the shell can render. Reading auth here throws and the error page wins.
+  if (isDetachedChatWindow && rootGlobalNotFound) {
+    return (
+      <>
+        <IsolatedFloatingAppearance />
+        <RootRouteNotFoundMessage />
+      </>
+    );
+  }
+  return <RootRouteResolvedBranch />;
+}
+
+function RootRouteResolvedBranch() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { authGateState } = Route.useRouteContext();
   const primaryEnvironmentAuthenticated = authGateState.status === "authenticated";

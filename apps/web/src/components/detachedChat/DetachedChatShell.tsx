@@ -9,6 +9,7 @@ import {
 } from "../../panelAnimations";
 import { ComposerSurface } from "../chat/ComposerSurface";
 import { ChatDialogHosts } from "../chat/ChatDialogHosts";
+import { detachedComposerWindowCanFocus, noteDetachedComposerShow } from "./detachedComposerFocus";
 import {
   compactBackdropShouldDismiss,
   DETACHED_CHAT_CONTENT_MAX_WIDTH,
@@ -25,35 +26,42 @@ import { activateDetachedChatFrame, detachedChatShellPlan } from "./isolatedFloa
 import { AnchoredToastProvider, ToastProvider } from "../ui/toast";
 
 /**
+ * One frame for pending, error, not-found, and chat. It sits outside the match
+ * suspense boundary, so this component must not call route hooks; the children
+ * stay inside the match because the root route uses wrapInSuspense.
+ */
+export function DetachedChatReadinessShell(props: { readonly children: ReactNode }) {
+  useTheme();
+  return (
+    <PanelAnimationSuppressionProvider value={false}>
+      <DetachedChatFrame>{props.children}</DetachedChatFrame>
+    </PanelAnimationSuppressionProvider>
+  );
+}
+
+/**
  * The real chat column, without the main window's sidebar or coordinators.
  * Appearance sync stays with the caller so the floating window can skip
- * environment theme adoption.
+ * environment theme adoption. The readiness shell owns the frame.
  */
 export function DetachedChatShell(props: {
   readonly children?: ReactNode;
   readonly fallback?: ReactNode;
 }) {
   useTheme();
-  const plan = detachedChatShellPlan(props.fallback != null);
+  const { guardWrapsRoutedChildren } = detachedChatShellPlan(props.fallback != null);
   return (
     <ToastProvider>
       <AnchoredToastProvider>
         {props.children}
-        <PanelAnimationSuppressionProvider value={false}>
-          {plan.frame ? (
-            <DetachedChatFrame>
-              {/* The readiness frame stays mounted when the route guard rejects the destination. */}
-              {plan.guardWrapsRoutedChildren ? (
-                <FloatingNavigationGuard>
-                  <ChatDialogHosts />
-                  <Outlet />
-                </FloatingNavigationGuard>
-              ) : (
-                props.fallback
-              )}
-            </DetachedChatFrame>
-          ) : null}
-        </PanelAnimationSuppressionProvider>
+        {guardWrapsRoutedChildren ? (
+          <FloatingNavigationGuard>
+            <ChatDialogHosts />
+            <Outlet />
+          </FloatingNavigationGuard>
+        ) : (
+          props.fallback
+        )}
       </AnchoredToastProvider>
     </ToastProvider>
   );
@@ -82,7 +90,11 @@ function DetachedChatFrame(props: { readonly children: ReactNode }) {
         adoptSettings: adoptClientSettings,
         adoptPresentation: adoptDetachedChatPresentation,
         focusInput: () => {
-          focusDetachedComposerInput(document);
+          const eligible = detachedComposerWindowCanFocus(document);
+          noteDetachedComposerShow({
+            eligible,
+            focused: eligible && focusDetachedComposerInput(document),
+          });
         },
       });
     });

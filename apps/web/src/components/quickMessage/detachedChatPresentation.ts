@@ -6,6 +6,7 @@ import type {
 } from "@t3tools/contracts";
 import { useSyncExternalStore } from "react";
 
+import { cancelPendingDetachedComposerFocus } from "../detachedChat/detachedComposerFocus";
 import { projectScriptIdFromCommand } from "../../projectScripts";
 import { isThreadRoutePathname, resolveThreadRouteTarget } from "../../threadRoutes";
 import { isDetachedChatWindow } from "./quickMessageWindow";
@@ -307,6 +308,7 @@ export function noteDetachedNewDraftOpened(opened: unknown): void {
 }
 
 export function dismissDetachedChat(): void {
+  cancelPendingDetachedComposerFocus();
   if (!isDetachedChatWindow) return;
   const dismiss = window.desktopBridge?.quickMessage?.dismiss;
   if (!dismiss) return;
@@ -315,11 +317,36 @@ export function dismissDetachedChat(): void {
 
 export const DETACHED_COMPOSER_INPUT_SELECTOR = '[data-testid="composer-editor"]';
 
-/** Focus the composer that is already on screen. Does not change its text. */
+interface DetachedComposerDom extends HTMLElement {
+  readonly editor?: {
+    readonly view?: {
+      focus: () => void;
+    };
+  };
+}
+
+/**
+ * Focus the composer that is already on screen. The editor view keeps its
+ * selection; a plain field restores the DOM range around the focus call.
+ */
 export function focusDetachedComposerInput(root: ParentNode): boolean {
-  const editor = root.querySelector<HTMLElement>(DETACHED_COMPOSER_INPUT_SELECTOR);
+  const editor = root.querySelector<DetachedComposerDom>(DETACHED_COMPOSER_INPUT_SELECTOR);
   if (!editor) return false;
-  editor.focus();
+  const view = editor.editor?.view;
+  if (view) {
+    view.focus();
+    return true;
+  }
+  const selection = editor.ownerDocument?.getSelection?.() ?? null;
+  const range =
+    selection !== null && selection.rangeCount > 0 && editor.contains(selection.anchorNode)
+      ? selection.getRangeAt(0).cloneRange()
+      : null;
+  editor.focus({ preventScroll: true });
+  if (range !== null && selection !== null) {
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
   return true;
 }
 

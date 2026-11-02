@@ -5,6 +5,7 @@ import {
   createRoute,
   createRouter,
   isRedirect,
+  rootRouteId,
 } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -18,6 +19,7 @@ function load(input: {
   readonly detached: boolean;
   readonly pathname: string;
   readonly pendingAutomationSeed?: boolean;
+  readonly onAllow?: () => { readonly authGateState: { readonly status: "authenticated" } };
 }) {
   const mounted: string[] = [];
   let passedGuard = false;
@@ -31,6 +33,7 @@ function load(input: {
         pendingAutomationSeed: input.pendingAutomationSeed === true,
       });
       passedGuard = true;
+      return input.onAllow?.();
     },
   });
   const mount = (name: string) => () => {
@@ -99,6 +102,10 @@ describe("desktop root location guards", () => {
 
     await router.load();
     expect(router.state.statusCode).toBe(404);
+    const blocked = router.state.matches.find((match) => match.routeId === rootRouteId);
+    expect(blocked?.globalNotFound).toBe(true);
+    expect(blocked?.status).toBe("success");
+    expect(blocked?.context).toEqual({});
 
     expect(passedGuard()).toBe(false);
     expect(mounted).toEqual([]);
@@ -148,6 +155,45 @@ describe("desktop root location guards", () => {
     expect(add.mock.calls.map((call) => call[0])).toContainEqual(
       expect.objectContaining({ title: "Couldn't move this automation" }),
     );
+  });
+
+  it("clears the root not-found when the floating window goes home", async () => {
+    vi.stubGlobal("window", {
+      desktopBridge: {
+        openMainDestination: (request: unknown) =>
+          Promise.resolve({
+            requestId: (request as { requestId: string }).requestId,
+            status: "opened",
+          }),
+      },
+    });
+    let authed = false;
+    const { router, mounted } = load({
+      detached: true,
+      pathname: "/settings/general",
+      onAllow: () => {
+        authed = true;
+        return { authGateState: { status: "authenticated" } };
+      },
+    });
+
+    await router.load();
+    expect(authed).toBe(false);
+    expect(router.state.statusCode).toBe(404);
+    const blocked = router.state.matches.find((match) => match.routeId === rootRouteId);
+    expect(blocked?.globalNotFound).toBe(true);
+    expect(blocked?.context).toEqual({});
+
+    await router.navigate({ to: "/", replace: true });
+
+    expect(router.state.location.pathname).toBe("/");
+    expect(router.state.statusCode).not.toBe(500);
+    expect(authed).toBe(true);
+    expect(mounted).toEqual(["chat"]);
+    const settled = router.state.matches.find((match) => match.routeId === rootRouteId);
+    expect(settled?.globalNotFound).not.toBe(true);
+    expect(settled?.status).toBe("success");
+    expect(settled?.context).toEqual({ authGateState: { status: "authenticated" } });
   });
 
   it("lets an isolated chat route reach its child after the guard", async () => {

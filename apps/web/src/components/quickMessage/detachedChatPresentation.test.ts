@@ -16,6 +16,11 @@ vi.mock("./quickMessageWindow", () => ({
   },
 }));
 
+import {
+  deliverPendingDetachedComposerFocus,
+  noteDetachedComposerShow,
+  resetDetachedComposerFocusForTests,
+} from "../detachedChat/detachedComposerFocus";
 import { commandForProjectScript } from "../../projectScripts";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import {
@@ -177,11 +182,36 @@ describe("detached chat presentation", () => {
     expect(focusDetachedComposerInput({ querySelector: () => null } as unknown as ParentNode)).toBe(
       false,
     );
+
+    const viewFocus = vi.fn();
+    const elementFocus = vi.fn();
+    const mounted = {
+      focus: elementFocus,
+      editor: { view: { focus: viewFocus } },
+    };
+    expect(
+      focusDetachedComposerInput({
+        querySelector: () => mounted,
+      } as unknown as ParentNode),
+    ).toBe(true);
+    expect(viewFocus).toHaveBeenCalledOnce();
+    expect(elementFocus).not.toHaveBeenCalled();
   });
 
   it("hides through the existing bridge and skips a missing one", () => {
+    resetDetachedComposerFocusForTests();
+    noteDetachedComposerShow({ eligible: true, focused: false });
     dismissDetachedChat();
     expect(dismiss).toHaveBeenCalledOnce();
+    expect(
+      deliverPendingDetachedComposerFocus({
+        eligible: true,
+        connected: true,
+        focus: () => {
+          throw new Error("dismissed show focused");
+        },
+      }),
+    ).toBe(false);
     vi.stubGlobal("window", { desktopBridge: { quickMessage: {} } });
     expect(() => {
       dismissDetachedChat();
