@@ -2466,6 +2466,8 @@ contrast. Press the shortcut again soon after hiding it and it reopens where it 
 you were writing. Hidden for longer, it opens a new draft in the same project. **Start a new draft**
 in the same settings section sets how long that is: every time, a minute (the default), longer, or
 never.
+The bar under the composer (worktree, branch, access level) starts hidden; a button in the
+composer and `mod+shift+u` toggle it.
 
 From a thread that already exists, open it in the main window; the floating window hides and next
 opens a new draft. Settings and other pages that belong to the main window open there instead, and

@@ -1,6 +1,8 @@
 import {
   DetachedChatHeaderActions,
   floatingComposerSlots,
+  toggleQuickMessageWorkspaceBar,
+  useQuickMessageWorkspaceBarVisible,
 } from "./detachedChat/DetachedChatControls";
 import { useChatSurface } from "./detachedChat/useChatSurface";
 import { useChatViewSplitPane } from "./chat/useChatViewSplitPane";
@@ -1862,15 +1864,18 @@ export default function ChatView(props: ChatViewProps) {
           providerSubagentModels,
           reportedModelSelection,
         );
+  const quickMessageWorkspaceBarVisible = useQuickMessageWorkspaceBarVisible();
   const showComposerContextStrip =
     !embedded &&
-    shouldShowComposerContextStrip({
-      isDraftHeroState,
-      persistInActiveThreads: settings.persistComposerContextStrip,
-      hasActiveProject: activeProject !== null && !showProviderSubagentBar,
-      isGitRepo,
-      showEnvironmentIndicator: showComposerEnvironmentIndicator,
-    });
+    (!surface.workspace
+      ? quickMessageWorkspaceBarVisible && activeProject !== null
+      : shouldShowComposerContextStrip({
+          isDraftHeroState,
+          persistInActiveThreads: settings.persistComposerContextStrip,
+          hasActiveProject: activeProject !== null && !showProviderSubagentBar,
+          isGitRepo,
+          showEnvironmentIndicator: showComposerEnvironmentIndicator,
+        }));
   const terminalShortcutLabelOptions = {
     context: {
       terminalFocus: true,
@@ -2986,6 +2991,10 @@ export default function ChatView(props: ChatViewProps) {
           return false;
         openThreadFind(activeThreadKey);
       },
+      "quickMessage.toggleWorkspaceBar": ({ event }) => {
+        if (surface.workspace) return false;
+        if (!event.repeat) toggleQuickMessageWorkspaceBar();
+      },
       "composer.cycleHost": ({ event }) => {
         if (!canChangeEnvironment) return false;
         if (event.repeat) return;
@@ -3592,9 +3601,6 @@ export default function ChatView(props: ChatViewProps) {
     draftId,
     activeProjectRef,
     activeProjectTitle: activeProject?.title ?? null,
-    runtimeMode,
-    supportedRuntimeModes: activeProviderStatus?.supportedRuntimeModes,
-    onOpenPermissions: openComposerPermissionsStable,
   });
   const content = (
     <div
@@ -4049,7 +4055,7 @@ export default function ChatView(props: ChatViewProps) {
                               threadPullRequests={(activeThreadShell ?? activeThread)?.pullRequests}
                               onComposerOverlayHeightChange={publishComposerOverlayHeightStable}
                               permissionsShownInStrip={
-                                (showComposerContextStrip && !isServerThread) || !surface.workspace
+                                showComposerContextStrip && (!isServerThread || !surface.workspace)
                               }
                               promptRef={promptRef}
                               composerImagesRef={composerImagesRef}
@@ -4111,7 +4117,7 @@ export default function ChatView(props: ChatViewProps) {
                           data-terminal-open={terminalUiState.terminalOpen ? "true" : undefined}
                           className="relative z-0"
                         >
-                          {showComposerContextStrip && (!surface.compact || isGitRepo) && (
+                          {showComposerContextStrip && (
                             <div className="pointer-events-auto">
                               <BranchToolbar
                                 forceNewWorktree={multipleModelSelections !== null}
@@ -4152,7 +4158,7 @@ export default function ChatView(props: ChatViewProps) {
                                     : undefined
                                 }
                                 availableEnvironments={logicalProjectEnvironments}
-                                {...(isServerThread || !surface.workspace
+                                {...(isServerThread && surface.workspace
                                   ? {}
                                   : {
                                       trailing: (

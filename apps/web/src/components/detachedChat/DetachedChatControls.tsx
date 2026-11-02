@@ -1,10 +1,13 @@
-import type { RuntimeMode, ScopedThreadRef } from "@t3tools/contracts";
-import { AppWindowIcon, XIcon } from "lucide-react";
+import type { ScopedThreadRef } from "@t3tools/contracts";
+import { useAtomValue } from "@effect/atom-react";
+import { Schema } from "effect";
+import { AppWindowIcon, PanelBottomCloseIcon, PanelBottomOpenIcon, XIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 
 import { DraftHeroHeadline } from "../chat/DraftHeroHeadline";
-import { resolveCompatibleRuntimeMode } from "../chat/runtimeModeConfig";
-import { ComposerContextPermissions } from "../ComposerContextPermissions";
+import { useLocalStorage, writeLocalStorageValue } from "../../hooks/useLocalStorage";
+import { shortcutLabelForCommand } from "../../keybindings";
+import { primaryServerKeybindingsAtom } from "../../state/server";
 import {
   dismissDetachedChat,
   startDetachedFreshComposer,
@@ -73,29 +76,53 @@ function DetachedComposerProject(
   );
 }
 
-function DetachedComposerAccess(props: {
-  readonly runtimeMode: RuntimeMode;
-  readonly supportedRuntimeModes: ReadonlyArray<RuntimeMode> | undefined;
-  readonly onOpen: () => void;
-}) {
+// Local to the floating window: its client settings are read-only there.
+const WORKSPACE_BAR_VISIBLE_KEY = "t3code:quick-message-workspace-bar-visible";
+
+/** Whether the floating composer shows its workspace bar (worktree, branch, access). */
+export function useQuickMessageWorkspaceBarVisible(): boolean {
+  return useLocalStorage(WORKSPACE_BAR_VISIBLE_KEY, false, Schema.Boolean)[0];
+}
+
+export function toggleQuickMessageWorkspaceBar(): void {
+  writeLocalStorageValue(WORKSPACE_BAR_VISIBLE_KEY, (visible) => !visible, false, Schema.Boolean);
+}
+
+function WorkspaceBarToggle() {
+  const visible = useQuickMessageWorkspaceBarVisible();
+  const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const shortcut = shortcutLabelForCommand(keybindings, "quickMessage.toggleWorkspaceBar", {
+    context: { terminalFocus: false, terminalOpen: false, modelPickerOpen: false },
+  });
+  const label = visible ? "Hide workspace bar" : "Show workspace bar";
   return (
-    <ComposerContextPermissions
-      runtimeMode={
-        resolveCompatibleRuntimeMode(props.runtimeMode, props.supportedRuntimeModes).mode
-      }
-      onOpen={props.onOpen}
-    />
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={label}
+            aria-pressed={visible}
+            onClick={toggleQuickMessageWorkspaceBar}
+          />
+        }
+      >
+        {visible ? <PanelBottomCloseIcon /> : <PanelBottomOpenIcon />}
+      </TooltipTrigger>
+      <TooltipPopup>
+        {label}
+        {shortcut ? ` (${shortcut})` : null}
+      </TooltipPopup>
+    </Tooltip>
   );
 }
 
-/** The floating composer's access control, and the compact one's project picker, in ChatComposer's slots. */
+/** The floating composer's workspace bar toggle, and the compact one's project picker, in ChatComposer's slots. */
 export function floatingComposerSlots(
   surface: { readonly workspace: boolean; readonly compact: boolean },
-  input: ComponentProps<typeof DetachedComposerProject> & {
-    readonly runtimeMode: RuntimeMode;
-    readonly supportedRuntimeModes: ReadonlyArray<RuntimeMode> | undefined;
-    readonly onOpenPermissions: () => void;
-  },
+  input: ComponentProps<typeof DetachedComposerProject>,
 ): { headerLeading?: ReactNode; footerLeading?: ReactNode } {
   if (surface.workspace) return {};
   return {
@@ -110,12 +137,6 @@ export function floatingComposerSlots(
           ),
         }
       : {}),
-    footerLeading: (
-      <DetachedComposerAccess
-        runtimeMode={input.runtimeMode}
-        supportedRuntimeModes={input.supportedRuntimeModes}
-        onOpen={input.onOpenPermissions}
-      />
-    ),
+    footerLeading: <WorkspaceBarToggle />,
   };
 }

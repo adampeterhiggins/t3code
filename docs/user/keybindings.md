@@ -215,6 +215,10 @@ opens a new draft in the same project. Change how long it waits, or choose every
 in **Settings → General → Quick message → Start a new draft**. Start a new thread the same way
 you do in the main window.
 
+The bar under the floating composer, with the worktree, branch, and access level, is hidden at
+first. Show or hide it with the panel button in the composer or `mod+shift+u` (**Quick Message:
+Toggle Workspace Bar** in Keybindings). It stays as you left it.
+
 From a thread that already exists, open it in the main window; the floating window hides and
 next opens a new draft. Settings and other app pages open in the main window rather than here,
 and the floating window hides once the main window has them. If the local environment is off, or
