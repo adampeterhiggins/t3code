@@ -42,7 +42,6 @@ import {
 } from "../ui/command";
 import { MenuItem, MenuPopup } from "../ui/menu";
 import { toastManager } from "../ui/toast";
-import { useComposerAttachRedirect } from "./composerAttachRedirect";
 import { CursorPreviewCard } from "./CursorPreviewCard";
 import { isPreviewableObjectLink, LinkedObjectPreviewBody } from "./LinkedObjectLinkPreview";
 
@@ -219,7 +218,6 @@ function SlackMessagePickerDialog(props: {
   const slackEnabled = useEnvironmentSettings(environmentId, (s) => s.enableSlackIntegration);
   const navigate = useNavigate();
   const attachMessage = useAttachSlackMessage();
-  const redirect = useComposerAttachRedirect();
   const linkThread = useLinkSlackThread();
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<SlackSearchScope | null>(null);
@@ -258,15 +256,6 @@ function SlackMessagePickerDialog(props: {
   async function select(message: SlackMessageSummary, scope: SlackGetThreadInput["scope"]) {
     if (!slackEnabled) return;
     if (attaching) return;
-    if (redirect) {
-      redirect({
-        type: "slack-message",
-        input: slackGetThreadInput(message, scope),
-        label: `${message.channelLabel} · ${message.authorName}`,
-      });
-      closeSlackMessagePicker();
-      return;
-    }
     setAttaching(true);
     const done =
       mode === "link"

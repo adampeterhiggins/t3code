@@ -55,6 +55,7 @@ import * as DesktopServerExposure from "./backend/DesktopServerExposure.ts";
 import * as DesktopClientSettings from "./settings/DesktopClientSettings.ts";
 import * as DesktopSavedEnvironments from "./settings/DesktopSavedEnvironments.ts";
 import * as DesktopSnapShot from "./snapShot/DesktopSnapShot.ts";
+import * as DesktopAppearance from "./appearance/DesktopAppearance.ts";
 import * as DesktopQuickMessage from "./quickMessage/DesktopQuickMessage.ts";
 import * as DesktopAppSettings from "./settings/DesktopAppSettings.ts";
 import * as DesktopPreReadyFileSystem from "./app/DesktopPreReadyFileSystem.ts";
@@ -73,6 +74,7 @@ import * as BrowserSession from "./preview/BrowserSession.ts";
 import * as DesktopBrowserHost from "./preview/DesktopBrowserHost.ts";
 import * as PreviewManager from "./preview/Manager.ts";
 import * as PreviewPasskeys from "./preview/Passkeys.ts";
+import * as DesktopMainDestination from "./window/DesktopMainDestination.ts";
 import * as DesktopWindow from "./window/DesktopWindow.ts";
 import * as DesktopWslBackend from "./wsl/DesktopWslBackend.ts";
 import * as DesktopWslEnvironment from "./wsl/DesktopWslEnvironment.ts";
@@ -188,6 +190,10 @@ const layerDesktopAppActivation = DesktopAppActivation.layer.pipe(
   Layer.provide(DesktopLifecycle.layer),
   Layer.provide(layerDesktopWindow),
 );
+// The panel check stays in IPC, so this does not depend on DesktopQuickMessage.
+const layerDesktopMainDestination = DesktopMainDestination.layer.pipe(
+  Layer.provide(layerDesktopWindow),
+);
 
 const layerDesktopBackend = DesktopBackendPool.layer.pipe(
   Layer.provideMerge(DesktopAppIdentity.layer),
@@ -210,11 +216,14 @@ const layerDesktopLocalEnvironmentAuth = DesktopLocalEnvironmentAuth.layer.pipe(
 const layerDesktopApplication = Layer.mergeAll(
   DesktopLifecycle.layer,
   layerDesktopAppActivation,
+  layerDesktopMainDestination,
   DesktopWebLinks.layer,
   DesktopApplicationMenu.layer,
   DesktopLinuxUrlHandler.layer,
   DesktopCliCommand.layer,
   layerDesktopSsh,
+  // Shares the quick-message layer merged below. Appearance only asks isPanel.
+  DesktopAppearance.layer,
 ).pipe(
   Layer.provideMerge(layerDesktopSnapShot),
   Layer.provideMerge(layerDesktopQuickMessage),

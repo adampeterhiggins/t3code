@@ -412,6 +412,8 @@ export interface ChatComposerHandle {
 }
 
 export interface ChatComposerProps {
+  headerLeading?: React.ReactNode;
+  footerLeading?: React.ReactNode;
   composerDraftTarget: ScopedThreadRef | DraftId;
   environmentId: EnvironmentId;
   canOperateThread: boolean;
@@ -3718,6 +3720,20 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               </div>
             ) : null}
 
+            {props.headerLeading ? (
+              <div className="flex items-center justify-between gap-2 px-3 pt-2">
+                {props.headerLeading}
+                {onStartFrom ? (
+                  <ComposerStartFromButton
+                    inline
+                    onStartFrom={onStartFrom}
+                    keybindings={keybindings}
+                    terminalOpen={terminalOpen}
+                  />
+                ) : null}
+              </div>
+            ) : null}
+
             <div
               ref={(node) => {
                 setComposerMenuAnchor(node);
@@ -3734,7 +3750,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 isComposerCollapsedMobile && "hidden",
               )}
             >
-              {onStartFrom ? (
+              {onStartFrom && !props.headerLeading ? (
                 <ComposerStartFromButton
                   onStartFrom={onStartFrom}
                   keybindings={keybindings}
@@ -3954,6 +3970,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 )}
               >
                 {composerAttachButton ? <div className="me-2">{composerAttachButton}</div> : null}
+                {props.footerLeading ? (
+                  <div className="me-2 shrink-0">{props.footerLeading}</div>
+                ) : null}
                 <div
                   data-chat-composer-actions="right"
                   data-chat-composer-transition-actions="true"

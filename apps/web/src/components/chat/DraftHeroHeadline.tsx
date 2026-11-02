@@ -3,7 +3,7 @@ import { composerDraftHasUserContent, useComposerDraftStore } from "~/composerDr
 import { resolveEnvironmentMachineKind, type ScopedProjectRef } from "@t3tools/contracts";
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { isScratchProject } from "@t3tools/client-runtime/state/projects";
-import { FolderPlusIcon } from "lucide-react";
+import { ChevronDownIcon, FolderIcon, FolderPlusIcon } from "lucide-react";
 import { useAtomValue } from "@effect/atom-react";
 import { useRef, useState } from "react";
 
@@ -48,7 +48,7 @@ import {
   useComboboxFilter,
 } from "../ui/combobox";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { InlineButton } from "../ui/button";
+import { Button, InlineButton } from "../ui/button";
 import { DraftProjectName } from "./DraftProjectName";
 import { DraftHeroProjectHeading } from "./DraftHeroProjectHeading";
 import { TriageDraftHero } from "./TriageDraftHero";
@@ -57,6 +57,7 @@ import { resolveProjectDefaultProviderModelSelection } from "../../providerInsta
 import { resolveNewThreadModelSelection } from "@t3tools/shared/usageLimits";
 
 const ADD_PROJECT_VALUE = "add-project";
+const NO_PROJECT_VALUE = "no-project";
 
 interface PickerItem {
   readonly value: string;
@@ -64,12 +65,16 @@ interface PickerItem {
 }
 
 interface DraftHeroHeadlineProps {
+  readonly compact?: boolean;
+  readonly onAddProject?: () => void;
   readonly draftId: DraftId | null;
   readonly activeProjectRef: ScopedProjectRef | null;
   readonly activeProjectTitle: string | null;
 }
 
 export function DraftHeroHeadline({
+  compact = false,
+  onAddProject,
   draftId,
   activeProjectRef,
   activeProjectTitle,
@@ -91,7 +96,7 @@ export function DraftHeroHeadline({
   );
   const applyStickyState = useComposerDraftStore((store) => store.applyStickyState);
   const setModelSelection = useComposerDraftStore((store) => store.setModelSelection);
-  const openAddProject = () => openCommandPalette({ open: "add-project" });
+  const openAddProject = onAddProject ?? (() => openCommandPalette({ open: "add-project" }));
   const { scratchEnvironmentId, scratchWorkspaceRootFor, openScratchProject } = useScratchProject();
   const openProjectDraft = useNewThreadHandler();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
@@ -165,6 +170,9 @@ export function DraftHeroHeadline({
   // Pinning from a row keeps rows in place while the picker is open.
   const pickerItems: readonly PickerItem[] = useOrderWhileOpen(
     [
+      ...(compact && scratchWorkspaceRoot !== null
+        ? [{ value: NO_PROJECT_VALUE, label: "No project" }]
+        : []),
       ...menuEntries.map(({ group }) => ({ value: group.projectKey, label: group.displayName })),
       { value: ADD_PROJECT_VALUE, label: "Add project" },
     ],
@@ -280,6 +288,10 @@ export function DraftHeroHeadline({
       onValueChange={(item) => {
         if (!item) return;
         setPickerOpen(false);
+        if (item.value === NO_PROJECT_VALUE) {
+          void startScratch();
+          return;
+        }
         if (item.value === ADD_PROJECT_VALUE) {
           openAddProject();
           return;
@@ -295,16 +307,20 @@ export function DraftHeroHeadline({
         <TooltipTrigger
           render={
             <ComboboxTrigger
-              render={<InlineButton tone="picker" />}
+              render={
+                compact ? <Button variant="ghost" size="sm" /> : <InlineButton tone="picker" />
+              }
               data-draft-project-trigger=""
               className="pointer-events-auto min-w-0 max-w-full align-baseline"
             />
           }
         >
+          {compact ? <FolderIcon className="size-4" /> : null}
           <DraftProjectName
             value={isScratchDraft ? "No project" : (activeProjectDisplayName ?? "Choose a project")}
             singleLine
           />
+          {compact ? <ChevronDownIcon className="size-3" /> : null}
         </TooltipTrigger>
         {activeProjectDisplayName && !isScratchDraft ? (
           <TooltipPopup side="top">{activeProjectDisplayName}</TooltipPopup>
@@ -399,6 +415,8 @@ export function DraftHeroHeadline({
         {noProjectShortcut ? <TooltipPopup side="bottom">{noProjectShortcut}</TooltipPopup> : null}
       </Tooltip>
     ) : null;
+
+  if (compact) return projectSelector;
 
   if (isScratchDraft && isTriageDraftPrompt) {
     const environment = environments.find(

@@ -1,3 +1,8 @@
+import {
+  DetachedChatHeaderActions,
+  floatingComposerSlots,
+} from "./detachedChat/DetachedChatControls";
+import { useChatSurface } from "./detachedChat/useChatSurface";
 import { useChatViewSplitPane } from "./chat/useChatViewSplitPane";
 import { useChatViewIntegrationShortcuts } from "./chat/useChatViewIntegrationShortcuts";
 import { useChatViewTabs } from "./chat/useChatViewTabs";
@@ -303,14 +308,16 @@ import { useRemoteOpenState } from "~/remoteOpen";
 import { shouldShowOpenInPicker } from "./chat/OpenInPicker.logic";
 import { useOpenFavoriteEditorShortcut } from "./chat/OpenInPickerShortcut";
 import {
-  PanelLayoutControls,
   type PanelLayoutControlsProps,
   RightPanelMaximizeControl,
+} from "./chat/PanelLayoutControls";
+import {
+  PanelLayoutControls,
   ThreadPanelHeaderControl,
   WorkspaceTitlebarControls,
-} from "./chat/PanelLayoutControls";
+} from "./detachedChat/mainWindowOnly";
 import { ExpandedImagePreview } from "./chat/ExpandedImagePreview";
-import { ThreadDetailsPanel } from "./chat/ThreadDetailsPanel";
+import { ThreadDetailsPanel } from "./detachedChat/mainWindowOnly";
 import { NoActiveThreadState } from "./NoActiveThreadState";
 import {
   resolveEffectiveEnvMode,
@@ -376,8 +383,8 @@ import { useOrchestrationCommand } from "../state/use-orchestration-command";
 import { useAtomQueryRunner } from "../state/use-atom-query-runner";
 import { observeResize } from "~/lib/observeResize";
 import { ThreadVisitWatermark } from "./chat/ThreadVisitWatermark";
-import { ChatTerminalDrawers } from "./chat/ChatTerminalDrawers";
-import { ChatRightPanel } from "./chat/ChatRightPanel";
+import { ChatTerminalDrawers } from "./detachedChat/mainWindowOnly";
+import { ChatRightPanel } from "./detachedChat/mainWindowOnly";
 import { useDraftEnvironmentRouting } from "./chat/useDraftEnvironmentRouting";
 import { branchMismatchBannerItem } from "./chat/ThreadActivityBanners";
 import { ThreadNow } from "./chat/ThreadNow";
@@ -445,6 +452,7 @@ export default function ChatView(props: ChatViewProps) {
     embedded: parentPanel,
   } = props;
   const embedded = parentPanel !== undefined;
+  const surface = useChatSurface(embedded);
   const canOperateThread = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
   const canOperateTerminal = useEnvironmentScope(environmentId, AuthTerminalOperateScope);
   const draftId = routeKind === "draft" ? props.draftId : null;
@@ -1119,7 +1127,7 @@ export default function ChatView(props: ChatViewProps) {
   );
   const canReuseTerminal = activeThreadKnownSessionsRaw !== null;
   const previewPanelOpen = activeRightPanelKind === "preview" && browserAvailable;
-  const rightPanelOpen = rightPanelState.isOpen;
+  const rightPanelOpen = surface.workspace && rightPanelState.isOpen;
   const { active: panelAnimationsActive, durationMs: panelAnimationDurationMs } =
     usePanelAnimationSettings();
   const rightPanelPresenceValue = {
@@ -1590,7 +1598,7 @@ export default function ChatView(props: ChatViewProps) {
   };
   const downloadFileAttachmentStable = useStableCallback(downloadFileAttachment);
   const openFileAttachment = (attachment: ChatFileAttachment) => {
-    if (activeThreadRef) {
+    if (activeThreadRef && surface.workspace) {
       useRightPanelStore.getState().openAttachment(activeThreadRef, attachment);
       return;
     }
@@ -3061,6 +3069,7 @@ export default function ChatView(props: ChatViewProps) {
   });
   // A maximized panel covers the terminal drawer the command runs in.
   const runSideChatShellCommandStable = useStableCallback((command: string) => {
+    if (!surface.workspace) return;
     if (activeThreadRef) useRightPanelStore.getState().setMaximized(activeThreadRef, false);
     runShellCommandStable(command);
   });
@@ -3579,12 +3588,21 @@ export default function ChatView(props: ChatViewProps) {
     addFolders: addDroppedFoldersToComposer,
   });
 
+  const composerSlots = floatingComposerSlots(surface.compact, {
+    draftId,
+    activeProjectRef,
+    activeProjectTitle: activeProject?.title ?? null,
+    runtimeMode,
+    supportedRuntimeModes: activeProviderStatus?.supportedRuntimeModes,
+    onOpenPermissions: openComposerPermissionsStable,
+  });
   const content = (
     <div
       ref={setWorkspaceLayoutElement}
+      data-chat-workspace
       className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background"
     >
-      {embedded ? null : (
+      {!surface.windowChrome ? null : (
         <DeviceSetupDialogHost
           threadKey={activeThreadKey}
           threadRef={activeThreadRef}
@@ -3601,7 +3619,7 @@ export default function ChatView(props: ChatViewProps) {
         data-chat-column
         inert={rightPanelMaximized}
       >
-        {embedded ? null : (
+        {!surface.header ? null : (
           <header
             ref={threadPanelPopoverAnchorRef}
             data-chat-header
@@ -3644,10 +3662,11 @@ export default function ChatView(props: ChatViewProps) {
                 : {})}
               {...(threadFindEnabled ? { onFindInThread: openThreadFindStable } : {})}
             />
+            <DetachedChatHeaderActions threadRef={isServerThread ? activeThreadRef : null} />
           </header>
         )}
 
-        <div className="relative flex min-h-0 min-w-0 flex-1">
+        <div data-chat-canvas-layout className="relative flex min-h-0 min-w-0 flex-1">
           <ThreadFindCanvas
             findOptions={{
               skills: timelineSkills,
@@ -3687,6 +3706,7 @@ export default function ChatView(props: ChatViewProps) {
             />
             <div
               {...conversationArea}
+              data-chat-conversation
               className="relative flex min-h-0 flex-1 flex-col bg-background"
             >
               <ThreadTimeline
@@ -3705,7 +3725,7 @@ export default function ChatView(props: ChatViewProps) {
                 citationRequest={citationRequest}
                 citationHistory={citationHistory}
                 onCiteAssistantText={citeAssistantTextStable}
-                {...(activeProject
+                {...(activeProject && surface.workspace
                   ? { onRunShellCommand: parentPanel?.runShellCommand ?? runShellCommandStable }
                   : {})}
                 isWorking={isWorking}
@@ -3731,7 +3751,9 @@ export default function ChatView(props: ChatViewProps) {
                 {...(draftId
                   ? { onWorktreeSetupWorkLocally: onWorktreeSetupWorkLocallyStable }
                   : {})}
-                {...(onOpenWorktreeSetupTerminal ? { onOpenWorktreeSetupTerminal } : {})}
+                {...(surface.workspace && onOpenWorktreeSetupTerminal
+                  ? { onOpenWorktreeSetupTerminal }
+                  : {})}
                 isPreparingWorktree={isPreparingWorktree}
                 footer={timelineFooter}
                 listRef={legendListRef}
@@ -3750,13 +3772,15 @@ export default function ChatView(props: ChatViewProps) {
                 routeThreadKey={displayedTimelineKey}
                 displayThreadKey={displayedTimelineKey}
                 announceTurnStatus={!isProviderSubagent}
-                onOpenToolDiff={parentPanel?.openToolDiff ?? onOpenToolDiffStable}
+                {...(surface.workspace
+                  ? { onOpenToolDiff: parentPanel?.openToolDiff ?? onOpenToolDiffStable }
+                  : {})}
                 // Side chat runs keep no checkpoints to diff, and a fork would promote the side chat.
                 {...(embedded
                   ? {}
                   : {
                       onRollbackCheckpoint: onTimelineRollbackCheckpointStable,
-                      onOpenTurnDiff: onOpenTurnDiffStable,
+                      ...(surface.workspace ? { onOpenTurnDiff: onOpenTurnDiffStable } : {}),
                       onForkFromRun: onForkFromRunStable,
                     })}
                 onOpenThread={onOpenRelatedThreadStable}
@@ -3826,7 +3850,7 @@ export default function ChatView(props: ChatViewProps) {
                   data-chat-composer-stack="true"
                   className="group/composer-stack pointer-events-auto relative z-10 mx-auto w-full max-w-(--chat-content-max-width)"
                 >
-                  {isDraftHeroState ? (
+                  {isDraftHeroState && !surface.compact ? (
                     <div className="absolute inset-x-0 bottom-full">
                       <div
                         className="pb-4 group-has-data-[composer-shoulder-tab]/composer-stack:pb-0"
@@ -3869,7 +3893,9 @@ export default function ChatView(props: ChatViewProps) {
                         : undefined
                     }
                   >
-                    <ComposerSurface.Shell contextRow={showComposerContextStrip}>
+                    <ComposerSurface.Shell
+                      contextRow={showComposerContextStrip && !surface.compact}
+                    >
                       <ComposerSurface.Host
                         inert={queuedRunEdit.isSaving}
                         aria-busy={queuedRunEdit.isSaving}
@@ -3894,6 +3920,7 @@ export default function ChatView(props: ChatViewProps) {
                           ) : null}
                           {!composerMounted ? null : (
                             <ChatComposer
+                              {...composerSlots}
                               createWithoutMessage={createWithoutMessage}
                               threadUsage={threadUsage}
                               canOperateThread={canOperateThread}
@@ -4082,7 +4109,7 @@ export default function ChatView(props: ChatViewProps) {
                           data-terminal-open={terminalUiState.terminalOpen ? "true" : undefined}
                           className="relative z-0"
                         >
-                          {showComposerContextStrip && (
+                          {showComposerContextStrip && (!surface.compact || isGitRepo) && (
                             <div className="pointer-events-auto">
                               <BranchToolbar
                                 forceNewWorktree={multipleModelSelections !== null}
@@ -4123,7 +4150,7 @@ export default function ChatView(props: ChatViewProps) {
                                     : undefined
                                 }
                                 availableEnvironments={logicalProjectEnvironments}
-                                {...(isServerThread
+                                {...(isServerThread || surface.compact
                                   ? {}
                                   : {
                                       trailing: (
@@ -4152,6 +4179,7 @@ export default function ChatView(props: ChatViewProps) {
                     </ComposerSurface.Shell>
                     <div
                       aria-hidden
+                      data-chat-composer-bottom-inset
                       className="h-[calc(env(safe-area-inset-bottom)+1rem)] sm:h-[calc(env(safe-area-inset-bottom)+1.25rem)]"
                     />
                   </div>
@@ -4159,10 +4187,13 @@ export default function ChatView(props: ChatViewProps) {
               </div>
             </div>
 
-            {canOperatePreview && activeThreadRef && activeEnvironmentServerBrowser && !embedded ? (
+            {canOperatePreview &&
+            activeThreadRef &&
+            activeEnvironmentServerBrowser &&
+            surface.windowChrome ? (
               <PreviewSessionSync threadRef={activeThreadRef} />
             ) : null}
-            {activeThreadRef && shownPreviewMiniPlayer && !embedded ? (
+            {activeThreadRef && shownPreviewMiniPlayer && surface.windowChrome ? (
               <ThreadPreviewMiniPlayer
                 key={`${activeThreadKey}:${previewMiniPlayerSourceKey(shownPreviewMiniPlayer.source)}`}
                 threadRef={activeThreadRef}
@@ -4367,7 +4398,6 @@ export default function ChatView(props: ChatViewProps) {
         routeThreadRef={routeThreadRef}
         pointDraftAtCheckout={pointDraftAtCheckout}
         readAutomationSource={readAutomationSource}
-        isLocalDraftThread={isLocalDraftThread}
       />
       <ThreadVisitWatermark threadRef={routeThreadRef} />
       <ExpandedImageDialogHost threadKey={routeThreadKey} />

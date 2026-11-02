@@ -4,6 +4,14 @@ import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
 import * as Schema from "effect/Schema";
 import { useSyncExternalStore } from "react";
 import {
+  appearancePreferencesAreReadOnly,
+  isPresentedAppearanceActive,
+  notifyCommittedAppearanceChange,
+  presentedAppearanceMode,
+  presentedTheme,
+  presentedThemeHalves,
+} from "../appearanceSnapshot";
+import {
   applyThemePalette,
   CUSTOM_THEMES_STORAGE_KEY,
   invalidateCustomThemes,
@@ -26,7 +34,6 @@ import {
   type ThemePreferenceMode,
 } from "../themePalette";
 
-import { isQuickMessageWindow } from "../components/quickMessage/quickMessageWindow";
 import {
   resolveQuickMessageAppearance,
   type QuickMessageThemeSettings,
@@ -327,10 +334,10 @@ function applyTheme(theme: Theme, { suppressTransitions = false, preservePreview
   if (preservePreview && document.documentElement.dataset?.themeId === THEME_PREVIEW_ID) {
     return;
   }
-  const appearanceMode = readAppearanceModePreference(theme);
+  const appearanceMode = presentedAppearanceMode(theme, readAppearanceModePreference);
   const followSystem = appearanceMode === "system";
   const systemDark = followSystem ? getSystemDark() : false;
-  const themeHalves = readStoredThemeHalves();
+  const themeHalves = presentedThemeHalves(readStoredThemeHalves);
   if (
     lastAppliedTheme?.theme === theme &&
     lastAppliedTheme.systemDark === systemDark &&
@@ -400,7 +407,7 @@ function syncDesktopTheme(
   followSystem?: boolean,
   appearanceMode?: ThemePreferenceMode,
 ) {
-  if (typeof window === "undefined" || isQuickMessageWindow) return;
+  if (typeof window === "undefined" || appearancePreferencesAreReadOnly()) return;
   const bridge = window.desktopBridge;
   const halves = readStoredThemeHalves();
   const desktopTheme = resolveDesktopTheme(theme, followSystem, appearanceMode, halves);
@@ -434,11 +441,11 @@ function getSnapshot(): ThemeSnapshot {
   // Cache localStorage reads until signalled; useTheme calls this every render.
   if (!snapshotStale && lastSnapshot) return lastSnapshot;
   snapshotStale = false;
-  const theme = getStored();
-  const appearanceMode = readAppearanceModePreference(theme);
+  const theme = presentedTheme(getStored);
+  const appearanceMode = presentedAppearanceMode(theme, readAppearanceModePreference);
   const followSystem = appearanceMode === "system";
   const systemDark = getSystemDark();
-  const themeHalves = readStoredThemeHalves();
+  const themeHalves = presentedThemeHalves(readStoredThemeHalves);
 
   const appAppearance = resolveThemeAppearance(
     theme,
@@ -475,9 +482,9 @@ function getServerSnapshot() {
 }
 
 function handleSystemAppearanceChange() {
-  const storedTheme = getStored();
+  const storedTheme = presentedTheme(getStored);
   if (
-    readAppearanceModePreference(storedTheme) === "system" ||
+    presentedAppearanceMode(storedTheme, readAppearanceModePreference) === "system" ||
     quickMessageThemeSettings?.quickMessageAppearance === "system"
   ) {
     lastAppliedTheme = null;
@@ -487,6 +494,17 @@ function handleSystemAppearanceChange() {
 }
 
 function handleStorageChange(e: StorageEvent) {
+  // The presented palette stays in memory. These events only drop the stored
+  // cache and the read-failure latch so release can see what other windows wrote.
+  if (isPresentedAppearanceActive()) {
+    if (e.key === STORAGE_KEY || e.key === null) {
+      themeStorageReadFailure = null;
+    }
+    if (e.key === CUSTOM_THEMES_STORAGE_KEY || e.key === null) {
+      invalidateCustomThemes();
+    }
+    return;
+  }
   if (e.key === STORAGE_KEY) {
     themeStorageReadFailure = null;
     applyTheme(getStored(), { suppressTransitions: true });
@@ -503,7 +521,10 @@ function handleStorageChange(e: StorageEvent) {
     lastAppliedTheme = null;
     applyTheme(getStored(), { suppressTransitions: true });
     emitChange();
+  } else {
+    return;
   }
+  notifyCommittedAppearanceChange();
 }
 
 let removeWindowListeners: (() => void) | null = null;
@@ -565,7 +586,7 @@ export function useRenderedAppearance() {
 }
 
 export function setTheme(next: Theme): boolean {
-  if (typeof window === "undefined") return false;
+  if (typeof window === "undefined" || appearancePreferencesAreReadOnly()) return false;
   try {
     // Save the current mode first; inferring it from the new theme can switch dark to light.
     pipe(getStored(), readAppearanceModePreference, writeAppearanceModePreference);
@@ -601,11 +622,12 @@ export function setTheme(next: Theme): boolean {
   }
   applyTheme(next, { suppressTransitions: true });
   emitChange();
+  notifyCommittedAppearanceChange();
   return true;
 }
 
 export function setAppearanceMode(nextAppearanceMode: ThemePreferenceMode): boolean {
-  if (typeof window === "undefined") return false;
+  if (typeof window === "undefined" || appearancePreferencesAreReadOnly()) return false;
   try {
     writeAppearanceModePreference(nextAppearanceMode);
   } catch (cause) {
@@ -626,11 +648,12 @@ export function setAppearanceMode(nextAppearanceMode: ThemePreferenceMode): bool
   themeStorageReadFailure = null;
   applyTheme(getStored(), { suppressTransitions: true });
   emitChange();
+  notifyCommittedAppearanceChange();
   return true;
 }
 
 export function setThemeHalf(appearance: ThemeAppearance, themeId: string | null): boolean {
-  if (typeof window === "undefined") return false;
+  if (typeof window === "undefined" || appearancePreferencesAreReadOnly()) return false;
   try {
     const current = readStoredThemeHalvesRaw();
     const next: { light?: string; dark?: string } = { ...current };
@@ -656,11 +679,12 @@ export function setThemeHalf(appearance: ThemeAppearance, themeId: string | null
   }
   applyTheme(getStored(), { suppressTransitions: true });
   emitChange();
+  notifyCommittedAppearanceChange();
   return true;
 }
 
 function clearThemeHalves(): boolean {
-  if (typeof window === "undefined") return false;
+  if (typeof window === "undefined" || appearancePreferencesAreReadOnly()) return false;
   try {
     window.localStorage.removeItem(THEME_HALVES_STORAGE_KEY);
   } catch (cause) {
@@ -678,13 +702,14 @@ function clearThemeHalves(): boolean {
   }
   applyTheme(getStored(), { suppressTransitions: true });
   emitChange();
+  notifyCommittedAppearanceChange();
   return true;
 }
 
 export function refreshTheme({ preservePreview = false } = {}): void {
   if (typeof window === "undefined") return;
   lastAppliedTheme = null;
-  applyTheme(getStored(), { suppressTransitions: true, preservePreview });
+  applyTheme(presentedTheme(getStored), { suppressTransitions: true, preservePreview });
   emitChange();
 }
 
@@ -716,3 +741,10 @@ export function useTheme() {
     themeHalves: snapshot.themeHalves,
   } as const;
 }
+
+export {
+  DEFAULT_THEME_SNAPSHOT,
+  isThemePreferenceMode,
+  readStoredFollowSystem,
+  STORAGE_KEY as THEME_STORAGE_KEY,
+};

@@ -4,6 +4,7 @@ import { receiveProviderAuthCallback, cancelProviderAuthCallback } from "./metho
 import * as DesktopIpc from "./DesktopIpc.ts";
 import { installNotificationBadge } from "./methods/notificationBadge.ts";
 import { getClientSettings, setClientSettings } from "./methods/clientSettings.ts";
+import { getAppearanceSnapshot, publishAppearanceSnapshot } from "./methods/appearance.ts";
 import { getConnectionCatalog, setConnectionCatalog } from "./methods/connectionCatalog.ts";
 import {
   getLocalEnvironmentEnabled,
@@ -71,10 +72,12 @@ import * as PreviewIpc from "./methods/preview.ts";
 import * as AppActivationIpc from "./methods/appActivation.ts";
 import * as WebLinksIpc from "./methods/webLinks.ts";
 import * as QuickMessageIpc from "./methods/quickMessage.ts";
+import * as MainDestinationIpc from "./methods/mainDestination.ts";
 import {
   completeLegacyLocalStorage,
   takeLegacyLocalStorage,
 } from "./methods/legacyLocalStorage.ts";
+import { installNativeWindowInteractionIpc } from "./methods/nativeWindowInteraction.ts";
 import { getWslState, setWslBackendEnabled, setWslDistro, setWslOnly } from "./methods/wsl.ts";
 import {
   getCliCommandState,
@@ -91,6 +94,7 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   yield* ipc.handle(AppActivationIpc.complete);
   yield* ipc.handle(WebLinksIpc.setReady);
 
+  yield* installNativeWindowInteractionIpc();
   yield* ipc.handleSync(takeLegacyLocalStorage);
   yield* ipc.handle(completeLegacyLocalStorage);
   yield* ipc.handleSync(getAppBranding);
@@ -104,6 +108,8 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
 
   yield* ipc.handle(getClientSettings);
   yield* ipc.handle(setClientSettings);
+  yield* ipc.handle(getAppearanceSnapshot);
+  yield* ipc.handle(publishAppearanceSnapshot);
   yield* ipc.handle(getConnectionCatalog);
   yield* ipc.handle(getSnapShotState);
   yield* ipc.handle(setupSnapShot);
@@ -119,10 +125,12 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   yield* ipc.handle(acknowledgeSnapShot);
   yield* ipc.handle(QuickMessageIpc.getQuickMessageState);
   yield* ipc.handle(QuickMessageIpc.setQuickMessageShortcutSuppressed);
-  yield* ipc.handle(QuickMessageIpc.setQuickMessageReceiverReady);
   yield* ipc.handle(QuickMessageIpc.setQuickMessagePanelReady);
-  yield* ipc.handle(QuickMessageIpc.submitQuickMessage);
   yield* ipc.handle(QuickMessageIpc.dismissQuickMessage);
+  yield* ipc.handle(QuickMessageIpc.setQuickMessagePresentation);
+  yield* ipc.handle(MainDestinationIpc.openMainDestination);
+  yield* ipc.handle(MainDestinationIpc.setMainDestinationReceiverReady);
+  yield* ipc.handle(MainDestinationIpc.completeMainDestination);
   yield* ipc.handle(setConnectionCatalog);
 
   yield* ipc.handle(discoverSshHosts);

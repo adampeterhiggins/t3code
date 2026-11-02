@@ -1,5 +1,10 @@
 import type { EnvironmentTheme, EnvironmentThemeFile } from "@t3tools/contracts";
 import * as Equal from "effect/Equal";
+import {
+  assertCustomThemeLibraryWritable,
+  notifyCommittedAppearanceChange,
+  readPresentedCustomThemes,
+} from "./appearanceSnapshot";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { Atom } from "effect/reactivity";
@@ -276,6 +281,8 @@ export function invalidateCustomThemes() {
 const EMPTY_CUSTOM_THEMES: ReadonlyArray<ThemeDefinition> = [];
 
 export function getCustomThemes(): ReadonlyArray<ThemeDefinition> {
+  const presented = readPresentedCustomThemes();
+  if (presented !== null) return presented;
   const snapshot = getCustomThemeLibrarySnapshot();
   return snapshot.status === "ready" ? snapshot.themes : EMPTY_CUSTOM_THEMES;
 }
@@ -895,6 +902,7 @@ function saveCustomThemes(
   storedThemes: ReadonlyArray<unknown>,
   themes: ReadonlyArray<ThemeDefinition>,
 ): void {
+  assertCustomThemeLibraryWritable();
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(CUSTOM_THEMES_STORAGE_KEY, JSON.stringify(storedThemes));
@@ -908,6 +916,7 @@ function saveCustomThemes(
     });
   }
   notifyCustomThemeListeners();
+  notifyCommittedAppearanceChange();
 }
 
 function requireWritableCustomThemeLibrary(
@@ -948,6 +957,7 @@ function storedThemeHasCollectionId(storedTheme: unknown, collectionId: string):
 }
 
 export function installCustomTheme(theme: ThemeDefinition): ThemeDefinition {
+  assertCustomThemeLibraryWritable();
   if (RESERVED_THEME_IDS.has(theme.id)) {
     throw new Error(`The theme id "${theme.id}" is reserved.`);
   }
@@ -965,6 +975,7 @@ export function installCustomTheme(theme: ThemeDefinition): ThemeDefinition {
 }
 
 export function updateCustomTheme(theme: ThemeDefinition): ThemeDefinition {
+  assertCustomThemeLibraryWritable();
   if (RESERVED_THEME_IDS.has(theme.id)) {
     throw new Error(`The theme id "${theme.id}" is reserved.`);
   }
@@ -999,6 +1010,7 @@ export function replaceCustomThemeCollection(
   themes: ReadonlyArray<ThemeDefinition>,
   options?: { expectedCollection?: ReadonlyArray<ThemeDefinition> },
 ): ReadonlyArray<ThemeDefinition> {
+  assertCustomThemeLibraryWritable();
   if (themes.length === 0) throw new Error("A theme collection cannot be empty.");
 
   const validated = themes.map((theme) => parseStoredTheme(theme));
@@ -1056,6 +1068,7 @@ export function removeCustomTheme(themeId: string): void {
 }
 
 export function removeCustomThemes(themeIds: ReadonlyArray<string>): void {
+  assertCustomThemeLibraryWritable();
   const removedIds = new Set(themeIds);
   if (removedIds.size === 0) return;
   const library = getWritableCustomThemeLibrary();
@@ -1355,3 +1368,13 @@ export function resolveThemeHalf(
 ): ThemePreference {
   return halves?.[appearance] ?? theme;
 }
+
+export {
+  BUILT_IN_THEME_DEFINITIONS,
+  getCustomThemeLibrarySnapshot,
+  getEnvironmentThemes,
+  legacyThemeMode,
+  notifyCustomThemeListeners,
+  parseStoredThemes,
+  themeIdFromPreference,
+};

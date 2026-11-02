@@ -42,6 +42,10 @@ export const GET_LOCAL_ENVIRONMENT_BEARER_TOKEN_CHANNEL =
   "desktop:get-local-environment-bearer-token";
 export const GET_CLIENT_SETTINGS_CHANNEL = "desktop:get-client-settings";
 export const SET_CLIENT_SETTINGS_CHANNEL = "desktop:set-client-settings";
+export const CLIENT_SETTINGS_EVENT_CHANNEL = "desktop:client-settings";
+export const GET_APPEARANCE_SNAPSHOT_CHANNEL = "desktop:get-appearance-snapshot";
+export const PUBLISH_APPEARANCE_SNAPSHOT_CHANNEL = "desktop:publish-appearance-snapshot";
+export const APPEARANCE_SNAPSHOT_CHANNEL = "desktop:appearance-snapshot";
 export const SETUP_SNAP_SHOT_CHANNEL = "desktop:setup-snap-shot";
 export const PREVIEW_SNAP_SHOT_CONFIG_CHANNEL = "desktop:preview-snap-shot-config";
 export const APPLY_SNAP_SHOT_CONFIG_CHANNEL = "desktop:apply-snap-shot-config";
@@ -128,9 +132,12 @@ export const COMPLETE_LEGACY_LOCAL_STORAGE_CHANNEL = "desktop:complete-legacy-lo
 export const GET_QUICK_MESSAGE_STATE_CHANNEL = "desktop:get-quick-message-state";
 export const SET_QUICK_MESSAGE_SHORTCUT_SUPPRESSED_CHANNEL =
   "desktop:set-quick-message-shortcut-suppressed";
-export const SET_QUICK_MESSAGE_RECEIVER_READY_CHANNEL = "desktop:set-quick-message-receiver-ready";
-export const QUICK_MESSAGE_SUBMIT_EVENT_CHANNEL = "desktop:quick-message-submit-event";
 export const SET_QUICK_MESSAGE_PANEL_READY_CHANNEL = "desktop:set-quick-message-panel-ready";
-export const SUBMIT_QUICK_MESSAGE_CHANNEL = "desktop:submit-quick-message";
 export const DISMISS_QUICK_MESSAGE_CHANNEL = "desktop:dismiss-quick-message";
+export const SET_QUICK_MESSAGE_PRESENTATION_CHANNEL = "desktop:set-quick-message-presentation";
 export const QUICK_MESSAGE_SHOW_EVENT_CHANNEL = "desktop:quick-message-show-event";
+export const OPEN_MAIN_DESTINATION_CHANNEL = "desktop:open-main-destination";
+export const MAIN_DESTINATION_EVENT_CHANNEL = "desktop:main-destination-event";
+export const SET_MAIN_DESTINATION_RECEIVER_READY_CHANNEL =
+  "desktop:set-main-destination-receiver-ready";
+export const COMPLETE_MAIN_DESTINATION_CHANNEL = "desktop:complete-main-destination";

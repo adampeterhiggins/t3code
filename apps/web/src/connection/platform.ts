@@ -50,6 +50,7 @@ import {
   type PrimaryEnvironmentTarget,
 } from "../environments/primary/target";
 import { clearComposerDraftsEnvironment } from "../composerDraftStore";
+import { isDetachedChatWindow } from "../components/quickMessage/quickMessageWindow";
 import { isHostedStaticApp } from "../hostedPairing";
 import { isLocalEnvironmentDisabled } from "../localEnvironment";
 import { randomUUID } from "../lib/utils";
@@ -61,6 +62,11 @@ import {
   type DesktopSecondaryBootstrapsRead,
 } from "./desktopLocal";
 import * as ConnectionStorage from "./storage";
+import {
+  connectionStorageForWindow,
+  detachedSshGateway,
+  secondaryBootstrapsForWindow,
+} from "./detachedConnectionPolicy";
 import { clientPresentationMetadata } from "./clientMetadata";
 
 let nextObservedRpcRequestId = 0;
@@ -370,7 +376,7 @@ const layerCapabilities = Layer.effectContext(
           }),
       }).pipe(Effect.map(Option.fromNullishOr)),
     });
-    const ssh = ClientCapabilities.SshEnvironmentGateway.of({
+    const desktopSsh = ClientCapabilities.SshEnvironmentGateway.of({
       provision: Effect.fn("web.connectionPlatform.ssh.provision")(
         function* (target, expectedEnvironmentId) {
           const bridge = window.desktopBridge;
@@ -409,6 +415,7 @@ const layerCapabilities = Layer.effectContext(
         });
       }),
     });
+    const ssh = isDetachedChatWindow ? detachedSshGateway : desktopSsh;
 
     return Context.make(ClientCapabilities.CloudSession, cloudSession).pipe(
       Context.add(ClientCapabilities.AnalyticsDevice, analyticsDevice),
@@ -677,7 +684,10 @@ const layerPlatformConnectionSource = Layer.effect(
         }
       }
 
-      const topologyRead = readDesktopSecondaryBootstrapsResult();
+      const topologyRead = secondaryBootstrapsForWindow(
+        isDetachedChatWindow,
+        readDesktopSecondaryBootstrapsResult,
+      );
       for (const [id, cached] of secondaryRegistrationsToRetainAfterTopologyRead(
         previous,
         topologyRead,
@@ -816,8 +826,11 @@ const layerRpcRequestObserver = Layer.succeed(
   }),
 );
 
+const layerConnectionStorage: typeof ConnectionStorage.layer =
+  connectionStorageForWindow(isDetachedChatWindow);
+
 type ConnectionPlatformLayerSource =
-  | typeof ConnectionStorage.layer
+  | typeof layerConnectionStorage
   | typeof layerConnectivity
   | typeof layerWakeups
   | typeof layerCapabilities
@@ -830,7 +843,7 @@ export const layer: Layer.Layer<
   Layer.Error<ConnectionPlatformLayerSource>,
   Layer.Services<ConnectionPlatformLayerSource>
 > = Layer.mergeAll(
-  ConnectionStorage.layer,
+  layerConnectionStorage,
   layerConnectivity,
   layerWakeups,
   layerCapabilities,

@@ -131,6 +131,11 @@ import { composerCodeBlockHighlight } from "./composerCodeBlockHighlight";
 import { importPastedComposerText } from "./composerInlineTokenPaste";
 import { ComposerLoadingLinksExtension, setComposerLoadingLinks } from "./composerLoadingLinks";
 import { didComposerSelectionChangeVisibly } from "./composerSelection";
+import {
+  deliverPendingDetachedComposerFocus,
+  detachedComposerWindowCanFocus,
+} from "./detachedChat/detachedComposerFocus";
+import { isDetachedChatWindow } from "./quickMessage/quickMessageWindow";
 
 export interface ComposerPromptEditorHandle {
   focus: () => void;
@@ -1553,10 +1558,21 @@ function ComposerPromptEditorTiptapInner(
     editor?.setEditable(!disabled);
   }, [disabled, editor]);
 
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- applies loading-link decorations to the imperative Tiptap editor before paint
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- applies loading-link decorations and a waiting detached focus once the Tiptap view has mounted
   useLayoutEffect(() => {
     if (!editor) return;
-    const apply = () => setComposerLoadingLinks(editor.view, loadingLinkUrls ?? []);
+    const apply = () => {
+      setComposerLoadingLinks(editor.view, loadingLinkUrls ?? []);
+      if (!isDetachedChatWindow) return;
+      const dom = editor.view.dom;
+      deliverPendingDetachedComposerFocus({
+        connected: dom.isConnected,
+        eligible: detachedComposerWindowCanFocus(document),
+        focus: () => {
+          editor.view.focus();
+        },
+      });
+    };
     if (editor.isInitialized) {
       apply();
       return;

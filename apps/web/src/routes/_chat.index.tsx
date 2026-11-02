@@ -6,6 +6,8 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { isElectron } from "../env";
 import { NoProjectsHero } from "../components/NoProjectsHero";
+import { DetachedIndexDraftLanding } from "../components/detachedChat/DetachedIndexDraftLanding";
+import { isDetachedChatWindow } from "../components/quickMessage/quickMessageWindow";
 import { sortScopedProjectsForSidebar } from "../components/Sidebar.logic";
 import { Button } from "../components/ui/button";
 import { HostedEmptyState } from "../components/HostedEmptyState";
@@ -30,7 +32,11 @@ function ChatIndexRouteView() {
     if (environments.length === 0) return <HostedEmptyState />;
   }
 
-  return <IndexDraftLanding />;
+  return isDetachedChatWindow ? (
+    <DetachedIndexDraftLanding StartError={DraftStartError} />
+  ) : (
+    <IndexDraftLanding />
+  );
 }
 
 function IndexDraftLanding() {

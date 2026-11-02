@@ -2,10 +2,7 @@ import * as Schema from "effect/Schema";
 import type { PreviewCaptureFailureEncoded } from "./previewCapture.ts";
 
 import { SnapShotSource } from "./chatAttachment.ts";
-import { EnvironmentId, ProjectId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
-import { ReviewCommentDraft } from "./composerContext.ts";
-import { DiscordGetThreadInput } from "./discord.ts";
-import { SlackGetThreadInput } from "./slack.ts";
+import { EnvironmentId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { BrowserProfileId } from "./browserProfile.ts";
 import type {
   BrowserImportResult,
@@ -14,16 +11,14 @@ import type {
 } from "./browserImport.ts";
 import { AuthAccessTokenResult, AuthSessionState } from "./auth.ts";
 import { AdvertisedEndpoint } from "./remoteAccess.ts";
-import { ExecutionEnvironmentDescriptor, ThreadEnvMode } from "./environment.ts";
+import { ExecutionEnvironmentDescriptor } from "./environment.ts";
+import type { DesktopAppearanceSnapshot } from "./desktopAppearance.ts";
 import {
   type ClientSettings,
   ClientSettingsSchema,
   type QuitConfirmationMode,
   SnapShotShortcut,
 } from "./settings.ts";
-import { ModelSelection } from "./modelSelection.ts";
-import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
-import { ProviderInteractionMode, RuntimeMode } from "./providerPolicy.ts";
 import type { EditorId } from "./editor.ts";
 import type { PreviewForwardedShortcut } from "./keybindings.ts";
 
@@ -31,6 +26,10 @@ import type {
   DesktopAppActivationRequest,
   DesktopAppActivationResponse,
 } from "./desktopAppActivation.ts";
+import type {
+  DesktopMainDestinationRequest,
+  DesktopMainDestinationResult,
+} from "./desktopMainDestination.ts";
 
 export interface ContextMenuItem<T extends string = string> {
   id: T;
@@ -216,148 +215,27 @@ export const DesktopSnapShotShortcutAvailability = Schema.Struct({
 });
 export type DesktopSnapShotShortcutAvailability = typeof DesktopSnapShotShortcutAvailability.Type;
 
+export const DesktopQuickMessagePresentation = Schema.Literals(["compact", "expanded"]);
+export type DesktopQuickMessagePresentation = typeof DesktopQuickMessagePresentation.Type;
+
 export const DesktopQuickMessageState = Schema.Struct({
   shortcutRegistered: Schema.Boolean,
   message: Schema.NullOr(Schema.String),
+  /**
+   * Absent on older shells. Callers treat that as compact, which is the
+   * panel's initial presentation.
+   */
+  presentation: Schema.optionalKey(DesktopQuickMessagePresentation),
 });
 export type DesktopQuickMessageState = typeof DesktopQuickMessageState.Type;
-
-export const DesktopQuickMessageFile = Schema.Struct({
-  name: Schema.String,
-  mimeType: Schema.String,
-  bytes: Schema.Uint8Array,
-});
-export type DesktopQuickMessageFile = typeof DesktopQuickMessageFile.Type;
-
-/**
- * Where a new thread starts, picked in a start-from picker. The labels are only for showing the
- * pick; the main window checks out or attaches from the reference.
- */
-export const DesktopQuickMessageStartFrom = Schema.Union([
-  Schema.Struct({
-    type: Schema.Literal("pull-request"),
-    url: Schema.String,
-    number: Schema.Number,
-    title: Schema.String,
-  }),
-  Schema.Struct({
-    type: Schema.Literal("branch"),
-    branch: Schema.String,
-    worktreePath: Schema.NullOr(Schema.String),
-    envMode: ThreadEnvMode,
-  }),
-  Schema.Struct({
-    type: Schema.Literal("github-issue"),
-    url: Schema.String,
-    number: Schema.Number,
-    title: Schema.String,
-  }),
-  Schema.Struct({
-    type: Schema.Literal("linear-issue"),
-    issueId: Schema.String,
-    identifier: Schema.String,
-    title: Schema.String,
-  }),
-]);
-export type DesktopQuickMessageStartFrom = typeof DesktopQuickMessageStartFrom.Type;
-
-/**
- * Context picked in the panel's attach pickers. The main window fetches and attaches each one to
- * the new draft as its own picker would; `label` only names the pick in the panel.
- */
-export const DesktopQuickMessageAttachment = Schema.Union([
-  Schema.Struct({ type: Schema.Literal("thread"), threadId: ThreadId, label: Schema.String }),
-  Schema.Struct({
-    type: Schema.Literal("linear-issue"),
-    issueId: Schema.String,
-    label: Schema.String,
-  }),
-  Schema.Struct({
-    type: Schema.Literal("notion-page"),
-    pageId: Schema.String,
-    label: Schema.String,
-  }),
-  Schema.Struct({
-    type: Schema.Literal("google-file"),
-    fileId: Schema.String,
-    label: Schema.String,
-  }),
-  Schema.Struct({
-    type: Schema.Literal("granola-note"),
-    noteId: Schema.String,
-    label: Schema.String,
-  }),
-  Schema.Struct({
-    type: Schema.Literal("slack-message"),
-    input: SlackGetThreadInput,
-    label: Schema.String,
-  }),
-  Schema.Struct({
-    type: Schema.Literal("discord-message"),
-    input: DiscordGetThreadInput,
-    label: Schema.String,
-  }),
-  Schema.Struct({ type: Schema.Literal("github-issue"), url: Schema.String, label: Schema.String }),
-  Schema.Struct({
-    type: Schema.Literal("pull-request"),
-    comment: ReviewCommentDraft,
-    label: Schema.String,
-  }),
-  Schema.Struct({
-    type: Schema.Literal("checkout"),
-    environmentId: EnvironmentId,
-    path: Schema.String,
-    branch: Schema.NullOr(Schema.String),
-    headSha: Schema.NullOr(Schema.String),
-    changedFiles: Schema.NullOr(Schema.Number),
-    ahead: Schema.Number,
-    link: Schema.Boolean,
-    label: Schema.String,
-  }),
-  Schema.Struct({
-    type: Schema.Literal("repository"),
-    nameWithOwner: Schema.String,
-    remoteUrl: Schema.String,
-    label: Schema.String,
-  }),
-  Schema.Struct({
-    type: Schema.Literal("model"),
-    providerInstanceId: ProviderInstanceId,
-    driver: ProviderDriverKind,
-    instanceName: TrimmedNonEmptyString.check(Schema.isMaxLength(2_048)),
-    model: TrimmedNonEmptyString.check(Schema.isMaxLength(255)),
-    label: TrimmedNonEmptyString.check(Schema.isMaxLength(2_048)),
-  }),
-]);
-export type DesktopQuickMessageAttachment = typeof DesktopQuickMessageAttachment.Type;
-
-/**
- * What the quick message panel hands the main window: a new thread to start, or an app path to
- * open there, such as an existing thread picked instead of starting a second one.
- */
-export const DesktopQuickMessageSubmission = Schema.Union([
-  Schema.Struct({
-    type: Schema.Literal("draft"),
-    environmentId: EnvironmentId,
-    projectId: ProjectId,
-    text: Schema.String,
-    files: Schema.Array(DesktopQuickMessageFile),
-    modelSelection: ModelSelection,
-    runtimeMode: RuntimeMode,
-    interactionMode: ProviderInteractionMode,
-    startFrom: Schema.optional(DesktopQuickMessageStartFrom),
-    attachments: Schema.Array(DesktopQuickMessageAttachment),
-  }),
-  Schema.Struct({
-    type: Schema.Literal("open"),
-    href: Schema.String,
-  }),
-]);
-export type DesktopQuickMessageSubmission = typeof DesktopQuickMessageSubmission.Type;
 
 /** Sent each time the panel opens; the panel never persists settings, so it adopts these. */
 export const DesktopQuickMessageShowEvent = Schema.Struct({
   clientSettings: ClientSettingsSchema,
+  /**
+   * Absent on older shells. Callers treat that as compact.
+   */
+  presentation: Schema.optionalKey(DesktopQuickMessagePresentation),
 });
 export type DesktopQuickMessageShowEvent = typeof DesktopQuickMessageShowEvent.Type;
 
@@ -1178,11 +1056,25 @@ export const DesktopPreviewRecordingSaveInputSchema = Schema.Struct({
 export const SystemSettingsPaneSchema = Schema.Literals(["full-disk-access"]);
 export type SystemSettingsPane = typeof SystemSettingsPaneSchema.Type;
 
+export const DesktopWindowRole = Schema.Literals(["main", "quick-message"]);
+export type DesktopWindowRole = typeof DesktopWindowRole.Type;
+
 export interface DesktopBridge {
   getAppBranding: () => DesktopAppBranding | null;
   getRelayTelemetryEnabled: () => boolean;
   getPathForFile: (file: File) => string;
   getClientPlatform: () => string;
+  /**
+   * Set from a construction-time window argument, so navigation and reload
+   * cannot change it. Older shells omit it.
+   */
+  getWindowRole?: () => DesktopWindowRole;
+  /**
+   * True only for a quick-message window constructed with an isolated session.
+   * Older shells omit it. A thread URL is not a substitute: the legacy panel
+   * can load one and still shares the main profile.
+   */
+  isQuickMessageSessionIsolated?: () => boolean;
   setNotificationBadge: (badge: { count: number; image: string | null }) => Promise<void>;
   onNotificationBadgeClear: (listener: () => void) => () => void;
   onTrackpadScrollBegin: (listener: () => void) => () => void;
@@ -1205,6 +1097,11 @@ export interface DesktopBridge {
   getLocalEnvironmentBearerToken: () => Promise<string>;
   getClientSettings: () => Promise<ClientSettings | null>;
   setClientSettings: (settings: ClientSettings) => Promise<void>;
+  /**
+   * Settings just written by the main window. Older shells omit this.
+   * A floating window adopts the object in memory and does not write it back.
+   */
+  onClientSettings?: (listener: (settings: ClientSettings) => void) => () => void;
   getConnectionCatalog: () => Promise<string | null>;
   setConnectionCatalog: (catalog: string) => Promise<boolean>;
   discoverSshHosts: () => Promise<readonly DesktopDiscoveredSshHost[]>;
@@ -1263,6 +1160,14 @@ export interface DesktopBridge {
   /** Reveals a file saved by `saveTextFile` in the OS file manager. */
   showSavedFileInFolder?: (path: string) => Promise<void>;
   setTheme: (theme: DesktopTheme) => Promise<void>;
+  /**
+   * Committed appearance owned by the main window. Older shells omit these,
+   * and callers keep the local theme engine when any method is missing.
+   * Snapshots arrive in publish order; the listener returns its unsubscribe.
+   */
+  getAppearanceSnapshot?: () => Promise<DesktopAppearanceSnapshot | null>;
+  publishAppearanceSnapshot?: (snapshot: DesktopAppearanceSnapshot) => Promise<void>;
+  onAppearanceSnapshot?: (listener: (snapshot: DesktopAppearanceSnapshot) => void) => () => void;
   showContextMenu: <T extends string>(
     items: readonly ContextMenuItem<T>[],
     position?: { x: number; y: number },
@@ -1303,20 +1208,39 @@ export interface DesktopBridge {
   quickMessage?: {
     getState: () => Promise<DesktopQuickMessageState>;
     setShortcutSuppressed: (suppressed: boolean) => Promise<void>;
-    /** The main window takes submissions once it can open a draft. */
-    setReceiverReady: (ready: boolean) => Promise<void>;
-    onSubmit: (listener: (submission: DesktopQuickMessageSubmission) => void) => () => void;
     /** Panel window only. */
     setPanelReady: () => Promise<void>;
-    submit: (submission: DesktopQuickMessageSubmission) => Promise<void>;
     dismiss: () => Promise<void>;
+    /**
+     * Panel window only. Older desktop shells omit it; the panel stays compact.
+     */
+    setPresentation?: (presentation: DesktopQuickMessagePresentation) => Promise<void>;
     onShow: (listener: (event: DesktopQuickMessageShowEvent) => void) => () => void;
+  };
+  /**
+   * Synchronous hold for Chromium's file chooser, which blurs the compact
+   * window. `begin` is acknowledged in the same turn as the click; `false`
+   * means the click is not protected. Older shells omit it.
+   */
+  nativeWindowInteraction?: {
+    begin: () => boolean;
+    end: () => void;
   };
   appActivation?: {
     setReady: (ready: boolean) => Promise<void>;
     complete: (response: DesktopAppActivationResponse) => Promise<void>;
     onRequest: (listener: (request: DesktopAppActivationRequest) => void) => () => void;
   };
+  /**
+   * Isolated floating window asks the main window to show a thread or an
+   * in-app page, then waits until that window has settled. Older shells omit it.
+   */
+  openMainDestination?: (
+    request: DesktopMainDestinationRequest,
+  ) => Promise<DesktopMainDestinationResult>;
+  onMainDestination?: (listener: (request: DesktopMainDestinationRequest) => void) => () => void;
+  setMainDestinationReceiverReady?: (ready: boolean) => Promise<void>;
+  completeMainDestination?: (result: DesktopMainDestinationResult) => Promise<void>;
   preview: DesktopPreviewBridge;
 }
 

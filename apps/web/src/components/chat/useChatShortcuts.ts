@@ -11,6 +11,7 @@ import { isInSideChatPane } from "../../lib/sideChatPane";
 import { getTerminalFocusOwner, type TerminalFocusOwner } from "../../lib/terminalFocus";
 import type { ComposerHandleRef } from "../../composerHandleContext";
 import type { BranchToolbarHandle } from "../BranchToolbar";
+import { detachedChatShortcutRuns } from "../quickMessage/detachedChatPresentation";
 import { shouldTypeToFocusComposer } from "./composerFocusRedirect";
 import { composerShortcutCommands } from "./composerShortcuts";
 
@@ -84,7 +85,7 @@ export function useChatShortcuts(input: ChatShortcutsInput) {
     const command = resolveChatShortcutCommand(event, keybindings, input.scriptKeybindings, {
       context: shortcutContext,
     });
-    if (!command) return;
+    if (!command || !detachedChatShortcutRuns(command)) return;
     const run =
       input.commands[command] ??
       composerShortcutCommands(input.composerRef, input.branchToolbarRef)[command] ??
