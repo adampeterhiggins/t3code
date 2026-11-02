@@ -315,7 +315,17 @@ export function DraftHeroHeadline({
             />
           }
         >
-          {compact ? <FolderIcon className="size-4" /> : null}
+          {compact ? (
+            activeProjectGroup && !isScratchDraft ? (
+              <ProjectFavicon
+                project={activeProjectGroup}
+                fallbackIcon={FolderIcon}
+                className="size-4 shrink-0"
+              />
+            ) : (
+              <FolderIcon className="size-4" />
+            )
+          ) : null}
           <DraftProjectName
             value={isScratchDraft ? "No project" : (activeProjectDisplayName ?? "Choose a project")}
             singleLine
