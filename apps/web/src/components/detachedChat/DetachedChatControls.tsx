@@ -88,24 +88,28 @@ function DetachedComposerAccess(props: {
   );
 }
 
-/** The compact floating composer's project picker and access control, in ChatComposer's slots. */
+/** The floating composer's access control, and the compact one's project picker, in ChatComposer's slots. */
 export function floatingComposerSlots(
-  compact: boolean,
+  surface: { readonly workspace: boolean; readonly compact: boolean },
   input: ComponentProps<typeof DetachedComposerProject> & {
     readonly runtimeMode: RuntimeMode;
     readonly supportedRuntimeModes: ReadonlyArray<RuntimeMode> | undefined;
     readonly onOpenPermissions: () => void;
   },
 ): { headerLeading?: ReactNode; footerLeading?: ReactNode } {
-  if (!compact) return {};
+  if (surface.workspace) return {};
   return {
-    headerLeading: (
-      <DetachedComposerProject
-        draftId={input.draftId}
-        activeProjectRef={input.activeProjectRef}
-        activeProjectTitle={input.activeProjectTitle}
-      />
-    ),
+    ...(surface.compact
+      ? {
+          headerLeading: (
+            <DetachedComposerProject
+              draftId={input.draftId}
+              activeProjectRef={input.activeProjectRef}
+              activeProjectTitle={input.activeProjectTitle}
+            />
+          ),
+        }
+      : {}),
     footerLeading: (
       <DetachedComposerAccess
         runtimeMode={input.runtimeMode}

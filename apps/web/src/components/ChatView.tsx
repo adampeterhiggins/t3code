@@ -3588,7 +3588,7 @@ export default function ChatView(props: ChatViewProps) {
     addFolders: addDroppedFoldersToComposer,
   });
 
-  const composerSlots = floatingComposerSlots(surface.compact, {
+  const composerSlots = floatingComposerSlots(surface, {
     draftId,
     activeProjectRef,
     activeProjectTitle: activeProject?.title ?? null,
@@ -4048,7 +4048,9 @@ export default function ChatView(props: ChatViewProps) {
                               githubIssueCwd={githubIssueCwd}
                               threadPullRequests={(activeThreadShell ?? activeThread)?.pullRequests}
                               onComposerOverlayHeightChange={publishComposerOverlayHeightStable}
-                              permissionsShownInStrip={showComposerContextStrip && !isServerThread}
+                              permissionsShownInStrip={
+                                (showComposerContextStrip && !isServerThread) || !surface.workspace
+                              }
                               promptRef={promptRef}
                               composerImagesRef={composerImagesRef}
                               composerFilesRef={composerFilesRef}
@@ -4150,7 +4152,7 @@ export default function ChatView(props: ChatViewProps) {
                                     : undefined
                                 }
                                 availableEnvironments={logicalProjectEnvironments}
-                                {...(isServerThread || surface.compact
+                                {...(isServerThread || !surface.workspace
                                   ? {}
                                   : {
                                       trailing: (
