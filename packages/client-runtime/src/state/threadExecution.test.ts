@@ -20,6 +20,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { v2Projection } from "./orchestrationV2TestFixtures.ts";
 import {
   deriveActiveRunAwaitsSubagents,
+  deriveActiveRunSubagentWaitKey,
   deriveReportedModelSelection,
   deriveLatestThreadRun,
   deriveProviderSubagentStatus,
@@ -419,6 +420,17 @@ describe("deriveActiveRunAwaitsSubagents", () => {
     expect(
       deriveActiveRunAwaitsSubagents({ ...v2Projection, runs: [running], turnItems: items }),
     ).toBe(awaits);
+  });
+
+  it("keeps one wait key per batch of subagents", () => {
+    const waitKey = (items: ReadonlyArray<ReturnType<typeof subagent | typeof command>>) =>
+      deriveActiveRunSubagentWaitKey({ ...v2Projection, runs: [running], turnItems: items });
+    const first = waitKey([command(1), subagent(2, "running")]);
+    expect(first).not.toBeNull();
+    expect(waitKey([command(1), subagent(2, "running"), subagent(3, "running")])).toBe(first);
+    expect(
+      waitKey([command(1), subagent(2, "completed"), command(3), subagent(4, "running")]),
+    ).not.toBe(first);
   });
 
   it("is false once the run is no longer running", () => {

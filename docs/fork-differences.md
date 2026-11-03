@@ -267,12 +267,16 @@ Code: `steerTurn` in
 
 With **Follow-up behavior** set to Queue, a follow-up still steers the running turn when the
 agent's newest work is subagents it is waiting on, so the message reaches the agent without
-**Send now**. A Claude steer moves those subagents to the background first. Turn it off with
+**Send now**. A message already queued when the agent starts waiting is sent the same way, once
+per wait, by any client that has the thread open. A Claude steer moves those subagents to the
+background first. Turn it off with
 **Steer while waiting on subagents** under Settings → Chat (web and desktop) or Settings → Chat
 (mobile). Upstream queues the message until the turn ends.
 
-Code: `deriveActiveRunAwaitsSubagents` in
-[`threadExecution.ts`](../packages/client-runtime/src/state/threadExecution.ts).
+Code: `deriveActiveRunSubagentWaitKey` in
+[`threadExecution.ts`](../packages/client-runtime/src/state/threadExecution.ts) and
+`deriveSubagentWaitSteer` in
+[`threadWorkflows.ts`](../packages/client-runtime/src/state/threadWorkflows.ts).
 
 ## Agents panel drilldowns
 

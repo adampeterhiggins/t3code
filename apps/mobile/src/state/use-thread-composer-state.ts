@@ -119,6 +119,7 @@ import { enqueueThreadOutboxMessage } from "./thread-outbox";
 import { dispatchingQueuedMessageIdAtom, useThreadOutboxMessages } from "./use-thread-outbox";
 import { threadEnvironment } from "./threads";
 import { useAtomCommand } from "./use-atom-command";
+import { useSteerQueueIntoSubagentWait } from "./use-steer-queue-into-subagent-wait";
 import { useSelectedThreadWorktree } from "./use-selected-thread-worktree";
 
 const EMPTY_QUEUE_WORKFLOW_ATOM = Atom.make<null>(null).pipe(
@@ -325,6 +326,12 @@ export function useThreadComposerState() {
     deriveActiveRunAwaitsSubagents(selectedThreadProjection.projection)
       ? "steer"
       : preferredFollowUpBehavior;
+  useSteerQueueIntoSubagentWait({
+    environmentId: selectedThreadDetailRef?.environmentId ?? null,
+    threadId: selectedThreadDetailRef?.threadId ?? null,
+    projection: selectedThreadProjection?.projection ?? null,
+    enabled: preferredFollowUpBehavior === "queue" && steerWhileAwaitingSubagents,
+  });
   const queueWorkflow = useAtomValue(
     selectedThreadDetailRef === null
       ? EMPTY_QUEUE_WORKFLOW_ATOM

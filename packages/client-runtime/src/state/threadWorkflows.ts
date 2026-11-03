@@ -7,6 +7,7 @@ import {
 import { copySorted } from "@t3tools/shared/Array";
 
 import type { ThreadStructure } from "./models.ts";
+import { deriveActiveRunSubagentWaitKey } from "./threadExecution.ts";
 
 type Projection = ThreadStructure;
 type Run = Projection["runs"][number];
@@ -176,6 +177,29 @@ export function deriveThreadQueueWorkflowState(projection: Projection): ThreadQu
           capabilities?.supportsSteeringByInterruptRestart === true)),
     promoteSkipsCompaction,
   };
+}
+
+export interface SubagentWaitSteer {
+  /** Names this stretch of waiting; see `deriveActiveRunSubagentWaitKey`. */
+  readonly waitKey: string;
+  /** The first queued message and the turn it can steer, when the queue has one to send. */
+  readonly next: { readonly queuedRunId: Run["id"]; readonly targetRunId: Run["id"] } | null;
+}
+
+/**
+ * Clients act once per `waitKey`, when they first see it: a queue that already held a message
+ * sends its first one, and a message queued on purpose during the wait stays queued.
+ */
+export function deriveSubagentWaitSteer(projection: Projection): SubagentWaitSteer | null {
+  const waitKey = deriveActiveRunSubagentWaitKey(projection);
+  if (waitKey === null) return null;
+  const workflow = deriveThreadQueueWorkflowState(projection);
+  const queued = workflow.queuedRuns[0];
+  const next =
+    queued === undefined || workflow.activeRun === null || !workflow.canPromoteToSteer
+      ? null
+      : { queuedRunId: queued.run.id, targetRunId: workflow.activeRun.id };
+  return { waitKey, next };
 }
 
 export function canForkProjectedAssistantItem(input: {

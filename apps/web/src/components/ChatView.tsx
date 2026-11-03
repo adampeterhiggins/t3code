@@ -385,6 +385,7 @@ import { appAtomRegistry } from "../rpc/atomRegistry";
 import { assetEnvironment } from "../state/assets";
 import { readEnvironmentScope, readPreparedConnection } from "../state/session";
 import { useAtomCommand } from "../state/use-atom-command";
+import { useSteerQueueIntoSubagentWait } from "./chat/useSteerQueueIntoSubagentWait";
 import { useOrchestrationCommand } from "../state/use-orchestration-command";
 import { useAtomQueryRunner } from "../state/use-atom-query-runner";
 import { observeResize } from "~/lib/observeResize";
@@ -860,6 +861,12 @@ export default function ChatView(props: ChatViewProps) {
     deriveActiveRunAwaitsSubagents(serverProjection)
       ? "steer"
       : settings.followUpBehavior;
+  useSteerQueueIntoSubagentWait({
+    environmentId,
+    threadId,
+    projection: serverProjection,
+    enabled: settings.followUpBehavior === "queue" && settings.steerWhileAwaitingSubagents,
+  });
   const isProviderSubagent =
     serverThread !== null && isProviderNativeSubagentThread(serverThread.source);
   const supportsProviderSwitchingViaHandoff = threadSupportsProviderHandoff(serverProjection);
