@@ -1,34 +1,29 @@
 import { type ProviderInstanceId } from "@t3tools/contracts";
 import { memo } from "react";
-import { CheckIcon, GitForkIcon } from "lucide-react";
+import { CheckIcon, ChevronUpIcon, GitForkIcon } from "lucide-react";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { ComposerControl, type ComposerControlSize } from "./ComposerControl";
-import { useComposerMenuProps } from "./composerEventScope";
-import { useComposerMenuState } from "./useComposerMenuState";
+import { composerFloatingLayerProps } from "./composerEventScope";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
 import { cn } from "~/lib/utils";
 
+const FOOTER_TRIGGER =
+  "flex h-7 min-w-0 max-w-40 items-center gap-1.5 rounded-md px-2 text-muted-foreground text-xs outline-none";
+
 /**
- * Switches accounts of the active provider. With fewer than two switchable accounts it is a
- * plain label, so the thread still shows its account. `requiresFork` lists accounts a started
- * thread cannot switch to in place; choosing one forks the chat into a new tab.
+ * Switches accounts of the active provider from the model picker's footer. With fewer than two
+ * switchable accounts it is a plain label, so the thread still shows its account. `requiresFork`
+ * lists accounts a started thread cannot switch to in place; choosing one forks the chat into a
+ * new tab.
  */
 export const ProviderAccountPicker = memo(function ProviderAccountPicker(props: {
   activeInstanceId: ProviderInstanceId;
   accounts: ReadonlyArray<ProviderInstanceEntry>;
   onAccountChange: (instanceId: ProviderInstanceId) => void;
   requiresFork?: (instanceId: ProviderInstanceId) => boolean;
-  size?: ComposerControlSize;
-  isComposerOwned?: boolean;
   disabled?: boolean;
-  hidden?: boolean;
-  triggerClassName?: string;
 }) {
-  const composerFloatingLayerProps = useComposerMenuProps();
-  const [isMenuOpen, setIsMenuOpen] = useComposerMenuState(props.hidden);
-  const size = props.size ?? "sm";
   const activeEntry =
     props.accounts.find((entry) => entry.instanceId === props.activeInstanceId) ??
     props.accounts[0];
@@ -41,24 +36,22 @@ export const ProviderAccountPicker = memo(function ProviderAccountPicker(props: 
     (account) =>
       account.instanceId !== activeEntry.instanceId && props.requiresFork?.(account.instanceId),
   );
+  const accountIcon = (account: ProviderInstanceEntry, showBadge: boolean) => (
+    <ProviderInstanceIcon
+      driverKind={account.driverKind}
+      displayName={account.displayName}
+      accentColor={account.accentColor}
+      showBadge={showBadge}
+      className="size-4"
+      iconClassName="size-4"
+      badgeClassName="right-[-0.125rem] bottom-[-0.125rem] h-3 min-w-3 px-0.5 text-5xs"
+    />
+  );
   const triggerContent = (
-    <span className={cn("flex min-w-0 w-full items-center", size === "xs" ? "gap-1" : "gap-1.5")}>
-      <ProviderInstanceIcon
-        driverKind={activeEntry.driverKind}
-        displayName={activeEntry.displayName}
-        accentColor={activeEntry.accentColor}
-        showBadge
-        className="size-4"
-        iconClassName="size-4"
-        badgeClassName={cn(
-          "right-[-0.125rem] bottom-[-0.125rem] h-3 min-w-3 px-0.5 text-5xs",
-          size === "xs" && "shadow-none",
-        )}
-      />
-      <span data-composer-control-label className="min-w-0 truncate">
-        {triggerLabel}
-      </span>
-    </span>
+    <>
+      {accountIcon(activeEntry, true)}
+      <span className="min-w-0 truncate">{triggerLabel}</span>
+    </>
   );
 
   if (props.accounts.length < 2) {
@@ -71,13 +64,7 @@ export const ProviderAccountPicker = memo(function ProviderAccountPicker(props: 
               data-account-locked="true"
               data-chat-provider-account-picker="true"
               tabIndex={-1}
-              className={cn(
-                "inline-flex min-w-0 max-w-40 shrink cursor-default items-center justify-start px-1 text-left font-normal select-none",
-                size === "xs"
-                  ? "gap-1 text-muted-foreground/70 text-sm sm:text-xs"
-                  : "gap-1.5 text-secondary-label sm:text-sm",
-                props.triggerClassName,
-              )}
+              className={cn(FOOTER_TRIGGER, "cursor-default select-none")}
             />
           }
         >
@@ -89,33 +76,28 @@ export const ProviderAccountPicker = memo(function ProviderAccountPicker(props: 
   }
 
   return (
-    <Menu
-      open={isMenuOpen}
-      onOpenChange={(open) => {
-        if (props.disabled) {
-          setIsMenuOpen(false);
-          return;
-        }
-        setIsMenuOpen(open);
-      }}
-    >
+    <Menu>
       <Tooltip>
         <TooltipTrigger
           render={
             <MenuTrigger
               render={
-                <ComposerControl
+                <button
+                  type="button"
                   aria-label={`Account: ${triggerLabel}`}
                   data-chat-provider-account-picker="true"
-                  size={size}
                   disabled={props.disabled}
-                  className={cn("min-w-0 max-w-40 shrink justify-start", props.triggerClassName)}
+                  className={cn(
+                    FOOTER_TRIGGER,
+                    "cursor-pointer hover:bg-foreground/[0.09] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset disabled:pointer-events-none disabled:opacity-64 data-popup-open:bg-foreground/[0.09] data-popup-open:text-foreground",
+                  )}
                 />
               }
             />
           }
         >
           {triggerContent}
+          <ChevronUpIcon aria-hidden="true" className="size-3 shrink-0" />
         </TooltipTrigger>
         <TooltipPopup side="top">
           {forksToOtherAccounts
@@ -123,7 +105,7 @@ export const ProviderAccountPicker = memo(function ProviderAccountPicker(props: 
             : `Account: ${triggerLabel}`}
         </TooltipPopup>
       </Tooltip>
-      <MenuPopup align="start" {...(props.isComposerOwned ? composerFloatingLayerProps : {})}>
+      <MenuPopup side="top" align="start" {...composerFloatingLayerProps}>
         {props.accounts.map((account) => {
           const isSelected = account.instanceId === activeEntry.instanceId;
           const forks = !isSelected && props.requiresFork?.(account.instanceId) === true;
@@ -131,20 +113,11 @@ export const ProviderAccountPicker = memo(function ProviderAccountPicker(props: 
             <MenuItem
               key={account.instanceId}
               onClick={() => {
-                if (props.disabled || account.instanceId === activeEntry.instanceId) return;
+                if (props.disabled || isSelected) return;
                 props.onAccountChange(account.instanceId);
-                setIsMenuOpen(false);
               }}
             >
-              <ProviderInstanceIcon
-                driverKind={account.driverKind}
-                displayName={account.displayName}
-                accentColor={account.accentColor}
-                showBadge={shouldShowInstanceBadge(account, props.accounts)}
-                className="size-4"
-                iconClassName="size-4"
-                badgeClassName="right-[-0.125rem] bottom-[-0.125rem] h-3 min-w-3 px-0.5 text-5xs"
-              />
+              {accountIcon(account, shouldShowInstanceBadge(account, props.accounts))}
               <span className="min-w-0 flex-1 truncate">{account.displayName}</span>
               {isSelected ? <CheckIcon className="size-3.5 shrink-0" aria-hidden="true" /> : null}
               {forks ? (

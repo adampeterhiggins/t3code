@@ -161,26 +161,19 @@ export function ComposerControlsBar(props: {
           lockedContinuationGroupKey,
         })
       : allProviderAccounts;
-  const showProviderAccountPicker = shouldShowProviderAccountPicker(allProviderAccounts);
-  // Fork: the account picker is a trailing block after [traits, mode], so it overflows first.
-  const accountBlockHidden = showProviderAccountPicker && measuredHiddenBlockCount > 0;
   const {
     accessDisplay,
     showModeBlock,
-    hiddenBlockCount: ownedHiddenBlockCount,
-    hiddenBlockIds: ownedHiddenBlockIds,
+    hiddenBlockCount: restingHiddenBlockCount,
+    hiddenBlockIds: hiddenRestingBlockIds,
     overflowShowsPermissions,
     pickerOwnsModeShortcut,
   } = resolveComposerControlsOwnership({
     matchesDefault: accessMatchesDefault || props.permissionsShownInStrip,
     planModeUiEnabled,
     collapsed: composerControlsCollapsed,
-    measuredHiddenBlockCount: measuredHiddenBlockCount - (showProviderAccountPicker ? 1 : 0),
+    measuredHiddenBlockCount,
   });
-  const restingHiddenBlockCount = ownedHiddenBlockCount + (accountBlockHidden ? 1 : 0);
-  const hiddenRestingBlockIds: ReadonlyArray<string> = accountBlockHidden
-    ? [...ownedHiddenBlockIds, "account"]
-    : ownedHiddenBlockIds;
   // A started thread that can fork lists every account; the ones it cannot switch to in place
   // open in a new tab instead.
   const providerAccounts = onForkModel ? allProviderAccounts : lockedProviderAccounts;
@@ -202,49 +195,15 @@ export function ComposerControlsBar(props: {
     onMultipleModelSelectionsChange(null);
     onProviderModelSelect(instanceId, nextModel);
   };
-  const restingProviderAccountPicker = showProviderAccountPicker ? (
+  const providerAccountPicker = shouldShowProviderAccountPicker(allProviderAccounts) ? (
     <ProviderAccountPicker
-      isComposerOwned
       activeInstanceId={selectedInstanceId}
       accounts={providerAccounts}
-      size={composerControlsCollapsed ? "xs" : "sm"}
       disabled={providerCatalogPending || isSendBusy}
-      hidden={composerControlsHidden || accountBlockHidden}
       onAccountChange={onAccountChange}
       requiresFork={accountRequiresFork}
     />
   ) : null;
-  const restingBlockDefs = [
-    ...(!showModeBlock
-      ? []
-      : [
-          {
-            id: "mode",
-            content: (
-              <ComposerFooterModeControls
-                showInteractionModeToggle={planModeUiEnabled}
-                interactionMode={interactionMode}
-                runtimeMode={compatibleRuntimeMode}
-                runtimeModeOptions={compatibleRuntimeModeOptions}
-                size={composerControlsCollapsed ? "xs" : "sm"}
-                hidden={composerControlsHidden || ownedHiddenBlockCount > 0}
-                accessDisplay={accessDisplay}
-                emphasized={!accessMatchesDefault}
-                onToggleInteractionMode={toggleInteractionMode}
-                onRuntimeModeChange={handleRuntimeModeChange}
-              />
-            ),
-          },
-        ]),
-    ...(restingProviderAccountPicker
-      ? [
-          {
-            id: "account",
-            content: restingProviderAccountPicker,
-          },
-        ]
-      : []),
-  ];
   const controlSize = composerControlsCollapsed ? "xs" : "sm";
   const traitsInput = resolveComposerTraitsInput({
     provider: selectedProvider,
@@ -260,6 +219,27 @@ export function ComposerControlsBar(props: {
     planModeEnabled,
   });
   const effort = describeComposerEffort(traitsInput, props.effortDisplay, controlSize);
+  const restingBlockDefs = showModeBlock
+    ? [
+        {
+          id: "mode",
+          content: (
+            <ComposerFooterModeControls
+              showInteractionModeToggle={planModeUiEnabled}
+              interactionMode={interactionMode}
+              runtimeMode={compatibleRuntimeMode}
+              runtimeModeOptions={compatibleRuntimeModeOptions}
+              size={controlSize}
+              hidden={composerControlsHidden || restingHiddenBlockCount > 0}
+              accessDisplay={accessDisplay}
+              emphasized={!accessMatchesDefault}
+              onToggleInteractionMode={toggleInteractionMode}
+              onRuntimeModeChange={handleRuntimeModeChange}
+            />
+          ),
+        },
+      ]
+    : [];
   // Its own element, so typing (which rebuilds the controls around it) leaves it cached.
   const composerModelPicker = (
     <ComposerModelPicker
@@ -307,6 +287,7 @@ export function ComposerControlsBar(props: {
           runtimeMode={compatibleRuntimeMode}
           runtimeModeOptions={compatibleRuntimeModeOptions}
           onRuntimeModeChange={handleRuntimeModeChange}
+          account={providerAccountPicker}
         />
       }
       terminalOpen={terminalOpen}
@@ -386,16 +367,6 @@ export function ComposerControlsBar(props: {
             showInteractionModeToggle={planModeUiEnabled && hiddenRestingBlockIds.length > 0}
             // Permissions join the overflow only when their normal home is in it.
             showPermissions={overflowShowsPermissions}
-            {...(hiddenRestingBlockIds.includes("account") && showProviderAccountPicker
-              ? {
-                  accountMenu: {
-                    activeInstanceId: selectedInstanceId,
-                    accounts: providerAccounts,
-                    onAccountChange,
-                    requiresFork: accountRequiresFork,
-                  },
-                }
-              : {})}
             onToggleInteractionMode={toggleInteractionMode}
             onRuntimeModeChange={handleRuntimeModeChange}
           />

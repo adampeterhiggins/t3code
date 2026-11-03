@@ -223,9 +223,10 @@ Code: [`modelChangeMarker.ts`](../packages/shared/src/modelChangeMarker.ts),
 
 ## Provider account picker
 
-When more than one enabled instance of a provider can serve the thread, the composer has an
-account picker separate from the model picker. The model list stays one row per provider and
-model. Codex only switches in place between instances that share the thread's home. After the
+When more than one enabled instance of a provider can serve the thread, the model picker's footer
+has an account picker beside the speed control. The model list stays one row per provider and
+model, without account badges; the composer's model trigger badges its provider icon with the
+active account instead. Codex only switches in place between instances that share the thread's home. After the
 first message on a server thread, other accounts stay listed and are marked **New tab**; choosing
 one forks the chat into a new tab on that account (see [Chat tabs](#chat-tabs)). Where forking is
 unavailable, an account that can no longer be switched stays visible as a label. This is web and

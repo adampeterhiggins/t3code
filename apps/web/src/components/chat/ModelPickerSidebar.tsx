@@ -10,7 +10,7 @@ import { providerBrandLabel } from "./providerAccountSelection";
 
 /**
  * Rail tooltip for a provider (one icon per driver). Account names live in the
- * composer account picker, so this uses the brand label.
+ * account picker, so this uses the brand label.
  */
 function describeUnavailableProvider(entry: ProviderInstanceEntry): string {
   const label = providerBrandLabel(entry.driverKind);
