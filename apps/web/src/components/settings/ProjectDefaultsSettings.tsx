@@ -306,7 +306,7 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
             {threadGroupNames.map((name) => (
               <SelectItem key={name} value={name}>
                 <span className="flex min-w-0 items-center gap-2">
-                  <ThreadGroupIcon style={threadGroups[name]} />
+                  <ThreadGroupIcon style={threadGroups[name]} name={name} />
                   <span className="min-w-0 truncate">{name}</span>
                 </span>
               </SelectItem>

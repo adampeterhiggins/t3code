@@ -123,7 +123,7 @@ function ThreadGroupDialog(props: { initial: ThreadGroupDraft | null }) {
               <div className="flex flex-col gap-1.5">
                 <Label>Icon</Label>
                 <div className="flex items-center gap-2">
-                  <ThreadGroupIcon style={style} className="size-6" />
+                  <ThreadGroupIcon style={style} name={trimmed} className="size-6" />
                   <Button
                     type="button"
                     size="sm"

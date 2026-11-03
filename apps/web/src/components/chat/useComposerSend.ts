@@ -199,6 +199,8 @@ interface ComposerSendInput {
   readonly activeThreadBranch: string | null;
   readonly activeProject: EnvironmentProject | null;
   readonly activeProjectDefaultModelSelection: ModelSelection | null;
+  /** The sidebar group a thread this composer creates starts in. */
+  readonly newThreadGroupName: string | undefined;
   readonly activeProposedPlan: LatestProposedPlanState | null;
   readonly activeMessageCount: number;
   readonly isServerThread: boolean;
@@ -300,6 +302,7 @@ export function useComposerSend(input: ComposerSendInput) {
     activeThreadBranch,
     activeProject,
     activeProjectDefaultModelSelection,
+    newThreadGroupName,
     activeProposedPlan,
     activeMessageCount,
     isServerThread,
@@ -514,6 +517,7 @@ export function useComposerSend(input: ComposerSendInput) {
             branch: activeThreadBranch,
             worktreePath: activeThread.worktreePath,
             createdAt: activeThread.createdAt,
+            ...(newThreadGroupName === undefined ? {} : { groupName: newThreadGroupName }),
           },
           ...(shouldCreateWorktree && activeThreadBranch
             ? {
@@ -1601,6 +1605,9 @@ export function useComposerSend(input: ComposerSendInput) {
                       branch: activeThreadBranch,
                       worktreePath: activeThread.worktreePath,
                       createdAt: activeThread.createdAt,
+                      ...(newThreadGroupName === undefined
+                        ? {}
+                        : { groupName: newThreadGroupName }),
                     },
                   }
                 : {}),

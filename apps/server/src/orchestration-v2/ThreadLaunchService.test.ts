@@ -974,16 +974,18 @@ it.effect("launches a worktree request for Scratch at the root, in its own folde
   const harness = scratchHarness();
   return Effect.gen(function* () {
     const launches = yield* ThreadLaunch.ThreadLaunchService;
-    const launched = yield* launches.launch(
-      launchInput({
+    const launched = yield* launches.launch({
+      ...launchInput({
         command: "command:launch:scratch-worktree",
         thread: "thread:launch:scratch-worktree",
         message: "Tidy my notes",
         workspace: worktreeStrategy,
       }),
-    );
+      groupName: "Quick messages",
+    });
     const scratch = yield* preparationSettled(launched.threadId);
     assert.equal(scratch.thread.worktreePath, "/scratch/folder-1");
+    assert.equal(scratch.thread.groupName, "Quick messages");
     // Released past preparation; provider execution is disabled here.
     assert.equal(scratch.runs[0]?.status, "starting");
     assert.deepEqual(scratch.runs[0]?.workspacePreparation, {
@@ -1007,6 +1009,7 @@ it.effect("launches a worktree request for Scratch at the root, in its own folde
     assert.equal(git.runs[0]?.status, "starting");
     assert.equal(git.runs[0]?.workspacePreparation?.type, "worktree");
     assert.equal(git.thread.worktreePath, "/other-repo-worktrees/feature");
+    assert.equal(git.thread.groupName ?? null, null);
     assert.equal(harness.createWorktree.mock.calls[0]?.[0]?.cwd, "/other-repo");
     assert.deepEqual(harness.claimed, [launched.threadId]);
   }).pipe(Effect.provide(harness.layer));

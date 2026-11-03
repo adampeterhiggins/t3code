@@ -29,7 +29,7 @@ export function SidebarGroupHeader(props: {
         className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         onClick={props.onToggle}
       >
-        <ThreadGroupIcon style={props.style} />
+        <ThreadGroupIcon style={props.style} name={props.name} />
         <span
           className={cn("min-w-0 flex-1 truncate", accent && projectIconColorClassName(accent))}
         >

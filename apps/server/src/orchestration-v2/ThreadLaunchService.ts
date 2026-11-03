@@ -104,6 +104,7 @@ export interface ThreadLaunchInput {
   readonly workspaceStrategy:
     | ThreadLaunchWorkspaceStrategy
     | ThreadLaunchPullRequestWorkspaceStrategy;
+  readonly groupName?: string;
   readonly initialMessage?: ThreadLaunchInitialMessage;
   readonly importedNativeThread?: {
     readonly ref: {
@@ -1224,6 +1225,7 @@ const make = Effect.gen(function* () {
                 interactionMode: input.interactionMode,
                 branch: initialBranch,
                 worktreePath: initialWorktreePath,
+                ...(input.groupName === undefined ? {} : { groupName: input.groupName }),
                 ...(input.importedNativeThread === undefined
                   ? {}
                   : { importedNativeThread: input.importedNativeThread }),

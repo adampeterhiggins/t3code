@@ -109,8 +109,21 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
       }),
     };
   };
+  // The panel's new drafts start without a project, so they file under Quick messages.
+  const readQuickMessageEnvironmentId = () => {
+    const primaryEnvironmentId = appAtomRegistry.get(primaryEnvironmentIdAtom);
+    return primaryEnvironmentId !== null &&
+      scratch.scratchWorkspaceRootFor(primaryEnvironmentId) !== null
+      ? primaryEnvironmentId
+      : null;
+  };
   const stopFreshComposer = isDetachedChatWindow
     ? setDetachedFreshComposerStarter(async () => {
+        const quickMessageEnvironmentId = readQuickMessageEnvironmentId();
+        if (quickMessageEnvironmentId !== null) {
+          await scratch.startScratchThread(quickMessageEnvironmentId, { replace: true });
+          return;
+        }
         const projectRef = resolveDetachedChatNewProjectRef(readDetachedNewThreadInput());
         if (projectRef !== null) await handleNewThread(projectRef, { replace: true });
       })
@@ -169,6 +182,12 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
       },
       "chat.new": (event) => {
         if (isDetachedChatWindow) {
+          const quickMessageEnvironmentId = readQuickMessageEnvironmentId();
+          if (quickMessageEnvironmentId !== null) {
+            claim(event);
+            void scratch.startScratchThread(quickMessageEnvironmentId);
+            return;
+          }
           const context = readThreadContext();
           applyChatNewShortcut(
             event,
