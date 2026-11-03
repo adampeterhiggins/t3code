@@ -1,6 +1,6 @@
 import { CustomAcpSettings, type ServerProvider, TextGenerationError } from "@t3tools/contracts";
 import { resolveSelfInvocation } from "@t3tools/shared/nodeRuntime";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -58,7 +58,7 @@ const unsupportedTextGeneration: TextGeneration["Service"] = (() => {
 
 export type CustomAcpDriverEnv =
   | ChildProcessSpawner.ChildProcessSpawner
-  | Crypto.Crypto
+  | SecureRandom.SecureRandom
   | FileSystem.FileSystem
   | IdAllocator.IdAllocatorV2
   | McpProviderSessions.McpProviderSessions
@@ -84,7 +84,7 @@ export const CustomAcpDriver: ProviderDriver<CustomAcpSettings, CustomAcpDriverE
     enabled,
     config,
   }) {
-    const crypto = yield* Crypto.Crypto;
+    const secureRandom = yield* SecureRandom.SecureRandom;
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const { cwd } = (yield* ProviderHost).paths;
     const selfInvocation = yield* resolveSelfInvocation();
@@ -125,7 +125,7 @@ export const CustomAcpDriver: ProviderDriver<CustomAcpSettings, CustomAcpDriverE
       checkProvider: checkCustomAcpProviderStatus(effectiveConfig, processEnv, cwd).pipe(
         Effect.map(stampIdentity),
         Effect.map(withAgentOwnedSetup),
-        Effect.provideService(Crypto.Crypto, crypto),
+        Effect.provideService(SecureRandom.SecureRandom, secureRandom),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
       ),
     }).pipe(

@@ -7,7 +7,7 @@ import {
   type OrchestrationV2ProviderCapabilities,
 } from "@t3tools/contracts";
 import type { SelfInvocation } from "@t3tools/shared/nodeRuntime";
-import type * as Crypto from "effect/Crypto";
+import type * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import type * as Scope from "effect/Scope";
 import type { ChildProcessSpawner } from "effect/process";
@@ -76,7 +76,7 @@ export interface DevinAdapterV2Options {
   ) => Effect.Effect<
     AcpSessionRuntime.AcpSessionRuntime["Service"],
     EffectAcpErrors.AcpError,
-    Crypto.Crypto | Scope.Scope
+    SecureRandom.SecureRandom | Scope.Scope
   >;
 }
 

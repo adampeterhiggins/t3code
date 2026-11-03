@@ -1,21 +1,7 @@
-/**
- * DevinAcpSupport — spawn and session helpers for `devin acp`.
- *
- * Devin's ACP server exposes a merged "Session Mode" selector (accept-edits,
- * smart, ask, plan, bypass) plus a `model` config option. The CLI's most
- * restrictive writable permission mode (`normal`) is not in that selector —
- * it is only reachable through the `--permission-mode` spawn flag, so T3's
- * "approval-required" maps to the flag at spawn and to `accept-edits` (the
- * least-privileged writable ACP mode) when the session mode must be restored
- * in-session.
- *
- * @module DevinAcpSupport
- */
+// Devin normal mode is spawn-only; restoring approval-required in-session uses accept-edits.
 import type { DevinSettings, ProviderOptionSelection, RuntimeMode } from "@t3tools/contracts";
-import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import type * as Scope from "effect/Scope";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import type * as EffectAcpErrors from "effect-acp/errors";
 
@@ -82,32 +68,27 @@ export interface DevinAcpRuntimeInput extends Omit<
   readonly runtimeMode?: RuntimeMode;
 }
 
-export const makeDevinAcpRuntime = (
+export const makeDevinAcpRuntime = Effect.fn("DevinAcpSupport.makeDevinAcpRuntime")(function* (
   input: DevinAcpRuntimeInput,
-): Effect.Effect<
-  AcpSessionRuntime.AcpSessionRuntime["Service"],
-  EffectAcpErrors.AcpError,
-  Crypto.Crypto | Scope.Scope
-> =>
-  Effect.gen(function* () {
-    const { childProcessSpawner, devinSettings, environment, runtimeMode, ...options } = input;
-    const acpContext = yield* Layer.build(
-      AcpSessionRuntime.layer({
-        ...options,
-        spawn: buildDevinAcpSpawnInput(devinSettings, input.cwd, environment, runtimeMode),
-        clientCapabilities: options.clientCapabilities ?? {
-          fs: { readTextFile: false, writeTextFile: false },
-          terminal: false,
-          _meta: DEVIN_ACP_CLIENT_CAPABILITIES_META,
-        },
-      }).pipe(
-        Layer.provide(Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, childProcessSpawner)),
-      ),
-    );
-    return yield* Effect.service(AcpSessionRuntime.AcpSessionRuntime).pipe(
-      Effect.provide(acpContext),
-    );
-  });
+) {
+  const { childProcessSpawner, devinSettings, environment, runtimeMode, ...options } = input;
+  const acpContext = yield* Layer.build(
+    AcpSessionRuntime.layer({
+      ...options,
+      spawn: buildDevinAcpSpawnInput(devinSettings, input.cwd, environment, runtimeMode),
+      clientCapabilities: options.clientCapabilities ?? {
+        fs: { readTextFile: false, writeTextFile: false },
+        terminal: false,
+        _meta: DEVIN_ACP_CLIENT_CAPABILITIES_META,
+      },
+    }).pipe(
+      Layer.provide(Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, childProcessSpawner)),
+    ),
+  );
+  return yield* Effect.service(AcpSessionRuntime.AcpSessionRuntime).pipe(
+    Effect.provide(acpContext),
+  );
+});
 
 const DEVIN_READ_ONLY_MODE_IDS = new Set(["plan", "ask"]);
 // First match in the session's advertised modes wins.

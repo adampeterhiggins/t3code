@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerLinkRequests from "../peer/PeerLinkRequests.ts";
 import * as PeerForwarding from "../peer/PeerForwarding.ts";
@@ -7,7 +8,6 @@ import { NodeHttpServer } from "@effect/platform-node";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import { AuthSessionId, EnvironmentId } from "@t3tools/contracts";
-import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -128,16 +128,10 @@ const RoutesLive = Layer.mergeAll(AgentAccessMcpServer.layer, ThreadMcpLive).pip
       Layer.mock(PeerLinkRequests.PeerLinkRequests)({}),
       Layer.mock(PeerLinks.PeerLinks)({}),
 
-      Layer.succeed(
-        Crypto.Crypto,
-        Crypto.make({
-          randomBytes: (size) => new Uint8Array(size),
-          digest: (_algorithm, data) => Effect.succeed(data),
-        }),
-      ),
+      NodeCrypto.layer,
       Layer.fresh(SqlitePersistence.layerMemory),
       ServerConfig.layerTest(process.cwd(), { prefix: "t3-agent-access-mcp-" }),
-    ).pipe(Layer.provideMerge(NodeServices.layer)),
+    ).pipe(Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   ),
 );
 

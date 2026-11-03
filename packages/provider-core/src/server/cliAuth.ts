@@ -12,7 +12,7 @@ import {
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -175,9 +175,9 @@ export const makeCliProviderAuth = Effect.fn("makeCliProviderAuth")(function* (
 ): Effect.fn.Return<
   ProviderAuthController,
   never,
-  Crypto.Crypto | ChildProcessSpawner.ChildProcessSpawner | Scope.Scope
+  SecureRandom.SecureRandom | ChildProcessSpawner.ChildProcessSpawner | Scope.Scope
 > {
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const instanceScope = yield* Scope.Scope;
   const lock = yield* Semaphore.make(1);
@@ -497,8 +497,8 @@ export const makeCliProviderAuth = Effect.fn("makeCliProviderAuth")(function* (
                 `${options.providerLabel} has no sign-in method '${startOptions?.methodId}'.`,
               );
             }
-            const flowId = yield* crypto
-              .randomUUIDv4()
+            const flowId = yield* random
+              .uuidV4()
               .pipe(
                 Effect.mapError(() => setupError("start", "Could not start sign-in. Try again.")),
               );

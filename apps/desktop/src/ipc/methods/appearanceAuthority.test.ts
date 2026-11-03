@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import {
@@ -175,7 +176,10 @@ function runtime(input: {
         onUpdated: () => Effect.void,
       }),
     ),
-  ).pipe(Layer.provideMerge(environment), Layer.provideMerge(NodeServices.layer));
+  ).pipe(
+    Layer.provideMerge(environment),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+  );
 }
 
 const withRuntime = <A, E, R>(

@@ -1,17 +1,8 @@
-/**
- * CustomAcpProvider — health check and model discovery for a user-configured
- * ACP agent.
- *
- * The check starts a throwaway session: `session/new` is the only place ACP
- * advertises models, modes, and config options, so there is no cheaper probe
- * that works for every agent.
- *
- * @module CustomAcpProvider
- */
+// ACP advertises models, modes, and config options only after session/new.
 import type { CustomAcpSettings, ServerProviderModel } from "@t3tools/contracts";
 import { causeErrorTag } from "@t3tools/shared/observability";
 import * as Cause from "effect/Cause";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -95,7 +86,7 @@ export const checkCustomAcpProviderStatus = Effect.fn("checkCustomAcpProviderSta
 ): Effect.fn.Return<
   ServerProviderDraft,
   never,
-  ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto
+  ChildProcessSpawner.ChildProcessSpawner | SecureRandom.SecureRandom
 > {
   const checkedAt = DateTime.formatIso(yield* DateTime.now);
   const unavailable = (probe: {

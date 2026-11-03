@@ -15,7 +15,7 @@ import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
@@ -172,7 +172,7 @@ export const make = Effect.gen(function* () {
   // An invalid setting fails sign-in with its reason; until then the
   // settings page names the URI sign-in would use without it.
   const redirectUri = redirect._tag === "Invalid" ? NOTION_REDIRECT_URI : redirect.uri;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
   const httpClient = yield* HttpClient.HttpClient;
   const secrets = yield* ServerSecretStore.ServerSecretStore;
   // Refreshing rotates the refresh token, so two concurrent refreshes would
@@ -424,7 +424,7 @@ export const make = Effect.gen(function* () {
 
   const makeFlowIdentity = Effect.gen(function* () {
     return {
-      flowId: yield* crypto.randomUUIDv4(),
+      flowId: yield* crypto.uuidV4(),
       state: Base64Url.encode(yield* crypto.randomBytes(16)),
     };
   }).pipe(Effect.mapError((cause) => loginError("Could not start Notion sign-in.", cause)));

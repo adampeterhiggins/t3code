@@ -9,7 +9,7 @@ import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2Pe
 import { visibleThreadPullRequests } from "@t3tools/shared/threadPullRequests";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -26,17 +26,7 @@ import {
 import { OrchestrationEventStore } from "../persistence/OrchestrationEventStore.ts";
 import { forkParked } from "../serverActivation.ts";
 
-/**
- * A tab group shows as one sidebar row, so settlement and snooze apply to the group. Upstream
- * parks each thread on its own; this reactor mirrors those actions across the live tabs.
- *
- * - A new run or an unsettle in any tab wakes the group's settled tabs.
- * - A settle in any tab settles the rest of the group, unless another tab is still working
- *   (or, for an automatic settle, has an open pull request). Then the settle is undone, since
- *   the row it stands for is not done.
- * - Snoozing any tab parks the group until the same wake time. Waking a tab, or a tab needing
- *   attention, returns the group; a pending request or queued turn prevents group snooze.
- */
+/** Settlement and snooze mirror across live tabs because the group occupies one sidebar row. */
 export class ThreadTabSettlementReactor extends Context.Service<
   ThreadTabSettlementReactor,
   {
@@ -117,12 +107,12 @@ function jobFor(stored: OrchestrationV2StoredEvent): SettlementJob | null {
   }
 }
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const orchestrator = yield* Orchestrator.OrchestratorV2;
   const eventStore = yield* OrchestrationEventStore;
   const sql = yield* SqlClient.SqlClient;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
 
   const readSiblings = Effect.fn("ThreadTabSettlementReactor.readSiblings")(function* (
     threadId: ThreadId,
@@ -147,7 +137,7 @@ export const make = Effect.gen(function* () {
   const unsettle = Effect.fn("ThreadTabSettlementReactor.unsettle")(function* (threadId: ThreadId) {
     yield* orchestrator.dispatch({
       type: "thread.unsettle",
-      commandId: CommandId.make(`server:tab-unsettle:${threadId}:${yield* crypto.randomUUIDv4()}`),
+      commandId: CommandId.make(`server:tab-unsettle:${threadId}:${yield* crypto.uuidV4()}`),
       threadId,
       reason: "user",
     });
@@ -156,7 +146,7 @@ export const make = Effect.gen(function* () {
   const settle = Effect.fn("ThreadTabSettlementReactor.settle")(function* (threadId: ThreadId) {
     yield* orchestrator.dispatch({
       type: "thread.settle",
-      commandId: CommandId.make(`server:tab-settle:${threadId}:${yield* crypto.randomUUIDv4()}`),
+      commandId: CommandId.make(`server:tab-settle:${threadId}:${yield* crypto.uuidV4()}`),
       threadId,
     });
   });
@@ -165,7 +155,7 @@ export const make = Effect.gen(function* () {
     yield* orchestrator.dispatch({
       type: "thread.unsnooze",
       commandId: CommandId.make(
-        `${MIRRORED_SNOOZE_COMMAND_PREFIX}${threadId}:${yield* crypto.randomUUIDv4()}`,
+        `${MIRRORED_SNOOZE_COMMAND_PREFIX}${threadId}:${yield* crypto.uuidV4()}`,
       ),
       threadId,
       reason: "user",
@@ -179,7 +169,7 @@ export const make = Effect.gen(function* () {
     yield* orchestrator.dispatch({
       type: "thread.snooze",
       commandId: CommandId.make(
-        `${MIRRORED_SNOOZE_COMMAND_PREFIX}${threadId}:${yield* crypto.randomUUIDv4()}`,
+        `${MIRRORED_SNOOZE_COMMAND_PREFIX}${threadId}:${yield* crypto.uuidV4()}`,
       ),
       threadId,
       snoozedUntil: DateTime.formatIso(until),

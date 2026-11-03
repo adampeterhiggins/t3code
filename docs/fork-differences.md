@@ -149,8 +149,7 @@ shadow home: `.cursor` and `.config/cursor` stay private, and every other home e
 back to the real one. The Cursor SDK still stores its own sign-in per instance. Code:
 [`CursorHome.ts`](../packages/provider-cursor/src/server/CursorHome.ts).
 
-Cursor usage follows each instance's own sign-in. Upstream reads limits only from the host's shared
-CLI login and shows none for an SDK sign-in. In the fork, each instance trades its SDK key (or
+Cursor usage follows each instance's own sign-in. Each instance trades its SDK key (or
 `CURSOR_API_KEY`) for an access token, as the SDK does, and reads its own limits; only the default
 instance may fall back to the CLI login. The usage page reads every instance's account as well as the
 CLI login, and one account counts once. Code:

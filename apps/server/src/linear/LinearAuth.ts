@@ -13,7 +13,8 @@ import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
@@ -152,7 +153,8 @@ export const make = Effect.gen(function* () {
     loopbackUri: LINEAR_REDIRECT_URI,
     callbackPath: LINEAR_SERVER_CALLBACK_PATH,
   });
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
+  const digest = yield* Digest.Digest;
   const httpClient = yield* HttpClient.HttpClient;
   const secrets = yield* ServerSecretStore.ServerSecretStore;
   const services = Context.make(HttpClient.HttpClient, httpClient);
@@ -371,12 +373,12 @@ export const make = Effect.gen(function* () {
   const makePkce = Effect.gen(function* () {
     const verifier = Base64Url.encode(yield* crypto.randomBytes(32));
     const challenge = Base64Url.encode(
-      yield* crypto.digest("SHA-256", new TextEncoder().encode(verifier)),
+      yield* digest.digest(Digest.sha256, new TextEncoder().encode(verifier)),
     );
     return {
       verifier,
       challenge,
-      flowId: yield* crypto.randomUUIDv4(),
+      flowId: yield* crypto.uuidV4(),
       state: Base64Url.encode(yield* crypto.randomBytes(16)),
     };
   }).pipe(Effect.mapError((cause) => loginError("Could not start Linear sign-in.", cause)));

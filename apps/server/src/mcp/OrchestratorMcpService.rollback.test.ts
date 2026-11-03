@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as RemoteDelegation from "../peer/RemoteDelegation.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -111,7 +112,7 @@ const harness = (input: {
       Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),
       Layer.provide(
         Layer.mergeAll(
-          NodeServices.layer,
+          Layer.mergeAll(NodeServices.layer, NodeCrypto.layer),
           Layer.mock(ThreadManagementService.ThreadManagementService)({
             getTimelinePage: () => Effect.succeed({ items: [], totalItems: 0, hasMore: false }),
             getThreadRecords: (threadId) => Effect.succeed(byId(threadId)) as never,

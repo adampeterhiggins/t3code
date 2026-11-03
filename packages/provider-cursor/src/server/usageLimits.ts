@@ -152,9 +152,17 @@ export const readCursorUsageLimits = Effect.fn("readCursorUsageLimits")(function
     } else {
       token = environment.CURSOR_AUTH_TOKEN?.trim();
     }
-    // An explicit API key can name a different account from the stored login.
-    if (!token && environment.CURSOR_API_KEY?.trim()) {
-      return makeUnavailableUsageLimits({ checkedAt, reason: "unsupported" });
+    const apiKey = environment.CURSOR_API_KEY?.trim();
+    if (!token && apiKey) {
+      if (endpoint !== DEFAULT_CURSOR_API_ENDPOINT) {
+        return makeUnavailableUsageLimits({
+          checkedAt,
+          reason: "unsupported",
+          message: "Cursor usage for an API key requires the default Cursor endpoint.",
+        });
+      }
+      endpoint = cursorSdkBackendUrl({ apiKey }, environment);
+      token = yield* exchangeCursorApiKey({ apiKey }, environment);
     }
     if (!token && !sharedLogin) {
       return makeUnavailableUsageLimits({ checkedAt, reason: "unsupported" });
@@ -166,8 +174,7 @@ export const readCursorUsageLimits = Effect.fn("readCursorUsageLimits")(function
         reason: "unsupported",
         message: "Cursor usage requires a CLI login or CURSOR_AUTH_TOKEN.",
       });
-    }
-    if (!token && platform === "darwin" && credentialStore !== "file") {
+    } else if (!token && platform === "darwin" && credentialStore !== "file") {
       if (!allowKeychain) {
         return makeUnavailableUsageLimits({
           checkedAt,

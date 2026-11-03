@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import { DesktopAppearanceSnapshot } from "@t3tools/contracts";
@@ -96,7 +97,7 @@ function runtime(baseDir: string) {
   return appearanceLayer.pipe(
     Layer.provideMerge(environment),
     Layer.provideMerge(quickMessageLayer(new Set([4]))),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   );
 }
 

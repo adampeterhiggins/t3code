@@ -794,7 +794,7 @@ describe("query toolkit", () => {
       const invalid = yield* server
         .callTool({ name: "list_threads", arguments: { activeSince: "2026-09-30" } })
         .pipe(Effect.provideService(McpSchema.McpServerClient, client), Effect.flip);
-      expect(invalid._tag).toBe("InvalidParams");
+      expect(invalid.code).toBe(-32602);
 
       const missing = yield* call("get_thread", { threadId: "thread-deleted" });
       expect(missing.isError).toBe(true);

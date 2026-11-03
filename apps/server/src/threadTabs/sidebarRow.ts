@@ -7,7 +7,7 @@ import {
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
@@ -56,12 +56,12 @@ function jobFor(stored: OrchestrationV2StoredEvent): MirrorJob | null {
   return null;
 }
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const orchestrator = yield* Orchestrator.OrchestratorV2;
   const eventStore = yield* OrchestrationEventStore;
   const sql = yield* SqlClient.SqlClient;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
 
   const readSiblings = Effect.fn("ThreadTabSidebarRowReactor.readSiblings")(function* (
     threadId: ThreadId,
@@ -83,7 +83,7 @@ export const make = Effect.gen(function* () {
 
   const commandId = (threadId: ThreadId) =>
     crypto
-      .randomUUIDv4()
+      .uuidV4()
       .pipe(Effect.map((uuid) => CommandId.make(`${MIRRORED_COMMAND_PREFIX}${threadId}:${uuid}`)));
 
   const run = Effect.fn("ThreadTabSidebarRowReactor.run")(

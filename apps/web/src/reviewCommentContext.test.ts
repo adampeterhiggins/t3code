@@ -76,6 +76,41 @@ describe("review comment context parsing", () => {
     );
   });
 
+  it("keeps a selection's trailing blank line and whitespace in the rendered excerpt", () => {
+    const fileDiff = parsePatchFiles(
+      [
+        "diff --git a/src/app.ts b/src/app.ts",
+        "--- a/src/app.ts",
+        "+++ b/src/app.ts",
+        "@@ -1,4 +1,4 @@",
+        " one",
+        "-two",
+        "+two\t",
+        " ",
+        " four",
+      ].join("\n"),
+      "review-comment-trailing-blank",
+    )[0]!.files[0]!;
+    const comment = (end: number) =>
+      buildDiffReviewComment({
+        id: "comment-blank",
+        sectionId: "turn:1",
+        sectionTitle: "Turn 1",
+        filePath: "src/app.ts",
+        fileDiff,
+        range: { start: 2, side: "additions", end, endSide: "additions" },
+        text: "Insert here.",
+      })!;
+
+    expect(reviewCommentCodeLines(comment(2))).toEqual([
+      { change: "add", lineNumber: 2, content: "two\t" },
+    ]);
+    expect(reviewCommentCodeLines(comment(3))).toEqual([
+      { change: "add", lineNumber: 2, content: "two\t" },
+      { change: "context", lineNumber: 3, content: "" },
+    ]);
+  });
+
   it("restores Pierre line selections from persisted diff comment row indexes", () => {
     const fileDiff = parsePatchFiles(
       [

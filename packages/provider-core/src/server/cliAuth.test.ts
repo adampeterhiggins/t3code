@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
@@ -15,6 +16,7 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
 import { applyServerSettingsPatch } from "@t3tools/shared/serverSettings";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
@@ -31,7 +33,7 @@ import {
 import type { ProviderHost } from "./ProviderHost.ts";
 
 const instanceId = ProviderInstanceId.make("cli-auth-test");
-const layerTest = NodeServices.layer;
+const layerTest = Layer.mergeAll(NodeServices.layer, NodeCrypto.layer);
 
 // An in-memory stand-in for the provider host's settings handle.
 const makeTestSettings = Effect.gen(function* () {

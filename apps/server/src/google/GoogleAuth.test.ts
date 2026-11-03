@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as Schema from "effect/Schema";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -80,7 +81,7 @@ function makeHarness(input: {
         remove: (name) => Effect.sync(() => void secrets.delete(name)),
       }),
     ),
-    Layer.provide(NodeServices.layer),
+    Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
     Layer.provide(
       ConfigProvider.layer(
         ConfigProvider.fromEnv({

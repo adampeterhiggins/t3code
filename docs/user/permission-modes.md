@@ -62,4 +62,7 @@ Bypass Permissions.
 and file edits in **Auto-accept edits**, and ask in the other modes. They also switch to a
 matching session mode when the agent has one.
 
+Kiro offers only **Supervised** and **Full access**. In **Supervised** Kiro also asks you to
+review a turn's file changes. See [Kiro permissions](./providers-kiro.md#permission-modes).
+
 See the [provider guides](./install.md#providers) for setup and provider-specific limits.
