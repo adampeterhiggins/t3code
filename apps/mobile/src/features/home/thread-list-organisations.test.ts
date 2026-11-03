@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   buildOrganisationOptions,
+  NO_ORGANISATION_KEY,
   repositoryOrganisationOf,
   scopeProjectRefsByOrganisations,
   toggleOrganisationKey,
@@ -37,7 +38,7 @@ describe("repositoryOrganisationOf", () => {
 });
 
 describe("buildOrganisationOptions", () => {
-  it("dedupes, sorts by label, and shows the host when two hosts share an owner", () => {
+  it("dedupes, sorts by label, shows the host when two hosts share an owner, and ends with No organisation", () => {
     expect(
       buildOrganisationOptions([
         project("a", identity("github.com/zed/one")),
@@ -50,6 +51,7 @@ describe("buildOrganisationOptions", () => {
       { key: "github.com/acme", label: "github.com/acme" },
       { key: "gitlab.com/acme", label: "gitlab.com/acme" },
       { key: "github.com/zed", label: "zed" },
+      { key: NO_ORGANISATION_KEY, label: "No organisation" },
     ]);
   });
 
@@ -103,6 +105,18 @@ describe("scopeProjectRefsByOrganisations", () => {
         }),
       ),
     ).toEqual(["fork"]);
+  });
+
+  it("narrows to checkouts without an organisation", () => {
+    expect(
+      ids(
+        scopeProjectRefsByOrganisations({
+          projects,
+          projectRefs: null,
+          organisationKeys: [NO_ORGANISATION_KEY],
+        }),
+      ),
+    ).toEqual(["local"]);
   });
 
   it("ignores organisations that no longer have a checkout", () => {

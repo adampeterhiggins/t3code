@@ -39,9 +39,19 @@ export function repositoryOrganisationOf(
   return { key: segments.slice(0, -1).join("/"), label: owner };
 }
 
+/** Checkouts without a remote owner; real keys are `host/owner`. Mirrors web's NO_ORGANISATION_KEY. */
+export const NO_ORGANISATION_KEY = "none";
+
+/** The Organisations filter key of a checkout, with ownerless checkouts under NO_ORGANISATION_KEY. */
+export function repositoryOrganisationKeyOf(
+  identity: RepositoryIdentity | null | undefined,
+): string {
+  return repositoryOrganisationOf(identity)?.key ?? NO_ORGANISATION_KEY;
+}
+
 /**
  * Organisations of every checkout, by label: the chosen name, else the owner, and the same
- * owner on two hosts shows its host.
+ * owner on two hosts shows its host. "No organisation" comes last when a checkout has no owner.
  */
 export function buildOrganisationOptions(
   projects: ReadonlyArray<Pick<OrganisationProject, "repositoryIdentity">>,
@@ -57,7 +67,7 @@ export function buildOrganisationOptions(
   for (const option of options) {
     labelCounts.set(option.label, (labelCounts.get(option.label) ?? 0) + 1);
   }
-  return options
+  const named = options
     .map((option) => ({
       ...option,
       label:
@@ -65,6 +75,9 @@ export function buildOrganisationOptions(
         ((labelCounts.get(option.label) ?? 0) > 1 ? option.key : option.label),
     }))
     .sort((left, right) => left.label.localeCompare(right.label));
+  return projects.some((project) => repositoryOrganisationOf(project.repositoryIdentity) === null)
+    ? [...named, { key: NO_ORGANISATION_KEY, label: "No organisation" }]
+    : named;
 }
 
 /** Multi-select toggle for the Organisations filter; none picked means all. */
@@ -76,11 +89,9 @@ export function toggleOrganisationKey(
 }
 
 /**
- * The project refs the thread list is scoped to: the project filter's refs (or
- * every checkout) narrowed to checkouts in a picked organisation. Organisations
- * are per checkout, since a project can hold a fork and its upstream. Picked
- * organisations that no longer have a checkout stop narrowing. Null when
- * nothing narrows the list.
+ * The project filter's refs (or every checkout) narrowed to checkouts in a picked organisation,
+ * per checkout since a project can hold a fork and its upstream. Picks with no checkout left stop
+ * narrowing. Null when nothing narrows the list.
  */
 export function scopeProjectRefsByOrganisations(input: {
   readonly projects: ReadonlyArray<OrganisationProject>;
@@ -95,7 +106,7 @@ export function scopeProjectRefsByOrganisations(input: {
   const organisationByProject = new Map(
     input.projects.map((project) => [
       `${project.environmentId}:${project.id}`,
-      repositoryOrganisationOf(project.repositoryIdentity)?.key,
+      repositoryOrganisationKeyOf(project.repositoryIdentity),
     ]),
   );
   const refs =

@@ -10,7 +10,7 @@ import {
   resolveSidebarProjectScopeKey,
   type SidebarProjectSnapshot,
 } from "../../sidebarProjectGrouping";
-import { buildOrganisationOptions, repositoryOrganisationOf } from "./organization.logic";
+import { buildSidebarOrganisationOptions, repositoryOrganisationKeyOf } from "./organization.logic";
 
 const SIDEBAR_ORGANISATIONS_KEY = "t3code:sidebar:organisations";
 const NO_ORGANISATION_KEYS: readonly string[] = [];
@@ -59,7 +59,7 @@ export function useSidebarProjectScope(
   // emptying the list for a moment.
   const scopedOrganisationKeys =
     projectGroups.length === 0 ? NO_ORGANISATION_KEYS : storedOrganisationKeys;
-  const organisationOptions = buildOrganisationOptions(
+  const organisationOptions = buildSidebarOrganisationOptions(
     projectGroups.flatMap((project) =>
       project.memberProjects.map((member) => member.repositoryIdentity),
     ),
@@ -75,7 +75,7 @@ export function useSidebarProjectScope(
           .filter(
             (member) =>
               organisations.size === 0 ||
-              organisations.has(repositoryOrganisationOf(member.repositoryIdentity)?.key ?? ""),
+              organisations.has(repositoryOrganisationKeyOf(member.repositoryIdentity)),
           )
           .map((member) => `${member.environmentId}:${member.id}`),
       ),

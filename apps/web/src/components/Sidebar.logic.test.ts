@@ -83,6 +83,8 @@ import {
   resolveSidebarPages,
   sidebarPagesAllowDragging,
   buildOrganisationOptions,
+  buildSidebarOrganisationOptions,
+  NO_ORGANISATION_KEY,
   buildSidebarFilterFacets,
   type SidebarPage,
   repositoryOrganisationOf,
@@ -2876,6 +2878,22 @@ describe("buildOrganisationOptions", () => {
       ),
     ).toEqual(["gone", "zed"]);
   });
+
+  it("offers No organisation last in the sidebar when a checkout has no remote owner or it is picked", () => {
+    const labels = (
+      identities: Parameters<typeof repositoryOrganisationOf>[0][],
+      picked: string[],
+    ) => buildSidebarOrganisationOptions(identities, {}, picked).map((option) => option.key);
+    expect(labels([identity("github.com/zed/one"), null], [])).toEqual([
+      "github.com/zed",
+      NO_ORGANISATION_KEY,
+    ]);
+    expect(labels([identity("github.com/zed/one")], [])).toEqual(["github.com/zed"]);
+    expect(labels([identity("github.com/zed/one")], [NO_ORGANISATION_KEY])).toEqual([
+      "github.com/zed",
+      NO_ORGANISATION_KEY,
+    ]);
+  });
 });
 
 describe("buildSidebarFilterFacets", () => {
@@ -2948,6 +2966,21 @@ describe("buildSidebarFilterFacets", () => {
     expect(result.projectCounts.get("site")).toBe(0);
     expect(result.organisationKeys.has("github.com/ping")).toBe(true);
     expect(result.organisationCounts.get("github.com/ping")).toBe(0);
+  });
+
+  it("counts and narrows to checkouts without an organisation", () => {
+    const local = { projectKey: "local", memberProjects: [{ environmentId: "env", id: "local" }] };
+    const result = buildSidebarFilterFacets({
+      threads: [...threads, thread("local"), thread("local")],
+      projects: [...projects, local],
+      pages: ["threads"],
+      scopedProjectKeys: [],
+      scopedOrganisationKeys: [NO_ORGANISATION_KEY],
+    });
+    expect(result.organisationCounts.get(NO_ORGANISATION_KEY)).toBe(2);
+    expect(result.projectCounts.get("local")).toBe(2);
+    expect(result.projectCounts.get("site")).toBeUndefined();
+    expect(result.projects.map((p) => p.projectKey)).toEqual(["local"]);
   });
 
   it("counts a thread in a group shown in Threads on both pages", () => {
