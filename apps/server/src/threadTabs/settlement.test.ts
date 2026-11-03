@@ -19,6 +19,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
@@ -134,6 +135,7 @@ const expectDispatches = (
 ) =>
   Effect.scoped(
     Effect.gen(function* () {
+      yield* TestClock.setTime(DateTime.toEpochMillis(NOW));
       const observed = yield* Deferred.make<void>();
       const dispatched = yield* Queue.unbounded<OrchestrationV2ServerCommand>();
 
@@ -248,8 +250,8 @@ it.effect("a settle is undone while another tab in the group is working", () =>
           createdAt: NOW,
         },
       }),
-      // A message the orchestrator has not started a run for yet (the test clock reads 0).
-      makeThread("working-tab", null, { latestUserMessageAt: DateTime.makeUnsafe(0) }),
+      // A message the orchestrator has not started a run for yet.
+      makeThread("working-tab", null, { latestUserMessageAt: NOW }),
     ]) {
       yield* expectDispatches(
         [makeThread("primary", "settled"), working, makeThread("idle-tab", null)],
@@ -330,7 +332,7 @@ it.effect("a pending request or queued turn in a sibling prevents group snooze",
           createdAt: NOW,
         },
       }),
-      makeThread("blocked-tab", null, { latestUserMessageAt: DateTime.makeUnsafe(0) }),
+      makeThread("blocked-tab", null, { latestUserMessageAt: NOW }),
     ]) {
       yield* expectDispatches(
         [makeThread("primary", null, snoozed), makeThread("open-tab", null, snoozed), blocked],

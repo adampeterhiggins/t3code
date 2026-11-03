@@ -217,6 +217,12 @@ export const make = Effect.gen(function* () {
           );
           return;
         }
+        const freshCompletion =
+          source.status === "completed" &&
+          source.latestRunCompletedAt != null &&
+          (source.snoozedAt == null ||
+            DateTime.toEpochMillis(source.latestRunCompletedAt) >
+              DateTime.toEpochMillis(source.snoozedAt));
         // A newer snooze wins over an old wake. Time-based wakes need no writes: all tabs
         // carry the same deadline. Attention wakes leave the source's Woke indicator intact.
         if (
@@ -224,7 +230,7 @@ export const make = Effect.gen(function* () {
             ? source.snoozedUntil != null
             : source.snoozedUntil == null ||
               DateTime.toEpochMillis(source.snoozedUntil) <= nowMs ||
-              isSnoozed(source, nowMs)
+              (isSnoozed(source, nowMs) && !freshCompletion)
         )
           return;
         yield* Effect.forEach(
