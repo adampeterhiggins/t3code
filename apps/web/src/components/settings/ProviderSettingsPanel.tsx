@@ -15,8 +15,10 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import {
+  clearRemovedFromProviderList,
   defaultInstanceIdForDriver,
   type EnvironmentId,
+  isRemovedDefaultProviderInstance,
   type AcpRegistryUrlAuthAction,
   PROVIDER_DISPLAY_NAMES,
   ProviderDriverKind,
@@ -26,6 +28,7 @@ import {
   type ServerProvider,
   resolveEnvironmentMachineKind,
   resolveProjectProviderInstanceEnabled,
+  removedDefaultProviderInstance,
   resolveProviderInstanceEnabled,
 } from "@t3tools/contracts";
 import { DEFAULT_UNIFIED_SETTINGS, type UnifiedSettings } from "@t3tools/contracts/settings";
@@ -167,25 +170,6 @@ const PROVIDER_SETTINGS = providerClients.definitions.map((definition) => ({
   provider: definition.driverKind,
   hasDefaultInstance: definition.hasDefaultInstance !== false,
 }));
-
-/**
- * The entry `deleteDefaultInstance` leaves for a built-in that runs unconfigured
- * (Codex, Claude): disabled on the envelope and in its config, with nothing else
- * set. Turning a provider off only sets the envelope flag, so it stays listed.
- */
-const DELETED_DEFAULT_INSTANCE_CONFIG = { enabled: false } as const;
-
-function isDeletedDefaultInstance(instance: ProviderInstanceConfig): boolean {
-  const { driver: _driver, enabled, config, ...rest } = instance;
-  return (
-    enabled === false &&
-    Object.keys(rest).length === 0 &&
-    typeof config === "object" &&
-    config !== null &&
-    Object.keys(config).length === 1 &&
-    (config as { enabled?: unknown }).enabled === false
-  );
-}
 
 function configuredBinaryPath(config: unknown): string {
   if (config === null || typeof config !== "object" || !("binaryPath" in config)) return "";
@@ -773,10 +757,10 @@ export function EnvironmentProviderSettings({
     const hasDefaultSlot = providerSettings.hasDefaultInstance || explicitInstance !== undefined;
     // A slot is listed when the user configured it or it is live. An untouched,
     // disabled slot is a provider type the user never set up, and a deleted
-    // built-in (see `deleteDefaultInstance`) is one they removed; both stay out
+    // built-in (see `resetDefaultInstance`) is one they removed; both stay out
     // of the list until the + dialog adds them back. A deep-linked slot always shows.
     const isConfigured =
-      explicitInstance !== undefined && !isDeletedDefaultInstance(explicitInstance);
+      explicitInstance !== undefined && !isRemovedDefaultProviderInstance(explicitInstance);
     if (
       hasDefaultSlot &&
       (isConfigured ||
@@ -834,7 +818,7 @@ export function EnvironmentProviderSettings({
       textGenerationModelSelection,
     });
     const result = await persistProviderInstance(
-      { operation: "upsert", instanceId, instance: next },
+      { operation: "upsert", instanceId, instance: clearRemovedFromProviderList(next) },
       patch,
     );
     if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
@@ -915,7 +899,7 @@ export function EnvironmentProviderSettings({
   // Deleting a default slot drops it out of the provider list; it can be re-added
   // from the + dialog like any provider. A built-in that runs unconfigured (Codex,
   // Claude) would come straight back as enabled once its entry is gone, so it keeps
-  // the disabled marker entry `isDeletedDefaultInstance` recognizes instead.
+  // the disabled marker entry `removedDefaultProviderInstance` writes instead.
   const resetDefaultInstance = useStableCallback(async (driverKind: ProviderDriverKind) => {
     const instanceId = defaultInstanceIdForDriver(driverKind);
     const instance = settings.providerInstances?.[instanceId] ?? { driver: driverKind };
@@ -929,11 +913,7 @@ export function EnvironmentProviderSettings({
         ? {
             operation: "upsert",
             instanceId,
-            instance: {
-              driver: driverKind,
-              enabled: false,
-              config: DELETED_DEFAULT_INSTANCE_CONFIG,
-            },
+            instance: removedDefaultProviderInstance(driverKind),
           }
         : { operation: "remove", instanceId },
     );
