@@ -75,6 +75,15 @@ function ChoiceCount(props: { count: number }) {
   return <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{props.count}</span>;
 }
 
+/** A Projects or Organisations trigger's summary of what it keeps or leaves out. */
+function scopeSummary(picked: readonly string[], excluded: readonly string[]): string {
+  if (picked.length === 1) return picked[0]!;
+  if (picked.length > 1) return `${picked.length} selected`;
+  if (excluded.length === 1) return `Not ${excluded[0]!}`;
+  if (excluded.length > 1) return `${excluded.length} excluded`;
+  return "All";
+}
+
 /** Rows kept in the hover preview before the rest collapse to a count. */
 const FILTER_PREVIEW_ROW_LIMIT = 8;
 
@@ -85,6 +94,7 @@ function SidebarShowFilter(props: {
   groupStyles: ThreadGroups;
   onPagesChange: (pages: readonly SidebarPage[]) => void;
   onOnly: (page: SidebarPage) => void;
+  onExclude: (page: SidebarPage) => void;
   onNewGroup: () => void;
 }) {
   const single = props.pages.length === 1 ? props.pages[0]! : null;
@@ -118,7 +128,11 @@ function SidebarShowFilter(props: {
             >
               <span className="flex w-full min-w-0 items-center gap-2">
                 <SidebarPageIcon page={page} groupStyles={props.groupStyles} />
-                <MenuChoiceLabel label={sidebarPageLabel(page)} onOnly={() => props.onOnly(page)} />
+                <MenuChoiceLabel
+                  label={sidebarPageLabel(page)}
+                  onOnly={() => props.onOnly(page)}
+                  onExclude={props.available.length > 1 ? () => props.onExclude(page) : undefined}
+                />
                 <ChoiceCount count={props.counts.get(page) ?? 0} />
               </span>
             </MenuCheckboxItem>
@@ -141,7 +155,10 @@ function SidebarProjectFilter(props: {
   counts: ReadonlyMap<string, number>;
   scopedProjectKeys: readonly string[];
   onScopedProjectKeysChange: (keys: readonly string[]) => void;
+  excludedProjectKeys: readonly string[];
+  onExcludedProjectKeysChange: (keys: readonly string[]) => void;
   onOnly: (key: string) => void;
+  onExclude: (key: string) => void;
   onProjectSettings: (event: ReactMouseEvent<HTMLElement>, project: SidebarProjectSnapshot) => void;
   projectBadge: (project: SidebarProjectSnapshot) => ReactNode;
 }) {
@@ -154,7 +171,9 @@ function SidebarProjectFilter(props: {
     open,
   );
   const scoped = new Set(props.scopedProjectKeys);
+  const excluded = new Set(props.excludedProjectKeys);
   const scopedProjects = props.projects.filter((project) => scoped.has(project.projectKey));
+  const excludedProjects = props.projects.filter((project) => excluded.has(project.projectKey));
   const single = scopedProjects.length === 1 ? scopedProjects[0]! : null;
   return (
     <MenuSub open={open} onOpenChange={setOpen}>
@@ -166,11 +185,10 @@ function SidebarProjectFilter(props: {
         )}
         <span className="flex-1">Projects</span>
         <span className="min-w-0 max-w-32 truncate text-xs text-muted-foreground">
-          {scopedProjects.length === 0
-            ? "All"
-            : single
-              ? single.displayName
-              : `${scopedProjects.length} selected`}
+          {scopeSummary(
+            scopedProjects.map((project) => project.displayName),
+            excludedProjects.map((project) => project.displayName),
+          )}
         </span>
       </MenuSubTrigger>
       <MenuSubPopup className="max-w-[min(18rem,var(--available-width))] min-w-56">
@@ -183,8 +201,11 @@ function SidebarProjectFilter(props: {
             <>
               {query.length === 0 ? (
                 <MenuCheckboxItem
-                  checked={scoped.size === 0}
-                  onCheckedChange={() => props.onScopedProjectKeysChange([])}
+                  checked={scoped.size === 0 && excluded.size === 0}
+                  onCheckedChange={() => {
+                    props.onScopedProjectKeysChange([]);
+                    props.onExcludedProjectKeysChange([]);
+                  }}
                 >
                   <span className="flex min-w-0 items-center gap-2">
                     <LayersIcon aria-hidden className="size-3.5 shrink-0" />
@@ -197,11 +218,16 @@ function SidebarProjectFilter(props: {
                   key={project.projectKey}
                   checked={scoped.has(project.projectKey)}
                   onCheckedChange={(checked) =>
-                    props.onScopedProjectKeysChange(
-                      checked
-                        ? [...props.scopedProjectKeys, project.projectKey]
-                        : props.scopedProjectKeys.filter((key) => key !== project.projectKey),
-                    )
+                    // Picking an excluded project brings it back rather than narrowing to it.
+                    excluded.has(project.projectKey)
+                      ? props.onExcludedProjectKeysChange(
+                          props.excludedProjectKeys.filter((key) => key !== project.projectKey),
+                        )
+                      : props.onScopedProjectKeysChange(
+                          checked
+                            ? [...props.scopedProjectKeys, project.projectKey]
+                            : props.scopedProjectKeys.filter((key) => key !== project.projectKey),
+                        )
                   }
                   onKeyDown={(event) => {
                     if (!isProjectPinShortcut(event, keybindings) || !canPinProjectGroup(project))
@@ -217,7 +243,9 @@ function SidebarProjectFilter(props: {
                     <MenuChoiceLabel
                       label={project.displayName}
                       query={query}
+                      excluded={excluded.has(project.projectKey)}
                       onOnly={() => props.onOnly(project.projectKey)}
+                      onExclude={() => props.onExclude(project.projectKey)}
                     />
                     {canPinProjectGroup(project) ? (
                       <ProjectPinButton
@@ -256,10 +284,15 @@ function SidebarOrganisationFilter(props: {
   counts: ReadonlyMap<string, number>;
   scopedKeys: readonly string[];
   onScopedKeysChange: (keys: readonly string[]) => void;
+  excludedKeys: readonly string[];
+  onExcludedKeysChange: (keys: readonly string[]) => void;
   onOnly: (key: string) => void;
+  onExclude: (key: string) => void;
 }) {
   const scoped = new Set(props.scopedKeys);
+  const excluded = new Set(props.excludedKeys);
   const picked = props.organisations.filter((option) => scoped.has(option.key));
+  const left = props.organisations.filter((option) => excluded.has(option.key));
   const navigate = useNavigate();
   return (
     <MenuSub>
@@ -267,11 +300,10 @@ function SidebarOrganisationFilter(props: {
         <BuildingIcon aria-hidden className="size-3.5" />
         <span className="flex-1">Organisations</span>
         <span className="min-w-0 max-w-32 truncate text-xs text-muted-foreground">
-          {picked.length === 0
-            ? "All"
-            : picked.length === 1
-              ? picked[0]!.label
-              : `${picked.length} selected`}
+          {scopeSummary(
+            picked.map((option) => option.label),
+            left.map((option) => option.label),
+          )}
         </span>
       </MenuSubTrigger>
       <MenuSubPopup className="max-w-[min(18rem,var(--available-width))] min-w-48">
@@ -284,8 +316,11 @@ function SidebarOrganisationFilter(props: {
             <>
               {query.length === 0 ? (
                 <MenuCheckboxItem
-                  checked={scoped.size === 0}
-                  onCheckedChange={() => props.onScopedKeysChange([])}
+                  checked={scoped.size === 0 && excluded.size === 0}
+                  onCheckedChange={() => {
+                    props.onScopedKeysChange([]);
+                    props.onExcludedKeysChange([]);
+                  }}
                 >
                   <span className="flex min-w-0 items-center gap-2">
                     <LayersIcon aria-hidden className="size-3.5 shrink-0" />
@@ -298,11 +333,15 @@ function SidebarOrganisationFilter(props: {
                   key={option.key}
                   checked={scoped.has(option.key)}
                   onCheckedChange={(checked) =>
-                    props.onScopedKeysChange(
-                      checked
-                        ? [...props.scopedKeys, option.key]
-                        : props.scopedKeys.filter((key) => key !== option.key),
-                    )
+                    excluded.has(option.key)
+                      ? props.onExcludedKeysChange(
+                          props.excludedKeys.filter((key) => key !== option.key),
+                        )
+                      : props.onScopedKeysChange(
+                          checked
+                            ? [...props.scopedKeys, option.key]
+                            : props.scopedKeys.filter((key) => key !== option.key),
+                        )
                   }
                 >
                   <span className="flex w-full min-w-0 items-center gap-2">
@@ -310,7 +349,9 @@ function SidebarOrganisationFilter(props: {
                     <MenuChoiceLabel
                       label={option.label}
                       query={query}
+                      excluded={excluded.has(option.key)}
                       onOnly={() => props.onOnly(option.key)}
+                      onExclude={() => props.onExclude(option.key)}
                     />
                     <ChoiceCount count={props.counts.get(option.key) ?? 0} />
                   </span>
@@ -356,26 +397,46 @@ function FilterPreviewMore(props: { count: number }) {
   return <li className="pl-5 text-xs text-muted-foreground">{props.count} more</li>;
 }
 
+/** A dimension's picks then exclusions that still resolve to a choice, in their saved order. */
+function scopedChoices<Choice>(
+  choices: readonly Choice[],
+  keyOf: (choice: Choice) => string,
+  picked: readonly string[],
+  excluded: readonly string[],
+): Array<{ choice: Choice; excluded: boolean }> {
+  const byKey = new Map(choices.map((choice) => [keyOf(choice), choice]));
+  const resolve = (keys: readonly string[], isExcluded: boolean) =>
+    keys.flatMap((key) => {
+      const choice = byKey.get(key);
+      return choice ? [{ choice, excluded: isExcluded }] : [];
+    });
+  return [...resolve(picked, false), ...resolve(excluded, true)];
+}
+
 /** The selections off their default, named, so a narrowed list is readable without opening it. */
 function SidebarFilterPreview(props: {
   pages: readonly SidebarPage[];
   groupStyles: ThreadGroups;
   organisations: readonly OrganisationOption[];
   scopedOrganisationKeys: readonly string[];
+  excludedOrganisationKeys: readonly string[];
   projects: readonly SidebarProjectSnapshot[];
   scopedProjectKeys: readonly string[];
+  excludedProjectKeys: readonly string[];
 }) {
   const pagesFiltered = !(props.pages.length === 1 && props.pages[0] === "threads");
-  const organisationByKey = new Map(props.organisations.map((option) => [option.key, option]));
-  const organisations = props.scopedOrganisationKeys.flatMap((key) => {
-    const option = organisationByKey.get(key);
-    return option ? [option] : [];
-  });
-  const projectByKey = new Map(props.projects.map((project) => [project.projectKey, project]));
-  const projects = props.scopedProjectKeys.flatMap((key) => {
-    const project = projectByKey.get(key);
-    return project ? [project] : [];
-  });
+  const organisations = scopedChoices(
+    props.organisations,
+    (option) => option.key,
+    props.scopedOrganisationKeys,
+    props.excludedOrganisationKeys,
+  );
+  const projects = scopedChoices(
+    props.projects,
+    (project) => project.projectKey,
+    props.scopedProjectKeys,
+    props.excludedProjectKeys,
+  );
   const visiblePages = props.pages.slice(0, FILTER_PREVIEW_ROW_LIMIT);
   const visibleOrganisations = organisations.slice(0, FILTER_PREVIEW_ROW_LIMIT);
   const visibleProjects = projects.slice(0, FILTER_PREVIEW_ROW_LIMIT);
@@ -396,26 +457,26 @@ function SidebarFilterPreview(props: {
       ) : null}
       {organisations.length > 0 ? (
         <FilterPreviewSection label="Organisations">
-          {visibleOrganisations.map((option) => (
+          {visibleOrganisations.map(({ choice: option, excluded }) => (
             <FilterPreviewName
               key={option.key}
               icon={<OrganisationIcon option={option} />}
-              label={option.label}
+              label={excluded ? `Not ${option.label}` : option.label}
             />
           ))}
           <FilterPreviewMore count={organisations.length - visibleOrganisations.length} />
         </FilterPreviewSection>
       ) : null}
-      {props.scopedProjectKeys.length > 0 ? (
+      {projects.length > 0 ? (
         <FilterPreviewSection label="Projects">
-          {visibleProjects.map((project) => (
+          {visibleProjects.map(({ choice: project, excluded }) => (
             <FilterPreviewName
               key={project.projectKey}
               icon={<ProjectFavicon project={project} className="size-3.5" />}
-              label={project.displayName}
+              label={excluded ? `Not ${project.displayName}` : project.displayName}
             />
           ))}
-          <FilterPreviewMore count={props.scopedProjectKeys.length - visibleProjects.length} />
+          <FilterPreviewMore count={projects.length - visibleProjects.length} />
         </FilterPreviewSection>
       ) : null}
     </div>
@@ -433,25 +494,45 @@ export function SidebarFilterMenu(props: {
   organisationCounts: ReadonlyMap<string, number>;
   scopedOrganisationKeys: readonly string[];
   onScopedOrganisationKeysChange: (keys: readonly string[]) => void;
+  excludedOrganisationKeys: readonly string[];
+  onExcludedOrganisationKeysChange: (keys: readonly string[]) => void;
   projects: readonly SidebarProjectSnapshot[];
   projectCounts: ReadonlyMap<string, number>;
   scopedProjectKeys: readonly string[];
   onScopedProjectKeysChange: (keys: readonly string[]) => void;
+  excludedProjectKeys: readonly string[];
+  onExcludedProjectKeysChange: (keys: readonly string[]) => void;
   onProjectSettings: (event: ReactMouseEvent<HTMLElement>, project: SidebarProjectSnapshot) => void;
   projectBadge: (project: SidebarProjectSnapshot) => ReactNode;
 }) {
   const pagesFiltered = !(props.pages.length === 1 && props.pages[0] === "threads");
-  const organisationsFiltered = props.scopedOrganisationKeys.length > 0;
-  const projectsFiltered = props.scopedProjectKeys.length > 0;
+  const organisationsFiltered =
+    props.scopedOrganisationKeys.length > 0 || props.excludedOrganisationKeys.length > 0;
+  const projectsFiltered =
+    props.scopedProjectKeys.length > 0 || props.excludedProjectKeys.length > 0;
   const activeCount =
     Number(pagesFiltered) + Number(organisationsFiltered) + Number(projectsFiltered);
+  const scopeCount = (
+    picked: readonly string[],
+    excluded: readonly string[],
+    one: string,
+    many: string,
+  ) => {
+    const count = picked.length > 0 ? picked.length : excluded.length;
+    return `${count} ${count === 1 ? one : many}${picked.length > 0 ? "" : " excluded"}`;
+  };
   const summary = [
     pagesFiltered ? `Showing ${props.pages.map(sidebarPageLabel).join(", ")}` : null,
     organisationsFiltered
-      ? `${props.scopedOrganisationKeys.length} ${props.scopedOrganisationKeys.length === 1 ? "organisation" : "organisations"}`
+      ? scopeCount(
+          props.scopedOrganisationKeys,
+          props.excludedOrganisationKeys,
+          "organisation",
+          "organisations",
+        )
       : null,
     projectsFiltered
-      ? `${props.scopedProjectKeys.length} ${props.scopedProjectKeys.length === 1 ? "project" : "projects"}`
+      ? scopeCount(props.scopedProjectKeys, props.excludedProjectKeys, "project", "projects")
       : null,
   ]
     .filter((part) => part !== null)
@@ -514,8 +595,10 @@ export function SidebarFilterMenu(props: {
             groupStyles={props.groupStyles}
             organisations={props.organisations}
             scopedOrganisationKeys={props.scopedOrganisationKeys}
+            excludedOrganisationKeys={props.excludedOrganisationKeys}
             projects={props.projects}
             scopedProjectKeys={props.scopedProjectKeys}
+            excludedProjectKeys={props.excludedProjectKeys}
           />
         </PreviewCardPopup>
       </PreviewCard>
@@ -531,6 +614,10 @@ export function SidebarFilterMenu(props: {
             props.onPagesChange([page]);
             closeMenu();
           }}
+          onExclude={(page) => {
+            props.onPagesChange(props.availablePages.filter((candidate) => candidate !== page));
+            closeMenu();
+          }}
         />
         {props.organisations.length > 0 ? (
           <SidebarOrganisationFilter
@@ -538,8 +625,17 @@ export function SidebarFilterMenu(props: {
             counts={props.organisationCounts}
             scopedKeys={props.scopedOrganisationKeys}
             onScopedKeysChange={props.onScopedOrganisationKeysChange}
+            excludedKeys={props.excludedOrganisationKeys}
+            onExcludedKeysChange={props.onExcludedOrganisationKeysChange}
             onOnly={(key) => {
               props.onScopedOrganisationKeysChange([key]);
+              closeMenu();
+            }}
+            onExclude={(key) => {
+              props.onExcludedOrganisationKeysChange([
+                ...props.excludedOrganisationKeys.filter((candidate) => candidate !== key),
+                key,
+              ]);
               closeMenu();
             }}
           />
@@ -550,8 +646,17 @@ export function SidebarFilterMenu(props: {
             counts={props.projectCounts}
             scopedProjectKeys={props.scopedProjectKeys}
             onScopedProjectKeysChange={props.onScopedProjectKeysChange}
+            excludedProjectKeys={props.excludedProjectKeys}
+            onExcludedProjectKeysChange={props.onExcludedProjectKeysChange}
             onOnly={(key) => {
               props.onScopedProjectKeysChange([key]);
+              closeMenu();
+            }}
+            onExclude={(key) => {
+              props.onExcludedProjectKeysChange([
+                ...props.excludedProjectKeys.filter((candidate) => candidate !== key),
+                key,
+              ]);
               closeMenu();
             }}
             onProjectSettings={props.onProjectSettings}
@@ -593,22 +698,28 @@ export function SidebarFilterPills(props: {
   organisations: readonly OrganisationOption[];
   scopedOrganisationKeys: readonly string[];
   onScopedOrganisationKeysChange: (keys: readonly string[]) => void;
+  excludedOrganisationKeys: readonly string[];
+  onExcludedOrganisationKeysChange: (keys: readonly string[]) => void;
   projects: readonly SidebarProjectSnapshot[];
   scopedProjectKeys: readonly string[];
   onScopedProjectKeysChange: (keys: readonly string[]) => void;
+  excludedProjectKeys: readonly string[];
+  onExcludedProjectKeysChange: (keys: readonly string[]) => void;
 }) {
   // Live threads are the default page, so only the extra pages read as filters.
   const pages = props.pages.filter((page) => page !== "threads");
-  const organisationByKey = new Map(props.organisations.map((option) => [option.key, option]));
-  const organisations = props.scopedOrganisationKeys.flatMap((key) => {
-    const option = organisationByKey.get(key);
-    return option ? [option] : [];
-  });
-  const projectByKey = new Map(props.projects.map((project) => [project.projectKey, project]));
-  const projects = props.scopedProjectKeys.flatMap((key) => {
-    const project = projectByKey.get(key);
-    return project ? [project] : [];
-  });
+  const organisations = scopedChoices(
+    props.organisations,
+    (option) => option.key,
+    props.scopedOrganisationKeys,
+    props.excludedOrganisationKeys,
+  );
+  const projects = scopedChoices(
+    props.projects,
+    (project) => project.projectKey,
+    props.scopedProjectKeys,
+    props.excludedProjectKeys,
+  );
   const searchQuery = props.searchQuery.trim();
   const pillCount = pages.length + organisations.length + projects.length + (searchQuery ? 1 : 0);
   if (pillCount === 0) return null;
@@ -634,27 +745,35 @@ export function SidebarFilterPills(props: {
           }}
         />
       ))}
-      {organisations.map((option) => (
+      {organisations.map(({ choice: option, excluded }) => (
         <SidebarFilterPill
           key={option.key}
           icon={<OrganisationIcon option={option} />}
-          label={option.label}
+          label={excluded ? `Not ${option.label}` : option.label}
           onRemove={() =>
-            props.onScopedOrganisationKeysChange(
-              props.scopedOrganisationKeys.filter((key) => key !== option.key),
-            )
+            excluded
+              ? props.onExcludedOrganisationKeysChange(
+                  props.excludedOrganisationKeys.filter((key) => key !== option.key),
+                )
+              : props.onScopedOrganisationKeysChange(
+                  props.scopedOrganisationKeys.filter((key) => key !== option.key),
+                )
           }
         />
       ))}
-      {projects.map((project) => (
+      {projects.map(({ choice: project, excluded }) => (
         <SidebarFilterPill
           key={project.projectKey}
           icon={<ProjectFavicon project={project} className="size-3.5" />}
-          label={project.displayName}
+          label={excluded ? `Not ${project.displayName}` : project.displayName}
           onRemove={() =>
-            props.onScopedProjectKeysChange(
-              props.scopedProjectKeys.filter((key) => key !== project.projectKey),
-            )
+            excluded
+              ? props.onExcludedProjectKeysChange(
+                  props.excludedProjectKeys.filter((key) => key !== project.projectKey),
+                )
+              : props.onScopedProjectKeysChange(
+                  props.scopedProjectKeys.filter((key) => key !== project.projectKey),
+                )
           }
         />
       ))}
@@ -666,7 +785,9 @@ export function SidebarFilterPills(props: {
             props.onClearSearch();
             props.onPagesChange(["threads"]);
             props.onScopedOrganisationKeysChange([]);
+            props.onExcludedOrganisationKeysChange([]);
             props.onScopedProjectKeysChange([]);
+            props.onExcludedProjectKeysChange([]);
           }}
         >
           Clear all
