@@ -14,7 +14,10 @@ import {
 } from "../threads/threadListV2";
 import type { HomeListFilterMenuProject } from "./home-list-filter-menu";
 import { buildHomeProjectScopes, findHomeProjectScope } from "./homeThreadList";
-import { repositoryOrganisationOf, type ThreadListOrganisation } from "./thread-list-organisations";
+import {
+  repositoryOrganisationKeyOf,
+  type ThreadListOrganisation,
+} from "./thread-list-organisations";
 
 export interface ThreadListFilterFacets {
   readonly environmentCounts: ReadonlyMap<string, number>;
@@ -60,10 +63,10 @@ export function buildThreadListFilterFacets(input: {
   }
   const organisationByRef = new Map<string, string>();
   for (const project of input.projects) {
-    const organisation = repositoryOrganisationOf(project.repositoryIdentity);
-    if (organisation) {
-      organisationByRef.set(scopedProjectKey(project.environmentId, project.id), organisation.key);
-    }
+    organisationByRef.set(
+      scopedProjectKey(project.environmentId, project.id),
+      repositoryOrganisationKeyOf(project.repositoryIdentity),
+    );
   }
   const pickedScope = findHomeProjectScope(allScopes, input.projectKey);
   const pickedRefs = new Set(
@@ -106,7 +109,7 @@ export function buildThreadListFilterFacets(input: {
 
   const pickedOrganisations = new Set(input.organisationKeys);
   const organisationsOf = (projects: ReadonlyArray<EnvironmentProject>) =>
-    projects.flatMap((project) => only(repositoryOrganisationOf(project.repositoryIdentity)?.key));
+    projects.map((project) => repositoryOrganisationKeyOf(project.repositoryIdentity));
   const projects = buildHomeProjectScopes({
     projects: input.projects,
     environmentId: input.environmentId,

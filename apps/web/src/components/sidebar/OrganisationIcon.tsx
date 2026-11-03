@@ -1,8 +1,8 @@
-import { BuildingIcon } from "lucide-react";
+import { BuildingIcon, CircleDashedIcon } from "lucide-react";
 import { useState } from "react";
 
 import { cn } from "~/lib/utils";
-import type { OrganisationOption } from "./organization.logic";
+import { NO_ORGANISATION_KEY, type OrganisationOption } from "./organization.logic";
 import { ThreadGroupIcon } from "./ThreadGroupIcon";
 
 /** The GitHub avatar of a `github.com/<owner>` organisation, or null for other hosts. */
@@ -20,6 +20,9 @@ export function OrganisationIcon(props: {
   const organisation = props.option.organisation;
   const avatarUrl = githubAvatarUrlOf(props.option.key);
   const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
+  if (props.option.key === NO_ORGANISATION_KEY) {
+    return <CircleDashedIcon aria-hidden className={cn("size-3.5 shrink-0", props.className)} />;
+  }
   if (organisation?.icon) {
     return <ThreadGroupIcon style={{ icon: organisation.icon }} className={props.className} />;
   }

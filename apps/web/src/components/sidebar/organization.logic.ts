@@ -70,6 +70,16 @@ export function repositoryOrganisationOf(
   return { key: segments.slice(0, -1).join("/"), label: owner };
 }
 
+/** Checkouts without a remote owner; real keys are `host/owner`, so this cannot collide. */
+export const NO_ORGANISATION_KEY = "none";
+
+/** The Organisations filter key of a checkout, with ownerless checkouts under NO_ORGANISATION_KEY. */
+export function repositoryOrganisationKeyOf(
+  identity: RepositoryIdentity | null | undefined,
+): string {
+  return repositoryOrganisationOf(identity)?.key ?? NO_ORGANISATION_KEY;
+}
+
 export interface OrganisationOption {
   readonly key: string;
   /** The chosen name, else the owner (or host and owner when two hosts share it). */
@@ -117,6 +127,34 @@ export function buildOrganisationOptions(
 }
 
 /**
+ * The sidebar filter's organisations: buildOrganisationOptions, then "No organisation" last when
+ * a checkout has no remote owner or it is picked.
+ */
+export function buildSidebarOrganisationOptions(
+  identities: ReadonlyArray<RepositoryIdentity | null | undefined>,
+  organisations: Organisations,
+  picked: readonly string[],
+): OrganisationOption[] {
+  const options = buildOrganisationOptions(
+    identities,
+    organisations,
+    picked.filter((key) => key !== NO_ORGANISATION_KEY),
+  );
+  if (
+    picked.includes(NO_ORGANISATION_KEY) ||
+    identities.some((identity) => repositoryOrganisationOf(identity) === null)
+  ) {
+    options.push({
+      key: NO_ORGANISATION_KEY,
+      label: "No organisation",
+      defaultLabel: "No organisation",
+      organisation: undefined,
+    });
+  }
+  return options;
+}
+
+/**
  * A thread as the sidebar filter menu counts it: where it lives and which Show pages hold it. A
  * thread in a group shown in Threads is on its shelf's page and its group's.
  */
@@ -155,8 +193,7 @@ export function buildSidebarFilterFacets<
     for (const member of project.memberProjects) {
       const memberKey = `${member.environmentId}:${member.id}`;
       projectKeyByMember.set(memberKey, project.projectKey);
-      const organisation = repositoryOrganisationOf(member.repositoryIdentity);
-      if (organisation) organisationByMember.set(memberKey, organisation.key);
+      organisationByMember.set(memberKey, repositoryOrganisationKeyOf(member.repositoryIdentity));
     }
   }
   const memberKey = (thread: SidebarFacetThread) => `${thread.environmentId}:${thread.projectId}`;
@@ -183,10 +220,7 @@ export function buildSidebarFilterFacets<
   const pickedOrganisations = new Set(input.scopedOrganisationKeys);
   const pickedProjects = new Set(input.scopedProjectKeys);
   const memberOrganisations = (project: Project) =>
-    project.memberProjects.flatMap((member) => {
-      const key = repositoryOrganisationOf(member.repositoryIdentity)?.key;
-      return key === undefined ? [] : [key];
-    });
+    project.memberProjects.map((member) => repositoryOrganisationKeyOf(member.repositoryIdentity));
   const projects = input.projects.filter(
     (project) =>
       pickedOrganisations.size === 0 ||
