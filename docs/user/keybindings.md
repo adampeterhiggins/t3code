@@ -211,9 +211,14 @@ main window. It follows the app's theme, fonts, and contrast.
 
 Hide it with Escape or by clicking away from a compact composer. Press the shortcut again within
 a minute and it reopens where you left it, with any draft you were writing. After a minute it
-opens a new draft in the same project. Change how long it waits, or choose every time or never,
-in **Settings → General → Quick message → Start a new draft**. Start a new thread the same way
-you do in the main window.
+opens a new draft. Change how long it waits, or choose every time or never, in
+**Settings → General → Quick message → Start a new draft**. Start a new thread the same way you do
+in the main window.
+
+New drafts start on **No project**. Threads sent that way go to the **Quick messages** thread
+group instead of your Threads list; pick it under the sidebar's filter menu (**Show**) to see
+them. Choose a project in the floating window before sending and the thread starts in that
+project as usual.
 
 The bar under the floating composer, with the worktree, branch, and access level, is hidden at
 first. Show or hide it with the panel button in the composer or `mod+shift+u` (**Quick Message:

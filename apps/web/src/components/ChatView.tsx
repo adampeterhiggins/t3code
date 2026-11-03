@@ -5,6 +5,10 @@ import {
   useQuickMessageWorkspaceBarVisible,
 } from "./detachedChat/DetachedChatControls";
 import { useChatSurface } from "./detachedChat/useChatSurface";
+import {
+  isDetachedChatWindow,
+  QUICK_MESSAGE_THREAD_GROUP,
+} from "./quickMessage/quickMessageWindow";
 import { useChatViewSplitPane } from "./chat/useChatViewSplitPane";
 import { useChatViewIntegrationShortcuts } from "./chat/useChatViewIntegrationShortcuts";
 import { useChatViewTabs } from "./chat/useChatViewTabs";
@@ -3216,6 +3220,9 @@ export default function ChatView(props: ChatViewProps) {
     activeThreadBranch,
     activeProject,
     activeProjectDefaultModelSelection,
+    // A panel draft without a project files under Quick messages; one with a project does not.
+    newThreadGroupName:
+      isDetachedChatWindow && activeProjectIsScratch ? QUICK_MESSAGE_THREAD_GROUP : undefined,
     activeProposedPlan,
     activeMessageCount,
     isServerThread,

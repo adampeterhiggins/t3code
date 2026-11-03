@@ -11,6 +11,7 @@ import {
 } from "react";
 
 import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
+import { useScratchProject } from "../../hooks/useScratchProject";
 import {
   isDetachedDraftStoreHydrated,
   isDetachedPrimaryConnectionReady,
@@ -41,6 +42,7 @@ export function DetachedIndexDraftLanding(props: {
   const threads = useThreadShells();
   const bootstrapped = useAllEnvironmentShellsBootstrapped();
   const handleNewThread = useNewThreadHandler();
+  const { scratchWorkspaceRootFor, openScratchProject } = useScratchProject();
   const router = useRouter();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const primaryEnvironment = usePrimaryEnvironment();
@@ -50,9 +52,16 @@ export function DetachedIndexDraftLanding(props: {
     isDetachedDraftStoreHydrated,
   );
   const isStillOnIndex = useEffectEvent(() => router.state.location.pathname === "/");
-  const startNewThread = useEffectEvent((projectRef: ScopedProjectRef) =>
-    handleNewThread(projectRef, { replace: true }),
-  );
+  // A quick message starts without a project, so it files under Quick messages.
+  const startNewThread = useEffectEvent(async (projectRef: ScopedProjectRef) => {
+    if (scratchWorkspaceRootFor(projectRef.environmentId) === null) {
+      return handleNewThread(projectRef, { replace: true });
+    }
+    const scratch = await openScratchProject(projectRef.environmentId);
+    return scratch === null
+      ? null
+      : handleNewThread(scopeProjectRef(scratch.environmentId, scratch.id), { replace: true });
+  });
   const navigateToDraft = useEffectEvent(async (draftId: string) => {
     await restoreDetachedStartupDraft({
       navigate: () =>

@@ -46,3 +46,6 @@ export const isDetachedChatWindow =
     window.desktopBridge?.getWindowRole,
     window.desktopBridge?.isQuickMessageSessionIsolated,
   );
+
+/** The sidebar group a quick message panel thread started without a project files under. */
+export const QUICK_MESSAGE_THREAD_GROUP = "Quick messages";

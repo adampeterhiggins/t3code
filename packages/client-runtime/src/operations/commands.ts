@@ -162,6 +162,8 @@ interface StartThreadBootstrap {
     readonly branch: string | null;
     readonly worktreePath: string | null;
     readonly createdAt: string;
+    /** The sidebar group the thread starts in. Absent lets the server apply the project's default. */
+    readonly groupName?: string;
   };
   readonly prepareWorktree?: {
     readonly requireWorktree?: boolean;
@@ -793,6 +795,7 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
       runtimeMode: input.runtimeMode,
       interactionMode: input.interactionMode,
       workspaceStrategy,
+      ...(bootstrap?.groupName === undefined ? {} : { groupName: bootstrap.groupName }),
       ...(input.bootstrap?.deferTurn === true
         ? {}
         : {

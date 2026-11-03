@@ -2479,9 +2479,14 @@ A system-wide shortcut in the desktop app opens a floating window over any app, 
 composer as the main window, on the local environment of this computer. Turn it on and record the
 shortcut in **Settings → General → Quick message**. The window follows the app's theme, fonts, and
 contrast. Press the shortcut again soon after hiding it and it reopens where it was, with any draft
-you were writing. Hidden for longer, it opens a new draft in the same project. **Start a new draft**
-in the same settings section sets how long that is: every time, a minute (the default), longer, or
-never.
+you were writing. Hidden for longer, it opens a new draft. **Start a new draft** in the same
+settings section sets how long that is: every time, a minute (the default), longer, or never.
+
+New drafts in the window start on **No project** when the environment offers it. A thread sent from
+there starts in the **Quick messages** thread group, so quick questions stay out of the Threads
+list; pick a project in the window first and the thread starts in that project as usual. The group
+is passed as `groupName` on `orchestration.launchThread`
+([ThreadLaunchService.ts](../apps/server/src/orchestration-v2/ThreadLaunchService.ts)).
 The bar under the composer (worktree, branch, access level) starts hidden; a button in the
 composer and `mod+shift+u` toggle it.
 

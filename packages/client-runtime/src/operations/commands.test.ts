@@ -283,6 +283,7 @@ describe("V2 environment commands", () => {
             branch: "main",
             worktreePath: null,
             createdAt: "2026-06-20T00:00:00.000Z",
+            groupName: "Quick messages",
           },
           prepareWorktree: { projectCwd: "/workspace/project", baseBranch: "main" },
           runSetupScript: true,
@@ -295,6 +296,7 @@ describe("V2 environment commands", () => {
         title: "New thread",
         generateTitle: false,
         workspaceStrategy: { type: "worktree", baseRef: "main" },
+        groupName: "Quick messages",
       });
       expect(launches[0]).not.toHaveProperty("initialMessage");
     }).pipe(Effect.provide(layerTestRandom)),
