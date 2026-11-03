@@ -1,7 +1,7 @@
 import { liveShellEnvironmentIdsAtom } from "../state/shell";
 import { copyThreadReference } from "../lib/copyThreadReference";
 import { threadChipCopyTarget } from "@t3tools/client-runtime/thread-reference";
-import { attachSidebarTree, SIDEBAR_TREE_PROPS } from "../lib/sidebarTree";
+import { attachSidebarTree } from "../lib/sidebarTree";
 import { resolveProjectExpanded, useUiStateStore } from "../uiStateStore";
 import {
   SidebarProjectFolderHeader,
@@ -3279,8 +3279,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               >
                 <SortableContext items={sortableIds} strategy={sidebarSortingStrategy}>
                   <ul
-                    {...SIDEBAR_TREE_PROPS}
                     ref={attachTreeRef}
+                    // Presentation flattens VoiceOver's list interaction boundary while preserving descendant
+                    // controls.
+                    role="presentation"
                     className={cn(
                       "relative flex flex-col gap-px",
                       sidebarListItems.length > 0 && "flex-1",
@@ -3717,8 +3719,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                       <li className="list-none">
                         <button
                           type="button"
-                          role="treeitem"
-                          tabIndex={-1}
                           data-sidebar-row="settled:more"
                           data-sidebar-parent="shelf:settled"
                           disabled={olderSettledShelf.loading}

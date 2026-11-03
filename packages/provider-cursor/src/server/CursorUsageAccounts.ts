@@ -11,9 +11,10 @@ import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Hex from "effect/encoding/Hex";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as HttpClient from "effect/http/HttpClient";
@@ -73,9 +74,9 @@ const make = Effect.gen(function* () {
   const host = yield* ProviderHost.ProviderHost;
   const accountReader = yield* CursorAccountReader.CursorAccountReader;
   const httpClient = yield* HttpClient.HttpClient;
-  const crypto = yield* Crypto.Crypto;
   const hostEnvironment = yield* HostProcess.Environment;
   const platform = yield* HostProcess.Platform;
+  const digest = yield* Digest.Digest;
 
   const cachePath = path.join(host.paths.stateDir, CURSOR_ACCOUNT_CACHE_FILE_NAME);
   const caches = new Map<string, CursorAccountCache>();
@@ -209,23 +210,38 @@ const make = Effect.gen(function* () {
     windowStartMs: number,
     retentionStartMs: number,
     awaitRefresh: boolean,
+    instanceCredentialKey?: string,
   ) {
     // A Keychain login outlives an uninstalled Cursor, so it also needs Cursor's local directory.
-    const localLogin = typeof credential === "string" ? credential : path.dirname(authPath);
-    if (!(yield* fileSystem.exists(localLogin).pipe(Effect.orElseSucceed(() => true)))) {
+    const localLogin =
+      typeof credential === "string"
+        ? credential
+        : credential.kind === "keychain"
+          ? path.dirname(authPath)
+          : null;
+    if (
+      localLogin !== null &&
+      !(yield* fileSystem.exists(localLogin).pipe(Effect.orElseSucceed(() => true)))
+    ) {
       return null;
     }
     yield* ensureLoaded;
     const credentialKey =
-      typeof credential === "string"
+      instanceCredentialKey ??
+      (typeof credential === "string"
         ? credential
         : credential.kind === "token"
           ? `token:${
               (yield* cursorAccountKey(credential.accessToken).pipe(
-                Effect.provideService(Crypto.Crypto, crypto),
+                Effect.provideService(Digest.Digest, digest),
               )) ?? authPath
             }`
-          : "keychain";
+          : credential.kind === "apiKey"
+            ? // A fingerprint, so a replaced key never reads the previous account's cache.
+              `api-key:${Hex.encode(
+                yield* digest.digest(Digest.sha256, new TextEncoder().encode(credential.apiKey)),
+              )}`
+            : "keychain");
     const nowMs = yield* Clock.currentTimeMillis;
     const recentFailure = failures.get(credentialKey);
     let refreshing = false;
@@ -293,24 +309,43 @@ const make = Effect.gen(function* () {
               : exchangeCursorApiKey(credential, instance.environment).pipe(
                   Effect.flatMap((accessToken) =>
                     cursorAccountKey(accessToken).pipe(
-                      Effect.flatMap((key) => {
-                        if (key !== null && accounts.has(key)) return Effect.succeed(null);
-                        if (key !== null) accounts.add(key);
-                        return accountSource(
-                          { kind: "token", accessToken },
-                          `cursor-instance:${instance.instanceId}`,
-                          windowStartMs,
-                          retentionCutoffMs,
-                          awaitRefresh,
-                        );
-                      }),
+                      Effect.flatMap((key) =>
+                        Effect.gen(function* () {
+                          if (key !== null && accounts.has(key)) return null;
+                          const credentialKey = `api-key:${Hex.encode(
+                            yield* digest.digest(
+                              Digest.sha256,
+                              new TextEncoder().encode(
+                                `${credential.backendUrl ?? instance.environment.CURSOR_BACKEND_URL ?? "https://api2.cursor.sh"}:${credential.apiKey}`,
+                              ),
+                            ),
+                          )}`;
+                          const source = yield* accountSource(
+                            { kind: "token", accessToken },
+                            `cursor-instance:${instance.instanceId}`,
+                            windowStartMs,
+                            retentionCutoffMs,
+                            awaitRefresh,
+                            credentialKey,
+                          );
+                          if (
+                            key !== null &&
+                            source !== null &&
+                            (("status" in source && source.status === "ok") ||
+                              ("refreshing" in source && source.refreshing))
+                          ) {
+                            accounts.add(key);
+                          }
+                          return source;
+                        }),
+                      ),
                     ),
                   ),
                 ),
           ),
           Effect.provideService(ProviderHost.ProviderHost, host),
           Effect.provideService(HttpClient.HttpClient, httpClient),
-          Effect.provideService(Crypto.Crypto, crypto),
+          Effect.provideService(Digest.Digest, digest),
           Effect.catchCause(() =>
             Effect.succeed({
               dir: `cursor-instance:${instance.instanceId}`,
@@ -399,7 +434,14 @@ const make = Effect.gen(function* () {
         if (source === null || (haveInstanceAccount && source.files === null)) continue;
         cliSources.push(source);
       }
-      return [...instanceSources, ...cliSources];
+      const rank = (source: ProviderUsageScan) =>
+        source.status === "ok" ? 2 : source.refreshing ? 1 : 0;
+      const byAccount = new Map<string, ProviderUsageScan>();
+      for (const source of [...instanceSources, ...cliSources]) {
+        const kept = byAccount.get(source.dir);
+        if (kept === undefined || rank(source) > rank(kept)) byAccount.set(source.dir, source);
+      }
+      return [...byAccount.values()];
     },
   );
 

@@ -32,16 +32,7 @@ import { ApprovalToolkit } from "./toolkits/approval/tools.ts";
 import { ThreadDeleteToolkitHandlersLive } from "./toolkits/threadDelete/handlers.ts";
 import { ThreadDeleteToolkit } from "./toolkits/threadDelete/tools.ts";
 
-/**
- * `/mcp/query` and `/mcp/operate` serve agents outside T3 Code, such as a
- * scheduled Claude Code run, with an agent access token (Settings →
- * Connections → Agent access). They are separate MCP servers from `/mcp`,
- * where an agent inside one thread acts with a per-session credential.
- * `/mcp/query` needs `orchestration:read` and lists only the history tools.
- * `/mcp/operate` also needs `orchestration:operate`; it adds upstream's thread,
- * project, and environment tools, acting as a client caller with the token's
- * label, plus answering approvals and deleting threads. Fork-only; see docs/fork-differences.md.
- */
+/** Agent access endpoints authenticate external agents separately from thread-scoped `/mcp`. */
 
 /** A token on `/mcp/operate` acts as the user, so it may hand threads any permission mode. */
 const AGENT_ACCESS_RUNTIME_MODE_CEILING = "full-access";
@@ -158,39 +149,43 @@ const tokenAuthMiddleware = (options: {
     }),
   ).layer;
 
-const QueryTransportLive = mcpHttpTransport({
-  name: "T3 Code history",
-  version: packageJson.version,
-  description:
-    "Read-only access to this T3 Code environment's projects, threads, runs, messages, plans, diffs and pull requests.",
-  path: QUERY_MCP_PATH,
-  protocols: [McpProtocol.v2025_06_18],
-}).pipe(
-  Layer.provide(
-    tokenAuthMiddleware({
-      requiredScope: AuthOrchestrationReadScope,
-      cliFlag: "--read-only",
-      what: "read orchestration history",
-    }),
-  ),
-);
+const queryTransport = <RA, RE, RR>(registrations: Layer.Layer<RA, RE, RR>) =>
+  mcpHttpTransport({
+    registrations,
+    name: "T3 Code history",
+    version: packageJson.version,
+    description:
+      "Read-only access to this T3 Code environment's projects, threads, runs, messages, plans, diffs and pull requests.",
+    path: QUERY_MCP_PATH,
+    protocols: [McpProtocol.v2025_06_18],
+  }).pipe(
+    Layer.provide(
+      tokenAuthMiddleware({
+        requiredScope: AuthOrchestrationReadScope,
+        cliFlag: "--read-only",
+        what: "read orchestration history",
+      }),
+    ),
+  );
 
-const OperateTransportLive = mcpHttpTransport({
-  name: "T3 Code control",
-  version: packageJson.version,
-  description:
-    "Read this T3 Code environment's history, and start, message, wait on, and answer its threads as the user would.",
-  path: OPERATE_MCP_PATH,
-  protocols: [McpProtocol.v2025_06_18],
-}).pipe(
-  Layer.provide(
-    tokenAuthMiddleware({
-      requiredScope: AuthOrchestrationOperateScope,
-      cliFlag: "--operate",
-      what: "drive threads",
-    }),
-  ),
-);
+const operateTransport = <RA, RE, RR>(registrations: Layer.Layer<RA, RE, RR>) =>
+  mcpHttpTransport({
+    registrations,
+    name: "T3 Code control",
+    version: packageJson.version,
+    description:
+      "Read this T3 Code environment's history, and start, message, wait on, and answer its threads as the user would.",
+    path: OPERATE_MCP_PATH,
+    protocols: [McpProtocol.v2025_06_18],
+  }).pipe(
+    Layer.provide(
+      tokenAuthMiddleware({
+        requiredScope: AuthOrchestrationOperateScope,
+        cliFlag: "--operate",
+        what: "drive threads",
+      }),
+    ),
+  );
 
 const QueryToolkitRegistrationLive = toolkitRegistration(QueryToolkit, QueryToolkitHandlersLive);
 
@@ -200,16 +195,18 @@ const QueryToolkitRegistrationLive = toolkitRegistration(QueryToolkit, QueryTool
  * thread tools on every endpoint.
  */
 export const layer = Layer.mergeAll(
-  Layer.fresh(QueryToolkitRegistrationLive.pipe(Layer.provideMerge(QueryTransportLive))),
+  Layer.fresh(queryTransport(QueryToolkitRegistrationLive)),
   Layer.fresh(
-    Layer.mergeAll(
-      QueryToolkitRegistrationLive,
-      layerOrchestratorToolkit,
-      layerThreadToolkit,
-      layerProjectRegistration,
-      layerEnvironmentToolkit,
-      toolkitRegistration(ApprovalToolkit, ApprovalToolkitHandlersLive),
-      toolkitRegistration(ThreadDeleteToolkit, ThreadDeleteToolkitHandlersLive),
-    ).pipe(Layer.provideMerge(OperateTransportLive)),
+    operateTransport(
+      Layer.mergeAll(
+        QueryToolkitRegistrationLive,
+        layerOrchestratorToolkit,
+        layerThreadToolkit,
+        layerProjectRegistration,
+        layerEnvironmentToolkit,
+        toolkitRegistration(ApprovalToolkit, ApprovalToolkitHandlersLive),
+        toolkitRegistration(ThreadDeleteToolkit, ThreadDeleteToolkitHandlersLive),
+      ),
+    ),
   ),
 );

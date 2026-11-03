@@ -145,7 +145,6 @@ export function DraftHeroHeadline({
           ),
         ) ?? null);
   const activeProjectKey = activeProjectGroup?.projectKey ?? "";
-  const activeProjectDisplayName = activeProjectGroup?.displayName ?? activeProjectTitle;
   const hasResolvedProject = activeProjectTitle !== null;
   const canChooseProject = projectPickerEntries.length > 0;
   const shouldShowProjectMenu = canChooseProject;
@@ -327,13 +326,13 @@ export function DraftHeroHeadline({
             )
           ) : null}
           <DraftProjectName
-            value={isScratchDraft ? "No project" : (activeProjectDisplayName ?? "Choose a project")}
+            value={isScratchDraft ? "No project" : (activeProjectTitle ?? "Choose a project")}
             singleLine
           />
           {compact ? <ChevronDownIcon className="size-3" /> : null}
         </TooltipTrigger>
-        {activeProjectDisplayName && !isScratchDraft ? (
-          <TooltipPopup side="top">{activeProjectDisplayName}</TooltipPopup>
+        {activeProjectTitle && !isScratchDraft ? (
+          <TooltipPopup side="top">{activeProjectTitle}</TooltipPopup>
         ) : null}
       </Tooltip>
       <ComboboxPopup align="center" className="w-72 overflow-hidden">
@@ -370,19 +369,19 @@ export function DraftHeroHeadline({
                   </TooltipTrigger>
                   <TooltipPopup side="top">{item.label}</TooltipPopup>
                 </Tooltip>
-                {entry && showProjectEnvironments ? (
-                  <ProjectEnvironmentBadge
-                    group={entry.group}
-                    primaryEnvironmentId={primaryEnvironmentId}
-                    machineByEnvironmentId={environmentMachineById}
-                  />
-                ) : null}
                 {entry && canPinProjectGroup(entry.group) ? (
                   <ProjectPinButton
                     name={entry.group.displayName}
                     pinned={entry.group.pinned}
                     shortcutLabel={shortcutLabelForCommand(keybindings, "thread.pin")}
                     onToggle={() => toggleProjectGroupPin(entry.group)}
+                  />
+                ) : null}
+                {entry && showProjectEnvironments ? (
+                  <ProjectEnvironmentBadge
+                    group={entry.group}
+                    primaryEnvironmentId={primaryEnvironmentId}
+                    machineByEnvironmentId={environmentMachineById}
                   />
                 ) : null}
               </ComboboxItem>
@@ -443,7 +442,7 @@ export function DraftHeroHeadline({
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col items-center">
       {hasResolvedProject && !isScratchDraft ? (
-        <DraftHeroProjectHeading projectName={activeProjectDisplayName ?? "Choose a project"}>
+        <DraftHeroProjectHeading projectName={activeProjectTitle ?? "Choose a project"}>
           {projectSelector}
         </DraftHeroProjectHeading>
       ) : (

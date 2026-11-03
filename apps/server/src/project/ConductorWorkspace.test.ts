@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import { conductorPort } from "@t3tools/shared/conductorSettings";
@@ -18,7 +19,7 @@ const TestLayer = ConductorWorkspace.layer.pipe(
   Layer.provideMerge(ProcessRunner.layer),
   Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-conductor-test-" })),
   Layer.provideMerge(VcsProcess.layer),
-  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
 );
 
 /** A repository shaped like a real Conductor project, with an empty sibling worktree. */

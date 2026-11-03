@@ -1320,7 +1320,7 @@ it.effect.each(
     Effect.provide(
       GitVcsDriver.layer.pipe(
         Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "launch-git-" })),
-        Layer.provideMerge(NodeServices.layer),
+        Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
       ),
     ),
   ),
@@ -1409,7 +1409,7 @@ it.effect.each(["stable", "upstream/release"])(
       Effect.provide(
         GitVcsDriver.layer.pipe(
           Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "launch-remote-git-" })),
-          Layer.provideMerge(NodeServices.layer),
+          Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
         ),
       ),
     ),
@@ -2251,7 +2251,11 @@ it.effect("creates a strong provider-thread mapping for an imported native sessi
 it.effect("shared intake preserves durable attachment bytes after a lost launch result", () => {
   const harness = makeHarness();
   const layerFiles = ServerConfig.layerTest(process.cwd(), { prefix: "t3-message-intake-" }).pipe(
-    Layer.provideMerge(DocumentText.layer.pipe(Layer.provideMerge(NodeServices.layer))),
+    Layer.provideMerge(
+      DocumentText.layer.pipe(
+        Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+      ),
+    ),
   );
   return Effect.gen(function* () {
     const config = yield* ServerConfig.ServerConfig;
@@ -2645,7 +2649,11 @@ const clonedOutcome = {
   fetched: false,
 };
 const intakeFiles = ServerConfig.layerTest(process.cwd(), { prefix: "t3-launch-flow-" }).pipe(
-  Layer.provideMerge(DocumentText.layer.pipe(Layer.provideMerge(NodeServices.layer))),
+  Layer.provideMerge(
+    DocumentText.layer.pipe(
+      Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+    ),
+  ),
 );
 
 function firstMessageCommand(threadId: ThreadId, text: string, context?: typeof repositoryContext) {
@@ -2854,7 +2862,7 @@ describe("delegated tasks with a workspace of their own", () => {
           listWorktreePaths: (cwd) => Effect.succeed([...(worktreesByRoot[cwd] ?? [])]),
         }),
       ),
-      Layer.provide(NodeServices.layer),
+      Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
       Layer.provide(
         Layer.mergeAll(
           harness.layer,
@@ -3343,7 +3351,11 @@ it.effect("creates no thread when the pull request cannot be checked out", () =>
 it.effect("replays an accepted send after the project disables the instance", () => {
   const harness = makeHarness();
   const layerFiles = ServerConfig.layerTest(process.cwd(), { prefix: "t3-send-retry-" }).pipe(
-    Layer.provideMerge(DocumentText.layer.pipe(Layer.provideMerge(NodeServices.layer))),
+    Layer.provideMerge(
+      DocumentText.layer.pipe(
+        Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+      ),
+    ),
   );
   return Effect.gen(function* () {
     const launches = yield* ThreadLaunch.ThreadLaunchService;
@@ -3490,7 +3502,7 @@ it.effect.each(
         Layer.provide(NodeCrypto.layer),
         Layer.provide(harness.layer),
         Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({ resolveCommit })),
-        Layer.provide(NodeServices.layer),
+        Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
         Layer.provide(Layer.mock(ScheduledTasks.ScheduledTaskService)({})),
         Layer.provide(Layer.mock(SecretRequests.SecretRequests)({})),
       );

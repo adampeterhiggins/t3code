@@ -6,7 +6,7 @@ import {
 } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -111,7 +111,7 @@ export class GranolaAuth extends Context.Service<
 
 /** @public */
 export const make = Effect.gen(function* () {
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
   const httpClient = yield* HttpClient.HttpClient;
   const secrets = yield* ServerSecretStore.ServerSecretStore;
   // Refreshing may rotate the refresh token, so concurrent refreshes would spend the same one.
@@ -293,7 +293,7 @@ export const make = Effect.gen(function* () {
       return yield* loginError(`Granola refused to start sign-in (${device.error}).`);
     const flow: ActiveFlow = {
       flowId: yield* crypto
-        .randomUUIDv4()
+        .uuidV4()
         .pipe(Effect.mapError(() => loginError("Could not start Granola sign-in."))),
       previous,
     };

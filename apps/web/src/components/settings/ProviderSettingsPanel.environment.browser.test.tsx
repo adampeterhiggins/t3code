@@ -36,6 +36,7 @@ const state = vi.hoisted(() => ({
   updateModelPreferences: vi.fn(),
   toggleFavorite: vi.fn(),
   mutateProviderInstance: vi.fn(),
+  confirm: vi.fn<() => Promise<boolean>>(),
 }));
 
 vi.mock(import("../../state/server"), async (original) => {
@@ -80,6 +81,14 @@ vi.mock(import("../../state/use-atom-command"), async (original) => ({
       "accept-url-auth": state.acceptUrlAuth,
     })[command.label ?? ""] ?? vi.fn()) as never,
 }));
+vi.mock(import("~/localApi"), async (original) => {
+  const api = { dialogs: { confirm: state.confirm } };
+  return {
+    ...(await original()),
+    readLocalApi: (() => api) as never,
+    ensureLocalApi: (() => api) as never,
+  };
+});
 vi.mock(import("../../state/query"), async (original) => ({
   ...(await original()),
   useEnvironmentQuery: ((query: unknown) => ({
@@ -236,6 +245,7 @@ async function setup() {
   state.updateModelPreferences.mockReset();
   state.toggleFavorite.mockReset();
   state.mutateProviderInstance.mockReset().mockResolvedValue(AsyncResult.success({}));
+  state.confirm.mockReset().mockResolvedValue(false);
   state.refresh.mockReset().mockResolvedValue(AsyncResult.success(undefined));
   state.updateProvider.mockReset().mockResolvedValue(AsyncResult.success(undefined));
   state.uninstall.mockReset().mockResolvedValue(AsyncResult.success({}));
@@ -330,16 +340,20 @@ describe("EnvironmentProviderSettings routing", () => {
       favorites: [{ provider: customId, model: "favorite" }],
     };
     await using _screen = await render(panel());
+    state.confirm.mockResolvedValue(true);
     await userEvent.click(select("Work"));
     await userEvent.click(deleteButton(customId));
-    expect(state.mutateProviderInstance).toHaveBeenLastCalledWith({
-      operation: "remove",
-      instanceId: customId,
-    });
+    await vi.waitFor(() =>
+      expect(state.mutateProviderInstance).toHaveBeenLastCalledWith({
+        operation: "remove",
+        instanceId: customId,
+      }),
+    );
 
     state.mutateProviderInstance.mockClear();
     await userEvent.click(select("Codex"));
     await userEvent.click(deleteButton(codexId));
+    await vi.waitFor(() => expect(state.mutateProviderInstance).toHaveBeenCalled());
     const [resetMutation, resetPatch] = state.mutateProviderInstance.mock.lastCall ?? [];
     // Codex runs unconfigured, so deleting it keeps a disabled marker entry
     // rather than removing the slot, which would bring it straight back enabled.
@@ -356,9 +370,11 @@ describe("EnvironmentProviderSettings routing", () => {
     await setup();
     // Codex and Claude ship enabled at factory defaults: a fresh install shows
     // them with no providerInstances entry, and deleting must hide them too.
+    state.confirm.mockResolvedValue(true);
     await using screen = await render(panel());
     await userEvent.click(select("Codex"));
     await userEvent.click(deleteButton(codexId));
+    await vi.waitFor(() => expect(state.mutateProviderInstance).toHaveBeenCalled());
     const [mutation] = state.mutateProviderInstance.mock.lastCall ?? [];
     expect(mutation).toEqual({
       operation: "upsert",
@@ -383,13 +399,16 @@ describe("EnvironmentProviderSettings routing", () => {
         [grokId]: { driver: ProviderDriverKind.make("grok"), enabled: false },
       },
     };
+    state.confirm.mockResolvedValue(true);
     await using _screen = await render(panel());
     await userEvent.click(select("Grok"));
     await userEvent.click(deleteButton(grokId));
-    expect(state.mutateProviderInstance.mock.lastCall?.[0]).toEqual({
-      operation: "remove",
-      instanceId: grokId,
-    });
+    await vi.waitFor(() =>
+      expect(state.mutateProviderInstance.mock.lastCall?.[0]).toEqual({
+        operation: "remove",
+        instanceId: grokId,
+      }),
+    );
   });
 
   it("updates one provider instance without sending a stale whole map", async () => {
@@ -498,6 +517,63 @@ describe("EnvironmentProviderSettings routing", () => {
         },
       },
       {},
+    );
+  });
+});
+
+describe("EnvironmentProviderSettings instance removal", () => {
+  it("deletes a configured default instance only once the user confirms", async () => {
+    await setup();
+    state.settings = {
+      ...DEFAULT_UNIFIED_SETTINGS,
+      providerInstances: {
+        [codexId]: {
+          driver: ProviderDriverKind.make("codex"),
+          enabled: true,
+          config: { binaryPath: "/opt/codex/bin/codex" },
+        },
+      },
+    };
+    await setProviders([provider()]);
+    await using _screen = await render(panel({ targetInstanceId: codexId }));
+    await userEvent.click(deleteButton(codexId));
+
+    expect(state.mutateProviderInstance).not.toHaveBeenCalled();
+    expect(state.confirm).toHaveBeenCalledOnce();
+
+    state.confirm.mockResolvedValue(true);
+    await userEvent.click(deleteButton(codexId));
+    await vi.waitFor(() =>
+      expect(state.mutateProviderInstance).toHaveBeenCalledWith({
+        operation: "upsert",
+        instanceId: codexId,
+        instance: { driver: "codex", enabled: false, config: { enabled: false } },
+      }),
+    );
+  });
+
+  it("deletes a custom instance only once the user confirms", async () => {
+    await setup();
+    state.settings = {
+      ...DEFAULT_UNIFIED_SETTINGS,
+      providerInstances: {
+        [customId]: { driver: ProviderDriverKind.make("codex"), enabled: true },
+      },
+    };
+    await using _screen = await render(panel({ targetInstanceId: customId }));
+    const remove = page.getByRole("button", { name: `Delete instance ${customId}` });
+    await userEvent.click(remove);
+
+    expect(state.mutateProviderInstance).not.toHaveBeenCalled();
+    expect(state.confirm).toHaveBeenCalledOnce();
+
+    state.confirm.mockResolvedValue(true);
+    await userEvent.click(remove);
+    await vi.waitFor(() =>
+      expect(state.mutateProviderInstance).toHaveBeenCalledWith({
+        operation: "remove",
+        instanceId: customId,
+      }),
     );
   });
 });

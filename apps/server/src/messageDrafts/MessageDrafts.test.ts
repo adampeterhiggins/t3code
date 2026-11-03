@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as DocumentText from "../provider/DocumentText.ts";
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFS from "node:fs";
@@ -60,7 +61,11 @@ const threadsLayer = Layer.mock(ThreadManagement.ThreadManagementService)({
 });
 
 const testLayer = MessageDrafts.layer.pipe(
-  Layer.provideMerge(DocumentText.layer.pipe(Layer.provideMerge(NodeServices.layer))),
+  Layer.provideMerge(
+    DocumentText.layer.pipe(
+      Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+    ),
+  ),
   Layer.provideMerge(threadsLayer),
   Layer.provideMerge(
     Layer.effectDiscard(
@@ -73,7 +78,7 @@ const testLayer = MessageDrafts.layer.pipe(
   ),
   Layer.provideMerge(NodeSqliteClient.layer({ filename: ":memory:" })),
   Layer.provideMerge(ServerConfig.layerTest(process.cwd(), { prefix: "t3-message-drafts-" })),
-  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
 );
 
 const stagePendingUpload = Effect.fn("test.stagePendingUpload")(function* () {

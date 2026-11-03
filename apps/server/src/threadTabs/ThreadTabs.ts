@@ -16,7 +16,7 @@ import {
   type ThreadTabMemberships,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -126,7 +126,7 @@ interface TabRow {
 const internal = (detail: string) => (cause: unknown) =>
   new ThreadTabsError({ reason: "internal", detail, cause });
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const threads = yield* ThreadManagementService;
@@ -150,7 +150,7 @@ export const make = Effect.gen(function* () {
     ],
     { discard: true },
   );
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
 
   const shellOf = (threadId: ThreadId) =>
     threads.getThreadShell(threadId).pipe(Effect.mapError(internal("Could not read the thread.")));
@@ -304,7 +304,7 @@ export const make = Effect.gen(function* () {
   );
 
   const newCommandId = (tag: string) =>
-    crypto.randomUUIDv4().pipe(
+    crypto.uuidV4().pipe(
       Effect.map((uuid) => CommandId.make(`server:${tag}:${uuid}`)),
       Effect.mapError(internal("Could not allocate a command id.")),
     );

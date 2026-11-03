@@ -20,7 +20,7 @@ import {
 } from "@t3tools/contracts";
 import { remapComposerContextAttachments } from "@t3tools/shared/composerContextReferences";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -100,7 +100,7 @@ export class MessageDrafts extends Context.Service<
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const threads = yield* ThreadManagement.ThreadManagementService;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
   // Attachment claims and sends read these per call.
   const services = yield* Effect.context<
     | ThreadManagement.ThreadManagementService
@@ -205,7 +205,7 @@ const make = Effect.gen(function* () {
           new MessageDraftError({ reason: "invalid-attachment", detail: cause.message, cause }),
       ),
     );
-    const uuid = yield* crypto.randomUUIDv4().pipe(Effect.mapError(storageError));
+    const uuid = yield* crypto.uuidV4().pipe(Effect.mapError(storageError));
     const remappedContext = remapComposerContextAttachments(
       input.context,
       input.attachments,
@@ -265,7 +265,7 @@ const make = Effect.gen(function* () {
     const draft = yield* take(input.draftId);
     return yield* Effect.gen(function* () {
       const thread = yield* liveThread(draft.threadId);
-      const uuid = yield* crypto.randomUUIDv4().pipe(Effect.mapError(storageError));
+      const uuid = yield* crypto.uuidV4().pipe(Effect.mapError(storageError));
       const messageId = MessageId.make(`message:draft:${uuid}`);
       yield* ThreadMessageIntake.sendToThread({
         projectId: thread.projectId,

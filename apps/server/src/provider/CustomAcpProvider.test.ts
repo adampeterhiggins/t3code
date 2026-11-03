@@ -1,3 +1,5 @@
+import * as Layer from "effect/Layer";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
@@ -29,44 +31,47 @@ const makeMockAgent = Effect.promise(async () => {
   return { workspace, binaryPath };
 });
 
-it.layer(NodeServices.layer)("checkCustomAcpProviderStatus", (it) => {
-  it.effect("reports the models and modes the agent advertises", () =>
-    Effect.gen(function* () {
-      const agent = yield* makeMockAgent;
-      const snapshot = yield* checkCustomAcpProviderStatus(
-        decodeSettings({ binaryPath: agent.binaryPath }),
-        process.env,
-        agent.workspace,
-      );
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))(
+  "checkCustomAcpProviderStatus",
+  (it) => {
+    it.effect("reports the models and modes the agent advertises", () =>
+      Effect.gen(function* () {
+        const agent = yield* makeMockAgent;
+        const snapshot = yield* checkCustomAcpProviderStatus(
+          decodeSettings({ binaryPath: agent.binaryPath }),
+          process.env,
+          agent.workspace,
+        );
 
-      assert.equal(snapshot.status, "ready");
-      assert.equal(snapshot.showInteractionModeToggle, true);
-      assert.isAbove(snapshot.models.length, 1);
-      assert.include(
-        snapshot.models.map((model) => model.slug),
-        "composer-2",
-      );
-      assert.equal(snapshot.models.filter((model) => model.isDefault).length, 1);
-    }),
-  );
+        assert.equal(snapshot.status, "ready");
+        assert.equal(snapshot.showInteractionModeToggle, true);
+        assert.isAbove(snapshot.models.length, 1);
+        assert.include(
+          snapshot.models.map((model) => model.slug),
+          "composer-2",
+        );
+        assert.equal(snapshot.models.filter((model) => model.isDefault).length, 1);
+      }),
+    );
 
-  it.effect("explains a missing or unset executable", () =>
-    Effect.gen(function* () {
-      const missing = yield* checkCustomAcpProviderStatus(
-        decodeSettings({ binaryPath: "t3-no-such-acp-agent" }),
-        process.env,
-        process.cwd(),
-      );
-      assert.equal(missing.status, "error");
-      assert.equal(missing.installed, false);
+    it.effect("explains a missing or unset executable", () =>
+      Effect.gen(function* () {
+        const missing = yield* checkCustomAcpProviderStatus(
+          decodeSettings({ binaryPath: "t3-no-such-acp-agent" }),
+          process.env,
+          process.cwd(),
+        );
+        assert.equal(missing.status, "error");
+        assert.equal(missing.installed, false);
 
-      const unset = yield* checkCustomAcpProviderStatus(
-        decodeSettings({}),
-        process.env,
-        process.cwd(),
-      );
-      assert.equal(unset.status, "error");
-      assert.equal(unset.message, "Set the agent executable in Settings → Providers.");
-    }),
-  );
-});
+        const unset = yield* checkCustomAcpProviderStatus(
+          decodeSettings({}),
+          process.env,
+          process.cwd(),
+        );
+        assert.equal(unset.status, "error");
+        assert.equal(unset.message, "Set the agent executable in Settings → Providers.");
+      }),
+    );
+  },
+);

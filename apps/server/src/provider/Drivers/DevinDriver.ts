@@ -12,7 +12,7 @@ import {
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { resolveSelfInvocation } from "@t3tools/shared/nodeRuntime";
 import * as Schema from "effect/Schema";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -95,7 +95,7 @@ const UPDATE: ProviderMaintenanceCapabilitiesResolver = {
 
 export type DevinDriverEnv =
   | ChildProcessSpawner.ChildProcessSpawner
-  | Crypto.Crypto
+  | SecureRandom.SecureRandom
   | FileSystem.FileSystem
   | HttpClient.HttpClient
   | IdAllocator.IdAllocatorV2
@@ -133,7 +133,7 @@ export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv, DevinUsa
         homeVariables: ["XDG_DATA_HOME"],
       }),
     };
-    const crypto = yield* Crypto.Crypto;
+    const secureRandom = yield* SecureRandom.SecureRandom;
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
@@ -250,7 +250,7 @@ export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv, DevinUsa
                   )
                 : runtime.authenticate("devin-browser"),
             ),
-            Effect.provideService(Crypto.Crypto, crypto),
+            Effect.provideService(SecureRandom.SecureRandom, secureRandom),
             Effect.mapError(
               (cause) =>
                 new ProviderSetupError({
@@ -302,7 +302,7 @@ export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv, DevinUsa
       Effect.map(stampSetup),
       Effect.map(stampIdentity),
       Effect.flatMap(authMethodPersistence.stamp),
-      Effect.provideService(Crypto.Crypto, crypto),
+      Effect.provideService(SecureRandom.SecureRandom, secureRandom),
       Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
     );
 

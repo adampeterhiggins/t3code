@@ -1,5 +1,5 @@
 import type { UsageRecord } from "@t3tools/provider-core/server/usage";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Base64Url from "effect/encoding/Base64Url";
@@ -14,6 +14,7 @@ import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 
 import type { CursorCredentialSource } from "./accountCache.ts";
+import { DEFAULT_CURSOR_API_ENDPOINT, exchangeCursorApiKey } from "./apiKey.ts";
 import * as CursorKeychain from "./CursorKeychain.ts";
 
 function object(value: unknown): Record<string, unknown> {
@@ -58,8 +59,8 @@ const billedEventIdentity = (...fields: readonly unknown[]) => JSON.stringify(fi
 const textEncoder = new TextEncoder();
 
 const accountHash = Effect.fn("accountHash")(function* (value: string) {
-  const crypto = yield* Crypto.Crypto;
-  return Hex.encode(yield* crypto.digest("SHA-256", textEncoder.encode(value)));
+  const digest = yield* Digest.Digest;
+  return Hex.encode(yield* digest.digest(Digest.sha256, textEncoder.encode(value)));
 });
 
 /** The account an access token names, as the key its history is deduplicated by. */
@@ -114,7 +115,7 @@ export const readCursorAccountUsage = Effect.fn("readCursorAccountUsage")(functi
 ): Effect.fn.Return<
   CursorAccountUsageReadResult,
   never,
-  FileSystem.FileSystem | Crypto.Crypto | HttpClient.HttpClient
+  FileSystem.FileSystem | Digest.Digest | HttpClient.HttpClient
 > {
   const fileSystem = yield* FileSystem.FileSystem;
   const httpClient = yield* HttpClient.HttpClient;
@@ -134,7 +135,14 @@ export const readCursorAccountUsage = Effect.fn("readCursorAccountUsage")(functi
         )
       : credentialSource.kind === "token"
         ? Effect.succeed(credentialSource.accessToken)
-        : keychainToken,
+        : credentialSource.kind === "apiKey"
+          ? exchangeCursorApiKey(credentialSource.apiKey).pipe(
+              Effect.provideService(HttpClient.HttpClient, httpClient),
+              Effect.mapError(
+                () => new CursorAccountUsageInvalidError({ reason: "Invalid API key" }),
+              ),
+            )
+          : keychainToken,
   );
   if (Result.isFailure(credential)) {
     const cause = credential.failure;
@@ -150,9 +158,11 @@ export const readCursorAccountUsage = Effect.fn("readCursorAccountUsage")(functi
         ? null
         : typeof credentialSource === "string"
           ? "Cursor credentials could not be read."
-          : CursorKeychain.isCursorKeychainTimeoutError(cause)
-            ? "Allow Keychain access on the Mac running T3 Code, then refresh."
-            : "Cursor Keychain credentials could not be read.",
+          : credentialSource.kind === "apiKey"
+            ? "Cursor account usage could not be read."
+            : CursorKeychain.isCursorKeychainTimeoutError(cause)
+              ? "Allow Keychain access on the Mac running T3 Code, then refresh."
+              : "Cursor Keychain credentials could not be read.",
     };
   }
   const accessToken = credential.success;
@@ -182,6 +192,21 @@ export const readCursorAccountUsage = Effect.fn("readCursorAccountUsage")(functi
     accountKey = yield* accountHash(subject);
     if (!Number.isFinite(sinceMs) || !Number.isFinite(endDate) || sinceMs < 0 || sinceMs > endDate)
       return yield* invalid("Invalid date window");
+    // The web dashboard rejects API-key tokens; Cursor's RPC API accepts them.
+    const pageRequest =
+      typeof credentialSource !== "string" && credentialSource.kind === "apiKey"
+        ? HttpClientRequest.post(
+            `${DEFAULT_CURSOR_API_ENDPOINT}/aiserver.v1.DashboardService/GetFilteredUsageEvents`,
+          ).pipe(
+            HttpClientRequest.bearerToken(accessToken),
+            HttpClientRequest.setHeader("connect-protocol-version", "1"),
+          )
+        : HttpClientRequest.post(DASHBOARD_USAGE_URL).pipe(
+            HttpClientRequest.setHeaders({
+              Origin: "https://cursor.com",
+              Cookie: `WorkosCursorSessionToken=${encodeURIComponent(`${userId}::${accessToken}`)}`,
+            }),
+          );
     const records: UsageRecord[] = [];
     const occurrences = new Map<string, number>();
     const pages: unknown[][] = [];
@@ -197,11 +222,7 @@ export const readCursorAccountUsage = Effect.fn("readCursorAccountUsage")(functi
         }
         const response = yield* httpClient
           .execute(
-            HttpClientRequest.post(DASHBOARD_USAGE_URL).pipe(
-              HttpClientRequest.setHeaders({
-                Origin: "https://cursor.com",
-                Cookie: `WorkosCursorSessionToken=${encodeURIComponent(`${userId}::${accessToken}`)}`,
-              }),
+            pageRequest.pipe(
               HttpClientRequest.bodyText(
                 pageRequestBody(page, pageSize, sinceMs, endDate),
                 "application/json",

@@ -23,8 +23,8 @@ import {
   NonNegativeInt,
   ProjectId,
 } from "@t3tools/contracts";
-import * as Crypto from "effect/Crypto";
 import * as FileSystem from "effect/FileSystem";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Schema from "effect/Schema";
 import { Tool, Toolkit } from "effect/ai";
 
@@ -72,7 +72,7 @@ const ThreadOrganizeTool = Tool.make("t3_thread_organize", {
   dependencies: [
     McpInvocationContext.McpInvocationContext,
     ThreadManagementService.ThreadManagementService,
-    Crypto.Crypto,
+    SecureRandom.SecureRandom,
   ],
 })
   .annotate(Tool.Title, "Organize a thread")
@@ -112,7 +112,7 @@ const ThreadMoveTool = Tool.make("t3_thread_move", {
     GitVcsDriver.GitVcsDriver,
     FileSystem.FileSystem,
     ProjectSetupScriptRunner.ProjectSetupScriptRunner,
-    Crypto.Crypto,
+    SecureRandom.SecureRandom,
   ],
 }).annotate(Tool.Destructive, true);
 
@@ -123,7 +123,7 @@ const commandTool = {
   dependencies: [
     McpInvocationContext.McpInvocationContext,
     ThreadManagementService.ThreadManagementService,
-    Crypto.Crypto,
+    SecureRandom.SecureRandom,
   ],
 };
 const queueEntry = Schema.Struct({
