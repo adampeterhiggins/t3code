@@ -10,9 +10,11 @@ import {
   resolveSidebarProjectScopeKey,
   type SidebarProjectSnapshot,
 } from "../../sidebarProjectGrouping";
-import { buildSidebarOrganisationOptions, repositoryOrganisationKeyOf } from "./organization.logic";
+import { buildSidebarOrganisationOptions, sidebarScopedMemberKeys } from "./organization.logic";
 
 const SIDEBAR_ORGANISATIONS_KEY = "t3code:sidebar:organisations";
+const SIDEBAR_EXCLUDED_ORGANISATIONS_KEY = "t3code:sidebar:excluded-organisations";
+const SIDEBAR_EXCLUDED_PROJECTS_KEY = "t3code:sidebar:excluded-projects";
 const NO_ORGANISATION_KEYS: readonly string[] = [];
 const ORGANISATION_KEYS_SCHEMA = Schema.Array(Schema.String);
 
@@ -23,7 +25,22 @@ export function useSidebarProjectScope(
   >,
 ) {
   const persistedProjectScopeKeys = useUiStateStore((store) => store.sidebarProjectScopeKeys);
-  const setProjectScopeKeys = useUiStateStore((store) => store.setSidebarProjectScopeKeys);
+  const setPickedProjectKeys = useUiStateStore((store) => store.setSidebarProjectScopeKeys);
+  // Exclusions are the other way to narrow a dimension: everything but them, so new projects
+  // and organisations still show. A dimension holds picks or exclusions, never both.
+  const [storedExcludedProjectKeys, setStoredExcludedProjectKeys] = useLocalStorage(
+    SIDEBAR_EXCLUDED_PROJECTS_KEY,
+    NO_ORGANISATION_KEYS,
+    ORGANISATION_KEYS_SCHEMA,
+  );
+  const setProjectScopeKeys = (keys: readonly string[]) => {
+    setPickedProjectKeys(keys);
+    if (keys.length > 0) setStoredExcludedProjectKeys(NO_ORGANISATION_KEYS);
+  };
+  const setExcludedProjectKeys = (keys: readonly string[]) => {
+    setStoredExcludedProjectKeys(keys);
+    if (keys.length > 0) setPickedProjectKeys([]);
+  };
   // A saved physical scratch scope maps onto the group its environment config
   // coalesces it into (see resolveSidebarProjectScopeKey).
   const projectScopeKeys = [
@@ -47,11 +64,24 @@ export function useSidebarProjectScope(
   });
   // Organisations narrow the same way projects do, per checkout: a project group can hold
   // checkouts from a fork and its upstream, which belong to different owners.
-  const [storedOrganisationKeys, setOrganisationKeys] = useLocalStorage(
+  const [storedOrganisationKeys, setStoredOrganisationKeys] = useLocalStorage(
     SIDEBAR_ORGANISATIONS_KEY,
     NO_ORGANISATION_KEYS,
     ORGANISATION_KEYS_SCHEMA,
   );
+  const [storedExcludedOrganisationKeys, setStoredExcludedOrganisationKeys] = useLocalStorage(
+    SIDEBAR_EXCLUDED_ORGANISATIONS_KEY,
+    NO_ORGANISATION_KEYS,
+    ORGANISATION_KEYS_SCHEMA,
+  );
+  const setOrganisationKeys = (keys: readonly string[]) => {
+    setStoredOrganisationKeys(keys);
+    if (keys.length > 0) setStoredExcludedOrganisationKeys(NO_ORGANISATION_KEYS);
+  };
+  const setExcludedOrganisationKeys = (keys: readonly string[]) => {
+    setStoredExcludedOrganisationKeys(keys);
+    if (keys.length > 0) setStoredOrganisationKeys(NO_ORGANISATION_KEYS);
+  };
   const { organisations } = useOrganisations();
   // A picked organisation with no checkout left still narrows the list, so it stays offered
   // (and pilled) until it is dropped rather than silently coming back with a new checkout.
@@ -59,28 +89,40 @@ export function useSidebarProjectScope(
   // emptying the list for a moment.
   const scopedOrganisationKeys =
     projectGroups.length === 0 ? NO_ORGANISATION_KEYS : storedOrganisationKeys;
+  const excludedOrganisationKeys =
+    projectGroups.length === 0 ? NO_ORGANISATION_KEYS : storedExcludedOrganisationKeys;
   const organisationOptions = buildSidebarOrganisationOptions(
     projectGroups.flatMap((project) =>
       project.memberProjects.map((member) => member.repositoryIdentity),
     ),
     organisations,
-    scopedOrganisationKeys,
+    [...scopedOrganisationKeys, ...excludedOrganisationKeys],
   );
-  const scopedProjectKeys = (() => {
-    if (scopedProjectGroups.length === 0 && scopedOrganisationKeys.length === 0) return null;
-    const organisations = new Set(scopedOrganisationKeys);
-    return new Set(
-      (scopedProjectGroups.length > 0 ? scopedProjectGroups : projectGroups).flatMap((project) =>
-        project.memberProjects
-          .filter(
-            (member) =>
-              organisations.size === 0 ||
-              organisations.has(repositoryOrganisationKeyOf(member.repositoryIdentity)),
-          )
-          .map((member) => `${member.environmentId}:${member.id}`),
-      ),
-    );
-  })();
+  const excludedProjectKeys = [
+    ...new Set(
+      storedExcludedProjectKeys.flatMap((key) => {
+        const resolved = resolveSidebarProjectScopeKey({
+          groups: projectGroups,
+          key,
+          settings: projectGroupingSettings,
+        });
+        return resolved === null ? [] : [resolved];
+      }),
+    ),
+  ];
+  const projectScope = {
+    picked: scopedProjectGroups.map((project) => project.projectKey),
+    excluded: excludedProjectKeys,
+  };
+  const organisationScope = {
+    picked: scopedOrganisationKeys,
+    excluded: excludedOrganisationKeys,
+  };
+  const scopedProjectKeys = sidebarScopedMemberKeys({
+    projects: projectGroups,
+    projectScope,
+    organisationScope,
+  });
   // Scoped projects that are gone drop out of the scope. Configs identify
   // scratch projects, so both they and live project snapshots must arrive
   // before a persisted scope can be considered missing.
@@ -106,7 +148,7 @@ export function useSidebarProjectScope(
       nextKeys.length !== persistedProjectScopeKeys.length ||
       nextKeys.some((key, index) => key !== persistedProjectScopeKeys[index])
     ) {
-      setProjectScopeKeys(nextKeys);
+      setPickedProjectKeys(nextKeys);
     }
   }, [
     allProjectConfigsReady,
@@ -114,12 +156,20 @@ export function useSidebarProjectScope(
     persistedProjectScopeKeys,
     projectGroups,
     projectGroupingSettings,
-    setProjectScopeKeys,
+    setPickedProjectKeys,
   ]);
   return {
     persistedProjectScopeKeys,
     setProjectScopeKeys,
     projectScopeKeys,
+    storedExcludedProjectKeys,
+    excludedProjectKeys,
+    setExcludedProjectKeys,
+    storedExcludedOrganisationKeys,
+    excludedOrganisationKeys,
+    setExcludedOrganisationKeys,
+    projectScope,
+    organisationScope,
     scopedProjectGroups,
     storedOrganisationKeys,
     setOrganisationKeys,

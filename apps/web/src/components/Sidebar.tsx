@@ -584,9 +584,17 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     setProjectScopeKeys,
     projectScopeKeys,
     scopedProjectGroups,
+    storedExcludedProjectKeys,
+    excludedProjectKeys,
+    setExcludedProjectKeys,
     storedOrganisationKeys,
     setOrganisationKeys,
     scopedOrganisationKeys,
+    storedExcludedOrganisationKeys,
+    excludedOrganisationKeys,
+    setExcludedOrganisationKeys,
+    projectScope,
+    organisationScope,
     organisationOptions,
     scopedProjectKeys,
   } = useSidebarProjectScope(projectGroups, projectGroupingSettings);
@@ -624,7 +632,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     }
     return count;
   });
-  const selectionScope = { clearSelection, projectScopeKeys, scopedOrganisationKeys };
+  const selectionScope = {
+    clearSelection,
+    projectScopeKeys,
+    scopedOrganisationKeys,
+    storedExcludedProjectKeys,
+    storedExcludedOrganisationKeys,
+  };
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- clears the external thread-selection store when sidebar scope changes
   useEffect(() => {
     selectionScope.clearSelection();
@@ -714,7 +728,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       ? [
           ...pickableProjectGroups(projectGroups),
           ...projectGroups.filter((project) => project.archived),
-        ]
+        ].filter((project) => !excludedProjectKeys.includes(project.projectKey))
       : scopedProjectGroups
     : null;
   const projectFolders =
@@ -854,7 +868,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     ) {
       // The row renders under the widened scope; scroll on that pass.
       setProjectScopeKeys([]);
+      setExcludedProjectKeys([]);
       setOrganisationKeys([]);
+      setExcludedOrganisationKeys([]);
       return;
     }
     const activeRow = document.querySelector('[data-sidebar="content"] [aria-current="page"]');
@@ -869,7 +885,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     sidebarRouteThreadKey,
     threads,
     persistedProjectScopeKeys,
+    storedExcludedProjectKeys,
     storedOrganisationKeys,
+    storedExcludedOrganisationKeys,
     isSearchingThreads,
   ]);
 
@@ -984,7 +1002,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     sidebarPages,
   );
   const [settledVisibleCount, setSettledVisibleCount] = useState(SETTLED_TAIL_INITIAL_COUNT);
-  const settledResetKey = JSON.stringify([projectScopeKeys, scopedOrganisationKeys]);
+  const settledResetKey = JSON.stringify([projectScope, organisationScope]);
   const [lastSettledResetKey, setLastSettledResetKey] = useState(settledResetKey);
   if (lastSettledResetKey !== settledResetKey) {
     setLastSettledResetKey(settledResetKey);
@@ -1018,8 +1036,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     threads: facetThreads,
     projects: projectGroups,
     pages: sidebarPages,
-    scopedProjectKeys: projectScopeKeys,
-    scopedOrganisationKeys,
+    projectScope,
+    organisationScope,
   });
   const pageCounts = new Map(filterFacets.pageCounts);
   pageCounts.set("settled", settledCount);
@@ -3074,8 +3092,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     if (
       shouldCreateNewThreadInCurrentProject(
         event?.shiftKey ?? false,
-        pickableProjectGroups(scopedProjectGroups.length ? scopedProjectGroups : projectGroups)
-          .length,
+        pickableProjectGroups(
+          scopedProjectGroups.length
+            ? scopedProjectGroups
+            : projectGroups.filter((project) => !excludedProjectKeys.includes(project.projectKey)),
+        ).length,
         projectChoiceCount,
       )
     ) {
@@ -3154,11 +3175,15 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                   organisationCounts={filterFacets.organisationCounts}
                   scopedOrganisationKeys={scopedOrganisationKeys}
                   onScopedOrganisationKeysChange={setOrganisationKeys}
+                  excludedOrganisationKeys={excludedOrganisationKeys}
+                  onExcludedOrganisationKeysChange={setExcludedOrganisationKeys}
                   onPagesChange={setSidebarPages}
                   projects={filterFacets.projects}
                   projectCounts={filterFacets.projectCounts}
                   scopedProjectKeys={projectScopeKeys}
                   onScopedProjectKeysChange={setProjectScopeKeys}
+                  excludedProjectKeys={excludedProjectKeys}
+                  onExcludedProjectKeysChange={setExcludedProjectKeys}
                   onProjectSettings={handleProjectSettings}
                   projectBadge={(project) => projectBadges.get(project.projectKey) ?? null}
                 />
@@ -3188,9 +3213,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               organisations={organisationOptions}
               scopedOrganisationKeys={scopedOrganisationKeys}
               onScopedOrganisationKeysChange={setOrganisationKeys}
+              excludedOrganisationKeys={excludedOrganisationKeys}
+              onExcludedOrganisationKeysChange={setExcludedOrganisationKeys}
               projects={projectGroups}
               scopedProjectKeys={projectScopeKeys}
               onScopedProjectKeysChange={setProjectScopeKeys}
+              excludedProjectKeys={excludedProjectKeys}
+              onExcludedProjectKeysChange={setExcludedProjectKeys}
             />
           </SidebarGroup>
         }

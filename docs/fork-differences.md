@@ -841,7 +841,12 @@ would leave under the other two rows, and Organisations and Projects offer only 
 other one leaves (an organisation that owns a picked project, a project in a picked organisation);
 a pick the others exclude stays listed at 0 so it can be unticked, and a picked organisation with
 no checkout left keeps narrowing the list until it is dropped. **Only**, on the highlighted row,
-picks just that one and closes the menu. Threads and Automations are the
+picks just that one and closes the menu; **Exclude** beside it leaves that one out instead. On
+Show it picks every other page; on Organisations and Projects it keeps everything else, including
+ones added later, struck through in the submenu and pilled as "Not …" (a dimension holds picks or
+exclusions, never both, saved per client in
+[`useSidebarProjectScope.ts`](../apps/web/src/components/sidebar/useSidebarProjectScope.ts)).
+Threads and Automations are the
 default; other picks list as titled sections below live threads, so snoozed and settled threads no longer sit in shelves under
 live work, and the drag targets for settling and waking are gone. On web and desktop, clicking a
 section's title collapses it to a count, remembered per client; the open thread stays listed under a

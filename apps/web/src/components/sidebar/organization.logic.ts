@@ -74,9 +74,7 @@ export function repositoryOrganisationOf(
 export const NO_ORGANISATION_KEY = "none";
 
 /** The Organisations filter key of a checkout, with ownerless checkouts under NO_ORGANISATION_KEY. */
-export function repositoryOrganisationKeyOf(
-  identity: RepositoryIdentity | null | undefined,
-): string {
+function repositoryOrganisationKeyOf(identity: RepositoryIdentity | null | undefined): string {
   return repositoryOrganisationOf(identity)?.key ?? NO_ORGANISATION_KEY;
 }
 
@@ -124,6 +122,49 @@ export function buildOrganisationOptions(
       };
     })
     .toSorted((left, right) => left.label.localeCompare(right.label));
+}
+
+/** A filter dimension's state: only its picks, or everything but its exclusions. */
+export interface SidebarScope {
+  readonly picked: readonly string[];
+  readonly excluded: readonly string[];
+}
+
+const passesScope = (scope: SidebarScope, key: string | undefined) =>
+  (scope.picked.length === 0 || (key !== undefined && scope.picked.includes(key))) &&
+  (key === undefined || !scope.excluded.includes(key));
+
+const scopeIsOff = (scope: SidebarScope) =>
+  scope.picked.length === 0 && scope.excluded.length === 0;
+
+/** The checkouts the Projects and Organisations filters let through, or null while both are off. */
+export function sidebarScopedMemberKeys(input: {
+  readonly projects: ReadonlyArray<{
+    readonly projectKey: string;
+    readonly memberProjects: ReadonlyArray<{
+      readonly environmentId: string;
+      readonly id: string;
+      readonly repositoryIdentity?: RepositoryIdentity | null | undefined;
+    }>;
+  }>;
+  readonly projectScope: SidebarScope;
+  readonly organisationScope: SidebarScope;
+}): Set<string> | null {
+  if (scopeIsOff(input.projectScope) && scopeIsOff(input.organisationScope)) return null;
+  return new Set(
+    input.projects
+      .filter((project) => passesScope(input.projectScope, project.projectKey))
+      .flatMap((project) =>
+        project.memberProjects
+          .filter((member) =>
+            passesScope(
+              input.organisationScope,
+              repositoryOrganisationKeyOf(member.repositoryIdentity),
+            ),
+          )
+          .map((member) => `${member.environmentId}:${member.id}`),
+      ),
+  );
 }
 
 /**
@@ -178,8 +219,8 @@ export function buildSidebarFilterFacets<
   readonly threads: readonly SidebarFacetThread[];
   readonly projects: readonly Project[];
   readonly pages: readonly SidebarPage[];
-  readonly scopedProjectKeys: readonly string[];
-  readonly scopedOrganisationKeys: readonly string[];
+  readonly projectScope: SidebarScope;
+  readonly organisationScope: SidebarScope;
 }): {
   pageCounts: ReadonlyMap<SidebarPage, number>;
   projectCounts: ReadonlyMap<string, number>;
@@ -204,30 +245,41 @@ export function buildSidebarFilterFacets<
         const key = projectKeyByMember.get(memberKey(thread));
         return key === undefined ? [] : [key];
       },
-      selected: input.scopedProjectKeys,
+      selected: input.projectScope.picked,
+      matches: (thread) =>
+        passesScope(input.projectScope, projectKeyByMember.get(memberKey(thread))),
     },
     organisation: {
       values: (thread) => {
         const key = organisationByMember.get(memberKey(thread));
         return key === undefined ? [] : [key];
       },
-      selected: input.scopedOrganisationKeys,
+      selected: input.organisationScope.picked,
+      matches: (thread) =>
+        passesScope(input.organisationScope, organisationByMember.get(memberKey(thread))),
     },
   });
   const counts = <Key extends string>(choices: ReadonlyArray<{ value: string; count: number }>) =>
     new Map(choices.map((choice) => [choice.value as Key, choice.count]));
 
-  const pickedOrganisations = new Set(input.scopedOrganisationKeys);
-  const pickedProjects = new Set(input.scopedProjectKeys);
+  const pickedProjects = new Set(input.projectScope.picked);
   const memberOrganisations = (project: Project) =>
     project.memberProjects.map((member) => repositoryOrganisationKeyOf(member.repositoryIdentity));
   const projects = input.projects.filter(
     (project) =>
-      pickedOrganisations.size === 0 ||
       pickedProjects.has(project.projectKey) ||
-      memberOrganisations(project).some((key) => pickedOrganisations.has(key)),
+      input.projectScope.excluded.includes(project.projectKey) ||
+      project.memberProjects.some((member) =>
+        passesScope(
+          input.organisationScope,
+          repositoryOrganisationKeyOf(member.repositoryIdentity),
+        ),
+      ),
   );
-  const organisationKeys = new Set(input.scopedOrganisationKeys);
+  const organisationKeys = new Set([
+    ...input.organisationScope.picked,
+    ...input.organisationScope.excluded,
+  ]);
   for (const project of input.projects) {
     if (pickedProjects.size > 0 && !pickedProjects.has(project.projectKey)) continue;
     for (const key of memberOrganisations(project)) organisationKeys.add(key);

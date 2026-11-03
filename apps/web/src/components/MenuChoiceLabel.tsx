@@ -1,9 +1,9 @@
 import { HighlightedSearchText } from "./ui/highlighted-search-text";
 
-/** "Only" on the highlighted row: narrow to just that choice. It follows the
- *  label on the same baseline and keeps its width while hidden, so the
- *  trailing count stays in one column on every row. */
-function OnlyButton(props: { onClick: () => void }) {
+/** A hover action on the highlighted row, such as "Only". It follows the label on the same
+ *  baseline and keeps its width while hidden, so the trailing count stays in one column on
+ *  every row. */
+function ChoiceActionButton(props: { label: string; onClick: () => void }) {
   return (
     <button
       type="button"
@@ -15,19 +15,33 @@ function OnlyButton(props: { onClick: () => void }) {
         props.onClick();
       }}
     >
-      Only
+      {props.label}
     </button>
   );
 }
 
-/** A multi-select filter row's label, with "Only" beside it on hover. */
-export function MenuChoiceLabel(props: { label: string; query?: string; onOnly: () => void }) {
+/** A multi-select filter row's label, with "Only" (and "Exclude" where offered) beside it on
+ *  hover. An excluded choice is struck through. */
+export function MenuChoiceLabel(props: {
+  label: string;
+  query?: string;
+  onOnly: () => void;
+  onExclude?: (() => void) | undefined;
+  excluded?: boolean;
+}) {
   return (
     <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
-      <span className="min-w-0 truncate">
+      <span
+        className={
+          props.excluded
+            ? "min-w-0 truncate text-muted-foreground line-through"
+            : "min-w-0 truncate"
+        }
+      >
         <HighlightedSearchText text={props.label} query={props.query ?? ""} />
       </span>
-      <OnlyButton onClick={props.onOnly} />
+      <ChoiceActionButton label="Only" onClick={props.onOnly} />
+      {props.onExclude ? <ChoiceActionButton label="Exclude" onClick={props.onExclude} /> : null}
     </span>
   );
 }

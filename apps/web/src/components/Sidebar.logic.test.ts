@@ -86,6 +86,8 @@ import {
   buildSidebarOrganisationOptions,
   NO_ORGANISATION_KEY,
   buildSidebarFilterFacets,
+  sidebarScopedMemberKeys,
+  type SidebarScope,
   type SidebarPage,
   repositoryOrganisationOf,
 } from "./sidebar/organization.logic";
@@ -2930,13 +2932,18 @@ describe("buildSidebarFilterFacets", () => {
     pages?: SidebarPage[];
     projects?: string[];
     organisations?: string[];
+    excludedProjects?: string[];
+    excludedOrganisations?: string[];
   }) =>
     buildSidebarFilterFacets({
       threads,
       projects,
       pages: input.pages ?? ["threads"],
-      scopedProjectKeys: input.projects ?? [],
-      scopedOrganisationKeys: input.organisations ?? [],
+      projectScope: { picked: input.projects ?? [], excluded: input.excludedProjects ?? [] },
+      organisationScope: {
+        picked: input.organisations ?? [],
+        excluded: input.excludedOrganisations ?? [],
+      },
     });
 
   it("counts each dimension under the others but not itself", () => {
@@ -2974,8 +2981,8 @@ describe("buildSidebarFilterFacets", () => {
       threads: [...threads, thread("local"), thread("local")],
       projects: [...projects, local],
       pages: ["threads"],
-      scopedProjectKeys: [],
-      scopedOrganisationKeys: [NO_ORGANISATION_KEY],
+      projectScope: { picked: [], excluded: [] },
+      organisationScope: { picked: [NO_ORGANISATION_KEY], excluded: [] },
     });
     expect(result.organisationCounts.get(NO_ORGANISATION_KEY)).toBe(2);
     expect(result.projectCounts.get("local")).toBe(2);
@@ -2983,13 +2990,56 @@ describe("buildSidebarFilterFacets", () => {
     expect(result.projects.map((p) => p.projectKey)).toEqual(["local"]);
   });
 
+  it("counts under exclusions and keeps excluded choices offered", () => {
+    const result = facets({ excludedOrganisations: ["github.com/ping"] });
+    // Projects follow the exclusion; lib has no other organisation, so it leaves the list.
+    expect(Object.fromEntries(result.projectCounts)).toEqual({ t3code: 1, site: 1 });
+    expect(result.projects.map((p) => p.projectKey)).toEqual(["t3code", "site"]);
+    // The excluded organisation still counts what bringing it back would add.
+    expect(result.organisationCounts.get("github.com/ping")).toBe(1);
+    expect(result.organisationKeys.has("github.com/ping")).toBe(true);
+
+    const withoutSite = facets({ excludedProjects: ["site"] });
+    expect(Object.fromEntries(withoutSite.organisationCounts)).toEqual({
+      "github.com/me": 1,
+      "github.com/ping": 1,
+    });
+    expect(withoutSite.projects.map((p) => p.projectKey)).toContain("site");
+  });
+
+  it("scopes checkouts to picks or to everything but exclusions", () => {
+    const scoped = (input: { projects?: SidebarScope; organisations?: SidebarScope }) => {
+      const keys = sidebarScopedMemberKeys({
+        projects,
+        projectScope: input.projects ?? { picked: [], excluded: [] },
+        organisationScope: input.organisations ?? { picked: [], excluded: [] },
+      });
+      return keys === null ? null : [...keys];
+    };
+    expect(scoped({})).toBeNull();
+    expect(scoped({ projects: { picked: [], excluded: ["t3code"] } })).toEqual([
+      "env:site",
+      "env:lib",
+    ]);
+    expect(scoped({ organisations: { picked: [], excluded: ["github.com/me"] } })).toEqual([
+      "env:t3-up",
+      "env:lib",
+    ]);
+    expect(
+      scoped({
+        projects: { picked: ["t3code"], excluded: [] },
+        organisations: { picked: [], excluded: ["github.com/ping"] },
+      }),
+    ).toEqual(["env:t3-fork"]);
+  });
+
   it("counts a thread in a group shown in Threads on both pages", () => {
     const result = buildSidebarFilterFacets({
       threads: [thread("site", "threads", "group:Docs"), thread("site", "group:Ops")],
       projects,
       pages: ["group:Docs"],
-      scopedProjectKeys: [],
-      scopedOrganisationKeys: [],
+      projectScope: { picked: [], excluded: [] },
+      organisationScope: { picked: [], excluded: [] },
     });
     expect(Object.fromEntries(result.pageCounts)).toEqual({
       threads: 1,
