@@ -112,12 +112,13 @@ export function deriveThreadActivityRun(projection: ThreadStructure): ThreadRunS
 const AMBIENT_TURN_ITEM_TYPES = new Set(["notification", "system_notice"]);
 
 /**
- * True when the running turn's newest work is subagents, at least one still live: the parent is
- * blocked on them, so a follow-up can steer it without cutting into its own work.
+ * Names the stretch in which the running turn's newest work is subagents, at least one still
+ * live: the parent is blocked on them, so a follow-up can steer it without cutting into its own
+ * work. The key is the run and the first subagent of that trailing batch; null when not waiting.
  */
-export function deriveActiveRunAwaitsSubagents(projection: ThreadStructure): boolean {
+export function deriveActiveRunSubagentWaitKey(projection: ThreadStructure): string | null {
   const run = latestMatchingRun(projection, (candidate) => candidate.status === "running");
-  if (run === null) return false;
+  if (run === null) return null;
   const trailing = projection.turnItems.filter(
     (item) =>
       item.runId === run.id &&
@@ -126,12 +127,18 @@ export function deriveActiveRunAwaitsSubagents(projection: ThreadStructure): boo
   );
   trailing.sort((a, b) => a.ordinal - b.ordinal);
   let awaitsLiveSubagent = false;
+  let firstSubagentId: string | null = null;
   for (let index = trailing.length - 1; index >= 0; index -= 1) {
     const item = trailing[index]!;
     if (item.type !== "subagent") break;
     awaitsLiveSubagent ||= isOrchestrationV2WorkActive(item.status);
+    firstSubagentId = item.id;
   }
-  return awaitsLiveSubagent;
+  return awaitsLiveSubagent ? `${run.id}:${firstSubagentId}` : null;
+}
+
+export function deriveActiveRunAwaitsSubagents(projection: ThreadStructure): boolean {
+  return deriveActiveRunSubagentWaitKey(projection) !== null;
 }
 
 /**
