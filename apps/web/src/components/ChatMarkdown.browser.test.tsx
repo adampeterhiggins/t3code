@@ -515,6 +515,22 @@ describe("ChatMarkdown inline code selection", () => {
     await userEvent.dblClick(fenced, { position: { x: 4, y: 4 } });
     expect(window.getSelection()?.toString()).toBe("fenced");
   });
+
+  it("keeps file-path inline code as code when file chips are off", async () => {
+    setup();
+    const text = "See `dev/gcp/service-account/.terraform.lock.hcl`.";
+    const chips = (container: HTMLElement) =>
+      container.querySelectorAll(".chat-markdown-file-link").length;
+    {
+      await using screen = await renderText(text, { cwd: "/repo" });
+      expect(chips(screen.container)).toBe(1);
+    }
+    await using screen = await renderText(text, { cwd: "/repo", inlineCodeFileLinks: false });
+    expect(chips(screen.container)).toBe(0);
+    expect(screen.container.querySelector("code")?.textContent).toBe(
+      "dev/gcp/service-account/.terraform.lock.hcl",
+    );
+  });
 });
 
 describe("ChatMarkdown Windows file links", () => {
