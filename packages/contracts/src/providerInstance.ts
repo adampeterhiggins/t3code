@@ -82,6 +82,40 @@ export const ProviderInstanceConfig = Schema.Struct({
 });
 export type ProviderInstanceConfig = typeof ProviderInstanceConfig.Type;
 
+// Not `config.enabled`: settings normalization folds that into the envelope and drops it.
+const REMOVED_FROM_PROVIDER_LIST_KEY = "removedFromProviderList";
+
+/** A removed built-in that runs unconfigured (Codex, Claude): kept as a disabled entry clients leave out of the provider list. */
+export const removedDefaultProviderInstance = (
+  driver: ProviderDriverKind,
+): ProviderInstanceConfig => ({
+  driver,
+  enabled: false,
+  config: { [REMOVED_FROM_PROVIDER_LIST_KEY]: true },
+});
+
+const removedMarkerConfig = (config: unknown): Record<string, unknown> | undefined =>
+  config !== null &&
+  typeof config === "object" &&
+  !Array.isArray(config) &&
+  (config as Record<string, unknown>)[REMOVED_FROM_PROVIDER_LIST_KEY] === true
+    ? (config as Record<string, unknown>)
+    : undefined;
+
+export const isRemovedDefaultProviderInstance = (instance: ProviderInstanceConfig): boolean =>
+  instance.enabled === false && removedMarkerConfig(instance.config) !== undefined;
+
+/** Any edit to a removed entry, such as turning it back on, makes it an ordinary listed instance. */
+export const clearRemovedFromProviderList = (
+  instance: ProviderInstanceConfig,
+): ProviderInstanceConfig => {
+  const config = removedMarkerConfig(instance.config);
+  if (config === undefined) return instance;
+  const { [REMOVED_FROM_PROVIDER_LIST_KEY]: _removed, ...rest } = config;
+  const { config: _config, ...envelope } = instance;
+  return Object.keys(rest).length > 0 ? { ...envelope, config: rest } : envelope;
+};
+
 export const ProviderInstanceMutation = Schema.Union([
   Schema.Struct({
     operation: Schema.Literal("create"),

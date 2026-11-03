@@ -4,6 +4,7 @@ import {
   EnvironmentId,
   ProviderDriverKind,
   ProviderInstanceId,
+  removedDefaultProviderInstance,
   type ProviderAuthState,
   type ServerProvider,
   type UnifiedSettings,
@@ -360,7 +361,7 @@ describe("EnvironmentProviderSettings routing", () => {
     expect(resetMutation).toEqual({
       operation: "upsert",
       instanceId: codexId,
-      instance: { driver: "codex", enabled: false, config: { enabled: false } },
+      instance: removedDefaultProviderInstance(ProviderDriverKind.make("codex")),
     });
     // Deleting touches only the instance; shared preferences stay untouched.
     expect(resetPatch ?? {}).toEqual({});
@@ -379,7 +380,7 @@ describe("EnvironmentProviderSettings routing", () => {
     expect(mutation).toEqual({
       operation: "upsert",
       instanceId: codexId,
-      instance: { driver: "codex", enabled: false, config: { enabled: false } },
+      instance: removedDefaultProviderInstance(ProviderDriverKind.make("codex")),
     });
 
     state.settings = {
@@ -547,7 +548,7 @@ describe("EnvironmentProviderSettings instance removal", () => {
       expect(state.mutateProviderInstance).toHaveBeenCalledWith({
         operation: "upsert",
         instanceId: codexId,
-        instance: { driver: "codex", enabled: false, config: { enabled: false } },
+        instance: removedDefaultProviderInstance(ProviderDriverKind.make("codex")),
       }),
     );
   });

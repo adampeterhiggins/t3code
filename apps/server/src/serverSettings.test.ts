@@ -1,14 +1,17 @@
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
+  clearRemovedFromProviderList,
   DEFAULT_SERVER_SETTINGS,
   globalIdleCompaction,
+  isRemovedDefaultProviderInstance,
   type ManagedPolicyDocument,
   ModelSelection,
   ProjectId,
   ProjectScript,
   ProviderDriverKind,
   ProviderInstanceId,
+  removedDefaultProviderInstance,
   resolveProviderInstanceEnabled,
   SecretProviderId,
   ServerSettings,
@@ -1175,6 +1178,30 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
         driver: ProviderDriverKind.make("cursor"),
         config: { enabled: "nope" },
       });
+    }).pipe(Effect.provide(layerServerSettings())),
+  );
+
+  it.effect("keeps a removed default provider marked until it is edited", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const codexId = ProviderInstanceId.make("codex");
+      const removed = removedDefaultProviderInstance(ProviderDriverKind.make("codex"));
+
+      yield* serverSettings.updateProviderInstance({
+        operation: "upsert",
+        instanceId: codexId,
+        instance: removed,
+      });
+      const afterRemove = (yield* serverSettings.getSettings).providerInstances[codexId]!;
+      assert.isTrue(isRemovedDefaultProviderInstance(afterRemove));
+
+      yield* serverSettings.updateProviderInstance({
+        operation: "upsert",
+        instanceId: codexId,
+        instance: clearRemovedFromProviderList({ ...afterRemove, enabled: true }),
+      });
+      const reenabled = (yield* serverSettings.getSettings).providerInstances[codexId]!;
+      assert.isFalse(isRemovedDefaultProviderInstance({ ...reenabled, enabled: false }));
     }).pipe(Effect.provide(layerServerSettings())),
   );
 
