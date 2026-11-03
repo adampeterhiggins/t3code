@@ -353,7 +353,11 @@ function AssistantCitationQuote({ citation }: { citation: AssistantCitation }) {
           <ChatMarkdown text={citation.markdown} cwd={undefined} />
         )}
       </blockquote>
-      {citation.comment ? <p className="whitespace-pre-wrap">{citation.comment}</p> : null}
+      {citation.comment ? (
+        <div dir={textDirection(citation.comment)}>
+          <ChatMarkdown text={citation.comment} cwd={undefined} lineBreaks />
+        </div>
+      ) : null}
     </div>
   );
 }
