@@ -286,8 +286,7 @@ describe("ProviderModelPicker", () => {
     expect(label).not.toContain("missing-model");
   });
 
-  // The account picker names the instance, so the model trigger leaves its badge out.
-  it("leaves instance initials to the account picker", async () => {
+  it("badges the trigger icon with the active account", async () => {
     const activeEntry = providerEntry("codex_personal", "codex");
     const label = await triggerText(
       <ProviderModelPicker
@@ -302,7 +301,7 @@ describe("ProviderModelPicker", () => {
       />,
     );
 
-    expect(label).not.toContain("CP");
+    expect(label).toContain("CP");
   });
 });
 

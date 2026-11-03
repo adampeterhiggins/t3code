@@ -90,8 +90,8 @@ To carry on with a different model instead, open the model picker after the firs
 click the fork button on a model. A new tab opens on that model, carrying the conversation through
 its latest finished response, with a copy of what you had typed. A fork made before any response
 has finished starts from a summary of the chat instead. Models the chat cannot switch to in place stay listed too, but
-clicking their row does nothing; use its fork button. Picking another account in the composer's
-account picker works the same way, and those accounts are marked **New tab**.
+clicking their row does nothing; use its fork button. Picking another account in the model picker's
+account menu works the same way, and those accounts are marked **New tab**.
 On mobile, tap **Hand off** beside the tab switcher and pick a provider and model; the new tab
 carries the conversation the same way.
 
