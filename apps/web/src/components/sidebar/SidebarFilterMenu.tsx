@@ -65,7 +65,8 @@ export function sidebarPageLabel(page: SidebarPage): string {
 /** A page's glyph: the built-in icon, or a group's own icon and accent. */
 function SidebarPageIcon(props: { page: SidebarPage; groupStyles: ThreadGroups }) {
   if (props.page.startsWith("group:")) {
-    return <ThreadGroupIcon style={props.groupStyles[sidebarPageLabel(props.page)]} />;
+    const name = sidebarPageLabel(props.page);
+    return <ThreadGroupIcon style={props.groupStyles[name]} name={name} />;
   }
   const Icon = BUILT_IN_PAGES[props.page as keyof typeof BUILT_IN_PAGES].Icon;
   return <Icon aria-hidden className="size-3.5 shrink-0" />;

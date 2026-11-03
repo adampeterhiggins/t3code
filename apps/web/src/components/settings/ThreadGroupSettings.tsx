@@ -202,7 +202,7 @@ export function ThreadGroupSettingsSection() {
             key={name}
             title={
               <span className="flex min-w-0 items-center gap-2">
-                <ThreadGroupIcon style={group} />
+                <ThreadGroupIcon style={group} name={name} />
                 <span className="truncate">{name}</span>
               </span>
             }

@@ -1,11 +1,12 @@
 import type { ThreadGroup } from "@t3tools/contracts/settings";
-import { FolderOpenIcon } from "lucide-react";
+import { FolderOpenIcon, ZapIcon } from "lucide-react";
 import type { IconName } from "lucide-react/dynamic";
 import { lazy, Suspense } from "react";
 
 import { cn } from "~/lib/utils";
 import { projectIconColorClassName } from "../../projectIconColors";
 import { ProjectMonogram } from "../ProjectMonogram";
+import { QUICK_MESSAGE_THREAD_GROUP } from "../quickMessage/quickMessageWindow";
 
 const DynamicIcon = lazy(() =>
   import("lucide-react/dynamic").then((module) => ({ default: module.DynamicIcon })),
@@ -14,6 +15,8 @@ const DynamicIcon = lazy(() =>
 /** A thread group's chosen icon, or a folder in its accent when it has none. */
 export function ThreadGroupIcon(props: {
   style: ThreadGroup | undefined;
+  /** Lets a built-in group such as Quick messages show its own default icon. */
+  name?: string | undefined;
   className?: string | undefined;
 }) {
   const icon = props.style?.icon ?? null;
@@ -39,5 +42,6 @@ export function ThreadGroupIcon(props: {
       </span>
     );
   }
-  return <FolderOpenIcon aria-hidden className={cn(box, colorClassName)} />;
+  const DefaultIcon = props.name === QUICK_MESSAGE_THREAD_GROUP ? ZapIcon : FolderOpenIcon;
+  return <DefaultIcon aria-hidden className={cn(box, colorClassName)} />;
 }
