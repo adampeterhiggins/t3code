@@ -2557,6 +2557,7 @@ function UserMessageMarkdownContent(props: UserMessageContentProps) {
         skills={props.skills}
         textStyle={props.markdownStyles.nativeTextStyle}
         preserveSoftBreaks
+        inlineCodeFileLinks={false}
         {...props.linkHandlers}
         renderImage={props.renderImage}
       />
@@ -2589,6 +2590,7 @@ function UserMessageMarkdownContent(props: UserMessageContentProps) {
             skills={props.skills}
             textStyle={props.markdownStyles.nativeTextStyle}
             preserveSoftBreaks
+            inlineCodeFileLinks={false}
             {...props.linkHandlers}
             renderImage={props.renderImage}
           />

@@ -1232,6 +1232,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
       renderContextReference={props.renderContextReference}
       headingLevelOffset={MESSAGE_HEADING_LEVEL}
       linkBareGitHubReferences
+      inlineCodeFileLinks={false}
     />
   );
 });

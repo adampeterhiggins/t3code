@@ -163,23 +163,20 @@ function enrichedStyle(
 }
 
 export function MobileEnrichedMarkdownText(props: SelectableMarkdownTextProps) {
-  const { renderImage, resolveImageSource, fileEmbedLabel } = props;
+  const { renderImage, resolveImageSource, fileEmbedLabel, inlineCodeFileLinks = true } = props;
   const { themeAppearance, mathRenderingEnabled } = useAppearancePreferences();
   const {
     markdown,
     fileHrefs,
     urls: objectLinkUrls,
   } = useMemo(() => {
+    const fileLink = inlineCodeFileLinks ? ENRICHED_INLINE_FILE_LINK_REGEX : undefined;
     const content = fileEmbedLabel
       ? markdownWithInlineFileLinks(
           markdownForNativeParsing(props.markdown, themeAppearance),
-          ENRICHED_INLINE_FILE_LINK_REGEX,
+          fileLink,
         )
-      : markdownForNativeRendering(
-          props.markdown,
-          ENRICHED_INLINE_FILE_LINK_REGEX,
-          themeAppearance,
-        );
+      : markdownForNativeRendering(props.markdown, fileLink, themeAppearance);
     const files = fileEmbedLabel
       ? markdownWithFileEmbeds(content, fileEmbedLabel)
       : { markdown: content, fileHrefs: new Set<string>() };
@@ -187,7 +184,7 @@ export function MobileEnrichedMarkdownText(props: SelectableMarkdownTextProps) {
       fileHrefs: files.fileHrefs,
       ...markdownWithObjectLinkLabels(markdownWithTableBreaks(files.markdown)),
     };
-  }, [props.markdown, fileEmbedLabel, themeAppearance]);
+  }, [props.markdown, fileEmbedLabel, themeAppearance, inlineCodeFileLinks]);
   const [parsedLinkUrls, setParsedLinkUrls] = useState<ReadonlyArray<string>>([]);
   const onLinksChange = (links: MarkdownLinkOccurrence[]) => {
     const urls = [...new Set(links.map((link) => link.url))];

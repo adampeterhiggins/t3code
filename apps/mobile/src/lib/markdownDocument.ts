@@ -476,7 +476,10 @@ function isObjectLinkCandidate(url: string): boolean {
 // Start only at the beginning of a backtick run to avoid retrying every suffix.
 const INLINE_CODE_SPAN = /(?<!`)`+([^`\r\n]+)`+/g;
 
-export function markdownWithInlineFileLinks(markdown: string, fileLink: RegExp): string {
+export function markdownWithInlineFileLinks(
+  markdown: string,
+  fileLink: RegExp | undefined,
+): string {
   return transformNativeMarkdown(markdown, fileLink, false);
 }
 
@@ -634,7 +637,7 @@ export function parseMarkdownDocument(markdown: string): Root {
 
 export function markdownForNativeRendering(
   markdown: string,
-  fileLink: RegExp,
+  fileLink: RegExp | undefined,
   appearance: "light" | "dark" = "light",
 ): string {
   // HTML wrappers can expose Markdown that wasn't in the first AST, so normalize them first.

@@ -285,6 +285,8 @@ interface ChatMarkdownProps {
   /** Links a bare `#123` to the thread's repository. Only for the user's own text: an agent's can
       mean any repository it works in, so agents are told to write full references instead. */
   linkBareGitHubReferences?: boolean | undefined;
+  /** Draws file-path inline code as file chips. Off for the user's own text, where backticks mean literal code. */
+  inlineCodeFileLinks?: boolean | undefined;
 }
 
 export interface ChatMarkdownContextReference {
@@ -523,14 +525,17 @@ function fileLinkSourcesKey(
   text: string,
   cwd: string | undefined,
   imageBaseDir: string | undefined,
+  inlineCodeFileLinks: boolean,
 ): string {
   const hrefs = extractMarkdownLinkHrefs(renderCodexInlineDirectivesAsMarkdown(text))
     .filter((href) => !parseComposerContextHref(href))
     .map(normalizeMarkdownLinkHrefKey)
     .filter((href) => resolveMarkdownFileLinkMeta(href, cwd, imageBaseDir ?? cwd));
-  const spans = extractInlineCodeSpans(text).filter((span) =>
-    resolveInlineCodeFileLinkMeta(span, cwd, imageBaseDir ?? cwd),
-  );
+  const spans = inlineCodeFileLinks
+    ? extractInlineCodeSpans(text).filter((span) =>
+        resolveInlineCodeFileLinkMeta(span, cwd, imageBaseDir ?? cwd),
+      )
+    : [];
   return JSON.stringify([[...new Set(hrefs)], [...new Set(spans)]]);
 }
 
@@ -575,6 +580,7 @@ function useChatMarkdownState({
   renderContextReference,
   headingLevelOffset = 0,
   sourceControlMedia = false,
+  inlineCodeFileLinks = true,
 }: ChatMarkdownProps) {
   const resolvedTheme = useRenderedAppearance();
   const markdownRef = useRef<HTMLElement>(null);
@@ -760,7 +766,7 @@ function useChatMarkdownState({
   // Keyed by the file links found, not the text, so streamed text that adds none keeps the
   // renderer context, and every block reading it, unchanged.
   // A template literal marks the key as a string, so the compiler memoizes the maps on its value.
-  const fileLinksKey = `${fileLinkSourcesKey(text, cwd, imageBaseDir)}`;
+  const fileLinksKey = `${fileLinkSourcesKey(text, cwd, imageBaseDir, inlineCodeFileLinks)}`;
   const { markdownFileLinkMetaByHref, inlineCodeFileLinkMetaByText, fileLinkParentSuffixByPath } =
     resolveFileLinkSources(fileLinksKey, cwd, imageBaseDir);
   const resolveThreadPullRequest = (
@@ -999,6 +1005,7 @@ function useChatMarkdownState({
     imageBaseDir,
     workspaceMutationId,
     inlineCodeFileLinkMetaByText,
+    inlineCodeFileLinks,
     inline,
     mathEnabled,
     isStreaming,
@@ -1659,8 +1666,15 @@ const CHAT_MARKDOWN_COMPONENTS = {
     );
   },
   code: function MarkdownCode({ node, children, className, ...props }) {
-    const { cwd, imageBaseDir, inlineCodeFileLinkMetaByText, fileLinkChip, mathEnabled, inline } =
-      use(ChatMarkdownRendererContext);
+    const {
+      cwd,
+      imageBaseDir,
+      inlineCodeFileLinkMetaByText,
+      inlineCodeFileLinks,
+      fileLinkChip,
+      mathEnabled,
+      inline,
+    } = use(ChatMarkdownRendererContext);
     const math = mathEnabled ? mathKind(className) : null;
     if (math) {
       return (
@@ -1675,9 +1689,10 @@ const CHAT_MARKDOWN_COMPONENTS = {
       const codeText = nodeToPlainText(children);
       const colorCode = wholeColorCode(codeText);
       if (colorCode) return <ColorCodeChip code={colorCode} />;
-      const fileLinkMeta =
-        inlineCodeFileLinkMetaByText.get(codeText.trim()) ??
-        resolveInlineCodeFileLinkMeta(codeText, cwd, imageBaseDir ?? cwd);
+      const fileLinkMeta = inlineCodeFileLinks
+        ? (inlineCodeFileLinkMetaByText.get(codeText.trim()) ??
+          resolveInlineCodeFileLinkMeta(codeText, cwd, imageBaseDir ?? cwd))
+        : null;
       if (fileLinkMeta) {
         return fileLinkChip(
           fileLinkMeta,
