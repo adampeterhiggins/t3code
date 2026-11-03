@@ -26,6 +26,8 @@ Without this setting, approval uses the existing local callback. If that page ca
 - Run **Attach Notion page** from the command palette on web or desktop.
 - On mobile, choose **Notion page** from the composer's **+** menu.
 
+A database link (one ending in `?v=…`) attaches the database's title and its 100 most recently edited rows, each with its link and select, status, and multi-select values. Attach a row's link to give the agent that row's page.
+
 T3 Code captures the title, source link, and page Markdown when you attach it. Later edits in Notion do not change sent messages. Large or inaccessible portions of pages can be incomplete; the captured content says when Notion reports truncation or the snapshot reaches its size limit. Embedded media stays as links. Remove a chip to remove it from your draft, or open it to inspect the captured contents.
 
 ## Link a page to a thread

@@ -8,6 +8,13 @@ import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import * as NotionApi from "./NotionApi.ts";
 import { NotionAuth } from "./NotionAuth.ts";
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
+const decodeSortBody = Schema.decodeUnknownSync(
+  Schema.fromJsonString(
+    Schema.Struct({
+      sorts: Schema.Array(Schema.Struct({ timestamp: Schema.String, direction: Schema.String })),
+    }),
+  ),
+);
 const decodeSearchBody = Schema.decodeUnknownSync(
   Schema.fromJsonString(
     Schema.Struct({ filter: Schema.Struct({ property: Schema.String, value: Schema.String }) }),
@@ -22,6 +29,25 @@ const page = {
   properties: {
     Name: { type: "title", title: [{ plain_text: "Design" }] },
     Status: { type: "status" },
+  },
+};
+const databaseId = "b86b869f-6c83-40a8-9860-6fa4a21406b2";
+const database = {
+  object: "database",
+  id: databaseId,
+  url: `https://app.notion.com/p/${databaseId.replaceAll("-", "")}`,
+  last_edited_time: "2026-08-20T13:56:48.573+00:00",
+  title: [{ plain_text: "Runbook" }],
+  description: [],
+  data_sources: [{ id: "f2c64efa-0fc0-4c4a-9e9d-f85cc495fffa", name: "Runbook" }],
+};
+const row = {
+  ...page,
+  properties: {
+    Process: { type: "title", title: [{ plain_text: "Rollback" }] },
+    Status: { type: "status", status: { name: "Done" } },
+    Owner: { type: "select", select: null },
+    Tags: { type: "multi_select", multi_select: [{ name: "argo-cd" }, { name: "deployment" }] },
   },
 };
 function harness(
@@ -46,22 +72,28 @@ function harness(
       const status =
         options.rejectOldToken && request.headers.authorization === "Bearer old"
           ? 401
-          : (options.status ?? 200);
-      const body = request.url.includes("/blocks/")
-        ? {
-            object: "block",
-            id: blockId,
-            type: "heading_2",
-            heading_2: { rich_text: [{ plain_text: "Canary " }, { plain_text: "rollout" }] },
-          }
-        : request.url.endsWith("/search")
-          ? { results: [page], has_more: true }
-          : request.url.endsWith("/markdown")
+          : request.url.endsWith(`/pages/${databaseId}`)
+            ? 400
+            : (options.status ?? 200);
+      const body = request.url.includes("/databases/")
+        ? database
+        : request.url.endsWith("/query")
+          ? { results: [row], has_more: true }
+          : request.url.includes("/blocks/")
             ? {
-                markdown: options.markdown ?? "# Design\n\nNested content",
-                truncated: options.truncated ?? false,
+                object: "block",
+                id: blockId,
+                type: "heading_2",
+                heading_2: { rich_text: [{ plain_text: "Canary " }, { plain_text: "rollout" }] },
               }
-            : page;
+            : request.url.endsWith("/search")
+              ? { results: [page], has_more: true }
+              : request.url.endsWith("/markdown")
+                ? {
+                    markdown: options.markdown ?? "# Design\n\nNested content",
+                    truncated: options.truncated ?? false,
+                  }
+                : page;
       return HttpClientResponse.fromWeb(
         request,
         new Response(encodeJson(body), {
@@ -146,5 +178,25 @@ it.effect.each([
   return Effect.gen(function* () {
     const failure = yield* (yield* NotionApi.NotionApi).getPage({ id }).pipe(Effect.flip);
     assert.strictEqual(failure.reason, reason);
+  }).pipe(Effect.provide(h.layer));
+});
+it.effect("reads a pasted database link as its most recently edited rows", () => {
+  const h = harness();
+  return Effect.gen(function* () {
+    const api = yield* NotionApi.NotionApi;
+    const link = `https://app.notion.com/p/focaldata/${databaseId.replaceAll("-", "")}?v=20021920cab4415b94ddd20b288b006e&source=copy_link`;
+    const result = yield* api.getPage({ id: link });
+    assert.strictEqual(result.title, "Runbook");
+    assert.strictEqual(result.url, database.url);
+    assert.include(result.markdown, "The 1 most recently edited rows:");
+    assert.include(
+      result.markdown,
+      `- [Rollback](${page.url}) · Status: Done · Tags: argo-cd, deployment`,
+    );
+    assert.deepStrictEqual(decodeSortBody(h.requests[2]?.body ?? "{}").sorts, [
+      { timestamp: "last_edited_time", direction: "descending" },
+    ]);
+    assert.strictEqual((yield* api.getPageSummary({ id: link })).title, "Runbook");
+    assert.strictEqual((yield* api.searchPages({ query: link })).pages[0]?.title, "Runbook");
   }).pipe(Effect.provide(h.layer));
 });
