@@ -340,16 +340,20 @@ describe("EnvironmentProviderSettings routing", () => {
       favorites: [{ provider: customId, model: "favorite" }],
     };
     await using _screen = await render(panel());
+    state.confirm.mockResolvedValue(true);
     await userEvent.click(select("Work"));
     await userEvent.click(deleteButton(customId));
-    expect(state.mutateProviderInstance).toHaveBeenLastCalledWith({
-      operation: "remove",
-      instanceId: customId,
-    });
+    await vi.waitFor(() =>
+      expect(state.mutateProviderInstance).toHaveBeenLastCalledWith({
+        operation: "remove",
+        instanceId: customId,
+      }),
+    );
 
     state.mutateProviderInstance.mockClear();
     await userEvent.click(select("Codex"));
     await userEvent.click(deleteButton(codexId));
+    await vi.waitFor(() => expect(state.mutateProviderInstance).toHaveBeenCalled());
     const [resetMutation, resetPatch] = state.mutateProviderInstance.mock.lastCall ?? [];
     // Codex runs unconfigured, so deleting it keeps a disabled marker entry
     // rather than removing the slot, which would bring it straight back enabled.
@@ -366,9 +370,11 @@ describe("EnvironmentProviderSettings routing", () => {
     await setup();
     // Codex and Claude ship enabled at factory defaults: a fresh install shows
     // them with no providerInstances entry, and deleting must hide them too.
+    state.confirm.mockResolvedValue(true);
     await using screen = await render(panel());
     await userEvent.click(select("Codex"));
     await userEvent.click(deleteButton(codexId));
+    await vi.waitFor(() => expect(state.mutateProviderInstance).toHaveBeenCalled());
     const [mutation] = state.mutateProviderInstance.mock.lastCall ?? [];
     expect(mutation).toEqual({
       operation: "upsert",
@@ -393,13 +399,16 @@ describe("EnvironmentProviderSettings routing", () => {
         [grokId]: { driver: ProviderDriverKind.make("grok"), enabled: false },
       },
     };
+    state.confirm.mockResolvedValue(true);
     await using _screen = await render(panel());
     await userEvent.click(select("Grok"));
     await userEvent.click(deleteButton(grokId));
-    expect(state.mutateProviderInstance.mock.lastCall?.[0]).toEqual({
-      operation: "remove",
-      instanceId: grokId,
-    });
+    await vi.waitFor(() =>
+      expect(state.mutateProviderInstance.mock.lastCall?.[0]).toEqual({
+        operation: "remove",
+        instanceId: grokId,
+      }),
+    );
   });
 
   it("updates one provider instance without sending a stale whole map", async () => {
@@ -513,7 +522,7 @@ describe("EnvironmentProviderSettings routing", () => {
 });
 
 describe("EnvironmentProviderSettings instance removal", () => {
-  it("resets a configured default instance only once the user confirms", async () => {
+  it("deletes a configured default instance only once the user confirms", async () => {
     await setup();
     state.settings = {
       ...DEFAULT_UNIFIED_SETTINGS,
@@ -527,47 +536,20 @@ describe("EnvironmentProviderSettings instance removal", () => {
     };
     await setProviders([provider()]);
     await using _screen = await render(panel({ targetInstanceId: codexId }));
-    const reset = page.getByRole("button", { name: "Reset Codex provider settings to default" });
-    await userEvent.click(reset);
+    await userEvent.click(deleteButton(codexId));
 
     expect(state.mutateProviderInstance).not.toHaveBeenCalled();
     expect(state.confirm).toHaveBeenCalledOnce();
 
     state.confirm.mockResolvedValue(true);
-    await userEvent.click(reset);
+    await userEvent.click(deleteButton(codexId));
     await vi.waitFor(() =>
       expect(state.mutateProviderInstance).toHaveBeenCalledWith({
-        operation: "remove",
+        operation: "upsert",
         instanceId: codexId,
+        instance: { driver: "codex", enabled: false, config: { enabled: false } },
       }),
     );
-  });
-
-  it("warns that resetting an enabled default-off provider turns it off", async () => {
-    await setup();
-    const antigravityId = ProviderInstanceId.make("antigravity");
-    const antigravity = ProviderDriverKind.make("antigravity");
-    state.settings = {
-      ...DEFAULT_UNIFIED_SETTINGS,
-      providerInstances: {
-        [antigravityId]: {
-          driver: antigravity,
-          enabled: true,
-          config: { binaryPath: "/opt/antigravity/bin/agy" },
-        },
-      },
-    };
-    await setProviders([{ ...provider(), instanceId: antigravityId, driver: antigravity }]);
-    await using _screen = await render(panel({ targetInstanceId: antigravityId }));
-    await userEvent.click(page.getByRole("button", { name: /^Reset .* provider settings/ }));
-
-    expect(state.confirm).toHaveBeenCalledWith(
-      expect.stringContaining("It will also be turned off."),
-      {
-        variant: "destructive",
-      },
-    );
-    expect(state.mutateProviderInstance).not.toHaveBeenCalled();
   });
 
   it("deletes a custom instance only once the user confirms", async () => {
