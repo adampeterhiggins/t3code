@@ -843,7 +843,7 @@ a pick the others exclude stays listed at 0 so it can be unticked, and a picked 
 no checkout left keeps narrowing the list until it is dropped. **Only**, on the highlighted row,
 picks just that one and closes the menu; **Exclude** beside it leaves that one out instead,
 keeping everything else, including groups, organisations and projects added later. Exclusions are
-struck through in the submenu and pilled as "Not …" (a dimension holds picks or exclusions, never
+struck through in the submenu and pilled dashed with a minus badge (a dimension holds picks or exclusions, never
 both, saved per client in
 [`useSidebarOrganization.ts`](../apps/web/src/components/sidebar/useSidebarOrganization.ts) and
 [`useSidebarProjectScope.ts`](../apps/web/src/components/sidebar/useSidebarProjectScope.ts)).

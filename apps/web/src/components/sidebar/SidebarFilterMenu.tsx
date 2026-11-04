@@ -15,6 +15,7 @@ import {
   LayersIcon,
   ListFilterIcon,
   ListIcon,
+  MinusIcon,
   PlusIcon,
   SettingsIcon,
   SearchIcon,
@@ -710,14 +711,39 @@ export function SidebarFilterMenu(props: {
   );
 }
 
-function SidebarFilterPill(props: { icon: ReactNode; label: string; onRemove: () => void }) {
+/** An excluded choice is dashed and muted, with a minus on its icon. */
+function SidebarFilterPill(props: {
+  icon: ReactNode;
+  label: string;
+  excluded?: boolean;
+  onRemove: () => void;
+}) {
   return (
-    <span className="flex h-6 max-w-full min-w-0 items-center gap-1 rounded-full border border-sidebar-border pr-0.5 pl-2 text-xs text-sidebar-foreground">
-      <span className="flex size-3.5 shrink-0 items-center justify-center">{props.icon}</span>
-      <span className="min-w-0 truncate">{props.label}</span>
+    <span
+      className={
+        props.excluded
+          ? "flex h-6 max-w-full min-w-0 items-center gap-1 rounded-full border border-dashed border-sidebar-border pr-0.5 pl-2 text-xs text-sidebar-muted-foreground"
+          : "flex h-6 max-w-full min-w-0 items-center gap-1 rounded-full border border-sidebar-border pr-0.5 pl-2 text-xs text-sidebar-foreground"
+      }
+    >
+      <span className="relative flex size-3.5 shrink-0 items-center justify-center">
+        {props.icon}
+        {props.excluded ? (
+          <span
+            aria-hidden
+            className="absolute -right-1 -bottom-1 flex size-2.5 items-center justify-center rounded-full bg-destructive text-white ring-1 ring-sidebar"
+          >
+            <MinusIcon className="size-2" strokeWidth={4} />
+          </span>
+        ) : null}
+      </span>
+      <span className="min-w-0 truncate">
+        {props.excluded ? <span className="sr-only">Not </span> : null}
+        {props.label}
+      </span>
       <button
         type="button"
-        aria-label={`Remove ${props.label} filter`}
+        aria-label={`Remove ${props.excluded ? "Not " : ""}${props.label} filter`}
         className="flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-full text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
         onClick={props.onRemove}
       >
@@ -784,7 +810,8 @@ export function SidebarFilterPills(props: {
         <SidebarFilterPill
           key={page}
           icon={<SidebarPageIcon page={page} groupStyles={props.groupStyles} />}
-          label={pagesExcluded ? `Not ${sidebarPageLabel(page)}` : sidebarPageLabel(page)}
+          label={sidebarPageLabel(page)}
+          excluded={pagesExcluded}
           onRemove={() => {
             if (pagesExcluded) {
               props.onExcludedPagesChange(
@@ -802,7 +829,8 @@ export function SidebarFilterPills(props: {
         <SidebarFilterPill
           key={option.key}
           icon={<OrganisationIcon option={option} />}
-          label={excluded ? `Not ${option.label}` : option.label}
+          label={option.label}
+          excluded={excluded}
           onRemove={() =>
             excluded
               ? props.onExcludedOrganisationKeysChange(
@@ -818,7 +846,8 @@ export function SidebarFilterPills(props: {
         <SidebarFilterPill
           key={project.projectKey}
           icon={<ProjectFavicon project={project} className="size-3.5" />}
-          label={excluded ? `Not ${project.displayName}` : project.displayName}
+          label={project.displayName}
+          excluded={excluded}
           onRemove={() =>
             excluded
               ? props.onExcludedProjectKeysChange(

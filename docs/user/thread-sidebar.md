@@ -201,7 +201,7 @@ own titled group below your live threads. On web and desktop, click a group's ti
 it, and click again to expand it. **Organisations** narrows the list to repositories
 owned by the people or organisations you pick, read from each project's Git remote, and
 **Projects** narrows it to the projects you pick. Hover a choice and click **Exclude** to show
-everything except it instead; excluded choices appear struck through and as "Not …" pills, and new
+everything except it instead; excluded choices appear struck through in the menu and as dashed pills marked with a minus, and new
 groups and projects still show. **Exclude** works under **Show** too. Each choice shows how many threads picking it
 would leave with your other filters, so you can see where work is before you narrow. On web and desktop, the filter button shows how
 many filters are on, hovering it lists the ones that are selected, and each one appears as a pill
