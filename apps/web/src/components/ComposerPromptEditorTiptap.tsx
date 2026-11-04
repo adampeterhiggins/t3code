@@ -52,11 +52,14 @@ import {
   use,
   useEffect,
   useEffectEvent,
+  useId,
   useImperativeHandle,
   useLayoutEffect,
   useRef,
   useState,
+  type ClipboardEvent as ReactClipboardEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
   type RefObject,
 } from "react";
 
@@ -119,6 +122,8 @@ import { collectInlineContextIds } from "~/lib/composerContextReferences";
 import { resolveDiffThemeName } from "~/lib/diffRendering";
 import { cn, isMacPlatform } from "~/lib/utils";
 import { AssistantCitationChip } from "./chat/AssistantCitationChip";
+import type { CitationCommentInputProps } from "./chat/AssistantCitationCommentEditor";
+import type { ObjectLinkTextTarget } from "./chat/useComposerObjectLinks";
 import type { CitationDestination, CitationDestinationAction } from "./chat/citationDestination";
 import { getTimelinePageScrollKey } from "./chat/pageScrollController";
 import {
@@ -175,6 +180,8 @@ export interface ComposerPromptEditorProps {
   disabled: boolean;
   placeholder: string;
   ariaLabel?: string | undefined;
+  ariaDescription?: string | undefined;
+  ariaInvalid?: boolean | undefined;
   suggestionListId?: string | undefined;
   activeSuggestionId?: string | undefined;
   isPathQueryActive?: () => boolean;
@@ -200,6 +207,8 @@ export interface ComposerPromptEditorProps {
   /** Sending from a citation comment adds the message to the queue instead of sending it now. */
   citationSendQueues?: boolean;
   citationDestinations?: ComposerCitationDestinations | undefined;
+  /** Turns links in a citation's comment into chips, the way the prompt's own links convert. */
+  citationCommentLinks?: ComposerCitationCommentLinks | undefined;
   /**
    * Called when a new controlled value replaces the document while a citation
    * comment is unsaved. The comment is saved into `replacedValue`, giving
@@ -222,6 +231,22 @@ export type ComposerCitationDestinations = {
     action: CitationDestinationAction,
     citationText: string,
   ) => Promise<boolean>;
+};
+
+export type ComposerCitationCommentLinks = {
+  /** Runs before the paste lands at `pasteStart`. */
+  onPaste: (
+    target: ObjectLinkTextTarget,
+    event: ReactClipboardEvent<HTMLElement>,
+    pasteStart: number,
+  ) => void;
+  onTyped: (
+    target: ObjectLinkTextTarget,
+    previous: string,
+    next: string,
+    expandedCursor: number,
+  ) => void;
+  loading: ReadonlyArray<{ readonly url: string; readonly workKey: string }>;
 };
 
 export type ComposerCitationCommentRequest = {
@@ -248,6 +273,12 @@ const ComposerCitationCommentContext = createContext<{
   onSubmitAndSaveDraft: (() => void) | null;
   sendQueues: boolean;
   destinations: ComposerCitationDestinations | null;
+  renderInput: (props: CitationCommentInputProps) => ReactNode;
+  renderContextReference: (reference: {
+    kind: string;
+    contextId: string;
+    label: string;
+  }) => ReactNode;
 }>({
   openComment: null,
   onOpenChange: () => {},
@@ -256,6 +287,8 @@ const ComposerCitationCommentContext = createContext<{
   onSubmitAndSaveDraft: null,
   sendQueues: false,
   destinations: null,
+  renderInput: () => null,
+  renderContextReference: () => null,
 });
 
 const RichComposerSkillsContext = createContext<ReadonlyArray<ServerProviderSkill>>([]);
@@ -510,6 +543,7 @@ function ComposerCitationNodeView({ node, editor, getPos }: NodeViewProps) {
         citation={citation}
         composer
         currentThreadId={commentContext.destinations?.threadId}
+        renderContextReference={commentContext.renderContextReference}
         commentEditor={{
           open: commentTarget !== null,
           sourceAnchor: commentTarget?.sourceAnchor,
@@ -542,6 +576,7 @@ function ComposerCitationNodeView({ node, editor, getPos }: NodeViewProps) {
               }
             : {}),
           onRestoreFocus,
+          renderInput: commentContext.renderInput,
           ...(commentContext.destinations
             ? {
                 destinations: {
@@ -609,6 +644,115 @@ function ComposerContextReferenceNodeView({ node }: NodeViewProps) {
         label={(node.attrs.label as string) ?? ""}
       />
     </NodeViewWrapper>
+  );
+}
+
+/**
+ * A citation's comment, edited in this same editor so it reads chips, links, and pasted context
+ * the way the prompt does. Its chips' records live with the composer's own.
+ */
+function CitationCommentPromptInput({
+  input,
+  links,
+  richTextEnabled,
+  contextRecords,
+  buildContextClipboardFragment,
+  importContextFragment,
+  skills,
+}: {
+  input: CitationCommentInputProps;
+  links: ComposerCitationCommentLinks | undefined;
+  richTextEnabled: boolean;
+  contextRecords: ComposerDraftContextRecords;
+  buildContextClipboardFragment: ComposerPromptEditorProps["buildContextClipboardFragment"];
+  importContextFragment: ComposerPromptEditorProps["importContextFragment"];
+  skills: ReadonlyArray<ServerProviderSkill>;
+}) {
+  const id = useId();
+  const editorRef = useRef<ComposerPromptEditorHandle>(null);
+  const valueRef = useRef(input.value);
+  const openRef = useRef(true);
+  const [cursor, setCursor] = useState(() =>
+    collapseExpandedComposerCursor(input.value, input.value.length),
+  );
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- marks the comment closed, so a link that loads afterwards stays a link
+  useEffect(() => {
+    openRef.current = true;
+    return () => {
+      openRef.current = false;
+    };
+  }, []);
+  useImperativeHandle(input.inputRef, () => ({ focus: () => editorRef.current?.focus() }));
+  const setValue = (next: string, nextCursor: number) => {
+    valueRef.current = next;
+    setCursor(nextCursor);
+    input.onChange(next);
+  };
+  // A link loads after the paste, so the caret stays where the reader has since left it.
+  const replaceText = useStableCallback((start: number, end: number, text: string) => {
+    if (!openRef.current) return false;
+    const previous = valueRef.current;
+    const next = `${previous.slice(0, start)}${text}${previous.slice(end)}`;
+    const caret = editorRef.current?.readSnapshot().expandedCursor ?? previous.length;
+    const caretAfter =
+      caret <= start
+        ? caret
+        : caret >= end
+          ? caret + text.length - (end - start)
+          : start + text.length;
+    setValue(next, collapseExpandedComposerCursor(next, caretAfter));
+    return true;
+  });
+  const [target] = useState<ObjectLinkTextTarget>(() => ({
+    key: `citation-comment:${id}`,
+    read: () => (openRef.current ? valueRef.current : null),
+    replace: (start, end, text) => replaceText(start, end, text),
+  }));
+  const referenced = new Set(collectInlineContextIds(input.value));
+  return (
+    <ComposerPromptEditorTiptap
+      richTextEnabled={richTextEnabled}
+      buildContextClipboardFragment={buildContextClipboardFragment}
+      importContextFragment={importContextFragment}
+      skills={skills}
+      draftKey={target.key}
+      editorRef={editorRef}
+      value={input.value}
+      cursor={cursor}
+      // Only the comment's own chips, so its placeholder shows while it is empty.
+      contextRecords={new Map([...contextRecords].filter(([id]) => referenced.has(id)))}
+      loadingLinkUrls={(links?.loading ?? [])
+        .filter((entry) => entry.workKey === target.key)
+        .map((entry) => entry.url)}
+      disabled={false}
+      placeholder={input.placeholder}
+      ariaLabel={input.ariaLabel}
+      ariaDescription={input.ariaDescription}
+      ariaInvalid={input.invalid}
+      className="max-h-40"
+      onChange={(next, nextCursor, expandedCursor) => {
+        const previous = valueRef.current;
+        if (next === previous) {
+          setCursor(nextCursor);
+        } else {
+          setValue(next, nextCursor);
+        }
+        links?.onTyped(target, previous, next, expandedCursor);
+      }}
+      onCommandKeyDown={(key, event, isListItem) => {
+        if (key !== "Enter" || event.shiftKey) return false;
+        // Like the prompt, plain Enter continues a list.
+        if (isListItem && !event.metaKey && !event.ctrlKey) return false;
+        return input.onEnter(event);
+      }}
+      onPaste={(event) =>
+        links?.onPaste(
+          target,
+          event,
+          editorRef.current?.readSnapshot().expandedCursor ?? valueRef.current.length,
+        )
+      }
+    />
   );
 }
 
@@ -956,6 +1100,8 @@ function ComposerPromptEditorTiptapInner(
     disabled,
     placeholder,
     ariaLabel,
+    ariaDescription,
+    ariaInvalid,
     suggestionListId,
     activeSuggestionId,
     isPathQueryActive,
@@ -972,6 +1118,7 @@ function ComposerPromptEditorTiptapInner(
     onCitationSubmitAndSaveDraft,
     citationSendQueues = false,
     citationDestinations,
+    citationCommentLinks,
     onCitationDraftSave,
     onPaste,
     editorRef,
@@ -1037,6 +1184,21 @@ function ComposerPromptEditorTiptapInner(
     onSubmitAndSaveDraft: onCitationSubmitAndSaveDraft ?? null,
     sendQueues: citationSendQueues,
     destinations: citationDestinations ?? null,
+    // The comment is this same editor, given this composer's records, skills, and links.
+    renderInput: (input: CitationCommentInputProps) => (
+      <CitationCommentPromptInput
+        input={input}
+        richTextEnabled={richText}
+        contextRecords={contextRecords}
+        buildContextClipboardFragment={buildContextClipboardFragment}
+        importContextFragment={importContextFragment}
+        skills={skills}
+        links={citationCommentLinks}
+      />
+    ),
+    renderContextReference: (reference: { kind: string; contextId: string; label: string }) => (
+      <ComposerContextReferenceChip {...reference} />
+    ),
   };
 
   const handleEditorChange = (updated: TiptapEditor) => {
@@ -1110,6 +1272,8 @@ function ComposerPromptEditorTiptapInner(
     role: "textbox",
     "aria-multiline": "true",
     ...(ariaLabel ? { "aria-label": ariaLabel } : {}),
+    ...(ariaDescription ? { "aria-description": ariaDescription } : {}),
+    ...(ariaInvalid ? { "aria-invalid": "true" } : {}),
     ...(disabled ? { "aria-readonly": "true" } : {}),
     ...(!disabled && suggestionListId
       ? {

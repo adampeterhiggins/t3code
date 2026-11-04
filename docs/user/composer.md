@@ -153,7 +153,8 @@ which you used last. To remove the citation, place the caret beside its chip and
 delete it like other inline context. Copying, reloading, and restoring a
 [stashed prompt](#prompt-stash) keep each comment
 with its quote, and sending tells the agent which words were quoted and which comment you wrote.
-The quoted text and comment count toward the message limit.
+The quoted text and comment count toward the message limit. The comment takes the same
+formatting, chips, and pasted links as the message itself, and their context goes with the quote.
 
 To use the quote somewhere else, pick a destination on the left of the comment panel before
 sending. It starts on **This thread**. **New thread** starts a thread with the quote as its first

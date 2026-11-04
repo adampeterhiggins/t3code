@@ -1807,6 +1807,27 @@ Code: `SubmitChoiceButton` in
 `sendCitationElsewhere` in
 [useThreadLifecycle.tsx](../apps/web/src/components/chat/useThreadLifecycle.tsx).
 
+## Citation comments take chips and links
+
+Upstream edits a citation's comment in a plain text box. The fork edits it in the composer's own
+editor, so the comment reads Markdown, inline context chips, file links, and pasted chips the way
+the message does, and a pasted or typed link becomes a chip as described in
+[Pasted and typed links become chips](#pasted-and-typed-links-become-chips) (a broken link chip in a
+comment has no **Retry**). The records behind those chips travel with the message, including when
+the quote is sent on its own or to another thread, and hovering the quote draws them as chips.
+The server expands citations before the agent reads the message, as the composer's length check
+already assumed, so the agent gets each quote and comment as data with the comment's chips listed
+alongside the message's own, rather than the raw `t3-citation://` link.
+
+Code: `CitationCommentPromptInput` in
+[ComposerPromptEditorTiptap.tsx](../apps/web/src/components/ComposerPromptEditorTiptap.tsx),
+`ObjectLinkTextTarget` in
+[useComposerObjectLinks.ts](../apps/web/src/components/chat/useComposerObjectLinks.ts),
+`collectInlineContextIds` in
+[composerContextReferences.ts](../apps/web/src/lib/composerContextReferences.ts), and
+`projectUserMessageForProvider` in
+[assistantCitations.ts](../packages/shared/src/assistantCitations.ts).
+
 ## Message drafts and send button menus
 
 A message can be saved in a thread as a draft and sent later. Drafts are stored by the server per

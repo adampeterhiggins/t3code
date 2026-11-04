@@ -11,7 +11,11 @@ import {
   useComposerThreadDraft,
 } from "../../composerDraftStore";
 
-import { useComposerObjectLinks, type ComposerUnreadLinkActions } from "./useComposerObjectLinks";
+import {
+  useComposerObjectLinks,
+  type ComposerUnreadLinkActions,
+  type ObjectLinkTextTarget,
+} from "./useComposerObjectLinks";
 import { useComposerAttachControls } from "./useComposerAttachControls";
 import { useComposerPathMenu } from "./useComposerPathMenu";
 import {
@@ -3006,6 +3010,25 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // The editor is memoized; fresh closures here re-render it on every parent
   // render, which during a stream is every delta.
   const onComposerPasteStable = useStableCallback(onComposerPaste);
+  // A citation comment converts links as the prompt does. Files and long pastes stay the prompt's.
+  const onCitationCommentPaste = (
+    target: ObjectLinkTextTarget,
+    event: React.ClipboardEvent<HTMLElement>,
+    pasteStart: number,
+  ) => {
+    if ((readPastedComposerContext(event.clipboardData)?.records.length ?? 0) > 0) return;
+    const plainText = event.clipboardData.getData("text/plain");
+    const keepAsText = consumePasteAsTextShortcut(pasteAsTextShortcutUntilRef);
+    setTimeout(
+      () => convertPastedObjectLinksRef.current?.(plainText, keepAsText, pasteStart, target),
+      0,
+    );
+  };
+  const onCitationCommentPasteStable = useStableCallback(onCitationCommentPaste);
+  const convertCitationCommentTypedLinkStable = useStableCallback(
+    (target: ObjectLinkTextTarget, previous: string, next: string, expandedCursor: number) =>
+      convertTypedObjectLinkRef.current?.(previous, next, expandedCursor, target),
+  );
   const insertContextReferencesAtCaret = (
     references: ReadonlyArray<ComposerContextReference>,
   ): boolean =>
@@ -3941,6 +3964,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                           }
                         : undefined
                     }
+                    citationCommentLinks={{
+                      onPaste: onCitationCommentPasteStable,
+                      onTyped: convertCitationCommentTypedLinkStable,
+                      loading: loadingObjectLinks,
+                    }}
                     onCitationDraftSave={saveCitationDraftToPromptStable}
                     onPaste={onComposerPasteStable}
                     placeholder={

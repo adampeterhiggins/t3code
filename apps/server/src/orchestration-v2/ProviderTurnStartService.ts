@@ -1,6 +1,6 @@
 import { modelSelectionsEqual } from "@t3tools/shared/model";
 import { checkoutDirectoriesForTurn, formatLinkedCheckoutPrompt } from "@t3tools/shared/checkouts";
-import { projectComposerContextForProvider } from "@t3tools/shared/composerContextReferences";
+import { projectUserMessageForProvider } from "@t3tools/shared/assistantCitations";
 import {
   CommandId,
   latestProviderTurnForAttempt,
@@ -583,7 +583,7 @@ export const layer: Layer.Layer<
           : yield* Effect.result(
               providerAuth.tryHandlePromptCommand({
                 instanceId: authInstanceId,
-                text: projectComposerContextForProvider({
+                text: projectUserMessageForProvider({
                   text: message.text,
                   records: message.context?.records ?? [],
                 }),
@@ -854,7 +854,7 @@ export const layer: Layer.Layer<
       let effectiveHandoffs = handoffs;
       let resumeFellBack = false;
       const contextRecords = message.context?.records ?? [];
-      const projectedUserText = projectComposerContextForProvider({
+      const projectedUserText = projectUserMessageForProvider({
         text: message.text,
         records: contextRecords,
       });

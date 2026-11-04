@@ -16,10 +16,16 @@ import {
   expandAssistantCitationsForProvider,
   formatAssistantCitationHref,
   parseAssistantCitationHref,
+  projectUserMessageForProvider,
   renderAssistantCitationsAsText,
   serializeAssistantCitation,
   withAssistantCitationComment,
 } from "./assistantCitations.ts";
+import {
+  formatComposerContextReference,
+  threadContextRecord,
+} from "./composerContextReferences.ts";
+import { serializeComposerFileLink } from "./composerTrigger.ts";
 
 const citation: AssistantCitation = {
   version: 1,
@@ -32,6 +38,12 @@ const citation: AssistantCitation = {
   prefix: "Before the quote. ",
   suffix: " After the quote.",
 };
+
+const linkedThread = threadContextRecord(
+  { environmentId: EnvironmentId.make("environment"), threadId: ThreadId.make("linked") },
+  "Linked thread",
+);
+const linkedThreadChip = formatComposerContextReference(linkedThread);
 
 const legacyHref =
   "t3-citation://v1/a/b/c?text=A+quote+%26+a+newline.%0A&start=0&end=21&prefix=&suffix=+Next.";
@@ -108,11 +120,15 @@ describe("assistant citation references", () => {
 
   it("previews each citation as its chip label", () => {
     const commented = serializeAssistantCitation({ ...citation, comment: "  Why\nthis?" });
+    const chipped = serializeAssistantCitation({
+      ...citation,
+      comment: `See ${linkedThreadChip} and ${serializeComposerFileLink("src/app.ts")}`,
+    });
     expect(
       assistantCitationsToLabels(
-        `About ${serializeAssistantCitation(legacyCitation)} and ${commented}`,
+        `About ${serializeAssistantCitation(legacyCitation)} and ${commented} ${chipped}`,
       ),
-    ).toBe("About A quote & a newline.  and Why this?");
+    ).toBe("About A quote & a newline.  and Why this? See Linked thread and app.ts");
   });
 
   it("bounds selected text and surrounding context", () => {
@@ -252,6 +268,23 @@ describe("assistant citation references", () => {
     expect(expanded.match(/<\/assistant_citations>/g)).toHaveLength(1);
     expect(expanded).not.toContain("<other>");
     expect(expanded).not.toContain("t3-citation://");
+  });
+
+  it("lists the context chips in a comment for the agent with the message's own", () => {
+    const commented = { ...citation, comment: `Compare with ${linkedThreadChip}` };
+    const projected = projectUserMessageForProvider({
+      text: `Look ${serializeAssistantCitation(commented)}`,
+      records: [linkedThread],
+    });
+
+    expect(projected).toMatch(/^Look \[assistant-quote-1\]\n\n<assistant_citations>/);
+    expect(projected).toContain(
+      `"comment": "Compare with [Thread: Linked thread; ref=${linkedThread.contextId}]"`,
+    );
+    expect(projected).toContain(`<t3_context version="1">`);
+    expect(projected).toContain(linkedThread.contextId);
+    expect(projected).not.toContain("t3-context://");
+    expect(projected).not.toContain("t3-citation://");
   });
 
   it("includes bound comments in plain-text titles and stash previews without escaping", () => {

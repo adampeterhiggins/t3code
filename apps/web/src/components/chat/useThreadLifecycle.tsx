@@ -99,6 +99,7 @@ import { Atom } from "effect/reactivity";
 import { environmentThreadDetails } from "../../state/threads";
 import { openSideChatTab } from "../../lib/sideChatPane";
 import type { useLocalDispatchState } from "./useLocalDispatchState";
+import { copyReferencedForkContexts, referencedForkMessageContext } from "./forkComposerContexts";
 const RELATED_THREAD_SHELL_WAIT_MS = 1_000;
 const NO_RUN_STOP_ATOM = Atom.make<RunStopPresentation | null>(null).pipe(
   Atom.withLabel("web-thread-run-stop:empty"),
@@ -627,7 +628,13 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
             environmentId,
             input: {
               threadId,
-              message: { messageId, role: "user", text, attachments: [] },
+              message: {
+                messageId,
+                role: "user",
+                text,
+                attachments: [],
+                ...referencedForkMessageContext(threadId, text),
+              },
               modelSelection: context.selectedModelSelection,
               runtimeMode,
               interactionMode: context.interactionMode,
@@ -707,7 +714,13 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
             environmentId,
             input: {
               threadId: nextThreadId,
-              message: { messageId: newMessageId(), role: "user", text, attachments: [] },
+              message: {
+                messageId: newMessageId(),
+                role: "user",
+                text,
+                attachments: [],
+                ...referencedForkMessageContext(activeThread.id, text),
+              },
               modelSelection: destination.modelSelection,
               titleSeed: title,
               runtimeMode,
@@ -739,8 +752,10 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
     destination: Extract<CitationDestination, { kind: "new-thread" }>,
     text: string,
   ): Promise<boolean> => {
+    const sourceThreadId = activeThread?.id;
     const opened = await handleNewThread(scopeProjectRef(environmentId, destination.projectId));
     if (!opened) return false;
+    if (sourceThreadId) copyReferencedForkContexts(sourceThreadId, opened.threadId, text);
     const store = useComposerDraftStore.getState();
     store.setModelSelection(opened.draftId, destination.modelSelection, {
       explicit: true,
@@ -770,6 +785,7 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
     const targetRef = scopeThreadRef(environmentId, destination.threadId);
     const targetTitle = destination.title || "Untitled thread";
     if (action === "save") {
+      copyReferencedForkContexts(activeThread.id, destination.threadId, text);
       const store = useComposerDraftStore.getState();
       store.setPrompt(
         targetRef,
@@ -783,6 +799,7 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
         threadId: destination.threadId,
         text,
         attachments: [],
+        ...referencedForkMessageContext(activeThread.id, text),
       });
       if (saved === null) return false;
       announceCitationDelivered(`Saved as a draft in ${targetTitle}`, targetRef);
@@ -799,7 +816,13 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
       environmentId,
       input: {
         threadId: target.id,
-        message: { messageId: newMessageId(), role: "user", text, attachments: [] },
+        message: {
+          messageId: newMessageId(),
+          role: "user",
+          text,
+          attachments: [],
+          ...referencedForkMessageContext(activeThread.id, text),
+        },
         modelSelection: target.modelSelection,
         runtimeMode: target.runtimeMode,
         interactionMode: target.interactionMode,

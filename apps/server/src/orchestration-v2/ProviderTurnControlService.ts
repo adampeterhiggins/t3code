@@ -1,4 +1,4 @@
-import { projectComposerContextForProvider } from "@t3tools/shared/composerContextReferences";
+import { projectUserMessageForProvider } from "@t3tools/shared/assistantCitations";
 import {
   MessageId,
   type NodeId,
@@ -374,7 +374,7 @@ export const layer: Layer.Layer<
               providerTurnId: loaded.providerTurn.id,
               message: {
                 messageId: message.id,
-                text: projectComposerContextForProvider({
+                text: projectUserMessageForProvider({
                   text: message.text,
                   records: message.context?.records ?? [],
                 }),
