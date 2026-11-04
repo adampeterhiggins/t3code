@@ -677,6 +677,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     groupsHidingSettled,
     sidebarPages,
     setSidebarPages,
+    pickSidebarPages,
+    excludedPages,
+    setExcludedPages,
+    setStoredExcludedPages,
     availablePages,
     collapsedPages,
     setCollapsedPages,
@@ -1514,6 +1518,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     saveGroup,
     deleteGroup,
     setSidebarPages,
+    setExcludedPages: setStoredExcludedPages,
     setCollapsedPages,
     attemptSetGroup,
   });
@@ -3177,7 +3182,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                   onScopedOrganisationKeysChange={setOrganisationKeys}
                   excludedOrganisationKeys={excludedOrganisationKeys}
                   onExcludedOrganisationKeysChange={setExcludedOrganisationKeys}
-                  onPagesChange={setSidebarPages}
+                  onPagesChange={pickSidebarPages}
+                  excludedPages={excludedPages}
+                  onExcludedPagesChange={setExcludedPages}
                   projects={filterFacets.projects}
                   projectCounts={filterFacets.projectCounts}
                   scopedProjectKeys={projectScopeKeys}
@@ -3209,7 +3216,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               onClearSearch={clearThreadSearch}
               pages={sidebarPages}
               groupStyles={threadGroups}
-              onPagesChange={setSidebarPages}
+              onPagesChange={pickSidebarPages}
+              excludedPages={excludedPages}
+              onExcludedPagesChange={setExcludedPages}
               organisations={organisationOptions}
               scopedOrganisationKeys={scopedOrganisationKeys}
               onScopedOrganisationKeysChange={setOrganisationKeys}

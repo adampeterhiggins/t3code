@@ -13,6 +13,7 @@ export function createSidebarGroupActions(input: {
   saveGroup: ReturnType<typeof useThreadGroups>["saveGroup"];
   deleteGroup: ReturnType<typeof useThreadGroups>["deleteGroup"];
   setSidebarPages: UpdatePages;
+  setExcludedPages: UpdatePages;
   setCollapsedPages: UpdatePages;
   attemptSetGroup: (threadRef: ScopedThreadRef, groupName: string | null) => void;
 }) {
@@ -22,6 +23,7 @@ export function createSidebarGroupActions(input: {
     saveGroup,
     deleteGroup,
     setSidebarPages,
+    setExcludedPages,
     setCollapsedPages,
     attemptSetGroup,
   } = input;
@@ -40,6 +42,7 @@ export function createSidebarGroupActions(input: {
             page === sidebarGroupPage(name) ? sidebarGroupPage(nextName) : page,
           );
     setSidebarPages(renamePage);
+    setExcludedPages(renamePage);
     setCollapsedPages(renamePage);
   };
   /**

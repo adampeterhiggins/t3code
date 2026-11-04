@@ -15,6 +15,7 @@ import {
   LayersIcon,
   ListFilterIcon,
   ListIcon,
+  MinusIcon,
   PlusIcon,
   SettingsIcon,
   SearchIcon,
@@ -90,10 +91,12 @@ const FILTER_PREVIEW_ROW_LIMIT = 8;
 
 function SidebarShowFilter(props: {
   pages: readonly SidebarPage[];
+  excluded: readonly SidebarPage[];
   available: readonly SidebarPage[];
   counts: ReadonlyMap<SidebarPage, number>;
   groupStyles: ThreadGroups;
   onPagesChange: (pages: readonly SidebarPage[]) => void;
+  onExcludedChange: (pages: readonly SidebarPage[]) => void;
   onOnly: (page: SidebarPage) => void;
   onExclude: (page: SidebarPage) => void;
   onNewGroup: () => void;
@@ -110,7 +113,9 @@ function SidebarShowFilter(props: {
         )}
         <span className="flex-1">Show</span>
         <span className="min-w-0 max-w-32 truncate text-xs text-muted-foreground">
-          {props.pages.map(sidebarPageLabel).join(", ")}
+          {props.excluded.length > 0
+            ? scopeSummary([], props.excluded.map(sidebarPageLabel))
+            : props.pages.map(sidebarPageLabel).join(", ")}
         </span>
       </MenuSubTrigger>
       <MenuSubPopup className="min-w-44">
@@ -120,19 +125,36 @@ function SidebarShowFilter(props: {
               key={page}
               checked={props.pages.includes(page)}
               onCheckedChange={(checked) => {
-                const next = props.available.filter((candidate) =>
-                  candidate === page ? checked : props.pages.includes(candidate),
-                );
                 // The list always shows something, so the last page cannot be unpicked.
-                if (next.length > 0) props.onPagesChange(next);
+                if (!checked && props.pages.length === 1) return;
+                if (props.excluded.length > 0) {
+                  props.onExcludedChange(
+                    checked
+                      ? props.excluded.filter((candidate) => candidate !== page)
+                      : [...props.excluded, page],
+                  );
+                  return;
+                }
+                props.onPagesChange(
+                  props.available.filter((candidate) =>
+                    candidate === page ? checked : props.pages.includes(candidate),
+                  ),
+                );
               }}
             >
               <span className="flex w-full min-w-0 items-center gap-2">
                 <SidebarPageIcon page={page} groupStyles={props.groupStyles} />
                 <MenuChoiceLabel
                   label={sidebarPageLabel(page)}
+                  excluded={props.excluded.includes(page)}
                   onOnly={() => props.onOnly(page)}
-                  onExclude={props.available.length > 1 ? () => props.onExclude(page) : undefined}
+                  onExclude={
+                    props.available.some(
+                      (candidate) => candidate !== page && !props.excluded.includes(candidate),
+                    )
+                      ? () => props.onExclude(page)
+                      : undefined
+                  }
                 />
                 <ChoiceCount count={props.counts.get(page) ?? 0} />
               </span>
@@ -417,6 +439,7 @@ function scopedChoices<Choice>(
 /** The selections off their default, named, so a narrowed list is readable without opening it. */
 function SidebarFilterPreview(props: {
   pages: readonly SidebarPage[];
+  excludedPages: readonly SidebarPage[];
   groupStyles: ThreadGroups;
   organisations: readonly OrganisationOption[];
   scopedOrganisationKeys: readonly string[];
@@ -425,7 +448,9 @@ function SidebarFilterPreview(props: {
   scopedProjectKeys: readonly string[];
   excludedProjectKeys: readonly string[];
 }) {
-  const pagesFiltered = !(props.pages.length === 1 && props.pages[0] === "threads");
+  const pagesFiltered =
+    props.excludedPages.length > 0 || !(props.pages.length === 1 && props.pages[0] === "threads");
+  const pageChoices = props.excludedPages.length > 0 ? props.excludedPages : props.pages;
   const organisations = scopedChoices(
     props.organisations,
     (option) => option.key,
@@ -438,7 +463,7 @@ function SidebarFilterPreview(props: {
     props.scopedProjectKeys,
     props.excludedProjectKeys,
   );
-  const visiblePages = props.pages.slice(0, FILTER_PREVIEW_ROW_LIMIT);
+  const visiblePages = pageChoices.slice(0, FILTER_PREVIEW_ROW_LIMIT);
   const visibleOrganisations = organisations.slice(0, FILTER_PREVIEW_ROW_LIMIT);
   const visibleProjects = projects.slice(0, FILTER_PREVIEW_ROW_LIMIT);
 
@@ -450,10 +475,14 @@ function SidebarFilterPreview(props: {
             <FilterPreviewName
               key={page}
               icon={<SidebarPageIcon page={page} groupStyles={props.groupStyles} />}
-              label={sidebarPageLabel(page)}
+              label={
+                props.excludedPages.length > 0
+                  ? `Not ${sidebarPageLabel(page)}`
+                  : sidebarPageLabel(page)
+              }
             />
           ))}
-          <FilterPreviewMore count={props.pages.length - visiblePages.length} />
+          <FilterPreviewMore count={pageChoices.length - visiblePages.length} />
         </FilterPreviewSection>
       ) : null}
       {organisations.length > 0 ? (
@@ -490,6 +519,8 @@ export function SidebarFilterMenu(props: {
   pageCounts: ReadonlyMap<SidebarPage, number>;
   groupStyles: ThreadGroups;
   onPagesChange: (pages: readonly SidebarPage[]) => void;
+  excludedPages: readonly SidebarPage[];
+  onExcludedPagesChange: (pages: readonly SidebarPage[]) => void;
   onNewGroup: () => void;
   organisations: readonly OrganisationOption[];
   organisationCounts: ReadonlyMap<string, number>;
@@ -506,7 +537,8 @@ export function SidebarFilterMenu(props: {
   onProjectSettings: (event: ReactMouseEvent<HTMLElement>, project: SidebarProjectSnapshot) => void;
   projectBadge: (project: SidebarProjectSnapshot) => ReactNode;
 }) {
-  const pagesFiltered = !(props.pages.length === 1 && props.pages[0] === "threads");
+  const pagesFiltered =
+    props.excludedPages.length > 0 || !(props.pages.length === 1 && props.pages[0] === "threads");
   const organisationsFiltered =
     props.scopedOrganisationKeys.length > 0 || props.excludedOrganisationKeys.length > 0;
   const projectsFiltered =
@@ -523,7 +555,11 @@ export function SidebarFilterMenu(props: {
     return `${count} ${count === 1 ? one : many}${picked.length > 0 ? "" : " excluded"}`;
   };
   const summary = [
-    pagesFiltered ? `Showing ${props.pages.map(sidebarPageLabel).join(", ")}` : null,
+    pagesFiltered
+      ? props.excludedPages.length > 0
+        ? `Showing all but ${props.excludedPages.map(sidebarPageLabel).join(", ")}`
+        : `Showing ${props.pages.map(sidebarPageLabel).join(", ")}`
+      : null,
     organisationsFiltered
       ? scopeCount(
           props.scopedOrganisationKeys,
@@ -593,6 +629,7 @@ export function SidebarFilterMenu(props: {
         >
           <SidebarFilterPreview
             pages={props.pages}
+            excludedPages={props.excludedPages}
             groupStyles={props.groupStyles}
             organisations={props.organisations}
             scopedOrganisationKeys={props.scopedOrganisationKeys}
@@ -606,17 +643,22 @@ export function SidebarFilterMenu(props: {
       <MenuPopup align="end" side="bottom" className="min-w-52">
         <SidebarShowFilter
           pages={props.pages}
+          excluded={props.excludedPages}
           available={props.availablePages}
           counts={props.pageCounts}
           groupStyles={props.groupStyles}
           onNewGroup={props.onNewGroup}
           onPagesChange={props.onPagesChange}
+          onExcludedChange={props.onExcludedPagesChange}
           onOnly={(page) => {
             props.onPagesChange([page]);
             closeMenu();
           }}
           onExclude={(page) => {
-            props.onPagesChange(props.availablePages.filter((candidate) => candidate !== page));
+            props.onExcludedPagesChange([
+              ...props.excludedPages.filter((candidate) => candidate !== page),
+              page,
+            ]);
             closeMenu();
           }}
         />
@@ -669,14 +711,39 @@ export function SidebarFilterMenu(props: {
   );
 }
 
-function SidebarFilterPill(props: { icon: ReactNode; label: string; onRemove: () => void }) {
+/** An excluded choice is dashed and muted, with a minus on its icon. */
+function SidebarFilterPill(props: {
+  icon: ReactNode;
+  label: string;
+  excluded?: boolean;
+  onRemove: () => void;
+}) {
   return (
-    <span className="flex h-6 max-w-full min-w-0 items-center gap-1 rounded-full border border-sidebar-border pr-0.5 pl-2 text-xs text-sidebar-foreground">
-      <span className="flex size-3.5 shrink-0 items-center justify-center">{props.icon}</span>
-      <span className="min-w-0 truncate">{props.label}</span>
+    <span
+      className={
+        props.excluded
+          ? "flex h-6 max-w-full min-w-0 items-center gap-1 rounded-full border border-dashed border-sidebar-border pr-0.5 pl-2 text-xs text-sidebar-muted-foreground"
+          : "flex h-6 max-w-full min-w-0 items-center gap-1 rounded-full border border-sidebar-border pr-0.5 pl-2 text-xs text-sidebar-foreground"
+      }
+    >
+      <span className="relative flex size-3.5 shrink-0 items-center justify-center">
+        {props.icon}
+        {props.excluded ? (
+          <span
+            aria-hidden
+            className="absolute -right-1 -bottom-1 flex size-2.5 items-center justify-center rounded-full bg-destructive text-white ring-1 ring-sidebar"
+          >
+            <MinusIcon className="size-2" strokeWidth={4} />
+          </span>
+        ) : null}
+      </span>
+      <span className="min-w-0 truncate">
+        {props.excluded ? <span className="sr-only">Not </span> : null}
+        {props.label}
+      </span>
       <button
         type="button"
-        aria-label={`Remove ${props.label} filter`}
+        aria-label={`Remove ${props.excluded ? "Not " : ""}${props.label} filter`}
         className="flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-full text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
         onClick={props.onRemove}
       >
@@ -696,6 +763,8 @@ export function SidebarFilterPills(props: {
   pages: readonly SidebarPage[];
   groupStyles: ThreadGroups;
   onPagesChange: (pages: readonly SidebarPage[]) => void;
+  excludedPages: readonly SidebarPage[];
+  onExcludedPagesChange: (pages: readonly SidebarPage[]) => void;
   organisations: readonly OrganisationOption[];
   scopedOrganisationKeys: readonly string[];
   onScopedOrganisationKeysChange: (keys: readonly string[]) => void;
@@ -709,6 +778,7 @@ export function SidebarFilterPills(props: {
 }) {
   // Live threads are the default page, so only the extra pages read as filters.
   const pages = props.pages.filter((page) => page !== "threads");
+  const pagesExcluded = props.excludedPages.length > 0;
   const organisations = scopedChoices(
     props.organisations,
     (option) => option.key,
@@ -722,7 +792,9 @@ export function SidebarFilterPills(props: {
     props.excludedProjectKeys,
   );
   const searchQuery = props.searchQuery.trim();
-  const pillCount = pages.length + organisations.length + projects.length + (searchQuery ? 1 : 0);
+  const pageChoices = pagesExcluded ? props.excludedPages : pages;
+  const pillCount =
+    pageChoices.length + organisations.length + projects.length + (searchQuery ? 1 : 0);
   if (pillCount === 0) return null;
 
   return (
@@ -734,12 +806,19 @@ export function SidebarFilterPills(props: {
           onRemove={props.onClearSearch}
         />
       ) : null}
-      {pages.map((page) => (
+      {pageChoices.map((page) => (
         <SidebarFilterPill
           key={page}
           icon={<SidebarPageIcon page={page} groupStyles={props.groupStyles} />}
           label={sidebarPageLabel(page)}
+          excluded={pagesExcluded}
           onRemove={() => {
+            if (pagesExcluded) {
+              props.onExcludedPagesChange(
+                props.excludedPages.filter((candidate) => candidate !== page),
+              );
+              return;
+            }
             const next = props.pages.filter((candidate) => candidate !== page);
             // The list always shows something; dropping the last page falls back to the default.
             props.onPagesChange(next.length > 0 ? next : ["threads"]);
@@ -750,7 +829,8 @@ export function SidebarFilterPills(props: {
         <SidebarFilterPill
           key={option.key}
           icon={<OrganisationIcon option={option} />}
-          label={excluded ? `Not ${option.label}` : option.label}
+          label={option.label}
+          excluded={excluded}
           onRemove={() =>
             excluded
               ? props.onExcludedOrganisationKeysChange(
@@ -766,7 +846,8 @@ export function SidebarFilterPills(props: {
         <SidebarFilterPill
           key={project.projectKey}
           icon={<ProjectFavicon project={project} className="size-3.5" />}
-          label={excluded ? `Not ${project.displayName}` : project.displayName}
+          label={project.displayName}
+          excluded={excluded}
           onRemove={() =>
             excluded
               ? props.onExcludedProjectKeysChange(
