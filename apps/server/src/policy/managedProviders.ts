@@ -2,6 +2,8 @@ import {
   AntigravitySettings,
   ClaudeSettings,
   CodexSettings,
+  CustomAcpSettings,
+  DevinSettings,
   defaultInstanceIdForDriver,
   disallowedProviderMessage,
   type ManagedProviderInstance,
@@ -72,6 +74,8 @@ const KNOWN_DRIVERS: ReadonlyMap<ProviderDriverKind, KnownDriver> = new Map([
   known("codex", "Codex", CodexSettings),
   known("claudeAgent", "Claude", ClaudeSettings),
   known("antigravity", "Antigravity", AntigravitySettings),
+  known("devin", "Devin", DevinSettings),
+  known("customAcp", "Custom ACP", CustomAcpSettings, false),
   ...PACKAGED_CLIENTS.map((client) =>
     known(client.driverKind, client.label, client.settingsSchema, client.hasDefaultInstance),
   ),
@@ -96,6 +100,7 @@ const LAUNCH_CONFIG_FIELDS = [
   "shadowHomePath",
   "commandPath",
   "commandArgs",
+  "arguments",
   "serverUrl",
 ] as const;
 
