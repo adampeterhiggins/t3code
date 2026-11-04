@@ -1,6 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import type { InteractionUpdate } from "@cursor/sdk";
+import { toolOutputImages } from "@t3tools/shared/toolOutput";
 import {
   EnvironmentId,
   MessageId,
@@ -975,7 +976,13 @@ describe("CursorAdapterV2", () => {
               ? {
                   result: {
                     status: "success" as const,
-                    value: { content: [{ text: { text: "Sunny" } }], isError: false },
+                    value: {
+                      content: [
+                        { text: { text: "Preview complete" } },
+                        { image: { data: "iVBORw0KGgo=", mimeType: "image/png" } },
+                      ],
+                      isError: false,
+                    },
                   },
                 }
               : {}),
@@ -1290,9 +1297,15 @@ describe("CursorAdapterV2", () => {
         assert.deepEqual(item.input, { city: "Berlin" });
       }
       assert.deepEqual(mcpItems.at(-1)?.output, {
-        content: [{ type: "text", text: "Sunny" }],
+        content: [
+          { type: "text", text: "Preview complete" },
+          { type: "image", mimeType: "image/png", data: "iVBORw0KGgo=" },
+        ],
         isError: false,
       });
+      assert.deepEqual(toolOutputImages(mcpItems.at(-1)?.output), [
+        { mimeType: "image/png", data: "iVBORw0KGgo=" },
+      ]);
       const fileSearchItems = events.flatMap((event) =>
         event.type === "turn_item.updated" &&
         event.turnItem.type === "file_search" &&

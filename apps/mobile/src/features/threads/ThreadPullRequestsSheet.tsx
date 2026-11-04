@@ -3,7 +3,7 @@ import { LegendList } from "@legendapp/list/react-native";
 import { Platform, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { AndroidSheetHeader } from "../../components/ui/AndroidScreenHeader";
+import { AppBar } from "../../components/ui/AppBar";
 import { AppText as Text } from "../../components/ui/AppText";
 import { ScreenContent } from "../../components/ui/ScreenContent";
 import { SheetHeader } from "../../components/ui/SheetHeader";
@@ -107,7 +107,8 @@ export function ThreadPullRequestsSheet(
   return (
     <View collapsable={false} className="flex-1 bg-header">
       <NativeStackScreenOptions options={{ sheetCornerRadius: 28 }} />
-      <AndroidSheetHeader
+      <AppBar
+        sheet
         title={title}
         hideBottomBorder
         onBack={() => navigation.goBack()}
