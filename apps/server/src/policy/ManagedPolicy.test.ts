@@ -185,6 +185,16 @@ it.layer(NodeServices.layer)("ManagedPolicy.load", (it) => {
         "config.commandArgs",
         "environment",
       ]);
+      assert.deepEqual(providers?.lockedInstanceFields?.[ProviderDriverKind.make("devin")], [
+        "config.binaryPath",
+        "config.homePath",
+        "environment",
+      ]);
+      assert.deepEqual(providers?.lockedInstanceFields?.[ProviderDriverKind.make("customAcp")], [
+        "config.binaryPath",
+        "config.arguments",
+        "environment",
+      ]);
       // The host variable that replaces Codex's launch arguments is ignored too.
       const host = { PATH: "/usr/bin", T3CODE_CODEX_LAUNCH_ARGS: "-c mcp_servers.x.command=sh" };
       assert.deepEqual(providerHostEnvironment(policy.summary, host), { PATH: "/usr/bin" });
