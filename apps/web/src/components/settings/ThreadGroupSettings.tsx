@@ -147,8 +147,14 @@ function BuiltInThreadGroupRows() {
 export function ThreadGroupSettingsSection() {
   const threads = useQuietThreadShells();
   const { setThreadGroup } = useThreadActions();
-  const { threadGroups, saveGroup, deleteGroup, setSidebarPages, setCollapsedPages } =
-    useSidebarOrganization(threads);
+  const {
+    threadGroups,
+    saveGroup,
+    deleteGroup,
+    setSidebarPages,
+    setStoredExcludedPages,
+    setCollapsedPages,
+  } = useSidebarOrganization(threads);
   const attemptSetGroup = (threadRef: ScopedThreadRef, groupName: string | null) => {
     void (async () => {
       const result = await setThreadGroup(threadRef, groupName);
@@ -170,6 +176,7 @@ export function ThreadGroupSettingsSection() {
     saveGroup,
     deleteGroup,
     setSidebarPages,
+    setExcludedPages: setStoredExcludedPages,
     setCollapsedPages,
     attemptSetGroup,
   });

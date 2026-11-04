@@ -2792,6 +2792,13 @@ describe("resolveSidebarPages", () => {
     expect(resolveSidebarPages(["group:Gone", "nonsense"], [])).toEqual(["threads"]);
   });
 
+  it("shows every page but the exclusions, ignoring picks, until no exclusion resolves", () => {
+    expect(
+      resolveSidebarPages(["threads"], ["Docs", "New"], ["automations", "group:Docs"]),
+    ).toEqual(["threads", "group:New", "snoozed", "hidden", "settled"]);
+    expect(resolveSidebarPages(["hidden"], [], ["group:Gone"])).toEqual(["hidden"]);
+  });
+
   it("lists Automations after groups and before the parked shelves", () => {
     expect(resolveSidebarPages(["snoozed", "automations", "group:Docs"], ["Docs"])).toEqual([
       "group:Docs",

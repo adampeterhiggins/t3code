@@ -202,7 +202,7 @@ it, and click again to expand it. **Organisations** narrows the list to reposito
 owned by the people or organisations you pick, read from each project's Git remote, and
 **Projects** narrows it to the projects you pick. Hover a choice and click **Exclude** to show
 everything except it instead; excluded choices appear struck through and as "Not …" pills, and new
-projects still show. Each choice shows how many threads picking it
+groups and projects still show. **Exclude** works under **Show** too. Each choice shows how many threads picking it
 would leave with your other filters, so you can see where work is before you narrow. On web and desktop, the filter button shows how
 many filters are on, hovering it lists the ones that are selected, and each one appears as a pill
 under the search bar: click its × to remove it, or **Clear all** to go back to the default list.

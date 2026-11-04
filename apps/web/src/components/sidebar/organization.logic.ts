@@ -46,13 +46,19 @@ export function sidebarPagesAllowDragging(pages: readonly SidebarPage[]): boolea
 /**
  * The stored Show selection, kept to pages that still exist and put in list order. A group
  * whose last thread moved out drops away; an emptied selection falls back to live threads.
+ * Exclusions that still name a page win over picks: every other page shows, new groups too.
  */
 export function resolveSidebarPages(
   stored: readonly string[],
   groupNames: readonly string[],
+  excluded: readonly string[] = [],
 ): SidebarPage[] {
+  const available = availableSidebarPages(groupNames);
+  const left = new Set(excluded);
   const picked = new Set(stored);
-  const pages = availableSidebarPages(groupNames).filter((page) => picked.has(page));
+  const pages = available.some((page) => left.has(page))
+    ? available.filter((page) => !left.has(page))
+    : available.filter((page) => picked.has(page));
   return pages.length > 0 ? pages : ["threads"];
 }
 
