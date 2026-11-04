@@ -25,6 +25,12 @@ import {
   makeUsageLimits,
 } from "@t3tools/provider-core/server/usageLimits";
 
+/** A hub with its management key already read from wherever the setting keeps it. */
+export interface CliproxyHub {
+  readonly url: UsageLimitSourceConfig["url"];
+  readonly managementKey: string;
+}
+
 const AuthFile = Schema.Struct({
   id: Schema.String,
   auth_index: Schema.String,
@@ -589,7 +595,7 @@ export const makeCliproxyApi = Effect.gen(function* () {
   const digest = yield* Digest.Digest;
 
   const management = Effect.fn("CliproxyApi.management")(function* (
-    config: UsageLimitSourceConfig,
+    hub: CliproxyHub,
     path: string,
     body?: unknown,
   ) {
@@ -597,13 +603,13 @@ export const makeCliproxyApi = Effect.gen(function* () {
       try: () =>
         new URL(
           `v0/management/${path}`,
-          config.url.endsWith("/") ? config.url : `${config.url}/`,
+          hub.url.endsWith("/") ? hub.url : `${hub.url}/`,
         ).toString(),
       catch: () => new UsageLimitSourceError({ detail: "The hub URL is not valid." }),
     });
     const request = (
       body === undefined ? HttpClientRequest.get(url) : HttpClientRequest.post(url)
-    ).pipe(HttpClientRequest.setHeader("Authorization", `Bearer ${config.managementKey}`));
+    ).pipe(HttpClientRequest.setHeader("Authorization", `Bearer ${hub.managementKey}`));
     const response = yield* client
       .execute(body === undefined ? request : request.pipe(HttpClientRequest.bodyJsonUnsafe(body)))
       .pipe(
@@ -617,18 +623,18 @@ export const makeCliproxyApi = Effect.gen(function* () {
     return response;
   });
 
-  const authFiles = Effect.fn("CliproxyApi.authFiles")(function* (config: UsageLimitSourceConfig) {
-    const response = yield* management(config, "auth-files");
+  const authFiles = Effect.fn("CliproxyApi.authFiles")(function* (hub: CliproxyHub) {
+    const response = yield* management(hub, "auth-files");
     return (yield* decodeAuthFiles(response)).files;
   });
 
   const apiCall = Effect.fn("CliproxyApi.apiCall")(function* (
-    config: UsageLimitSourceConfig,
+    hub: CliproxyHub,
     account: typeof AuthFile.Type,
     url: string,
     options: { readonly header: Record<string, string>; readonly data?: unknown },
   ) {
-    const raw = yield* management(config, "api-call", {
+    const raw = yield* management(hub, "api-call", {
       auth_index: account.auth_index,
       method: options.data === undefined ? "GET" : "POST",
       url,
@@ -645,10 +651,10 @@ export const makeCliproxyApi = Effect.gen(function* () {
   });
 
   const credits = Effect.fn("CliproxyApi.credits")(function* (
-    config: UsageLimitSourceConfig,
+    hub: CliproxyHub,
     account: typeof AuthFile.Type,
   ) {
-    const body = yield* apiCall(config, account, CREDIT_URL, { header: codexHeaders(account) });
+    const body = yield* apiCall(hub, account, CREDIT_URL, { header: codexHeaders(account) });
     const response = yield* decodeCreditList(body);
     const now = DateTime.toEpochMillis(yield* DateTime.now);
     return response.credits
@@ -662,7 +668,7 @@ export const makeCliproxyApi = Effect.gen(function* () {
   });
 
   const readAntigravityLimits = Effect.fn("CliproxyApi.readAntigravityLimits")(function* (
-    config: UsageLimitSourceConfig,
+    hub: CliproxyHub,
     account: typeof AuthFile.Type,
     checkedAt: string,
   ) {
@@ -670,7 +676,7 @@ export const makeCliproxyApi = Effect.gen(function* () {
     if (!project) {
       const discovered = yield* Effect.gen(function* () {
         const body = yield* apiCall(
-          config,
+          hub,
           account,
           `${ANTIGRAVITY_HOSTS[0]}/v1internal:loadCodeAssist`,
           {
@@ -692,7 +698,7 @@ export const makeCliproxyApi = Effect.gen(function* () {
       return yield* new UsageLimitSourceError({ detail: "Antigravity account has no project." });
     }
     for (const host of ANTIGRAVITY_HOSTS) {
-      const body = yield* apiCall(config, account, `${host}/v1internal:retrieveUserQuotaSummary`, {
+      const body = yield* apiCall(hub, account, `${host}/v1internal:retrieveUserQuotaSummary`, {
         header: ANTIGRAVITY_HEADERS,
         data: { project },
       }).pipe(Effect.result);
@@ -709,7 +715,7 @@ export const makeCliproxyApi = Effect.gen(function* () {
   });
 
   const readAccount = Effect.fn("CliproxyApi.readAccount")(function* (
-    config: UsageLimitSourceConfig,
+    hub: CliproxyHub,
     account: typeof AuthFile.Type,
     provider: HubProvider,
   ) {
@@ -725,14 +731,9 @@ export const makeCliproxyApi = Effect.gen(function* () {
     const read = Effect.gen(function* () {
       switch (provider) {
         case "claude": {
-          const body = yield* apiCall(
-            config,
-            account,
-            "https://api.anthropic.com/api/oauth/usage",
-            {
-              header: CLAUDE_HEADERS,
-            },
-          );
+          const body = yield* apiCall(hub, account, "https://api.anthropic.com/api/oauth/usage", {
+            header: CLAUDE_HEADERS,
+          });
           const usage = yield* decodeClaudeUsage(body);
           const model_scoped = (usage.limits ?? []).flatMap((limit) =>
             limit.kind === "weekly_scoped" &&
@@ -767,7 +768,7 @@ export const makeCliproxyApi = Effect.gen(function* () {
           };
         }
         case "grok": {
-          const body = yield* apiCall(config, account, GROK_USAGE_URL, { header: GROK_HEADERS });
+          const body = yield* apiCall(hub, account, GROK_USAGE_URL, { header: GROK_HEADERS });
           return {
             ...base,
             usageLimits: grokUsageResponseToLimits(yield* decodeGrokUsage(body), checkedAt),
@@ -776,10 +777,10 @@ export const makeCliproxyApi = Effect.gen(function* () {
         case "antigravity":
           return {
             ...base,
-            usageLimits: yield* readAntigravityLimits(config, account, checkedAt),
+            usageLimits: yield* readAntigravityLimits(hub, account, checkedAt),
           };
         case "devin": {
-          const body = yield* apiCall(config, account, DEVIN_QUOTA_URL, {
+          const body = yield* apiCall(hub, account, DEVIN_QUOTA_URL, {
             header: DEVIN_HEADERS,
             data: DEVIN_QUOTA_BODY,
           });
@@ -791,7 +792,7 @@ export const makeCliproxyApi = Effect.gen(function* () {
           };
         }
         case "kimi": {
-          const body = yield* apiCall(config, account, KIMI_USAGE_URL, { header: KIMI_HEADERS });
+          const body = yield* apiCall(hub, account, KIMI_USAGE_URL, { header: KIMI_HEADERS });
           return {
             ...base,
             usageLimits: makeUsageLimits({
@@ -801,7 +802,7 @@ export const makeCliproxyApi = Effect.gen(function* () {
           };
         }
         case "codex": {
-          const body = yield* apiCall(config, account, `${CODEX_BASE}/usage`, {
+          const body = yield* apiCall(hub, account, `${CODEX_BASE}/usage`, {
             header: codexHeaders(account),
           });
           const usage = yield* decodeCodexUsage(body);
@@ -816,7 +817,7 @@ export const makeCliproxyApi = Effect.gen(function* () {
                 }
               : null;
           // A credits outage must not hide successfully fetched quota windows.
-          const available = yield* credits(config, account).pipe(
+          const available = yield* credits(hub, account).pipe(
             Effect.orElseSucceed(() => undefined),
           );
           const next = available?.[0];
@@ -869,9 +870,9 @@ export const makeCliproxyApi = Effect.gen(function* () {
   });
 
   const readAccounts = Effect.fn("CliproxyApi.readAccounts")(function* (
-    config: UsageLimitSourceConfig,
+    hub: CliproxyHub,
   ): Effect.fn.Return<ReadonlyArray<UsageLimitSourceAccount>, UsageLimitSourceError> {
-    const accounts = yield* authFiles(config).pipe(
+    const accounts = yield* authFiles(hub).pipe(
       Effect.mapError((error) =>
         isUsageLimitSourceError(error)
           ? error
@@ -884,24 +885,24 @@ export const makeCliproxyApi = Effect.gen(function* () {
         const provider = hubProvider(account.provider);
         return provider ? [{ account, provider }] : [];
       }),
-      ({ account, provider }) => readAccount(config, account, provider),
+      ({ account, provider }) => readAccount(hub, account, provider),
       { concurrency: 4 },
     );
   });
 
   const consume = Effect.fn("CliproxyApi.consume")(function* (
-    config: UsageLimitSourceConfig,
+    hub: CliproxyHub,
     accountId: string,
     creditId: string,
   ): Effect.fn.Return<ProviderConsumeResetCreditResult, UsageLimitSourceError> {
     const operation = Effect.gen(function* () {
-      const account = (yield* authFiles(config)).find((account) => account.id === accountId);
+      const account = (yield* authFiles(hub)).find((account) => account.id === accountId);
       if (!account || account.disabled || account.provider !== "codex") {
         return yield* new UsageLimitSourceError({
           detail: "The Codex hub account is missing or disabled.",
         });
       }
-      const body = yield* apiCall(config, account, `${CREDIT_URL}/consume`, {
+      const body = yield* apiCall(hub, account, `${CREDIT_URL}/consume`, {
         header: codexHeaders(account),
         data: {
           redeem_request_id: yield* creditRedeemRequestId(
@@ -921,7 +922,7 @@ export const makeCliproxyApi = Effect.gen(function* () {
         } as const
       )[response.code];
       if (outcome !== "reset" && outcome !== "alreadyRedeemed") return { outcome };
-      const cleared = yield* management(config, "reset-quota", {
+      const cleared = yield* management(hub, "reset-quota", {
         auth_index: account.auth_index,
       }).pipe(Effect.result);
       return {

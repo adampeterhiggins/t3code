@@ -1,5 +1,6 @@
 import { NodeHttpServer } from "@effect/platform-node";
 import { expect, it } from "@effect/vitest";
+import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
@@ -32,7 +33,12 @@ const toolkit = Toolkit.make(
   }),
 );
 
-it.effect.each([false, true])(
+const refusal = new OrchestratorMcpFailure({
+  code: "thread_not_found",
+  message: "Thread thread-gone was not found.",
+});
+
+it.live.each([false, true])(
   "reuses an initialized session before its first call finishes (cancelled: %s)",
   (cancelFirst) =>
     Effect.scoped(
@@ -94,7 +100,8 @@ it.effect.each([false, true])(
 it.effect("renews a missing peer session once and reuses its replacement", () =>
   Effect.gen(function* () {
     const sessionHeaders: Array<string | undefined> = [];
-    const statuses = [200, 202, 404, 200, 202, 200, 200];
+    const statuses = [200, 202, 404, 200, 202, 200, 200, 200, 200];
+    const outcomes: Array<string | null> = [];
     const http = HttpClient.make((request) =>
       Effect.sync(() => {
         const index = sessionHeaders.length;
@@ -104,13 +111,27 @@ it.effect("renews a missing peer session once and reuses its replacement", () =>
         return HttpClientResponse.fromWeb(
           request,
           new Response(
-            index >= 5
+            index === 8
               ? JSON.stringify({
                   result: {
-                    content: [{ type: "text", text: '{"modes":"approval-required/plan"}' }],
+                    content: [
+                      {
+                        type: "text",
+                        text: JSON.stringify({ code: refusal.code, message: refusal.message }),
+                      },
+                    ],
+                    isError: true,
                   },
                 })
-              : "",
+              : index === 7
+                ? "{}"
+                : index >= 5
+                  ? JSON.stringify({
+                      result: {
+                        content: [{ type: "text", text: '{"modes":"approval-required/plan"}' }],
+                      },
+                    })
+                  : "",
             {
               status,
               headers:
@@ -146,7 +167,7 @@ it.effect("renews a missing peer session once and reuses its replacement", () =>
                   url: "https://peer.example",
                   token: "fixture",
                 }),
-              recordOutcome: () => Effect.void,
+              recordOutcome: (_, outcome) => Effect.sync(() => outcomes.push(outcome.error)),
             }),
           ),
         ),
@@ -164,11 +185,34 @@ it.effect("renews a missing peer session once and reuses its replacement", () =>
         }),
       ).toEqual({ modes: "approval-required/plan" });
     }
+    // An answer with neither a result nor an error is the link's problem, not the call's.
+    const empty = yield* client
+      .call({
+        environmentId: box.environmentId,
+        tool: "probe",
+        arguments: {},
+        limits: { runtimeMode: "approval-required", interactionMode: "plan" },
+        success: Result,
+      })
+      .pipe(Effect.flip);
+    const refused = yield* client
+      .call({
+        environmentId: box.environmentId,
+        tool: "refuse",
+        arguments: {},
+        limits: { runtimeMode: "full-access", interactionMode: "default" },
+        success: Result,
+      })
+      .pipe(Effect.flip);
+    expect(refused).toMatchObject({ code: refusal.code, message: refusal.message });
+    expect(outcomes).toEqual([null, null, empty.message, null]);
     expect(sessionHeaders).toEqual([
       undefined,
       "old",
       "old",
       undefined,
+      "renewed",
+      "renewed",
       "renewed",
       "renewed",
       "renewed",

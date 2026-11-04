@@ -1,7 +1,7 @@
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentId } from "@t3tools/contracts";
 import {
-  formatThreadLink,
+  formatHostedThreadLink,
   guessThreadLinkRef,
   percentDecodedThreadLinkId,
   type ThreadLink,
@@ -11,6 +11,7 @@ import { Link } from "@tanstack/react-router";
 import { MessageSquareTextIcon } from "lucide-react";
 
 import { useProject, useThreadRefs, useThreadShell } from "../../state/entities";
+import { configuredHostedAppUrl } from "../../hostedPairing";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { ContextPreviewHover } from "../contextPreviewRegistry";
 
@@ -47,7 +48,11 @@ export function MarkdownThreadLink(props: {
         <Link
           to="/$environmentId/$threadId"
           params={{ environmentId, threadId }}
-          data-markdown-copy={formatThreadLink({ environmentId, threadId }, title)}
+          data-markdown-copy={formatHostedThreadLink(
+            { environmentId, threadId },
+            title,
+            configuredHostedAppUrl(),
+          )}
         >
           <span
             className="ms-[0.25em] me-[0.2em] inline-flex size-[14px] [vertical-align:-0.125em]"
