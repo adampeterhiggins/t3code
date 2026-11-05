@@ -1,4 +1,4 @@
-import type { ContextWindowSnapshot } from "../../lib/contextWindow";
+import type { ContextWindowSnapshot } from "@t3tools/client-runtime/state/context-window";
 import {
   isContextWindowNearlyFull,
   shouldRearmContextWindowNudge,
@@ -37,6 +37,7 @@ export function useChatViewContextNudge(input: {
     false,
     Schema.Boolean,
   );
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Reset persisted dismissal when provider usage falls below the threshold.
   useEffect(() => {
     if (contextNudgeDismissed && shouldRearmContextWindowNudge(activeContextWindow)) {
       setContextNudgeDismissed(false);

@@ -94,7 +94,7 @@ it.effect("sets the selected browser session cookies through the HTTP route", ()
           ] as const,
       ),
       ([environmentA, environmentB]) =>
-        Effect.tryPromise(async () => {
+        Effect.promise(async () => {
           const devResponse = await environmentA.handler(
             postJson("/api/auth/browser-session", { credential: DEV_TOKEN }),
             requestContext,
@@ -175,7 +175,7 @@ it.effect("issues read and operate agent access tokens only to access managers",
     return yield* Effect.acquireUseRelease(
       Effect.sync(() => HttpRouter.toWebHandler(layerRoutes, { disableLogger: true })),
       (environment) =>
-        Effect.tryPromise(async () => {
+        Effect.promise(async () => {
           const devResponse = await environment.handler(
             postJson("/api/auth/browser-session", { credential: DEV_TOKEN }),
             requestContext,

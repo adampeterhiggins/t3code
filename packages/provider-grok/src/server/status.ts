@@ -8,6 +8,7 @@ import {
 } from "@t3tools/contracts";
 import type { GrokSettings } from "../settings.ts";
 import type * as EffectAcpSchema from "effect-acp/compat";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import { causeErrorTag } from "@t3tools/shared/observability";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
@@ -396,13 +397,15 @@ const discoverGrokMetadataViaAcpInitialize = Effect.fn(
 
 export const checkGrokProviderStatus = Effect.fn("checkGrokProviderStatus")(function* (
   grokSettings: GrokSettings,
-  environment: NodeJS.ProcessEnv = process.env,
+  providedEnvironment?: NodeJS.ProcessEnv,
   cwd?: string,
 ): Effect.fn.Return<
   ServerProviderDraft,
   never,
   ChildProcessSpawner.ChildProcessSpawner | SecureRandom.SecureRandom
 > {
+  const ambientEnvironment = yield* HostProcess.Environment;
+  const environment = providedEnvironment ?? ambientEnvironment;
   const checkedAt = DateTime.formatIso(yield* DateTime.now);
   const fallbackModels = grokModelsFromSettings(grokSettings.customModels);
 
@@ -510,7 +513,7 @@ export const checkGrokProviderStatus = Effect.fn("checkGrokProviderStatus")(func
         status: "authenticated",
         type: "api_key",
         label: "xAI API key",
-        ...(process.env[GROK_API_KEY_ENV]?.trim() ? { external: true } : {}),
+        ...(ambientEnvironment[GROK_API_KEY_ENV]?.trim() ? { external: true } : {}),
       }
     : cliModels.authenticated === true
       ? { status: "authenticated", type: "cached_token", label: "Grok account" }

@@ -2579,7 +2579,10 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
               });
               // The shell reads typed-ahead input once its rc files finish.
               if (activation !== null) {
-                yield* Effect.try(() => spawnResult.process.write(activation)).pipe(Effect.ignore);
+                yield* Effect.try({
+                  try: () => spawnResult.process.write(activation),
+                  catch: (cause) => new TerminalActivationError({ cause }),
+                }).pipe(Effect.ignore);
               }
             }
 
@@ -3575,3 +3578,8 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
 });
 
 export const layer = Layer.effect(TerminalManager, make()).pipe(Layer.provide(ProcessRunner.layer));
+
+class TerminalActivationError extends Schema.TaggedError<TerminalActivationError>()(
+  "TerminalActivationError",
+  { cause: Schema.Defect() },
+) {}

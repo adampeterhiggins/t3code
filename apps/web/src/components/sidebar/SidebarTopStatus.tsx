@@ -36,6 +36,8 @@ export function resolveSidebarTopStatus(
   isUnread: boolean,
 ): SidebarTopStatus | null {
   switch (status) {
+    case "preparing":
+      return { label: "Setting up", icon: "working", className: "text-info" };
     case "working":
       // No shimmer: a label that animates forever is noise in a sidebar
       // full of them (and repaints every vsync on high-refresh displays).

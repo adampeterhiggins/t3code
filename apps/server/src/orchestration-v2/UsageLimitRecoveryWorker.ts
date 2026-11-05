@@ -77,7 +77,7 @@ export function limitRecoveryCommand(
     text: USAGE_LIMIT_CONTINUATION_TEXT,
     attachments: [],
     dispatchMode: { type: "start_immediately" },
-    createdBy: "user",
+    createdBy: "agent",
     creationSource: "server",
   };
 }

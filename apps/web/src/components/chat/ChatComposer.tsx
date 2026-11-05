@@ -1,4 +1,4 @@
-import type { ContextWindowSnapshot } from "../../lib/contextWindow";
+import type { ContextWindowSnapshot } from "@t3tools/client-runtime/state/context-window";
 import { useComposerIntegrationReferences } from "./useComposerIntegrationReferences";
 import {
   type ComposerFileAttachment,

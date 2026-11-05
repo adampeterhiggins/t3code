@@ -69,9 +69,10 @@ export function installAppContextMenu(
         label: "Copy Image",
         click: () => {
           void runtime.runPromise(
-            Effect.tryPromise(() => copyContextMenuImage(contents, params)).pipe(
-              Effect.catch(() => runtime.reportCopyImageFailure),
-            ),
+            Effect.tryPromise({
+              try: () => copyContextMenuImage(contents, params),
+              catch: (cause) => ({ _tag: "CopyContextMenuImageError" as const, cause }),
+            }).pipe(Effect.catch(() => runtime.reportCopyImageFailure)),
           );
         },
       });

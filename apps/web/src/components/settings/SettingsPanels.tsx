@@ -626,6 +626,9 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.addProjectBaseDirectory !== DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory
       ? ["Add project base directory"]
       : []),
+    ...(settings.ghqCloneLayout !== DEFAULT_UNIFIED_SETTINGS.ghqCloneLayout
+      ? ["Clone into host folders"]
+      : []),
     ...(settings.contextRepositoryOwners.length > 0 ? ["Repository owners"] : []),
     ...(settings.contextRepositoryDirectory !== DEFAULT_UNIFIED_SETTINGS.contextRepositoryDirectory
       ? ["Repository folder"]
@@ -759,6 +762,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       terminalActivatePythonEnvironment: DEFAULT_UNIFIED_SETTINGS.terminalActivatePythonEnvironment,
       pythonInterpreterPath: DEFAULT_UNIFIED_SETTINGS.pythonInterpreterPath,
       addProjectBaseDirectory: DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory,
+      ghqCloneLayout: DEFAULT_UNIFIED_SETTINGS.ghqCloneLayout,
       contextRepositoryOwners: DEFAULT_UNIFIED_SETTINGS.contextRepositoryOwners,
       contextRepositoryOwner: DEFAULT_UNIFIED_SETTINGS.contextRepositoryOwner,
       contextRepositoryDirectory: DEFAULT_UNIFIED_SETTINGS.contextRepositoryDirectory,
@@ -2063,6 +2067,30 @@ export function ThreadsSettingsPanel() {
               placeholder={mixedContextRepositoryDirectory ? "Mixed" : ".context"}
               spellCheck={false}
               aria-label="Repository folder"
+            />
+          }
+        />
+        <SettingsRow
+          serverScoped
+          settingKeys={["ghqCloneLayout"]}
+          {...searchableSetting("ghq-clone-layout")}
+          description="Clones go to github.com/owner/repo under the folder above, like ghq."
+          resetAction={
+            settings.ghqCloneLayout !== DEFAULT_UNIFIED_SETTINGS.ghqCloneLayout ? (
+              <SettingResetButton
+                label="clone into host folders"
+                onClick={() =>
+                  updateSettings({ ghqCloneLayout: DEFAULT_UNIFIED_SETTINGS.ghqCloneLayout })
+                }
+              />
+            ) : null
+          }
+          control={
+            <ScopedSwitch
+              settingKeys={["ghqCloneLayout"]}
+              checked={settings.ghqCloneLayout}
+              onCheckedChange={(checked) => updateSettings({ ghqCloneLayout: Boolean(checked) })}
+              aria-label="Clone into host folders"
             />
           }
         />

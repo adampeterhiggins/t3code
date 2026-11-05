@@ -793,7 +793,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     // Background work fades as a whole row, status label included, so it
     // takes less attention than rows that need a human (input, approval).
     shouldRecede &&
-      status === "working" &&
+      (status === "preparing" || status === "working") &&
       "opacity-70 transition-opacity hover:opacity-100 focus-within:opacity-100 motion-reduce:transition-none",
     isFileDragOver && "ring-1 ring-inset ring-primary/70",
     // The hover tint must not clobber an active/selected row's own surface.
@@ -1395,7 +1395,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                                 className="size-4 shrink-0"
                               />
                               <span>{headerStatus.label}</span>
-                              {status === "working" ? (
+                              {status === "preparing" || status === "working" ? (
                                 <span aria-hidden>
                                   <WorkingDuration startedAt={resolveWorkingStartedAt(thread)} />
                                 </span>

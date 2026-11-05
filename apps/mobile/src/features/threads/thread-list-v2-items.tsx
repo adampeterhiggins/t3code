@@ -82,6 +82,7 @@ import {
   resolveThreadListV2ProviderDrivers,
   resolveThreadListV2SwipeActions,
   threadListV2RowAccessibilityLabel,
+  layoutThreadListV2RowMenuActions,
   type ThreadListV2Status,
 } from "./threadListV2";
 import { DraftCountIcon, QueuedMessageIcon } from "./queued-message-icon";
@@ -1126,6 +1127,45 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     ...titleMenuItems,
     LEGACY_MENU_ACTIONS[1]!,
   ])() as MenuAction[];
+  const selectedMenuActions = hiddenRow
+    ? hiddenMenuActions
+    : snoozedRow
+      ? snoozedMenuActions
+      : !props.settlementSupported
+        ? legacyMenuActions
+        : canUnsettle
+          ? slimMenuActions
+          : swipeActions.secondary === "snooze"
+            ? snoozableCardMenuActions
+            : cardMenuActions;
+  const directIds = new Set(["settle", "unsettle", "unsnooze", "unhide", "snooze"]);
+  const reorderIds = new Set(["arrange", "move-up", "move-down"]);
+  const pinIds = new Set(["pin", "unpin"]);
+  const menuActions = layoutThreadListV2RowMenuActions({
+    nested: Platform.OS === "ios",
+    direct: [
+      ...(thread.branch
+        ? [
+            {
+              id: "new-thread-on-branch",
+              title: getThreadListV2NewBranchMenuTitle(thread.branch),
+              image: "square.and.pencil",
+            },
+          ]
+        : []),
+      { id: "copy-thread", title: "Copy thread", image: "text.bubble" },
+      { id: "copy-thread-id", title: "Copy thread ID", image: "doc.on.doc" },
+      ...selectedMenuActions.filter((action) => directIds.has(action.id ?? "")),
+    ],
+    reorder: selectedMenuActions.filter((action) => reorderIds.has(action.id ?? "")),
+    pin: selectedMenuActions.filter((action) => pinIds.has(action.id ?? "")),
+    secondary: selectedMenuActions.filter(
+      (action) =>
+        !directIds.has(action.id ?? "") &&
+        !reorderIds.has(action.id ?? "") &&
+        !pinIds.has(action.id ?? ""),
+    ),
+  });
   const handleMenuAction = ({
     nativeEvent,
   }: {
@@ -1638,34 +1678,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         threadTitle={thread.tabGroupName ?? thread.title}
       >
         {(close) => (
-          <Menu
-            actions={[
-              ...(thread.branch
-                ? [
-                    {
-                      id: "new-thread-on-branch",
-                      title: getThreadListV2NewBranchMenuTitle(thread.branch),
-                      image: "square.and.pencil",
-                    },
-                  ]
-                : []),
-              { id: "copy-thread", title: "Copy thread", image: "text.bubble" },
-              { id: "copy-thread-id", title: "Copy thread ID", image: "doc.on.doc" },
-              ...(hiddenRow
-                ? hiddenMenuActions
-                : snoozedRow
-                  ? snoozedMenuActions
-                  : !props.settlementSupported
-                    ? legacyMenuActions
-                    : canUnsettle
-                      ? slimMenuActions
-                      : swipeActions.secondary === "snooze"
-                        ? snoozableCardMenuActions
-                        : cardMenuActions),
-            ]}
-            onPressAction={handleMenuAction}
-            shouldOpenOnLongPress
-          >
+          <Menu actions={menuActions} onPressAction={handleMenuAction} shouldOpenOnLongPress>
             {rowContent(close)}
           </Menu>
         )}

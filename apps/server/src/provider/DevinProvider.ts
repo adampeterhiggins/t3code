@@ -466,9 +466,7 @@ export const enrichDevinSnapshot = (input: {
   }).pipe(
     Effect.provideService(HttpClient.HttpClient, input.httpClient),
     Effect.provideService(ProviderLatestVersions.ProviderLatestVersions, input.latestVersions),
-    Effect.flatMap((enrichedSnapshot) =>
-      publishSnapshot(stampIdentity(enrichedSnapshot)).pipe(Effect.as(enrichedSnapshot)),
-    ),
+    Effect.tap((enrichedSnapshot) => publishSnapshot(stampIdentity(enrichedSnapshot))),
     Effect.catchCause((cause) =>
       Effect.logWarning("Devin version advisory enrichment failed", {
         errorTag: causeErrorTag(cause),

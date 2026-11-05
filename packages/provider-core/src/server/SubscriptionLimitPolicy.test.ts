@@ -124,7 +124,7 @@ it("finds the guard's failure through wrapping start errors", () => {
     _tag: "ProviderAdapterTurnStartError",
     cause: new SubscriptionLimitStopError({ failure }),
   };
-  assert.strictEqual(findSubscriptionLimitStop(wrapped), failure);
+  assert.deepEqual(findSubscriptionLimitStop(wrapped), failure);
   assert.isUndefined(findSubscriptionLimitStop({ cause: new Error("other") }));
 });
 
