@@ -163,6 +163,13 @@ row to see when it resets and your pace. Turn on **Context window** to also show
 context use against the model's limit. A tick on the bar marks where the provider compacts
 automatically, when it reports that point.
 
+On web and desktop, a bar along the bottom of the window shows each provider's busiest limit as
+a percentage used and the time until it resets. With several accounts for one provider, it shows
+their combined reading. Click it for every window: **Compact** lists providers and opens one
+provider's accounts beside the list, **Detailed** shows every account at once. Claude's
+**Extra usage** shows the amount spent against your monthly cap. Turn the bar off with
+**Usage footer** in **Settings → Appearance**.
+
 OpenCode Go reports its session, weekly, and monthly allowance when OpenCode runs locally in
 the environment. T3 cannot report limits for external OpenCode servers because their credentials
 belong to the remote server. Limits need an OpenCode Go API key, or an OpenCode Console connected

@@ -129,7 +129,9 @@ function UsedWindow({
 }
 
 function AccountName({ account }: { readonly account: LimitAccount }) {
-  if (account.displayName) return <span className="min-w-0 truncate">{account.displayName}</span>;
+  if (account.displayName && account.displayName !== providerLabel(account.driver)) {
+    return <span className="max-w-1/2 shrink-0 truncate">{account.displayName}</span>;
+  }
   if (account.email) {
     return (
       <RedactedSensitiveText
@@ -137,11 +139,11 @@ function AccountName({ account }: { readonly account: LimitAccount }) {
         ariaLabel="Toggle account visibility"
         revealTooltip="Click to reveal account"
         hideTooltip="Click to hide account"
-        className="min-w-0 truncate"
+        className="max-w-1/2 shrink-0 truncate"
       />
     );
   }
-  return <span className="min-w-0 truncate">Default account</span>;
+  return account.displayName ? null : <span className="shrink-0">Default account</span>;
 }
 
 function AccountCard({
@@ -171,7 +173,9 @@ function AccountCard({
         ) : null}
         <AccountName account={account} />
         {account.plan ? (
-          <span className="shrink-0 font-normal text-muted-foreground">· {account.plan}</span>
+          <span className="min-w-0 truncate font-normal text-muted-foreground">
+            · {account.plan}
+          </span>
         ) : null}
       </div>
       {notice ? <span className="text-xs text-muted-foreground">{notice}</span> : null}
