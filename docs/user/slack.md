@@ -16,10 +16,12 @@ Slack signs in through an app in your own workspace. You make it once, and it ta
 The manifest asks only for read scopes and turns on PKCE, so T3 Code never needs the app's client
 secret. If your workspace requires admin approval for new apps, approve the app first.
 
-An app made from an older manifest lacks the `usergroups:read` scope, which shows group mentions
-such as `@design-team` by name. Slack refuses to connect until the app has it: in the app's
-**OAuth & Permissions** page, add `usergroups:read` under **User Token Scopes**, then connect
-again.
+An app made from an older manifest can lack scopes T3 Code now asks for: `usergroups:read`, which
+shows group mentions such as `@design-team` by name, and `files:read`, `canvases:read`, and
+`lists:read`, which read canvases, lists, and files. Slack refuses to connect until the app has
+them: in the app's **OAuth & Permissions** page, add them under **User Token Scopes** (or paste
+the new manifest under **App Manifest**), then connect again. Until you reconnect, messages still
+attach, and canvas, list, and file links say which scope is missing.
 
 Use an app made in your own workspace, not one shared across workspaces. Slack limits apps
 installed in other workspaces to reading 15 thread messages a minute, which is too few to attach
@@ -51,9 +53,12 @@ Without this setting, approval uses the existing local callback. If that page ca
 
 ## Attach a message or thread
 
-- Paste or type a Slack message link (**Copy link** on a message in Slack) into the composer on
-  web or desktop. It turns into a chip once the thread loads. A link to a channel attaches its 50
-  newest messages, without their thread replies.
+- Paste or type a Slack link into the composer on web or desktop. It turns into a chip once it
+  loads. A message link (**Copy link** on a message) attaches its thread. A channel link, or a
+  channel or huddle open in Slack's web app, attaches the channel's 50 newest messages, without
+  their thread replies. A canvas attaches its text, a list attaches its items as a table, a file
+  attaches its text when it is a text file (other files are described, not downloaded), and a
+  profile link attaches the person's name, title, status, and time zone.
 - Click the paperclip and choose **Slack message**. Search with Slack's own syntax, like
   `in:#eng from:@priya retry`. Before you type, it lists the threads you posted in most recently,
   and buttons for the channels and people you talk to most narrow the search to one of them.

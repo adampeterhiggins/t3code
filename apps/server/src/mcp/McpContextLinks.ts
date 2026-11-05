@@ -11,6 +11,7 @@ import {
   GoogleGetFileInput,
   type OrchestrationMessageContext,
   OrchestratorMcpFailure,
+  SlackGetResourceInput,
   SlackGetThreadInput,
 } from "@t3tools/contracts";
 import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
@@ -31,6 +32,7 @@ import {
   googleFileContextRecord,
   promptLinkContextRecord,
   repositoryContextRecord,
+  slackResourceContextRecord,
   slackThreadContextRecord,
 } from "@t3tools/source-control-definitions/integrationContextRecords";
 import * as Context from "effect/Context";
@@ -79,6 +81,7 @@ const decodeNotionGetPageInput = Schema.decodeUnknownEffect(NotionGetPageInput);
 const decodeGoogleGetFileInput = Schema.decodeUnknownEffect(GoogleGetFileInput);
 const decodeGranolaGetNoteInput = Schema.decodeUnknownEffect(GranolaGetNoteInput);
 const decodeSlackGetThreadInput = Schema.decodeUnknownEffect(SlackGetThreadInput);
+const decodeSlackGetResourceInput = Schema.decodeUnknownEffect(SlackGetResourceInput);
 const decodeDiscordGetThreadInput = Schema.decodeUnknownEffect(DiscordGetThreadInput);
 
 const invalid = (message: string) =>
@@ -90,7 +93,7 @@ const unreadable = (verb: Verb, url: string) => (error: { readonly message: stri
   invalid(`Could not ${verb} ${url}: ${error.message}`);
 
 const UNRECOGNIZED_LINK =
-  "Use a Slack or Discord message, Notion page, Google Drive file, folder, Calendar event or Gmail conversation, Granola note, Linear issue, project, document, or initiative, GitHub issue, GitHub repository, GitHub release, tag, branch, or commit, or T3 Code prompt link.";
+  "Use a Slack message, channel, canvas, list, file, or profile, a Discord message, Notion page, Google Drive file, folder, Calendar event or Gmail conversation, Granola note, Linear issue, project, document, or initiative, GitHub issue, GitHub repository, GitHub release, tag, branch, or commit, or T3 Code prompt link.";
 
 const make = Effect.gen(function* () {
   const linear = yield* LinearApi.LinearApi;
@@ -223,6 +226,22 @@ const make = Effect.gen(function* () {
           );
           const thread = yield* slack.getThread(input).pipe(Effect.mapError(unreadable(verb, url)));
           return slackThreadContextRecord(thread);
+        });
+      case "slack-resource":
+        return Effect.gen(function* () {
+          if (!(yield* integrationEnabled("enableSlackIntegration")))
+            return yield* invalid(
+              `Could not ${verb} ${url}: the Slack integration is turned off in Settings → Integrations.`,
+            );
+          const input = yield* decodeSlackGetResourceInput({
+            resourceType: link.resourceType,
+            id: link.resourceId,
+            url,
+          }).pipe(Effect.mapError(malformed(url)));
+          const resource = yield* slack
+            .getResource(input)
+            .pipe(Effect.mapError(unreadable(verb, url)));
+          return slackResourceContextRecord(resource);
         });
       case "discord-message":
         return Effect.gen(function* () {

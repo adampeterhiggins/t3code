@@ -21,6 +21,8 @@ import type {
   PromptLinkContextRecord,
   ProviderInstanceId,
   RepositoryContextRecord,
+  SlackResourceContext,
+  SlackResourceContextRecord,
   SlackThreadContext,
   SlackThreadContextRecord,
   UnreadLinkContextRecord,
@@ -226,6 +228,26 @@ export function granolaNoteContextRecord(note: GranolaNoteContext): GranolaNoteC
     meetingAt: note.meetingAt?.slice(0, 2048) ?? null,
     participants: note.participants.join(", ").slice(0, 2048),
     markdown: note.markdown,
+  };
+}
+
+export function slackResourceContextRecord(
+  resource: SlackResourceContext,
+): SlackResourceContextRecord {
+  return {
+    version: 1,
+    kind: "slack-resource",
+    contextId: `slack-${resource.resourceType}_${resource.teamId}_${resource.id}`.slice(
+      0,
+      128,
+    ) as ComposerContextId,
+    label: sanitizeComposerContextLabel(resource.title, "slack-resource"),
+    teamId: resource.teamId,
+    resourceType: resource.resourceType,
+    resourceId: resource.id,
+    title: resource.title.slice(0, 2048),
+    url: resource.url.slice(0, 2048),
+    markdown: resource.markdown,
   };
 }
 

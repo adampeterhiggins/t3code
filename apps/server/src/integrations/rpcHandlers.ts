@@ -103,6 +103,7 @@ export const makeIntegrationRpcHandlers = Effect.fn("IntegrationRpc.handlers")(f
     [INTEGRATION_WS_METHODS.slackSuggestions]: (_input) => slackApi.suggestions,
     [INTEGRATION_WS_METHODS.slackGetThread]: (input) => slackApi.getThread(input),
     [INTEGRATION_WS_METHODS.slackGetLinkPreview]: (input) => slackApi.getLinkPreview(input),
+    [INTEGRATION_WS_METHODS.slackGetResource]: (input) => slackApi.getResource(input),
     [INTEGRATION_WS_METHODS.slackSubscribeThreadLinks]: (_input) => slackThreadLinks.links,
     [INTEGRATION_WS_METHODS.slackLinkThread]: (input) => slackThreadLinks.link(input),
     [INTEGRATION_WS_METHODS.slackUnlinkThread]: (input) =>

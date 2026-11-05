@@ -11,6 +11,7 @@ import type {
   GoogleFileContextRecord,
   PromptLinkContextRecord,
   RepositoryContextRecord,
+  SlackResourceContextRecord,
   SlackThreadContextRecord,
 } from "@t3tools/contracts";
 import { FolderGit2Icon, MessageSquareTextIcon } from "lucide-react";
@@ -28,6 +29,7 @@ import {
   NotionPageDetails,
   PromptLinkDetails,
   RepositoryDetails,
+  SlackResourceDetails,
   SlackThreadDetails,
 } from "./integrationContextDetails";
 import { GitHubRefIcon, gitHubRefKindLabel } from "./gitHubRefPresentation";
@@ -49,6 +51,7 @@ export type LinkedObjectContextRecord =
   | GranolaNoteContextRecord
   | PromptLinkContextRecord
   | SlackThreadContextRecord
+  | SlackResourceContextRecord
   | DiscordThreadContextRecord;
 
 export type LinkedObjectContextKind = LinkedObjectContextRecord["kind"];
@@ -64,6 +67,7 @@ const LINKED_OBJECT_CONTEXT_KINDS = [
   "granola-note",
   "prompt-link",
   "slack-thread",
+  "slack-resource",
   "discord-thread",
 ] as const satisfies ReadonlyArray<LinkedObjectContextKind>;
 
@@ -99,11 +103,19 @@ export function linkedObjectIcon(record: LinkedObjectContextRecord) {
     case "prompt-link":
       return <MessageSquareTextIcon />;
     case "slack-thread":
+    case "slack-resource":
       return <SlackIcon />;
     case "discord-thread":
       return <DiscordIcon />;
   }
 }
+
+const SLACK_RESOURCE_KIND_LABELS: Record<SlackResourceContextRecord["resourceType"], string> = {
+  canvas: "Slack canvas",
+  list: "Slack list",
+  file: "Slack file",
+  user: "Slack profile",
+};
 
 /** What the record is, for screen readers: "Linear issue", "Slack message", and so on. */
 export function linkedObjectKindLabel(record: LinkedObjectContextRecord): string {
@@ -144,6 +156,8 @@ export function linkedObjectKindLabel(record: LinkedObjectContextRecord): string
         : record.scope === "channel"
           ? "Slack channel"
           : "Slack message";
+    case "slack-resource":
+      return SLACK_RESOURCE_KIND_LABELS[record.resourceType];
     case "discord-thread":
       return record.scope === "thread" ? "Discord thread" : "Discord message";
   }
@@ -185,6 +199,8 @@ export function LinkedObjectDetails(props: {
       return <PromptLinkDetails record={record} onOpenLink={onOpenLink} />;
     case "slack-thread":
       return <SlackThreadDetails record={record} onOpenLink={onOpenLink} />;
+    case "slack-resource":
+      return <SlackResourceDetails record={record} onOpenLink={onOpenLink} />;
     case "discord-thread":
       return <DiscordThreadDetails record={record} onOpenLink={onOpenLink} />;
   }

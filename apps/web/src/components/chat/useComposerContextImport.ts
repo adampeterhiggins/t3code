@@ -431,6 +431,7 @@ export function useComposerContextImport(input: {
         case "linear-issue":
         case "github-issue":
         case "slack-thread":
+        case "slack-resource":
         case "discord-thread":
         case "notion-page":
         case "google-file":

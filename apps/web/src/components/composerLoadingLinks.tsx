@@ -65,6 +65,7 @@ function loadingLinkIcon(link: ComposerObjectLink) {
       return <MessageSquareTextIcon />;
     case "slack-message":
     case "slack-channel":
+    case "slack-resource":
       return <SlackIcon />;
     case "discord-message":
       return <DiscordIcon />;

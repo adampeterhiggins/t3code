@@ -34,6 +34,12 @@ export function formatIntegrationContextPayload(record: IntegrationContextRecord
         ...(record.block ? [`linked block: ${record.block.text || record.block.id}`] : []),
         record.markdown,
       ].join("\n");
+    case "slack-resource":
+      return [
+        `slack ${record.resourceType}: ${record.title}`,
+        `url: ${record.url}`,
+        record.markdown,
+      ].join("\n");
     case "granola-note":
       return [`granola meeting note: ${record.title}`, `url: ${record.url}`, record.markdown].join(
         "\n",

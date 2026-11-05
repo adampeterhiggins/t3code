@@ -1,6 +1,7 @@
 import {
   type GitHubRefLink,
   type LinearObjectType,
+  type SlackResourceType,
   parseGranolaNoteId,
   parseNotionPageId,
   parseGoogleFileLink,
@@ -40,8 +41,6 @@ export type ComposerObjectLink =
   | {
       readonly kind: "slack-message";
       readonly url: string;
-      /** The subdomain, such as `acme` in `acme.slack.com`. */
-      readonly workspace: string;
       readonly channelId: string;
       readonly ts: string;
       /** The thread the message replies in, when the link says so. */
@@ -50,8 +49,14 @@ export type ComposerObjectLink =
   | {
       readonly kind: "slack-channel";
       readonly url: string;
-      readonly workspace: string;
       readonly channelId: string;
+    }
+  | {
+      readonly kind: "slack-resource";
+      readonly url: string;
+      readonly resourceType: SlackResourceType;
+      /** A file id (`F…`) for a canvas, list, or file; a user id (`U…`) for a person. */
+      readonly resourceId: string;
     }
   | {
       readonly kind: "discord-message";
@@ -95,6 +100,8 @@ const SLACK_CHANNEL_ID = /^[CDG][A-Z0-9]{2,}$/u;
 // `p` and the message timestamp without its dot: the last six digits are the fraction.
 const SLACK_PERMALINK_TS = /^p(\d{7,})$/u;
 const SLACK_TS = /^\d{1,12}\.\d{1,9}$/u;
+const SLACK_FILE_ID = /^F[A-Z0-9]{2,}$/u;
+const SLACK_USER_ID = /^[UW][A-Z0-9]{2,}$/u;
 // A fence comes first so backticks inside it are not read as spans. An unclosed fence runs to the
 // end, as markdown renders it.
 const MARKDOWN_CODE = /(`{3,}|~{3,})[\s\S]*?(?:\1|$)|(`+)[^\n]*?\2/gu;
@@ -111,29 +118,73 @@ function isInRanges(ranges: ReadonlyArray<readonly [number, number]>, index: num
   return ranges.some(([start, end]) => index >= start && index < end);
 }
 
+const slackResource = (url: string, resourceType: SlackResourceType, resourceId: string) =>
+  ({ kind: "slack-resource", url, resourceType, resourceId }) as const;
+
 /**
- * A Slack channel link, `https://<workspace>.slack.com/archives/<channel>`, or a message
- * permalink, `…/archives/<channel>/p<ts>`, with `?thread_ts=` when the message is a reply.
+ * A link the Slack app copies or shows in its address bar: on `<workspace>.slack.com`, a channel
+ * (`/archives/<channel>`), a message (`…/p<ts>`, with `?thread_ts=` for a reply), a canvas
+ * (`/docs/<team>/<file>`), a list (`/lists/<team>/<file>`), a file (`/files/<user>/<file>/…`),
+ * or a profile (`/team/<user>`); on `app.slack.com`, a channel, thread, or huddle view.
  */
 function parseSlackLink(url: string, parsed: URL, segments: ReadonlyArray<string>) {
   const host = parsed.hostname.toLowerCase();
-  if (!host.endsWith(".slack.com") || host === "app.slack.com") return null;
-  if (segments[0] !== "archives" || (segments.length !== 2 && segments.length !== 3)) return null;
-  const channelId = segments[1]!;
-  if (!SLACK_CHANNEL_ID.test(channelId)) return null;
-  const workspace = host.split(".")[0]!;
-  if (segments.length === 2) return { kind: "slack-channel", url, workspace, channelId } as const;
-  const digits = SLACK_PERMALINK_TS.exec(segments[2]!)?.[1];
-  if (digits === undefined) return null;
-  const threadTs = parsed.searchParams.get("thread_ts");
-  return {
-    kind: "slack-message",
-    url,
-    workspace,
-    channelId,
-    ts: `${digits.slice(0, -6)}.${digits.slice(-6)}`,
-    threadTs: threadTs !== null && SLACK_TS.test(threadTs) ? threadTs : null,
-  } as const;
+  if (host === "app.slack.com") return parseSlackClientLink(url, segments);
+  const [section, first, second] = segments;
+  // A file's download address: `https://files.slack.com/files-pri/<team>-<file>/<name>`.
+  if (host === "files.slack.com") {
+    const fileId = /^T[A-Z0-9]+-(F[A-Z0-9]{2,})$/u.exec(first ?? "")?.[1];
+    return section?.startsWith("files-") && fileId !== undefined
+      ? slackResource(url, "file", fileId)
+      : null;
+  }
+  switch (section) {
+    case "archives": {
+      if (first === undefined || !SLACK_CHANNEL_ID.test(first) || segments.length > 3) return null;
+      if (second === undefined) return { kind: "slack-channel", url, channelId: first } as const;
+      const digits = SLACK_PERMALINK_TS.exec(second)?.[1];
+      if (digits === undefined) return null;
+      const threadTs = parsed.searchParams.get("thread_ts");
+      return {
+        kind: "slack-message",
+        url,
+        channelId: first,
+        ts: `${digits.slice(0, -6)}.${digits.slice(-6)}`,
+        threadTs: threadTs !== null && SLACK_TS.test(threadTs) ? threadTs : null,
+      } as const;
+    }
+    case "docs":
+    case "lists":
+      if (segments.length !== 3 || !SLACK_FILE_ID.test(second ?? "")) return null;
+      return slackResource(url, section === "docs" ? "canvas" : "list", second!);
+    case "files":
+      return (segments.length === 3 || segments.length === 4) && SLACK_FILE_ID.test(second ?? "")
+        ? slackResource(url, "file", second!)
+        : null;
+    case "team":
+      return segments.length === 2 && SLACK_USER_ID.test(first ?? "")
+        ? slackResource(url, "user", first!)
+        : null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * `https://app.slack.com/client/<team>/<channel>`, optionally `…/thread/<channel>-<ts>`, and
+ * `https://app.slack.com/huddle/<team>/<channel>`, read as the channel it is held in.
+ */
+function parseSlackClientLink(url: string, segments: ReadonlyArray<string>) {
+  const [view, , channelId, sub, threadKey] = segments;
+  if ((view !== "client" && view !== "huddle") || !SLACK_CHANNEL_ID.test(channelId ?? "")) {
+    return null;
+  }
+  if (segments.length === 3) return { kind: "slack-channel", url, channelId: channelId! } as const;
+  if (view !== "client" || sub !== "thread" || segments.length !== 5) return null;
+  const ts = threadKey!.startsWith(`${channelId}-`) ? threadKey!.slice(channelId!.length + 1) : "";
+  return SLACK_TS.test(ts)
+    ? ({ kind: "slack-message", url, channelId: channelId!, ts, threadTs: ts } as const)
+    : null;
 }
 
 /** What attaching a Slack link reads: the whole thread for a message, or the channel's newest. */
@@ -316,6 +367,8 @@ export function objectLinkLabel(url: string): string | null {
       return link.identifier;
     case "linear-object":
       return link.name ?? LINEAR_OBJECT_NOUNS[link.objectType];
+    case "slack-resource":
+      return SLACK_RESOURCE_NOUNS[link.resourceType];
     case "slack-message":
     case "slack-channel":
     case "discord-message":
@@ -352,6 +405,13 @@ export function objectLinkLabel(url: string): string | null {
   }
 }
 
+const SLACK_RESOURCE_NOUNS: Record<SlackResourceType, string> = {
+  canvas: "Slack canvas",
+  list: "Slack list",
+  file: "Slack file",
+  user: "Slack profile",
+};
+
 const OBJECT_LINK_NOUNS: Record<ComposerObjectLink["kind"], string> = {
   "notion-page": "Notion page",
   "google-file": "Google file, event or email",
@@ -360,6 +420,7 @@ const OBJECT_LINK_NOUNS: Record<ComposerObjectLink["kind"], string> = {
   "linear-object": "Linear project, document, or initiative",
   "slack-message": "Slack message",
   "slack-channel": "Slack channel",
+  "slack-resource": "Slack canvas, list, file, or profile",
   "discord-message": "Discord message",
   "github-issue": "GitHub issue",
   "pull-request": "pull request",

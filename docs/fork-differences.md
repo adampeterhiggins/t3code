@@ -1116,8 +1116,8 @@ redirect by default, with the same paste-back path as Linear for remote browsers
 HTTPS callback set through `T3CODE_SLACK_REDIRECT_URI` receives approval on the environment directly.
 
 A message or its whole thread attaches as a `slack-thread` context chip: from a pasted or typed
-permalink (a channel link attaches the channel's newest top-level messages through
-`conversations.history`), the attach menu's picker (Slack search syntax, right-click for the message alone), a
+permalink (a channel link, or an `app.slack.com` channel, thread, or huddle view, attaches the
+channel's newest top-level messages through `conversations.history`), the attach menu's picker (Slack search syntax, right-click for the message alone), a
 `#` menu tab shown once Slack is connected, the command palette, and the mobile attach menu. The
 server renders the thread to capped markdown when it is attached. That markdown always keeps the
 first message and the linked one, fills the rest newest first, and resolves user and user group
@@ -1131,6 +1131,15 @@ that markdown kept, with each author's avatar, so the web and desktop hover card
 ([`ChatThreadDetails`](../apps/web/src/components/ChatThreadDetails.tsx)) draws the thread the way
 Slack does: avatars, a reply count under the parent, gaps where messages were left out, and the
 linked message highlighted. Chips captured before this show their markdown instead.
+
+Canvas (`/docs/`), list (`/lists/`), file (`/files/`, `files.slack.com`), and profile (`/team/`)
+links attach as a `slack-resource` chip through `slack.getResource`
+([`SlackApi`](../apps/server/src/slack/SlackApi.ts)): canvases through `canvases.getContent`,
+lists as a markdown table (column names come only from `slackLists.items.info`, so the first row
+is read twice), text files downloaded up to 256 KB, and profiles from `users.info`. A file link
+that names a canvas or list reads as one. These need `files:read`, `canvases:read`, and
+`lists:read`; Slack refuses sign-in when the app lacks a requested scope, so older apps must add
+them before reconnecting.
 
 A thread's chat-tab group can also be linked to one Slack thread, from the thread menu, the web
 command palette, or the mobile tab menu, which open the same picker in link mode. Picking a reply links its whole thread.

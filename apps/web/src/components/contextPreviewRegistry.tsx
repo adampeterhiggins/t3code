@@ -60,6 +60,7 @@ export interface ContextPreviewPropsByKind {
   repository: LinkedObjectPreviewProps;
   checkout: ComponentProps<typeof CheckoutDetails>;
   "slack-thread": LinkedObjectPreviewProps;
+  "slack-resource": LinkedObjectPreviewProps;
   "discord-thread": LinkedObjectPreviewProps;
   "notion-page": LinkedObjectPreviewProps;
   "google-file": LinkedObjectPreviewProps;
@@ -182,7 +183,6 @@ export const CONTEXT_PRESENTATION_DEFINITIONS: ContextPresentationDefinitions = 
     preview: { details: "tooltip", Body: MentionPreview, variant: "code" },
   },
   skill: { capabilities: COMPACT, preview: { details: "popover", Body: SkillPreview } },
-  environment: { capabilities: COMPACT, preview: { details: "none" } },
   thread: {
     capabilities: COMPACT,
     preview: { details: "tooltip", Body: ThreadPreview, Popup: ThreadHoverCardPopup },
@@ -197,6 +197,7 @@ export const CONTEXT_PRESENTATION_DEFINITIONS: ContextPresentationDefinitions = 
   repository: { capabilities: COMPACT, preview: linkedObjectPreview },
   checkout: { capabilities: COMPACT, preview: { details: "popover", Body: CheckoutDetails } },
   "slack-thread": { capabilities: COMPACT, preview: linkedObjectPreview },
+  "slack-resource": { capabilities: COMPACT, preview: linkedObjectPreview },
   "discord-thread": { capabilities: COMPACT, preview: linkedObjectPreview },
   "notion-page": { capabilities: COMPACT, preview: linkedObjectPreview },
   "google-file": { capabilities: COMPACT, preview: linkedObjectPreview },
@@ -209,6 +210,7 @@ export const CONTEXT_PRESENTATION_DEFINITIONS: ContextPresentationDefinitions = 
     preview: { details: "popover", Body: UnreadLinkDetails },
   },
   model: { capabilities: COMPACT, preview: { details: "card", Body: ModelPreview } },
+  environment: { capabilities: COMPACT, preview: { details: "none" } },
 };
 
 const KNOWN_KINDS: ReadonlySet<string> = new Set(COMPOSER_CONTEXT_KINDS);

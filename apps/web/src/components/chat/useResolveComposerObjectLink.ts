@@ -26,6 +26,7 @@ import { granolaNoteContextRecord } from "@t3tools/client-runtime/state/granola"
 import { granolaEnvironment } from "~/state/granola";
 import {
   discordThreadContextRecord,
+  slackResourceContextRecord,
   slackThreadContextRecord,
 } from "@t3tools/source-control-definitions/integrationContextRecords";
 import type {
@@ -80,7 +81,7 @@ function reportUnreadableSlackLink(failure: unknown) {
   }
   toastManager.add({
     type: unavailable ? "info" : "error",
-    title: unavailable ? "Connect Slack to attach messages" : "Could not read that Slack message",
+    title: unavailable ? "Connect Slack to attach messages" : "Could not read that Slack link",
     description: unavailable
       ? "The agent gets the link instead. Connect Slack in Settings → Integrations."
       : failure instanceof Error
@@ -265,6 +266,7 @@ export function useResolveComposerObjectLink(input: {
   const getNotionPage = useAtomCommand(notionEnvironment.getPage, { reportFailure: false });
   const getGoogleFile = useAtomCommand(googleEnvironment.getFile, { reportFailure: false });
   const getSlackThread = useAtomCommand(slackEnvironment.getThread, { reportFailure: false });
+  const getSlackResource = useAtomCommand(slackEnvironment.getResource, { reportFailure: false });
   const getDiscordThread = useAtomCommand(discordEnvironment.getThread, { reportFailure: false });
   const getGranolaNote = useAtomCommand(granolaEnvironment.getNote, { reportFailure: false });
   const getPullRequest = useAtomQueryRunner(pullRequestEnvironment.detail, {
@@ -368,6 +370,24 @@ export function useResolveComposerObjectLink(input: {
         const record = slackThreadContextRecord(result.value);
         return {
           reference: { kind: "slack-thread", contextId: record.contextId, label: record.label },
+          commit: () => useIssueContextStore.getState().upsert(threadRef.threadId, record),
+        };
+      }
+      case "slack-resource": {
+        if (!slackEnabled) return "skipped";
+        const result = await getSlackResource({
+          environmentId,
+          input: { resourceType: link.resourceType, id: link.resourceId, url: link.url },
+        });
+        if (result._tag === "Failure") {
+          if (!isAtomCommandInterrupted(result)) {
+            reportUnreadableSlackLink(squashAtomCommandFailure(result));
+          }
+          return "unreadable";
+        }
+        const record = slackResourceContextRecord(result.value);
+        return {
+          reference: { kind: "slack-resource", contextId: record.contextId, label: record.label },
           commit: () => useIssueContextStore.getState().upsert(threadRef.threadId, record),
         };
       }

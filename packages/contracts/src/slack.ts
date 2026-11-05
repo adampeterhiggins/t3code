@@ -17,7 +17,10 @@ export const SlackMessageTs = TrimmedNonEmptyString.check(Schema.isPattern(/^\d{
  */
 export const SLACK_REDIRECT_URI = "http://localhost:47832/callback";
 
-/** Read-only user scopes: search, read every kind of conversation, and resolve user and group names. */
+/**
+ * Read-only user scopes: search, read every kind of conversation, resolve user and group names,
+ * and read files, canvases, and lists.
+ */
 export const SLACK_USER_SCOPES = [
   "search:read",
   "channels:history",
@@ -30,6 +33,9 @@ export const SLACK_USER_SCOPES = [
   "mpim:read",
   "users:read",
   "usergroups:read",
+  "files:read",
+  "canvases:read",
+  "lists:read",
 ] as const;
 
 /**
@@ -194,6 +200,34 @@ export const SlackThreadContext = Schema.Struct({
   messages: ChatThreadMessages,
 });
 export type SlackThreadContext = typeof SlackThreadContext.Type;
+
+export const SlackResourceType = Schema.Literals(["canvas", "list", "file", "user"]);
+export type SlackResourceType = typeof SlackResourceType.Type;
+
+/** `slack.getResource` payload: a canvas, list, file, or person a link names. */
+export const SlackGetResourceInput = Schema.Struct({
+  resourceType: SlackResourceType,
+  id: SlackId,
+  url: SlackLinkUrl,
+});
+export type SlackGetResourceInput = typeof SlackGetResourceInput.Type;
+
+/** Longest rendered canvas, list, file, or profile sent to a client or inlined into a prompt. */
+export const SLACK_RESOURCE_MARKDOWN_MAX_CHARS = 32_000;
+
+/**
+ * A snapshot of what a Slack resource link names. A file link to a canvas or list is read as
+ * that canvas or list, so `resourceType` can differ from the payload's.
+ */
+export const SlackResourceContext = Schema.Struct({
+  teamId: Schema.String,
+  resourceType: SlackResourceType,
+  id: Schema.String,
+  title: Schema.String,
+  url: Schema.String,
+  markdown: Schema.String.check(Schema.isMaxLength(SLACK_RESOURCE_MARKDOWN_MAX_CHARS)),
+});
+export type SlackResourceContext = typeof SlackResourceContext.Type;
 
 /** `slack.getLinkPreview` payload: the message a bare permalink in a chat message names. */
 export const SlackLinkPreviewInput = Schema.Struct({

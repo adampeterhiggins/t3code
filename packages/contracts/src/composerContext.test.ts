@@ -191,6 +191,17 @@ const knownRecords: Record<(typeof COMPOSER_CONTEXT_KINDS)[number], Record<strin
     scope: "message",
     markdown: "**Priya** · 2024-10-01 10:47 UTC\nIt's the retry",
   },
+  "slack-resource": {
+    ...base,
+    kind: "slack-resource",
+    label: "Launch plan",
+    teamId: "T1",
+    resourceType: "canvas",
+    resourceId: "F0B7B78KZ9T",
+    title: "Launch plan",
+    url: "https://acme.slack.com/docs/T1/F0B7B78KZ9T",
+    markdown: "# Slack canvas: Launch plan",
+  },
   "discord-thread": {
     ...base,
     kind: "discord-thread",

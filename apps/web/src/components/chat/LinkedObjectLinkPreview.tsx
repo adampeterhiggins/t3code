@@ -19,6 +19,7 @@ import {
   linearIssueContextRecord,
   linearObjectContextRecord,
   promptLinkContextRecord,
+  slackResourceContextRecord,
   slackThreadContextRecord,
 } from "@t3tools/source-control-definitions/integrationContextRecords";
 import { useRef, useState, type ComponentProps, type ReactElement, type ReactNode } from "react";
@@ -108,6 +109,14 @@ export function useLinkedObjectRecord(
       ? slackEnvironment.thread({ environmentId, input: slackLinkSnapshotInput(link) })
       : null,
   );
+  const slackResource = useEnvironmentQuery(
+    open && slackEnabled && link.kind === "slack-resource"
+      ? slackEnvironment.resource({
+          environmentId,
+          input: { resourceType: link.resourceType, id: link.resourceId, url: link.url },
+        })
+      : null,
+  );
   const discord = useEnvironmentQuery(
     open && discordEnabled && link.kind === "discord-message"
       ? discordEnvironment.thread({
@@ -181,6 +190,12 @@ export function useLinkedObjectRecord(
           available: slackEnabled,
           record: slack.data && slackThreadContextRecord(slack.data),
           failed: slack.error !== null,
+        };
+      case "slack-resource":
+        return {
+          available: slackEnabled,
+          record: slackResource.data && slackResourceContextRecord(slackResource.data),
+          failed: slackResource.error !== null,
         };
       case "discord-message":
         return {

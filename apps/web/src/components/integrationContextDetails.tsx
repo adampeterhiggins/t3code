@@ -9,6 +9,7 @@ import type {
   NotionPageContextRecord,
   PromptLinkContextRecord,
   RepositoryContextRecord,
+  SlackResourceContextRecord,
   SlackThreadContextRecord,
   UnreadLinkContextRecord,
 } from "@t3tools/contracts";
@@ -531,6 +532,33 @@ export function GranolaNoteDetails({
         summary={granolaMeetingDate(record.meetingAt)}
         url={record.url}
         linkLabel="Open in Granola"
+        onOpenLink={onOpenLink}
+      />
+      <IssueMarkdownBody text={record.markdown} />
+    </div>
+  );
+}
+
+const SLACK_RESOURCE_SUMMARIES: Record<SlackResourceContextRecord["resourceType"], string> = {
+  canvas: "Canvas",
+  list: "List",
+  file: "File",
+  user: "Profile",
+};
+
+export function SlackResourceDetails({
+  record,
+  onOpenLink,
+}: {
+  record: Pick<SlackResourceContextRecord, "resourceType" | "url" | "markdown">;
+  onOpenLink: (event: MouseEvent<HTMLElement>, url: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <IssueDetailsHeader
+        summary={SLACK_RESOURCE_SUMMARIES[record.resourceType]}
+        url={record.url}
+        linkLabel="Open in Slack"
         onOpenLink={onOpenLink}
       />
       <IssueMarkdownBody text={record.markdown} />

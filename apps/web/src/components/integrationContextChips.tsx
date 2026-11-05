@@ -66,6 +66,8 @@ export function issueDraftContextRecord(record: IssueContextRecord): Integration
       return { kind: "github-issue", record };
     case "slack-thread":
       return { kind: "slack-thread", record };
+    case "slack-resource":
+      return { kind: "slack-resource", record };
     case "discord-thread":
       return { kind: "discord-thread", record };
     case "subagent":
@@ -140,6 +142,7 @@ export const integrationComposerContextHandlers: {
         : null,
   },
   "slack-thread": linkedObjectHandler("slack-thread"),
+  "slack-resource": linkedObjectHandler("slack-resource"),
   "discord-thread": linkedObjectHandler("discord-thread"),
   "notion-page": linkedObjectHandler("notion-page"),
   "google-file": linkedObjectHandler("google-file"),
@@ -237,6 +240,7 @@ export const integrationUserMessageChips: {
         })
       : null,
   "slack-thread": linkedObjectUserMessageChip("slack-thread"),
+  "slack-resource": linkedObjectUserMessageChip("slack-resource"),
   "discord-thread": linkedObjectUserMessageChip("discord-thread"),
   "notion-page": linkedObjectUserMessageChip("notion-page"),
   "google-file": linkedObjectUserMessageChip("google-file"),
