@@ -58,6 +58,7 @@ import {
   useRef,
   useState,
   type ClipboardEvent as ReactClipboardEvent,
+  type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
   type RefObject,
@@ -124,6 +125,16 @@ import { cn, isMacPlatform } from "~/lib/utils";
 import { AssistantCitationChip } from "./chat/AssistantCitationChip";
 import type { CitationCommentInputProps } from "./chat/AssistantCitationCommentEditor";
 import type { ComposerTextTarget } from "./chat/composerTextTarget";
+import {
+  type ComposerMentionDropHost,
+  dataTransferHasComposerMention,
+  makeComposerMentionDragHandlers,
+} from "./chat/composerMentionDrag";
+import {
+  isFileDrag,
+  makeWorkspaceFileDropHandlers,
+  type WorkspaceFileDropHost,
+} from "./chat/workspaceFileDrop";
 import type { CitationDestination, CitationDestinationAction } from "./chat/citationDestination";
 import { getTimelinePageScrollKey } from "./chat/pageScrollController";
 import {
@@ -256,7 +267,14 @@ export type ComposerCitationCommentInput = {
   /** The open menu, when the comment with this key opened it. */
   menu: { targetKey: string; listId: string; activeItemId: string | undefined } | null;
   loading: ReadonlyArray<{ readonly url: string; readonly workKey: string }>;
+  /** Where files, folders, and file-tree or pull request drags dropped on the comment land. */
+  dropHost: (target: ComposerTextTarget) => CitationCommentDropHost;
 };
+
+export type CitationCommentDropHost = Omit<
+  WorkspaceFileDropHost & ComposerMentionDropHost,
+  "setDragActive"
+>;
 
 export type ComposerCitationCommentRequest = {
   previousValue: string;
@@ -732,8 +750,46 @@ function CitationCommentPromptInput({
   }, [onOpen, target]);
   const menu = shared?.menu?.targetKey === target.key ? shared.menu : null;
   const referenced = new Set(collectInlineContextIds(input.value));
+  const [dragActive, setDragActive] = useState(false);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- window dragend clears the drop highlight when a drag is cancelled without dragleave
+  useEffect(() => {
+    if (!dragActive) return;
+    const clear = () => setDragActive(false);
+    window.addEventListener("dragend", clear);
+    return () => window.removeEventListener("dragend", clear);
+  }, [dragActive]);
+  const dropHost = shared ? { ...shared.dropHost(target), setDragActive } : null;
+  const mentionDrop = dropHost ? makeComposerMentionDragHandlers(dropHost) : null;
+  const fileDrop = dropHost ? makeWorkspaceFileDropHandlers(dropHost) : null;
+  // Claimed in capture so neither the comment's editor nor the chat's prompt drop target sees it.
+  const onDrag =
+    (
+      mention: ((event: ReactDragEvent<HTMLDivElement>) => void) | undefined,
+      file: ((event: ReactDragEvent<HTMLDivElement>) => void) | undefined,
+    ) =>
+    (event: ReactDragEvent<HTMLDivElement>) => {
+      mention?.(event);
+      if (!isFileDrag(event)) return;
+      file?.(event);
+      event.stopPropagation();
+      event.nativeEvent.stopPropagation();
+    };
   return (
-    <div ref={anchorRef}>
+    <div
+      ref={anchorRef}
+      className={cn("rounded-md", dragActive && "bg-accent/45 ring-1 ring-inset ring-primary/70")}
+      onDragEnterCapture={onDrag(mentionDrop?.onDragEnter, fileDrop?.onDragEnter)}
+      onDragOverCapture={onDrag(mentionDrop?.onDragOver, fileDrop?.onDragOver)}
+      onDragLeaveCapture={(event) => {
+        if (!isFileDrag(event) && !dataTransferHasComposerMention(event.dataTransfer.types)) return;
+        event.stopPropagation();
+        const next = event.relatedTarget;
+        if (!(next instanceof globalThis.Node && event.currentTarget.contains(next))) {
+          setDragActive(false);
+        }
+      }}
+      onDropCapture={onDrag(mentionDrop?.onDrop, fileDrop?.onDrop)}
+    >
       <ComposerPromptEditorTiptap
         richTextEnabled={richTextEnabled}
         buildContextClipboardFragment={buildContextClipboardFragment}

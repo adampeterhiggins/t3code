@@ -155,8 +155,8 @@ delete it like other inline context. Copying, reloading, and restoring a
 with its quote, and sending tells the agent which words were quoted and which comment you wrote.
 The quoted text and comment count toward the message limit. The comment takes the same
 formatting, chips, and pasted links as the message itself, and `@` and `#` work there as they do in
-the message. Pasted images and files attach to the message with their chips in the comment. Their
-context and attachments go with the quote wherever you send it.
+the message. Images and files you paste or drop on the comment attach to the message with their chips
+in the comment. Their context and attachments go with the quote wherever you send it.
 
 To use the quote somewhere else, pick a destination on the left of the comment panel before
 sending. It starts on **This thread**. **New thread** starts a thread with the quote as its first

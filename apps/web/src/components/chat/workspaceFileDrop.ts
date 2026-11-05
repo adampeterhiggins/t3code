@@ -16,13 +16,13 @@ interface WorkspaceFileDragEvent {
   preventDefault(): void;
 }
 
-interface WorkspaceFileDropHost {
+export interface WorkspaceFileDropHost {
   setDragActive(active: boolean): void;
   addFiles(files: File[]): void;
   addFolders(folders: File[]): void;
 }
 
-function isFileDrag(event: WorkspaceFileDragEvent): boolean {
+export function isFileDrag(event: Pick<WorkspaceFileDragEvent, "dataTransfer">): boolean {
   return event.dataTransfer.types.includes("Files");
 }
 

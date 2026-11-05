@@ -1815,9 +1815,10 @@ the message does, and a pasted or typed link becomes a chip as described in
 [Pasted and typed links become chips](#pasted-and-typed-links-become-chips) (a broken link chip in a
 comment has no **Retry**). Typing `@` or `#` in a comment opens the composer's own menu above the
 comment, and what it attaches, including chips that load later, lands in the comment. `$` and `/`
-stay the prompt's, since skills and slash commands act on the message or composer. Pasting files,
-images, or folders into a comment attaches them to the message with their chips in the comment, and
-a long paste folds into a file there too.
+stay the prompt's, since skills and slash commands act on the message or composer. Pasting or
+dropping files, images, or folders onto a comment attaches them to the message with their chips in
+the comment, and a long paste folds into a file there too. A file-tree path or pull request dragged
+onto a comment lands in it too.
 
 The records and attachments behind a comment's chips travel with the quote. Saving it into the
 composer keeps them with the message; sending it on its own or to another thread uploads the
@@ -1830,7 +1831,7 @@ comment's chips listed alongside the message's own, rather than the raw `t3-cita
 Code: `CitationCommentPromptInput` in
 [ComposerPromptEditorTiptap.tsx](../apps/web/src/components/ComposerPromptEditorTiptap.tsx),
 `ComposerTextTarget` in [composerTextTarget.ts](../apps/web/src/components/chat/composerTextTarget.ts),
-`menuTextEdit` and `onCitationCommentPaste` in
+`menuTextEdit`, `onCitationCommentPaste`, and `citationCommentDropHost` in
 [ChatComposer.tsx](../apps/web/src/components/chat/ChatComposer.tsx),
 `prepareTextMessage` in [forkComposerContexts.ts](../apps/web/src/components/chat/forkComposerContexts.ts),
 `collectInlineContextIds` in

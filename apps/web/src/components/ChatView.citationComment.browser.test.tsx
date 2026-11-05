@@ -14,6 +14,10 @@ import { page, userEvent } from "vite-plus/test/browser";
 import { AppRoot } from "~/AppRoot";
 // The route loads ChatView lazily; importing it here keeps its first transform out of the timeout.
 import "~/components/ChatView";
+import {
+  COMPOSER_MENTION_DRAG_TYPE,
+  composerMentionFromTreePath,
+} from "~/components/chat/composerMentionDrag";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { __setClientSettingsForTests } from "~/hooks/useSettings";
 import { getRouter } from "~/router";
@@ -41,7 +45,7 @@ vi.mock(import("~/rpc/requestLatencyState"), async (original) => ({
   trackRpcRequestSent: () => {},
 }));
 
-it("a citation comment's @ menu puts the chip in the comment", async () => {
+it("a citation comment's @ menu and drops put their chips in the comment", async () => {
   using _environment = installFakeEnvironment([
     threadWithHistory("alpha", 1),
     threadWithHistory("beta", 1),
@@ -84,6 +88,33 @@ it("a citation comment's @ menu puts the chip in the comment", async () => {
   // Enter picks from the menu while it is open, and saves the comment once it closed.
   await userEvent.keyboard("{Enter}");
   await expect.element(comment.getByText("Thread beta")).toBeVisible();
+  // The chat's own drop target would put it in the prompt.
+  const dropped = new DataTransfer();
+  const png = Uint8Array.from(
+    atob(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    ),
+    (char) => char.charCodeAt(0),
+  );
+  dropped.items.add(new File([png], "dot.png", { type: "image/png" }));
+  for (const type of ["dragenter", "dragover", "drop"]) {
+    comment
+      .element()
+      .dispatchEvent(
+        new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dropped }),
+      );
+  }
+  await expect.element(comment.getByText("dot.png")).toBeVisible();
+  const mention = new DataTransfer();
+  mention.setData(COMPOSER_MENTION_DRAG_TYPE, composerMentionFromTreePath("src/tree.ts") ?? "");
+  for (const type of ["dragenter", "dragover", "drop"]) {
+    comment
+      .element()
+      .dispatchEvent(
+        new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: mention }),
+      );
+  }
+  await expect.element(comment.getByText("tree.ts")).toBeVisible();
   await userEvent.keyboard("{Enter}");
 
   const prompt = useComposerDraftStore.getState().getComposerDraft(threadRef)?.prompt ?? "";
@@ -91,7 +122,10 @@ it("a citation comment's @ menu puts the chip in the comment", async () => {
   expect(saved).toContain(
     threadContextRecord(scopeThreadRef(ENVIRONMENT_ID, ThreadId.make("beta")), "").contextId,
   );
-  // The chip went into the comment, not beside the citation in the prompt.
+  expect(useComposerDraftStore.getState().getComposerDraft(threadRef)?.images).toEqual([
+    expect.objectContaining({ name: "dot.png" }),
+  ]);
+  // The chips went into the comment, not beside the citation in the prompt.
   expect(prompt.startsWith("See [")).toBe(true);
   expect(prompt.endsWith(") ")).toBe(true);
 });

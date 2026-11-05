@@ -14,13 +14,26 @@ export interface ComposerTextTarget {
   readonly focus: () => void;
 }
 
-/** Inserts `text` at the caret, spaced from a word that ends there. */
-export function insertAtComposerTextTargetCaret(target: ComposerTextTarget, text: string): boolean {
+function insertSpaced(
+  target: ComposerTextTarget,
+  text: string,
+  at: (value: string) => number,
+): boolean {
   const value = target.read();
   if (value === null || text.length === 0) return false;
-  const caret = Math.max(0, Math.min(value.length, target.caret()));
-  const spaced = caret > 0 && !/\s/.test(value[caret - 1] ?? "") ? ` ${text}` : text;
-  return target.replace(caret, caret, spaced);
+  const offset = Math.max(0, Math.min(value.length, at(value)));
+  const spaced = offset > 0 && !/\s/.test(value[offset - 1] ?? "") ? ` ${text}` : text;
+  return target.replace(offset, offset, spaced);
+}
+
+/** Inserts `text` at the caret, spaced from a word that ends there. */
+export function insertAtComposerTextTargetCaret(target: ComposerTextTarget, text: string): boolean {
+  return insertSpaced(target, text, () => target.caret());
+}
+
+/** Inserts `text` at the end, spaced from a word that ends there. */
+export function insertAtComposerTextTargetEnd(target: ComposerTextTarget, text: string): boolean {
+  return insertSpaced(target, text, (value) => value.length);
 }
 
 /**

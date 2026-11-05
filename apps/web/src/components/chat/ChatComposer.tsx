@@ -16,6 +16,7 @@ import {
   type ComposerTextTarget,
   citationCommentTrigger,
   insertAtComposerTextTargetCaret,
+  insertAtComposerTextTargetEnd,
 } from "./composerTextTarget";
 import { useComposerAttachControls } from "./useComposerAttachControls";
 import { useComposerPathMenu } from "./useComposerPathMenu";
@@ -47,6 +48,7 @@ import {
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   type ComposerContextRecord,
   type ThreadPullRequestLink,
+  type PullRequestContextMetadata,
 } from "@t3tools/contracts";
 import { PlayIcon } from "lucide-react";
 
@@ -78,6 +80,7 @@ import { resolveComposerSnapshot, type ComposerSnapshot } from "./composerPendin
 import {
   type ComposerCitationDestinations,
   type ComposerCitationCommentRequest,
+  type CitationCommentDropHost,
   type ComposerPromptEditorHandle,
   ComposerPromptEditor,
 } from "../ComposerPromptEditor";
@@ -3195,30 +3198,53 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     return setContextInsertionHandler(composerDraftTarget, insertContextReferencesAtCaretStable);
   }, [composerDraftTarget, insertContextReferencesAtCaretStable, setContextInsertionHandler]);
 
+  const insertDroppedPullRequest = (
+    pullRequest: PullRequestContextMetadata,
+    insert: (text: string) => boolean,
+  ) => {
+    const comment = buildPullRequestReferenceContext(pullRequest);
+    const inserted = insert(
+      `${formatInlineContextReference(reviewCommentContextReference(comment))} `,
+    );
+    if (inserted) {
+      addComposerDraftReviewComment(composerDraftTarget, comment, { appendReference: false });
+    }
+    return inserted;
+  };
+  const onDropInsertRejected = () => {
+    toastManager.add({
+      type: "error",
+      title: "Unable to add to chat",
+      description: "The composer is busy; try again once it is ready.",
+    });
+  };
   // Capture drops before the editor; mention handlers own native propagation and moves.
   const composerMentionDragHandlers = makeComposerMentionDragHandlers({
     insertMentionAtEnd: (text) =>
       insertComposerTextAtEndStable(text, { ensureLeadingBoundary: true }),
-    insertPullRequestAtEnd: (pullRequest) => {
-      const comment = buildPullRequestReferenceContext(pullRequest);
-      const inserted = insertComposerTextAtEndStable(
-        `${formatInlineContextReference(reviewCommentContextReference(comment))} `,
-        { ensureLeadingBoundary: true },
-      );
-      if (inserted) {
-        addComposerDraftReviewComment(composerDraftTarget, comment, { appendReference: false });
-      }
-      return inserted;
-    },
+    insertPullRequestAtEnd: (pullRequest) =>
+      insertDroppedPullRequest(pullRequest, (text) =>
+        insertComposerTextAtEndStable(text, { ensureLeadingBoundary: true }),
+      ),
     setDragActive: setIsDragOverComposer,
-    onInsertRejected: () => {
-      toastManager.add({
-        type: "error",
-        title: "Unable to add to chat",
-        description: "The composer is busy; try again once it is ready.",
-      });
-    },
+    onInsertRejected: onDropInsertRejected,
   });
+  // A drop on an open citation comment lands in it, as the same drop on the prompt lands there.
+  const citationCommentDropHost = (target: ComposerTextTarget): CitationCommentDropHost => {
+    const insertAtEnd = (text: string) => {
+      if (!insertAtComposerTextTargetEnd(target, text)) return false;
+      target.focus();
+      return true;
+    };
+    return {
+      addFiles: (files) => void addComposerAttachments(files, { target }),
+      addFolders: (folders) => addComposerFoldersStable(folders, target),
+      insertMentionAtEnd: insertAtEnd,
+      insertPullRequestAtEnd: (pullRequest) => insertDroppedPullRequest(pullRequest, insertAtEnd),
+      onInsertRejected: onDropInsertRejected,
+    };
+  };
+  const citationCommentDropHostStable = useStableCallback(citationCommentDropHost);
 
   const attachDroppedThreadFile = useEffectEvent((file: File) => addComposerAttachments([file]));
   const importDroppedThread = useEffectEvent(
@@ -4121,6 +4147,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       onChange: onCitationCommentChangeStable,
                       onCommandKey: onCitationCommentKeyStable,
                       isPathQueryActive: isCitationCommentPathQueryActiveStable,
+                      dropHost: citationCommentDropHostStable,
                       menu: commentMenu
                         ? {
                             targetKey: commentMenu.target.key,
