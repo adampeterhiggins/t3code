@@ -109,7 +109,7 @@ describe("parseComposerObjectLink", () => {
     expect(objectLinkLabel(url)).toBeNull();
   });
 
-  it("reads a Slack message permalink, with its thread when it is a reply", () => {
+  it("reads a Slack channel link or message permalink, with its thread when it is a reply", () => {
     expect(
       parseComposerObjectLink("https://acme.slack.com/archives/C04ABCD12/p1727779620000100"),
     ).toMatchObject({
@@ -124,8 +124,13 @@ describe("parseComposerObjectLink", () => {
         "https://acme.enterprise.slack.com/archives/C04ABCD12/p1727779620000100?thread_ts=1727773920.000200&cid=C04ABCD12",
       ),
     ).toMatchObject({ kind: "slack-message", threadTs: "1727773920.000200" });
-    // A channel, not a message.
-    expect(parseComposerObjectLink("https://acme.slack.com/archives/C04ABCD12")).toBeNull();
+    expect(parseComposerObjectLink("https://focaldata.slack.com/archives/C09CH7NG4E5")).toEqual({
+      kind: "slack-channel",
+      url: "https://focaldata.slack.com/archives/C09CH7NG4E5",
+      workspace: "focaldata",
+      channelId: "C09CH7NG4E5",
+    });
+    expect(parseComposerObjectLink("https://acme.slack.com/archives/C04ABCD12/x")).toBeNull();
     expect(parseComposerObjectLink("https://app.slack.com/client/T1/C04ABCD12")).toBeNull();
   });
 

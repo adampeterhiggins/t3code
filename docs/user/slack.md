@@ -52,7 +52,8 @@ Without this setting, approval uses the existing local callback. If that page ca
 ## Attach a message or thread
 
 - Paste or type a Slack message link (**Copy link** on a message in Slack) into the composer on
-  web or desktop. It turns into a chip once the thread loads. A link to a channel stays a link.
+  web or desktop. It turns into a chip once the thread loads. A link to a channel attaches its 50
+  newest messages, without their thread replies.
 - Click the paperclip and choose **Slack message**. Search with Slack's own syntax, like
   `in:#eng from:@priya retry`. Before you type, it lists the threads you posted in most recently,
   and buttons for the channels and people you talk to most narrow the search to one of them.

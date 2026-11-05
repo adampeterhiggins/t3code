@@ -23,7 +23,8 @@ export interface ChatThreadSnapshot {
   readonly service: string;
   readonly channelLabel: string;
   readonly url: string;
-  readonly scope: "thread" | "message";
+  /** `channel` is a channel's newest messages, with the newest as the linked one. */
+  readonly scope: "thread" | "message" | "channel";
   /** In chronological order; the first is the thread's parent. */
   readonly messages: ReadonlyArray<ChatRenderedMessage>;
   readonly linkedId: string;
@@ -50,9 +51,16 @@ export function renderChatThread(
   const { messages } = snapshot;
   const isThread = snapshot.scope === "thread";
   const header = [
-    `# ${snapshot.service} ${isThread ? "thread" : "message"} in ${snapshot.channelLabel}`,
+    snapshot.scope === "channel"
+      ? `# ${snapshot.service} channel ${snapshot.channelLabel}`
+      : `# ${snapshot.service} ${isThread ? "thread" : "message"} in ${snapshot.channelLabel}`,
     `url: ${snapshot.url}`,
     ...(isThread ? [plural(Math.max(messages.length - 1, 0), "reply", "replies")] : []),
+    ...(snapshot.scope === "channel"
+      ? [
+          `${plural(messages.length, "recent message", "recent messages")}, thread replies not included`,
+        ]
+      : []),
   ].join("\n");
 
   const markLinked = isThread && messages.length > 1;

@@ -93,6 +93,8 @@ const ThreadMessage = Schema.Struct({
 type ThreadMessage = typeof ThreadMessage.Type;
 
 const RepliesData = Schema.Struct({ messages: Schema.Array(ThreadMessage) });
+/** How many of a channel's newest messages a channel link attaches. */
+const CHANNEL_HISTORY_LIMIT = 50;
 const ChannelInfoData = Schema.Struct({ channel: ChannelRef });
 const UserGroupsData = Schema.Struct({
   usergroups: Schema.Array(Schema.Struct({ id: Schema.String, handle: Schema.String })),
@@ -238,7 +240,7 @@ export class SlackApi extends Context.Service<
   }
 >()("t3/slack/SlackApi") {}
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const auth = yield* SlackAuth;
   const services = Context.make(HttpClient.HttpClient, yield* HttpClient.HttpClient);
@@ -419,21 +421,17 @@ export const make = Effect.gen(function* () {
     message.bot_profile?.icons?.image_72 ??
     null;
 
-  const getThread = Effect.fn("slack.get_thread")(function* (input: SlackGetThreadInput) {
+  /** The thread or message `input` names, oldest first, with the linked message's ts. */
+  const readMessages = Effect.fn("slack.read_messages")(function* (
+    input: Extract<SlackGetThreadInput, { readonly ts: string }>,
+  ) {
     const readReplies = (ts: string) =>
       call(
         "conversations.replies",
         { channel: input.channelId, ts, limit: "200", inclusive: "true" },
         RepliesData,
       );
-    const [firstRead, info, account] = yield* Effect.all(
-      [
-        readReplies(input.threadTs ?? input.ts),
-        call("conversations.info", { channel: input.channelId }, ChannelInfoData),
-        auth.account,
-      ],
-      { concurrency: "unbounded" },
-    );
+    const firstRead = yield* readReplies(input.threadTs ?? input.ts);
     // A reply's link may omit `thread_ts`; reading from the reply returns only the reply, so
     // read again from the root it names.
     const root = firstRead.messages.find((message) => message.ts === input.ts)?.thread_ts;
@@ -441,14 +439,42 @@ export const make = Effect.gen(function* () {
       input.scope === "thread" && input.threadTs === undefined && root && root !== input.ts
         ? yield* readReplies(root)
         : firstRead;
-    const messages =
-      input.scope === "message"
-        ? replies.messages.filter((message) => message.ts === input.ts)
-        : replies.messages;
+    return {
+      linkedTs: input.ts,
+      messages:
+        input.scope === "message"
+          ? replies.messages.filter((message) => message.ts === input.ts)
+          : replies.messages,
+    };
+  });
+
+  /** A channel's newest top-level messages, oldest first, with the newest as the linked one. */
+  const readChannel = Effect.fn("slack.read_channel")(function* (channelId: string) {
+    const history = yield* call(
+      "conversations.history",
+      { channel: channelId, limit: String(CHANNEL_HISTORY_LIMIT) },
+      RepliesData,
+    );
+    const messages = history.messages.toReversed();
+    return { linkedTs: messages.at(-1)?.ts ?? "", messages };
+  });
+
+  const getThread = Effect.fn("slack.get_thread")(function* (input: SlackGetThreadInput) {
+    const [{ linkedTs, messages }, info, account] = yield* Effect.all(
+      [
+        input.scope === "channel" ? readChannel(input.channelId) : readMessages(input),
+        call("conversations.info", { channel: input.channelId }, ChannelInfoData),
+        auth.account,
+      ],
+      { concurrency: "unbounded" },
+    );
     if (messages.length === 0) {
       return yield* new SlackError({
         reason: "not-found",
-        detail: "That Slack message no longer exists, or your account can't see it.",
+        detail:
+          input.scope === "channel"
+            ? "That Slack channel has no messages your account can see."
+            : "That Slack message no longer exists, or your account can't see it.",
       });
     }
     yield* resolveNames([
@@ -460,8 +486,8 @@ export const make = Effect.gen(function* () {
     ]);
     yield* resolveGroups(messages.flatMap((message) => mentionedGroupIds(message.text ?? "")));
     const label = channelLabel(info.channel, info.channel.user);
-    const linked = messages.find((message) => message.ts === input.ts) ?? messages[0]!;
-    const rootTs = linked.thread_ts ?? input.threadTs;
+    const linked = messages.find((message) => message.ts === linkedTs) ?? messages[0]!;
+    const rootTs = linked.thread_ts ?? (input.scope === "channel" ? undefined : input.threadTs);
     const linkedText = slackTextToMarkdown(linked.text ?? "", names, groups);
     const title = linkedText
       .split("\n")
@@ -472,7 +498,7 @@ export const make = Effect.gen(function* () {
         channelLabel: label,
         url: input.url,
         scope: input.scope,
-        linkedTs: input.ts,
+        linkedTs,
         messages: messages.map((message) => ({
           ts: message.ts,
           authorName: authorName(message),
@@ -488,11 +514,16 @@ export const make = Effect.gen(function* () {
       teamId: account.teamId,
       channelId: input.channelId,
       channelLabel: label,
-      ts: input.ts,
+      ts: linkedTs,
       threadTs: rootTs !== undefined && rootTs !== linked.ts ? rootTs : null,
       url: input.url,
       authorName: authorName(linked),
-      title: title === undefined ? "Slack message" : title.slice(0, TITLE_MAX_CHARS),
+      title:
+        input.scope === "channel"
+          ? `Recent messages in ${label}`
+          : title === undefined
+            ? "Slack message"
+            : title.slice(0, TITLE_MAX_CHARS),
       replyCount: input.scope === "thread" ? messages.length - 1 : 0,
       scope: input.scope,
       markdown: rendered.markdown,

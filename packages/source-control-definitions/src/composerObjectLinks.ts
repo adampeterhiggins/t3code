@@ -20,7 +20,7 @@ import {
 /**
  * A link in composer text to something the composer can attach as a chip instead: a Linear
  * issue, project, document, or initiative, a GitHub issue, a pull request, a GitHub repository
- * root, a GitHub release, tag, branch, or commit, a Slack or Discord message, a Notion page, a
+ * root, a GitHub release, tag, branch, or commit, a Slack channel or message, a Discord message, a Notion page, a
  * Granola note, or a T3 Code prompt link.
  */
 export type ComposerObjectLink =
@@ -46,6 +46,12 @@ export type ComposerObjectLink =
       readonly ts: string;
       /** The thread the message replies in, when the link says so. */
       readonly threadTs: string | null;
+    }
+  | {
+      readonly kind: "slack-channel";
+      readonly url: string;
+      readonly workspace: string;
+      readonly channelId: string;
     }
   | {
       readonly kind: "discord-message";
@@ -106,25 +112,43 @@ function isInRanges(ranges: ReadonlyArray<readonly [number, number]>, index: num
 }
 
 /**
- * A Slack message permalink, `https://<workspace>.slack.com/archives/<channel>/p<ts>`, with
- * `?thread_ts=` when the message is a reply. Channel links (no message) are not attachable.
+ * A Slack channel link, `https://<workspace>.slack.com/archives/<channel>`, or a message
+ * permalink, `…/archives/<channel>/p<ts>`, with `?thread_ts=` when the message is a reply.
  */
-function parseSlackMessageLink(url: string, parsed: URL, segments: ReadonlyArray<string>) {
+function parseSlackLink(url: string, parsed: URL, segments: ReadonlyArray<string>) {
   const host = parsed.hostname.toLowerCase();
   if (!host.endsWith(".slack.com") || host === "app.slack.com") return null;
-  if (segments.length !== 3 || segments[0] !== "archives") return null;
+  if (segments[0] !== "archives" || (segments.length !== 2 && segments.length !== 3)) return null;
   const channelId = segments[1]!;
+  if (!SLACK_CHANNEL_ID.test(channelId)) return null;
+  const workspace = host.split(".")[0]!;
+  if (segments.length === 2) return { kind: "slack-channel", url, workspace, channelId } as const;
   const digits = SLACK_PERMALINK_TS.exec(segments[2]!)?.[1];
-  if (!SLACK_CHANNEL_ID.test(channelId) || digits === undefined) return null;
+  if (digits === undefined) return null;
   const threadTs = parsed.searchParams.get("thread_ts");
   return {
     kind: "slack-message",
     url,
-    workspace: host.split(".")[0]!,
+    workspace,
     channelId,
     ts: `${digits.slice(0, -6)}.${digits.slice(-6)}`,
     threadTs: threadTs !== null && SLACK_TS.test(threadTs) ? threadTs : null,
   } as const;
+}
+
+/** What attaching a Slack link reads: the whole thread for a message, or the channel's newest. */
+export function slackLinkSnapshotInput(
+  link: Extract<ComposerObjectLink, { readonly kind: "slack-message" | "slack-channel" }>,
+) {
+  return link.kind === "slack-channel"
+    ? ({ channelId: link.channelId, url: link.url, scope: "channel" } as const)
+    : ({
+        channelId: link.channelId,
+        ts: link.ts,
+        ...(link.threadTs === null ? {} : { threadTs: link.threadTs }),
+        url: link.url,
+        scope: "thread",
+      } as const);
 }
 
 const DISCORD_HOSTS = new Set([
@@ -235,7 +259,7 @@ export function parseComposerObjectLink(url: string): ComposerObjectLink | null 
     };
   }
   if (parsed.hostname.toLowerCase().endsWith(".slack.com")) {
-    return parseSlackMessageLink(url, parsed, segments);
+    return parseSlackLink(url, parsed, segments);
   }
   if (DISCORD_HOSTS.has(parsed.hostname.toLowerCase())) {
     return parseDiscordMessageLink(url, segments);
@@ -293,6 +317,7 @@ export function objectLinkLabel(url: string): string | null {
     case "linear-object":
       return link.name ?? LINEAR_OBJECT_NOUNS[link.objectType];
     case "slack-message":
+    case "slack-channel":
     case "discord-message":
     case "prompt-link":
       return null;
@@ -334,6 +359,7 @@ const OBJECT_LINK_NOUNS: Record<ComposerObjectLink["kind"], string> = {
   "linear-issue": "Linear issue",
   "linear-object": "Linear project, document, or initiative",
   "slack-message": "Slack message",
+  "slack-channel": "Slack channel",
   "discord-message": "Discord message",
   "github-issue": "GitHub issue",
   "pull-request": "pull request",

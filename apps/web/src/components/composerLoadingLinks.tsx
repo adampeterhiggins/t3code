@@ -27,6 +27,7 @@ import { PullRequestGlyph } from "./pullRequest/pullRequestIcons";
 function loadingLinkChipKind(link: ComposerObjectLink): ContextChipKind {
   switch (link.kind) {
     case "slack-message":
+    case "slack-channel":
       return "slack-thread";
     case "discord-message":
       return "discord-thread";
@@ -63,6 +64,7 @@ function loadingLinkIcon(link: ComposerObjectLink) {
     case "prompt-link":
       return <MessageSquareTextIcon />;
     case "slack-message":
+    case "slack-channel":
       return <SlackIcon />;
     case "discord-message":
       return <DiscordIcon />;

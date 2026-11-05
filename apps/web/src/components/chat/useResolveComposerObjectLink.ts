@@ -2,6 +2,7 @@ import { GoogleError } from "@t3tools/contracts";
 import {
   commentAnchor,
   type ComposerObjectLink,
+  slackLinkSnapshotInput,
 } from "@t3tools/source-control-definitions/composerObjectLinks";
 import { repositoryContextRecord } from "@t3tools/client-runtime/context-repositories";
 import {
@@ -354,18 +355,10 @@ export function useResolveComposerObjectLink(input: {
           commit: () => useIssueContextStore.getState().upsert(threadRef.threadId, record),
         };
       }
-      case "slack-message": {
+      case "slack-message":
+      case "slack-channel": {
         if (!slackEnabled) return "skipped";
-        const result = await getSlackThread({
-          environmentId,
-          input: {
-            channelId: link.channelId,
-            ts: link.ts,
-            ...(link.threadTs === null ? {} : { threadTs: link.threadTs }),
-            url: link.url,
-            scope: "thread",
-          },
-        });
+        const result = await getSlackThread({ environmentId, input: slackLinkSnapshotInput(link) });
         if (result._tag === "Failure") {
           if (!isAtomCommandInterrupted(result)) {
             reportUnreadableSlackLink(squashAtomCommandFailure(result));

@@ -1116,7 +1116,8 @@ redirect by default, with the same paste-back path as Linear for remote browsers
 HTTPS callback set through `T3CODE_SLACK_REDIRECT_URI` receives approval on the environment directly.
 
 A message or its whole thread attaches as a `slack-thread` context chip: from a pasted or typed
-permalink, the attach menu's picker (Slack search syntax, right-click for the message alone), a
+permalink (a channel link attaches the channel's newest top-level messages through
+`conversations.history`), the attach menu's picker (Slack search syntax, right-click for the message alone), a
 `#` menu tab shown once Slack is connected, the command palette, and the mobile attach menu. The
 server renders the thread to capped markdown when it is attached. That markdown always keeps the
 first message and the linked one, fills the rest newest first, and resolves user and user group

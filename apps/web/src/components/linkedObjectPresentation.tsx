@@ -139,7 +139,11 @@ export function linkedObjectKindLabel(record: LinkedObjectContextRecord): string
     case "prompt-link":
       return "T3 Code prompt link";
     case "slack-thread":
-      return record.scope === "thread" ? "Slack thread" : "Slack message";
+      return record.scope === "thread"
+        ? "Slack thread"
+        : record.scope === "channel"
+          ? "Slack channel"
+          : "Slack message";
     case "discord-thread":
       return record.scope === "thread" ? "Discord thread" : "Discord message";
   }

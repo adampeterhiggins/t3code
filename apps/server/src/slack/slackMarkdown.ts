@@ -47,22 +47,9 @@ function convertToken(
 }
 
 /**
- * Converts Slack mrkdwn to markdown. Angle-bracket tokens (mentions, channel
- * links, broadcasts, links) become markdown, and Slack's three HTML entities
- * are decoded. `names` maps user ids to the names to show, and `groups` user
- * group ids to their handles.
- *
- * Slack writes bold as `*text*` and strike as `~text~`. CommonMark reads a
- * single `*` as italic and does not strike `~text~`, so the hover card would
- * show Slack's bold in italics. Italic underscores and inline code already
- * agree with CommonMark, so they stay. Code and links are left untouched:
- * Slack does not format inside them, and a `*` in a URL is not emphasis. Code
- * is held out as a placeholder rather than split around, so bold that spans
- * inline code still pairs up.
- *
- * Slack opens a code block at any three backticks, mid-line or not, and the
- * `•` list markers its composer writes are plain text; both are rewritten to
- * the CommonMark shapes that render the same way.
+ * Converts Slack mrkdwn to markdown: `*bold*`, `~strike~`, mid-line ``` blocks and `•` lists
+ * become their CommonMark forms, while code and links stay untouched (code is held out as a
+ * placeholder so bold spanning it still pairs). `names` and `groups` resolve mentions.
  */
 export function slackTextToMarkdown(
   text: string,
@@ -251,7 +238,7 @@ export interface SlackRenderedMessage {
 export interface SlackThreadSnapshot {
   readonly channelLabel: string;
   readonly url: string;
-  readonly scope: "thread" | "message";
+  readonly scope: "thread" | "message" | "channel";
   /** In chronological order; the first is the thread's parent. */
   readonly messages: ReadonlyArray<SlackRenderedMessage>;
   readonly linkedTs: string;

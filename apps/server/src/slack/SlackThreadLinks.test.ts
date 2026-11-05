@@ -29,6 +29,7 @@ const schemaLayer = Layer.effectDiscard(
 );
 const apiLayer = Layer.mock(SlackApi)({
   getThread: (input) => {
+    if (input.scope === "channel") return Effect.die("SlackThreadLinks never reads a channel");
     const message = messages[input.ts];
     if (message === undefined) {
       return Effect.fail(new SlackError({ reason: "not-found", detail: "Message not found" }));

@@ -370,6 +370,33 @@ it.effect("keeps only the linked message when asked for the message alone", () =
   }).pipe(Effect.provide(harness.layer));
 });
 
+it.effect("snapshots a channel link as its newest messages, oldest first", () => {
+  const harness = makeHarness({
+    // Slack lists history newest first.
+    "conversations.history": { ok: true, messages: THREAD.toReversed() },
+  });
+  return Effect.gen(function* () {
+    const api = yield* SlackApi.SlackApi;
+    const context = yield* api.getThread({
+      channelId: "C1",
+      url: "https://acme.slack.com/archives/C1",
+      scope: "channel",
+    });
+    assert.isFalse(harness.calls.some((call) => call.method === "conversations.replies"));
+    assert.deepEqual(
+      { ts: context.ts, title: context.title, replyCount: context.replyCount },
+      { ts: LAST_TS, title: "Recent messages in #eng", replyCount: 0 },
+    );
+    assert.include(context.markdown, "# Slack channel #eng");
+    assert.include(context.markdown, "3 recent messages");
+    assert.notInclude(context.markdown, "linked message");
+    assert.deepEqual(
+      context.messages.map((message) => message.authorName),
+      ["Ada", "Grace", "CI Bot"],
+    );
+  }).pipe(Effect.provide(harness.layer));
+});
+
 it.effect("reads the whole thread from its root when a reply's link omits thread_ts", () => {
   const harness = makeHarness();
   return Effect.gen(function* () {

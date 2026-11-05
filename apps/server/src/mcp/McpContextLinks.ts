@@ -18,6 +18,7 @@ import {
   type ComposerObjectLink,
   locateComposerObjectLink,
   parseComposerObjectLink,
+  slackLinkSnapshotInput,
 } from "@t3tools/source-control-definitions/composerObjectLinks";
 import {
   discordThreadContextRecord,
@@ -211,18 +212,15 @@ const make = Effect.gen(function* () {
           return granolaNoteContextRecord(note);
         });
       case "slack-message":
+      case "slack-channel":
         return Effect.gen(function* () {
           if (!(yield* integrationEnabled("enableSlackIntegration")))
             return yield* invalid(
               `Could not ${verb} ${url}: the Slack integration is turned off in Settings → Integrations.`,
             );
-          const input = yield* decodeSlackGetThreadInput({
-            channelId: link.channelId,
-            ts: link.ts,
-            ...(link.threadTs === null ? {} : { threadTs: link.threadTs }),
-            url,
-            scope: "thread",
-          }).pipe(Effect.mapError(malformed(url)));
+          const input = yield* decodeSlackGetThreadInput(slackLinkSnapshotInput(link)).pipe(
+            Effect.mapError(malformed(url)),
+          );
           const thread = yield* slack.getThread(input).pipe(Effect.mapError(unreadable(verb, url)));
           return slackThreadContextRecord(thread);
         });

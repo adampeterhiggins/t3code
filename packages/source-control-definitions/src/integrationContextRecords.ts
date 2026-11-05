@@ -125,7 +125,9 @@ export function slackThreadContextRecord(thread: SlackThreadContext): SlackThrea
     kind: "slack-thread",
     contextId: `slack-${thread.scope}_${id}`.slice(0, 128) as ComposerContextId,
     label: sanitizeComposerContextLabel(
-      `${thread.channelLabel} · ${thread.authorName}`,
+      thread.scope === "channel"
+        ? thread.channelLabel
+        : `${thread.channelLabel} · ${thread.authorName}`,
       "slack-thread",
     ),
     teamId: thread.teamId,

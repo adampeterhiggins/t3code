@@ -71,7 +71,9 @@ export function formatIntegrationContextPayload(record: IntegrationContextRecord
       return formatCheckoutPayload(record);
     case "slack-thread":
       return [
-        `slack ${record.scope === "thread" ? "thread" : "message"}: ${record.channelLabel}, linked message by ${record.authorName}`,
+        record.scope === "channel"
+          ? `slack channel: ${record.channelLabel}, recent messages`
+          : `slack ${record.scope === "thread" ? "thread" : "message"}: ${record.channelLabel}, linked message by ${record.authorName}`,
         `url: ${record.url}`,
         record.markdown,
       ].join("\n");
