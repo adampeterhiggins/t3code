@@ -267,10 +267,7 @@ function UsagePanel({
   const selectedPool = detailed ? undefined : pools.find((pool) => pool.driver === selected);
   const accounts = pools.flatMap((pool) => pool.accounts);
   return (
-    <div
-      ref={setPanel}
-      className={cn("flex flex-col gap-2", detailed && accounts.length > 1 ? "w-[40rem]" : "w-80")}
-    >
+    <div ref={setPanel} className={cn("flex flex-col gap-2", detailed ? "w-96" : "w-80")}>
       <div className="flex items-center gap-2">
         <span className="text-sm font-medium">Usage limits</span>
         <Button
@@ -297,12 +294,7 @@ function UsagePanel({
         <ToggleGroupItem value="compact">Compact</ToggleGroupItem>
       </ToggleGroup>
       {detailed ? (
-        <div
-          className={cn(
-            "grid max-h-[min(36rem,calc(100dvh-10rem))] gap-2 overflow-y-auto",
-            accounts.length > 1 && "grid-cols-2",
-          )}
-        >
+        <div className="flex max-h-[min(40rem,calc(100dvh-14rem))] flex-col gap-2 overflow-y-auto">
           {accounts.map((account) => (
             <AccountCard key={account.key} account={account} now={now} showProvider />
           ))}
