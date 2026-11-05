@@ -57,6 +57,17 @@ export function createSlackEnvironmentAtoms<R, E>(
       tag: WS_METHODS.slackGetThread,
       staleTimeMs: 5 * 60_000,
     }),
+    // A canvas, list, file, or person, read once when its link is attached.
+    getResource: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:slack:get-resource",
+      tag: WS_METHODS.slackGetResource,
+    }),
+    // The same read for a link's hover card.
+    resource: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:slack:resource",
+      tag: WS_METHODS.slackGetResource,
+      staleTimeMs: 5 * 60_000,
+    }),
     // Keyed by link. The server keeps each preview, so one read per session is enough.
     linkPreview: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:slack:link-preview",

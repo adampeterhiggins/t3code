@@ -15,6 +15,7 @@ import type {
   LinearIssueContextRecord,
   LinearObjectContextRecord,
   DiscordThreadContextRecord,
+  SlackResourceContextRecord,
   SlackThreadContextRecord,
   SubagentContextRecord,
   ThreadId,
@@ -30,6 +31,7 @@ export type IssueContextRecord =
   | LinearObjectContextRecord
   | GitHubIssueContextRecord
   | SlackThreadContextRecord
+  | SlackResourceContextRecord
   | DiscordThreadContextRecord
   | NotionPageContextRecord
   | GoogleFileContextRecord

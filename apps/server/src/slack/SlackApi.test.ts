@@ -45,7 +45,7 @@ function makeHarness(replies: Record<string, unknown> = {}) {
   const reply = (request: HttpClientRequest.HttpClientRequest, body: unknown) =>
     HttpClientResponse.fromWeb(
       request,
-      new Response(JSON.stringify(body), {
+      new Response(typeof body === "string" ? body : JSON.stringify(body), {
         status: 200,
         headers: { "content-type": "application/json" },
       }),
@@ -370,6 +370,33 @@ it.effect("keeps only the linked message when asked for the message alone", () =
   }).pipe(Effect.provide(harness.layer));
 });
 
+it.effect("snapshots a channel link as its newest messages, oldest first", () => {
+  const harness = makeHarness({
+    // Slack lists history newest first.
+    "conversations.history": { ok: true, messages: THREAD.toReversed() },
+  });
+  return Effect.gen(function* () {
+    const api = yield* SlackApi.SlackApi;
+    const context = yield* api.getThread({
+      channelId: "C1",
+      url: "https://acme.slack.com/archives/C1",
+      scope: "channel",
+    });
+    assert.isFalse(harness.calls.some((call) => call.method === "conversations.replies"));
+    assert.deepEqual(
+      { ts: context.ts, title: context.title, replyCount: context.replyCount },
+      { ts: LAST_TS, title: "Recent messages in #eng", replyCount: 0 },
+    );
+    assert.include(context.markdown, "# Slack channel #eng");
+    assert.include(context.markdown, "3 recent messages");
+    assert.notInclude(context.markdown, "linked message");
+    assert.deepEqual(
+      context.messages.map((message) => message.authorName),
+      ["Ada", "Grace", "CI Bot"],
+    );
+  }).pipe(Effect.provide(harness.layer));
+});
+
 it.effect("reads the whole thread from its root when a reply's link omits thread_ts", () => {
   const harness = makeHarness();
   return Effect.gen(function* () {
@@ -461,3 +488,208 @@ it.effect(
     }).pipe(Effect.provide(harness.layer));
   },
 );
+
+const FILE_URL = "https://files.slack.com/files-pri/T1-F0FILE1/notes.txt";
+
+it.effect("reads a canvas as its markdown, titled from its file", () => {
+  const harness = makeHarness({
+    "canvases.getContent": { ok: true, content: "## Goals\n\n- Ship it\n" },
+    "files.info": { ok: true, file: { id: "F0CANVAS", title: "Launch plan", filetype: "quip" } },
+  });
+  return Effect.gen(function* () {
+    const api = yield* SlackApi.SlackApi;
+    const context = yield* api.getResource({
+      resourceType: "canvas",
+      id: "F0CANVAS",
+      url: "https://acme.slack.com/docs/T1/F0CANVAS",
+    });
+    const read = harness.calls.find((call) => call.method === "canvases.getContent");
+    assert.strictEqual(read?.params.get("canvas_id"), "F0CANVAS");
+    assert.deepEqual(
+      { resourceType: context.resourceType, title: context.title, teamId: context.teamId },
+      { resourceType: "canvas", title: "Launch plan", teamId: "T1" },
+    );
+    assert.include(context.markdown, "# Slack canvas: Launch plan");
+    assert.include(context.markdown, "## Goals\n\n- Ship it");
+  }).pipe(Effect.provide(harness.layer));
+});
+
+it.effect("reads a list as a table, naming columns, choices, and people", () => {
+  const harness = makeHarness({
+    "slackLists.items.list": {
+      ok: true,
+      items: [
+        {
+          id: "Rec1",
+          fields: [
+            { column_id: "ColStatus", key: "status", select: ["open"] },
+            { column_id: "ColName", key: "name", text: "Fix | retry" },
+            { column_id: "ColOwner", key: "owner", user: ["U2"] },
+          ],
+        },
+        { id: "Rec2", fields: [{ column_id: "ColName", key: "name", text: "Ship" }] },
+      ],
+    },
+    "slackLists.items.info": {
+      ok: true,
+      list: {
+        title: "Recruitment issues",
+        list_metadata: {
+          schema: [
+            {
+              id: "ColStatus",
+              name: "Status",
+              options: { choices: [{ value: "open", label: "Open" }] },
+            },
+            { id: "ColName", name: "Issue", is_primary_column: true },
+            { id: "ColOwner", name: "Owner" },
+          ],
+        },
+      },
+    },
+  });
+  return Effect.gen(function* () {
+    const api = yield* SlackApi.SlackApi;
+    const context = yield* api.getResource({
+      resourceType: "list",
+      id: "F0LIST",
+      url: "https://acme.slack.com/lists/T1/F0LIST",
+    });
+    assert.strictEqual(context.title, "Recruitment issues");
+    assert.include(context.markdown, "2 items");
+    assert.include(context.markdown, "| Issue | Status | Owner |");
+    assert.include(context.markdown, "| Fix \\| retry | Open | @Grace |");
+    assert.include(context.markdown, "| Ship |  |  |");
+  }).pipe(Effect.provide(harness.layer));
+});
+
+it.effect("downloads a text file's contents and describes the uploader", () => {
+  const harness = makeHarness({
+    "files.info": {
+      ok: true,
+      file: {
+        id: "F0FILE1",
+        name: "notes.txt",
+        mimetype: "text/plain",
+        filetype: "text",
+        pretty_type: "Plain Text",
+        user: "U1",
+        size: 12,
+        url_private_download: FILE_URL,
+      },
+    },
+    "notes.txt": "first\nsecond",
+  });
+  return Effect.gen(function* () {
+    const api = yield* SlackApi.SlackApi;
+    const context = yield* api.getResource({
+      resourceType: "file",
+      id: "F0FILE1",
+      url: "https://acme.slack.com/files/U1/F0FILE1/notes.txt",
+    });
+    assert.strictEqual(context.resourceType, "file");
+    assert.include(context.markdown, "type: Plain Text");
+    assert.include(context.markdown, "uploaded by: Ada");
+    assert.include(context.markdown, "```\nfirst\nsecond\n```");
+  }).pipe(Effect.provide(harness.layer));
+});
+
+it.effect("describes a binary file without downloading it", () => {
+  const harness = makeHarness({
+    "files.info": {
+      ok: true,
+      file: {
+        id: "F0IMG",
+        name: "chart.png",
+        mimetype: "image/png",
+        size: 2048,
+        url_private_download: FILE_URL,
+      },
+    },
+  });
+  return Effect.gen(function* () {
+    const api = yield* SlackApi.SlackApi;
+    const context = yield* api.getResource({
+      resourceType: "file",
+      id: "F0IMG",
+      url: "https://acme.slack.com/files/U1/F0IMG/chart.png",
+    });
+    assert.isFalse(harness.calls.some((call) => call.method === "notes.txt"));
+    assert.include(context.markdown, "_Contents not downloaded._");
+  }).pipe(Effect.provide(harness.layer));
+});
+
+it.effect("reads a file link that names a canvas as that canvas", () => {
+  const harness = makeHarness({
+    "files.info": { ok: true, file: { id: "F0CANVAS", title: "Launch plan", filetype: "quip" } },
+    "canvases.getContent": { ok: true, content: "Body" },
+  });
+  return Effect.gen(function* () {
+    const api = yield* SlackApi.SlackApi;
+    const context = yield* api.getResource({
+      resourceType: "file",
+      id: "F0CANVAS",
+      url: "https://acme.slack.com/files/U1/F0CANVAS/launch_plan",
+    });
+    assert.strictEqual(context.resourceType, "canvas");
+    assert.include(context.markdown, "# Slack canvas: Launch plan\n\nurl:");
+    // The file read already carried the title.
+    assert.strictEqual(harness.calls.filter((call) => call.method === "files.info").length, 1);
+  }).pipe(Effect.provide(harness.layer));
+});
+
+it.effect("reads a profile link as the person's name, title, and status", () => {
+  const harness = makeHarness({
+    "users.info": {
+      ok: true,
+      user: {
+        name: "grace",
+        real_name: "Grace Hopper",
+        tz: "Europe/London",
+        profile: {
+          display_name: "Grace",
+          title: "Engineer",
+          status_emoji: ":ship:",
+          status_text: "Shipping",
+        },
+      },
+    },
+  });
+  return Effect.gen(function* () {
+    const api = yield* SlackApi.SlackApi;
+    const context = yield* api.getResource({
+      resourceType: "user",
+      id: "U2",
+      url: "https://acme.slack.com/team/U2",
+    });
+    assert.strictEqual(context.title, "Grace");
+    assert.strictEqual(
+      context.markdown,
+      [
+        "# Slack profile: Grace",
+        "url: https://acme.slack.com/team/U2",
+        "full name: Grace Hopper",
+        "title: Engineer",
+        "status: :ship: Shipping",
+        "time zone: Europe/London",
+      ].join("\n"),
+    );
+  }).pipe(Effect.provide(harness.layer));
+});
+
+it.effect("says which scope an app made from an older manifest is missing", () => {
+  const harness = makeHarness({
+    "canvases.getContent": { ok: false, error: "missing_scope", needed: "canvases:read" },
+  });
+  return Effect.gen(function* () {
+    const api = yield* SlackApi.SlackApi;
+    const error = yield* Effect.flip(
+      api.getResource({
+        resourceType: "canvas",
+        id: "F0CANVAS",
+        url: "https://acme.slack.com/docs/T1/F0CANVAS",
+      }),
+    );
+    assert.include(error.detail, "canvases:read");
+  }).pipe(Effect.provide(harness.layer));
+});

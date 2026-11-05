@@ -109,12 +109,11 @@ describe("parseComposerObjectLink", () => {
     expect(objectLinkLabel(url)).toBeNull();
   });
 
-  it("reads a Slack message permalink, with its thread when it is a reply", () => {
+  it("reads a Slack channel link or message permalink, with its thread when it is a reply", () => {
     expect(
       parseComposerObjectLink("https://acme.slack.com/archives/C04ABCD12/p1727779620000100"),
     ).toMatchObject({
       kind: "slack-message",
-      workspace: "acme",
       channelId: "C04ABCD12",
       ts: "1727779620.000100",
       threadTs: null,
@@ -124,9 +123,65 @@ describe("parseComposerObjectLink", () => {
         "https://acme.enterprise.slack.com/archives/C04ABCD12/p1727779620000100?thread_ts=1727773920.000200&cid=C04ABCD12",
       ),
     ).toMatchObject({ kind: "slack-message", threadTs: "1727773920.000200" });
-    // A channel, not a message.
-    expect(parseComposerObjectLink("https://acme.slack.com/archives/C04ABCD12")).toBeNull();
-    expect(parseComposerObjectLink("https://app.slack.com/client/T1/C04ABCD12")).toBeNull();
+    expect(parseComposerObjectLink("https://focaldata.slack.com/archives/C09CH7NG4E5")).toEqual({
+      kind: "slack-channel",
+      url: "https://focaldata.slack.com/archives/C09CH7NG4E5",
+      channelId: "C09CH7NG4E5",
+    });
+    expect(parseComposerObjectLink("https://acme.slack.com/archives/C04ABCD12/x")).toBeNull();
+  });
+
+  it.each([
+    [
+      "https://app.slack.com/client/T3GGML2S1/C04ABCD12",
+      { kind: "slack-channel", channelId: "C04ABCD12" },
+    ],
+    [
+      "https://app.slack.com/huddle/T3GGML2S1/C04ABCD12",
+      { kind: "slack-channel", channelId: "C04ABCD12" },
+    ],
+    [
+      "https://app.slack.com/client/T3GGML2S1/C04ABCD12/thread/C04ABCD12-1727779620.000100",
+      {
+        kind: "slack-message",
+        channelId: "C04ABCD12",
+        ts: "1727779620.000100",
+        threadTs: "1727779620.000100",
+      },
+    ],
+    [
+      "https://acme.slack.com/docs/T3GGML2S1/F0BH0NPGH8R",
+      { kind: "slack-resource", resourceType: "canvas", resourceId: "F0BH0NPGH8R" },
+    ],
+    [
+      "https://acme.slack.com/lists/T3GGML2S1/F0B1X449287",
+      { kind: "slack-resource", resourceType: "list", resourceId: "F0B1X449287" },
+    ],
+    [
+      "https://acme.slack.com/files/U05PZLWGC1Y/F0BPUSAPYTD/untitled",
+      { kind: "slack-resource", resourceType: "file", resourceId: "F0BPUSAPYTD" },
+    ],
+    [
+      "https://files.slack.com/files-pri/T3GGML2S1-F0BPUSAPYTD/notes.txt",
+      { kind: "slack-resource", resourceType: "file", resourceId: "F0BPUSAPYTD" },
+    ],
+    [
+      "https://acme.slack.com/team/U05PZLWGC1Y",
+      { kind: "slack-resource", resourceType: "user", resourceId: "U05PZLWGC1Y" },
+    ],
+  ])("reads the Slack app link %s", (url, expected) => {
+    expect(parseComposerObjectLink(url)).toEqual({ url, ...expected });
+  });
+
+  it.each([
+    "https://app.slack.com/client/T3GGML2S1",
+    "https://app.slack.com/client/T3GGML2S1/C04ABCD12/thread/C0OTHER12-1727779620.000100",
+    "https://app.slack.com/client/T3GGML2S1/C04ABCD12/details",
+    "https://acme.slack.com/docs/T3GGML2S1/not-a-file",
+    "https://acme.slack.com/team/T3GGML2S1",
+    "https://files.slack.com/files-pri/F0BPUSAPYTD/notes.txt",
+  ])("leaves the other Slack link %s as a link", (url) => {
+    expect(parseComposerObjectLink(url)).toBeNull();
   });
 
   it("reads a Discord message link, but not a channel or a direct message", () => {
@@ -209,10 +264,13 @@ describe("objectLinkLabel", () => {
     expect(objectLinkLabel("https://example.com/acme/api")).toBeNull();
   });
 
-  it("leaves Slack message links as links", () => {
+  it("leaves Slack message links as links, and names canvases, lists, files, and profiles", () => {
     expect(
       objectLinkLabel("https://acme.slack.com/archives/C04ABCD12/p1727779620000100"),
     ).toBeNull();
+    expect(objectLinkLabel("https://acme.slack.com/docs/T3GGML2S1/F0BH0NPGH8R")).toBe(
+      "Slack canvas",
+    );
   });
 });
 

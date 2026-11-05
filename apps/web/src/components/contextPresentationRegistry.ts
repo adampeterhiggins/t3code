@@ -81,6 +81,10 @@ const DEFINITIONS = [
     capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
   },
   {
+    kind: "slack-resource",
+    capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
+  },
+  {
     kind: "discord-thread",
     capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
   },

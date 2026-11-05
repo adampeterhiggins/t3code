@@ -45,6 +45,7 @@ const CONTEXT_CHIP_PRESENTATIONS = {
   "google-file": { accent: "#4585dc", icon: "google-doc" },
   "github-ref": { accent: "#7f8793", icon: "tag" },
   "slack-thread": { accent: "#c6589c", icon: "hash" },
+  "slack-resource": { accent: "#c6589c", icon: "hash" },
   "discord-thread": { accent: "#5865F2", icon: "messages-square" },
   repository: { accent: "#009c9c", icon: "folder-git-2" },
   checkout: { accent: "#0096af", icon: "laptop" },

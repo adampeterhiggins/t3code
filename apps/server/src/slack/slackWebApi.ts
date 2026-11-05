@@ -25,6 +25,12 @@ const NOT_FOUND_ERRORS = new Set([
   "thread_not_found",
   "message_not_found",
   "not_in_channel",
+  "canvas_not_found",
+  "file_not_found",
+  "file_deleted",
+  "not_visible",
+  "list_not_found",
+  "user_not_found",
 ]);
 
 const apiError = (detail: string, cause?: unknown) =>
@@ -46,13 +52,13 @@ function toSlackError(error: string, needed: string | undefined): SlackError {
   if (NOT_FOUND_ERRORS.has(error)) {
     return new SlackError({
       reason: "not-found",
-      detail: "Your Slack account can't see that conversation.",
+      detail: "Your Slack account can't see that, or it no longer exists.",
     });
   }
   if (error === "ratelimited") return rateLimited();
   if (error === "missing_scope") {
     return apiError(
-      `The Slack app is missing the ${needed ?? "required"} scope. Add it and reconnect Slack.`,
+      `The Slack app is missing the ${needed ?? "required"} scope. Update the app from the manifest in Settings → Integrations → Slack, then reconnect.`,
     );
   }
   return apiError(`Slack returned an error (${error}).`);
@@ -92,5 +98,25 @@ export const slackApiRequest = Effect.fn("slack.web_api")(function* <S extends S
   }
   return yield* Schema.decodeEffect(data)(json).pipe(
     Effect.mapError((cause) => apiError("Slack returned an unexpected response shape.", cause)),
+  );
+});
+
+/** Downloads a private file's text (`url_private_download`), which needs the same user token. */
+export const slackDownloadText = Effect.fn("slack.download_text")(function* (
+  accessToken: string,
+  url: string,
+) {
+  const httpClient = yield* HttpClient.HttpClient;
+  const response = yield* HttpClientRequest.get(url).pipe(
+    HttpClientRequest.bearerToken(accessToken),
+    httpClient.execute,
+    Effect.mapError((cause) => apiError("Could not reach Slack.", cause)),
+  );
+  if (response.status === 429) return yield* rateLimited();
+  if (response.status < 200 || response.status >= 300) {
+    return yield* apiError(`Slack returned HTTP ${response.status} for the file.`);
+  }
+  return yield* response.text.pipe(
+    Effect.mapError((cause) => apiError("Slack returned an unreadable file.", cause)),
   );
 });

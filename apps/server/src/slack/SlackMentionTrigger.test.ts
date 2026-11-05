@@ -90,6 +90,7 @@ const harness = Effect.gen(function* () {
           ? Effect.fail(new SlackError({ detail: "Rate limited", reason: "rate-limited" }))
           : Effect.succeed({
               ...input,
+              ts: input.scope === "channel" ? "" : input.ts,
               teamId: account.teamId,
               scope: "thread" as const,
               threadTs: null,

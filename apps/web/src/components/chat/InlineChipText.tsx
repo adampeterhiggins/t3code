@@ -54,6 +54,7 @@ const CHIP_ICONS: Partial<Record<ContextChipKind, ReactNode>> = {
   "github-issue": <GitHubIcon />,
   "github-ref": <GitHubIcon />,
   "slack-thread": <SlackIcon />,
+  "slack-resource": <SlackIcon />,
   "discord-thread": <DiscordIcon />,
   "notion-page": <NotionIcon />,
   "google-file": <GoogleIcon />,
@@ -74,14 +75,9 @@ type Segment = {
 };
 
 /**
- * One-line message text with its context references, file mentions and assistant quotes drawn as static
- * chips, for previews that have no records to open (queued messages). `hideImages` drops
- * image references a surface already shows as thumbnails. `expandCitations` spells out each
- * quote and its comment, since a commented quote's chip label is only the comment.
- *
- * Chips here are labels only, with no hover previews: every caller makes the whole line a tooltip
- * trigger and shows the expanded line inside that tooltip, where a chip's own preview can neither
- * open nor be reached. The line holds text, not records, so there is nothing to preview either.
+ * One-line message text with references, mentions and quotes drawn as static label chips, for
+ * previews with no records to open (queued messages). Chips have no hover previews: callers make
+ * the whole line a tooltip trigger, where a chip's own preview could not be reached.
  */
 export function InlineChipText({
   text,

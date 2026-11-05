@@ -72,6 +72,7 @@ import {
   SlackCompleteLoginInput,
   SlackConnectionState,
   SlackError,
+  SlackGetResourceInput,
   SlackGetThreadInput,
   SlackLinkPreview,
   SlackLinkPreviewInput,
@@ -80,6 +81,7 @@ import {
   SlackStartLoginInput,
   SlackSuggestionsInput,
   SlackSuggestionsResult,
+  SlackResourceContext,
   SlackThreadContext,
   SlackLinkThreadInput,
   SlackThreadLink,
@@ -179,6 +181,7 @@ export const INTEGRATION_WS_METHODS = {
   slackSuggestions: "slack.suggestions",
   slackGetThread: "slack.getThread",
   slackGetLinkPreview: "slack.getLinkPreview",
+  slackGetResource: "slack.getResource",
   slackSubscribeThreadLinks: "slack.subscribeThreadLinks",
   slackLinkThread: "slack.linkThread",
   slackUnlinkThread: "slack.unlinkThread",
@@ -523,6 +526,12 @@ const WsSlackGetThreadRpc = Rpc.make(INTEGRATION_WS_METHODS.slackGetThread, {
   error: SlackRpcError,
 });
 
+const WsSlackGetResourceRpc = Rpc.make(INTEGRATION_WS_METHODS.slackGetResource, {
+  payload: SlackGetResourceInput,
+  success: SlackResourceContext,
+  error: SlackRpcError,
+});
+
 const WsSlackGetLinkPreviewRpc = Rpc.make(INTEGRATION_WS_METHODS.slackGetLinkPreview, {
   payload: SlackLinkPreviewInput,
   success: SlackLinkPreview,
@@ -741,6 +750,7 @@ export const IntegrationRpcGroup = RpcGroup.make(
   WsSlackSuggestionsRpc,
   WsSlackGetThreadRpc,
   WsSlackGetLinkPreviewRpc,
+  WsSlackGetResourceRpc,
   WsSlackSubscribeThreadLinksRpc,
   WsSlackLinkThreadRpc,
   WsSlackUnlinkThreadRpc,

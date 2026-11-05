@@ -41,7 +41,7 @@ const slackThread = (input: SlackGetThreadInput): SlackThreadContext => ({
   teamId: "T1",
   channelId: input.channelId,
   channelLabel: "#eng",
-  ts: input.ts,
+  ts: input.scope === "channel" ? "1700000000.000001" : input.ts,
   threadTs: null,
   url: input.url,
   authorName: "Sam",
@@ -187,7 +187,10 @@ it.effect("turns links into the composer's chips, in place when the message ment
     );
     // A permalink attaches its whole thread, as a pasted one does.
     assert.deepStrictEqual(
-      slackRequests.map((request) => [request.ts, request.scope]),
+      slackRequests.map((request) => [
+        request.scope === "channel" ? null : request.ts,
+        request.scope,
+      ]),
       [["1700000000.123456", "thread"]],
     );
   }).pipe(Effect.provide(layer())),

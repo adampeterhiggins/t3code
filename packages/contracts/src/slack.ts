@@ -17,7 +17,10 @@ export const SlackMessageTs = TrimmedNonEmptyString.check(Schema.isPattern(/^\d{
  */
 export const SLACK_REDIRECT_URI = "http://localhost:47832/callback";
 
-/** Read-only user scopes: search, read every kind of conversation, and resolve user and group names. */
+/**
+ * Read-only user scopes: search, read every kind of conversation, resolve user and group names,
+ * and read files, canvases, and lists.
+ */
 export const SLACK_USER_SCOPES = [
   "search:read",
   "channels:history",
@@ -30,6 +33,9 @@ export const SLACK_USER_SCOPES = [
   "mpim:read",
   "users:read",
   "usergroups:read",
+  "files:read",
+  "canvases:read",
+  "lists:read",
 ] as const;
 
 /**
@@ -67,11 +73,9 @@ export const SlackAccount = Schema.Struct({
 export type SlackAccount = typeof SlackAccount.Type;
 
 /**
- * The environment's Slack connection. Each workspace connects through its own Slack app, so the
- * state carries the client ID last used to sign in, for the settings form to offer again.
- * `waiting` carries the authorization URL the client opens; as with Linear, the server completes
- * the flow when the browser reaches its loopback callback, otherwise the client pastes the
- * redirect URL back through `slack.completeLogin`.
+ * The environment's Slack connection. `clientId` is the workspace app's ID last used, for the
+ * settings form to offer again. `waiting` carries the authorization URL; the client pastes the
+ * redirect back through `slack.completeLogin` when the loopback callback cannot be reached.
  */
 export const SlackConnectionState = Schema.Struct({
   phase: Schema.Literals(["disconnected", "waiting", "connected", "failed"]),
@@ -151,18 +155,31 @@ export const SlackSuggestionsResult = Schema.Struct({
 });
 export type SlackSuggestionsResult = typeof SlackSuggestionsResult.Type;
 
+const SlackLinkUrl = TrimmedNonEmptyString.check(Schema.isMaxLength(2_048));
+
 /**
- * Which message to snapshot. `thread` takes the whole thread the message belongs to (or starts),
- * with this message marked; `message` takes the message alone.
+ * What to snapshot. `thread` takes the whole thread the message belongs to (or starts), with this
+ * message marked; `message` takes the message alone; `channel` takes the channel's newest messages.
  */
-export const SlackGetThreadInput = Schema.Struct({
-  channelId: SlackId,
-  ts: SlackMessageTs,
-  threadTs: Schema.optional(SlackMessageTs),
-  url: TrimmedNonEmptyString.check(Schema.isMaxLength(2_048)),
-  scope: Schema.Literals(["thread", "message"]),
-});
+export const SlackGetThreadInput = Schema.Union([
+  Schema.Struct({
+    channelId: SlackId,
+    ts: SlackMessageTs,
+    threadTs: Schema.optional(SlackMessageTs),
+    url: SlackLinkUrl,
+    scope: Schema.Literals(["thread", "message"]),
+  }),
+  Schema.Struct({
+    channelId: SlackId,
+    url: SlackLinkUrl,
+    scope: Schema.Literal("channel"),
+  }),
+]);
 export type SlackGetThreadInput = typeof SlackGetThreadInput.Type;
+
+/** `channel` snapshots name the channel's newest message as `ts`. */
+export const SlackSnapshotScope = Schema.Literals(["thread", "message", "channel"]);
+export type SlackSnapshotScope = typeof SlackSnapshotScope.Type;
 
 /** A thread or message snapshot: who and where, plus a server-rendered markdown body. */
 export const SlackThreadContext = Schema.Struct({
@@ -177,12 +194,40 @@ export const SlackThreadContext = Schema.Struct({
   title: Schema.String,
   /** Replies in the thread; 0 for a message that started none, or when only the message was taken. */
   replyCount: Schema.Number,
-  scope: Schema.Literals(["thread", "message"]),
+  scope: SlackSnapshotScope,
   markdown: Schema.String.check(Schema.isMaxLength(SLACK_THREAD_MARKDOWN_MAX_CHARS)),
   /** The messages the markdown kept, for clients to draw. */
   messages: ChatThreadMessages,
 });
 export type SlackThreadContext = typeof SlackThreadContext.Type;
+
+export const SlackResourceType = Schema.Literals(["canvas", "list", "file", "user"]);
+export type SlackResourceType = typeof SlackResourceType.Type;
+
+/** `slack.getResource` payload: a canvas, list, file, or person a link names. */
+export const SlackGetResourceInput = Schema.Struct({
+  resourceType: SlackResourceType,
+  id: SlackId,
+  url: SlackLinkUrl,
+});
+export type SlackGetResourceInput = typeof SlackGetResourceInput.Type;
+
+/** Longest rendered canvas, list, file, or profile sent to a client or inlined into a prompt. */
+export const SLACK_RESOURCE_MARKDOWN_MAX_CHARS = 32_000;
+
+/**
+ * A snapshot of what a Slack resource link names. A file link to a canvas or list is read as
+ * that canvas or list, so `resourceType` can differ from the payload's.
+ */
+export const SlackResourceContext = Schema.Struct({
+  teamId: Schema.String,
+  resourceType: SlackResourceType,
+  id: Schema.String,
+  title: Schema.String,
+  url: Schema.String,
+  markdown: Schema.String.check(Schema.isMaxLength(SLACK_RESOURCE_MARKDOWN_MAX_CHARS)),
+});
+export type SlackResourceContext = typeof SlackResourceContext.Type;
 
 /** `slack.getLinkPreview` payload: the message a bare permalink in a chat message names. */
 export const SlackLinkPreviewInput = Schema.Struct({

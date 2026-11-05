@@ -10,12 +10,16 @@ import { granolaNoteContextRecord } from "@t3tools/client-runtime/state/granola"
 import { notionPageContextRecord } from "@t3tools/client-runtime/state/notion";
 import { googleFileContextRecord } from "@t3tools/client-runtime/state/google";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import type { ComposerObjectLink } from "@t3tools/source-control-definitions/composerObjectLinks";
+import {
+  type ComposerObjectLink,
+  slackLinkSnapshotInput,
+} from "@t3tools/source-control-definitions/composerObjectLinks";
 import {
   discordThreadContextRecord,
   linearIssueContextRecord,
   linearObjectContextRecord,
   promptLinkContextRecord,
+  slackResourceContextRecord,
   slackThreadContextRecord,
 } from "@t3tools/source-control-definitions/integrationContextRecords";
 import { useRef, useState, type ComponentProps, type ReactElement, type ReactNode } from "react";
@@ -101,16 +105,15 @@ export function useLinkedObjectRecord(
       : null,
   );
   const slack = useEnvironmentQuery(
-    open && slackEnabled && link.kind === "slack-message"
-      ? slackEnvironment.thread({
+    open && slackEnabled && (link.kind === "slack-message" || link.kind === "slack-channel")
+      ? slackEnvironment.thread({ environmentId, input: slackLinkSnapshotInput(link) })
+      : null,
+  );
+  const slackResource = useEnvironmentQuery(
+    open && slackEnabled && link.kind === "slack-resource"
+      ? slackEnvironment.resource({
           environmentId,
-          input: {
-            channelId: link.channelId,
-            ts: link.ts,
-            ...(link.threadTs === null ? {} : { threadTs: link.threadTs }),
-            url: link.url,
-            scope: "thread",
-          },
+          input: { resourceType: link.resourceType, id: link.resourceId, url: link.url },
         })
       : null,
   );
@@ -182,10 +185,17 @@ export function useLinkedObjectRecord(
           failed: granola.error !== null,
         };
       case "slack-message":
+      case "slack-channel":
         return {
           available: slackEnabled,
           record: slack.data && slackThreadContextRecord(slack.data),
           failed: slack.error !== null,
+        };
+      case "slack-resource":
+        return {
+          available: slackEnabled,
+          record: slackResource.data && slackResourceContextRecord(slackResource.data),
+          failed: slackResource.error !== null,
         };
       case "discord-message":
         return {

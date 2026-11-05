@@ -9,6 +9,7 @@ export const INTEGRATION_CONTEXT_KINDS = [
   "repository",
   "checkout",
   "slack-thread",
+  "slack-resource",
   "discord-thread",
   "notion-page",
   "google-file",

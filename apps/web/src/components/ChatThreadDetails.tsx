@@ -19,7 +19,7 @@ export function ChatThreadDetails(props: {
   linkLabel: string;
   record: {
     readonly channelLabel: string;
-    readonly scope: "thread" | "message";
+    readonly scope: "thread" | "message" | "channel";
     readonly replyCount: number;
     readonly url: string;
     readonly markdown: string;
@@ -34,7 +34,11 @@ export function ChatThreadDetails(props: {
       <div className="flex h-8 items-center gap-1.5 border-b border-border/70 pb-2 [&>svg]:size-3.5 [&>svg]:shrink-0 [&>svg]:text-muted-foreground">
         {props.icon}
         <span className="text-sm font-semibold">
-          {record.scope === "thread" ? "Thread" : "Message"}
+          {record.scope === "thread"
+            ? "Thread"
+            : record.scope === "channel"
+              ? "Channel"
+              : "Message"}
         </span>
         <span className="min-w-0 truncate text-xs text-muted-foreground">
           {record.channelLabel}

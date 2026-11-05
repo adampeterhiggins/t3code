@@ -1,6 +1,8 @@
 import {
+  SLACK_RESOURCE_MARKDOWN_MAX_CHARS,
   SLACK_THREAD_MARKDOWN_MAX_CHARS,
   SlackError,
+  type SlackGetResourceInput,
   type SlackGetThreadInput,
   SlackLinkPreview,
   type SlackLinkPreviewInput,
@@ -9,6 +11,7 @@ import {
   type SlackSearchMessagesResult,
   type SlackSearchScope,
   type SlackSuggestionsResult,
+  type SlackResourceContext,
   type SlackThreadContext,
 } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
@@ -23,6 +26,7 @@ import * as HttpClient from "effect/http/HttpClient";
 import * as KeyValueStore from "effect/persistence/KeyValueStore";
 
 import * as ServerConfig from "../config.ts";
+import { truncate } from "../issueMarkdown.ts";
 
 import { SlackAuth } from "./SlackAuth.ts";
 import {
@@ -34,7 +38,13 @@ import {
   slackTextToMarkdown,
   slackTsToIso,
 } from "./slackMarkdown.ts";
-import { slackApiRequest } from "./slackWebApi.ts";
+import {
+  renderSlackFile,
+  renderSlackList,
+  renderSlackProfile,
+  type SlackListColumn,
+} from "./slackResourceMarkdown.ts";
+import { slackApiRequest, slackDownloadText } from "./slackWebApi.ts";
 
 const PREVIEW_MAX_CHARS = 300;
 /** Slack's page maximum: enough of the account's posts to see past one busy conversation. */
@@ -93,6 +103,102 @@ const ThreadMessage = Schema.Struct({
 type ThreadMessage = typeof ThreadMessage.Type;
 
 const RepliesData = Schema.Struct({ messages: Schema.Array(ThreadMessage) });
+/** How many of a channel's newest messages a channel link attaches. */
+const CHANNEL_HISTORY_LIMIT = 50;
+/** How many rows of a list are read; the rendered table is capped again by length. */
+const LIST_ITEMS_LIMIT = 500;
+/** Text files past this are described, not downloaded. */
+const FILE_TEXT_MAX_BYTES = 256_000;
+
+const FileInfo = Schema.Struct({
+  id: Schema.String,
+  name: Schema.optional(Schema.NullOr(Schema.String)),
+  title: Schema.optional(Schema.NullOr(Schema.String)),
+  mimetype: Schema.optional(Schema.String),
+  filetype: Schema.optional(Schema.String),
+  pretty_type: Schema.optional(Schema.String),
+  user: Schema.optional(Schema.String),
+  size: Schema.optional(Schema.Number),
+  created: Schema.optional(Schema.Number),
+  url_private_download: Schema.optional(Schema.String),
+});
+type FileInfo = typeof FileInfo.Type;
+const FileInfoData = Schema.Struct({ file: FileInfo });
+const CanvasContentData = Schema.Struct({ content: Schema.String });
+const ListCell = Schema.Struct({
+  column_id: Schema.optional(Schema.String),
+  key: Schema.optional(Schema.String),
+  text: Schema.optional(Schema.String),
+  value: Schema.optional(Schema.Unknown),
+  select: Schema.optional(Schema.Array(Schema.String)),
+  user: Schema.optional(Schema.Array(Schema.String)),
+  date: Schema.optional(Schema.Array(Schema.String)),
+  number: Schema.optional(Schema.Array(Schema.Number)),
+  rating: Schema.optional(Schema.Array(Schema.Number)),
+  checkbox: Schema.optional(Schema.Boolean),
+  link: Schema.optional(
+    Schema.Array(Schema.Struct({ original_url: Schema.optional(Schema.String) })),
+  ),
+});
+const ListItemsData = Schema.Struct({
+  items: Schema.Array(Schema.Struct({ id: Schema.String, fields: Schema.Array(ListCell) })),
+});
+const ListItemInfoData = Schema.Struct({
+  list: Schema.Struct({
+    title: Schema.optional(Schema.String),
+    name: Schema.optional(Schema.String),
+    list_metadata: Schema.optional(
+      Schema.Struct({
+        schema: Schema.optional(
+          Schema.Array(
+            Schema.Struct({
+              id: Schema.String,
+              name: Schema.optional(Schema.String),
+              key: Schema.optional(Schema.String),
+              is_primary_column: Schema.optional(Schema.Boolean),
+              options: Schema.optional(
+                Schema.Struct({
+                  choices: Schema.optional(
+                    Schema.Array(
+                      Schema.Struct({
+                        value: Schema.String,
+                        label: Schema.optional(Schema.String),
+                      }),
+                    ),
+                  ),
+                }),
+              ),
+            }),
+          ),
+        ),
+      }),
+    ),
+  }),
+});
+const ProfileData = Schema.Struct({
+  user: Schema.Struct({
+    name: Schema.String,
+    real_name: Schema.optional(Schema.String),
+    tz: Schema.optional(Schema.String),
+    is_bot: Schema.optional(Schema.Boolean),
+    deleted: Schema.optional(Schema.Boolean),
+    profile: Schema.optional(
+      Schema.Struct({
+        display_name: Schema.optional(Schema.String),
+        real_name: Schema.optional(Schema.String),
+        title: Schema.optional(Schema.String),
+        status_text: Schema.optional(Schema.String),
+        status_emoji: Schema.optional(Schema.String),
+      }),
+    ),
+  }),
+});
+
+// Slack files backed by a canvas or list; a `/files/…` link to one reads as that.
+const CANVAS_FILETYPES = new Set(["quip", "canvas"]);
+const TEXT_MIMETYPE = /^text\/|json|xml|yaml|javascript|typescript|x-sh|sql|csv/u;
+
+const fileTitle = (file: FileInfo | null) => file?.title || file?.name || null;
 const ChannelInfoData = Schema.Struct({ channel: ChannelRef });
 const UserGroupsData = Schema.Struct({
   usergroups: Schema.Array(Schema.Struct({ id: Schema.String, handle: Schema.String })),
@@ -231,6 +337,10 @@ export class SlackApi extends Context.Service<
       readonly userId: string;
       readonly afterDay: string;
     }) => Effect.Effect<ReadonlyArray<SlackMention>, SlackError>;
+    /** A canvas, list, file, or person a link names, rendered to markdown. */
+    readonly getResource: (
+      input: SlackGetResourceInput,
+    ) => Effect.Effect<SlackResourceContext, SlackError>;
     /** Who and where a bare link points, read once and kept. Needs a connected account. */
     readonly getLinkPreview: (
       input: SlackLinkPreviewInput,
@@ -238,7 +348,7 @@ export class SlackApi extends Context.Service<
   }
 >()("t3/slack/SlackApi") {}
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const auth = yield* SlackAuth;
   const services = Context.make(HttpClient.HttpClient, yield* HttpClient.HttpClient);
@@ -419,21 +529,17 @@ export const make = Effect.gen(function* () {
     message.bot_profile?.icons?.image_72 ??
     null;
 
-  const getThread = Effect.fn("slack.get_thread")(function* (input: SlackGetThreadInput) {
+  /** The thread or message `input` names, oldest first, with the linked message's ts. */
+  const readMessages = Effect.fn("slack.read_messages")(function* (
+    input: Extract<SlackGetThreadInput, { readonly ts: string }>,
+  ) {
     const readReplies = (ts: string) =>
       call(
         "conversations.replies",
         { channel: input.channelId, ts, limit: "200", inclusive: "true" },
         RepliesData,
       );
-    const [firstRead, info, account] = yield* Effect.all(
-      [
-        readReplies(input.threadTs ?? input.ts),
-        call("conversations.info", { channel: input.channelId }, ChannelInfoData),
-        auth.account,
-      ],
-      { concurrency: "unbounded" },
-    );
+    const firstRead = yield* readReplies(input.threadTs ?? input.ts);
     // A reply's link may omit `thread_ts`; reading from the reply returns only the reply, so
     // read again from the root it names.
     const root = firstRead.messages.find((message) => message.ts === input.ts)?.thread_ts;
@@ -441,14 +547,42 @@ export const make = Effect.gen(function* () {
       input.scope === "thread" && input.threadTs === undefined && root && root !== input.ts
         ? yield* readReplies(root)
         : firstRead;
-    const messages =
-      input.scope === "message"
-        ? replies.messages.filter((message) => message.ts === input.ts)
-        : replies.messages;
+    return {
+      linkedTs: input.ts,
+      messages:
+        input.scope === "message"
+          ? replies.messages.filter((message) => message.ts === input.ts)
+          : replies.messages,
+    };
+  });
+
+  /** A channel's newest top-level messages, oldest first, with the newest as the linked one. */
+  const readChannel = Effect.fn("slack.read_channel")(function* (channelId: string) {
+    const history = yield* call(
+      "conversations.history",
+      { channel: channelId, limit: String(CHANNEL_HISTORY_LIMIT) },
+      RepliesData,
+    );
+    const messages = history.messages.toReversed();
+    return { linkedTs: messages.at(-1)?.ts ?? "", messages };
+  });
+
+  const getThread = Effect.fn("slack.get_thread")(function* (input: SlackGetThreadInput) {
+    const [{ linkedTs, messages }, info, account] = yield* Effect.all(
+      [
+        input.scope === "channel" ? readChannel(input.channelId) : readMessages(input),
+        call("conversations.info", { channel: input.channelId }, ChannelInfoData),
+        auth.account,
+      ],
+      { concurrency: "unbounded" },
+    );
     if (messages.length === 0) {
       return yield* new SlackError({
         reason: "not-found",
-        detail: "That Slack message no longer exists, or your account can't see it.",
+        detail:
+          input.scope === "channel"
+            ? "That Slack channel has no messages your account can see."
+            : "That Slack message no longer exists, or your account can't see it.",
       });
     }
     yield* resolveNames([
@@ -460,8 +594,8 @@ export const make = Effect.gen(function* () {
     ]);
     yield* resolveGroups(messages.flatMap((message) => mentionedGroupIds(message.text ?? "")));
     const label = channelLabel(info.channel, info.channel.user);
-    const linked = messages.find((message) => message.ts === input.ts) ?? messages[0]!;
-    const rootTs = linked.thread_ts ?? input.threadTs;
+    const linked = messages.find((message) => message.ts === linkedTs) ?? messages[0]!;
+    const rootTs = linked.thread_ts ?? (input.scope === "channel" ? undefined : input.threadTs);
     const linkedText = slackTextToMarkdown(linked.text ?? "", names, groups);
     const title = linkedText
       .split("\n")
@@ -472,7 +606,7 @@ export const make = Effect.gen(function* () {
         channelLabel: label,
         url: input.url,
         scope: input.scope,
-        linkedTs: input.ts,
+        linkedTs,
         messages: messages.map((message) => ({
           ts: message.ts,
           authorName: authorName(message),
@@ -488,11 +622,16 @@ export const make = Effect.gen(function* () {
       teamId: account.teamId,
       channelId: input.channelId,
       channelLabel: label,
-      ts: input.ts,
+      ts: linkedTs,
       threadTs: rootTs !== undefined && rootTs !== linked.ts ? rootTs : null,
       url: input.url,
       authorName: authorName(linked),
-      title: title === undefined ? "Slack message" : title.slice(0, TITLE_MAX_CHARS),
+      title:
+        input.scope === "channel"
+          ? `Recent messages in ${label}`
+          : title === undefined
+            ? "Slack message"
+            : title.slice(0, TITLE_MAX_CHARS),
       replyCount: input.scope === "thread" ? messages.length - 1 : 0,
       scope: input.scope,
       markdown: rendered.markdown,
@@ -518,7 +657,157 @@ export const make = Effect.gen(function* () {
     return preview;
   });
 
-  return SlackApi.of({ searchMessages, suggestions, searchMentions, getThread, getLinkPreview });
+  const fileInfo = (id: string) =>
+    call("files.info", { file: id }, FileInfoData).pipe(Effect.map((data) => data.file));
+
+  const readCanvas = Effect.fn("slack.read_canvas")(function* (id: string, file: FileInfo | null) {
+    // The title is a nicety: `files.info` is a separate scope from the canvas content.
+    const [content, info] = yield* Effect.all(
+      [
+        call("canvases.getContent", { canvas_id: id }, CanvasContentData),
+        file === null ? fileInfo(id).pipe(Effect.option) : Effect.succeedSome(file),
+      ],
+      { concurrency: "unbounded" },
+    );
+    const title = fileTitle(Option.getOrNull(info)) ?? "Untitled canvas";
+    return {
+      title,
+      body: (url: string) =>
+        [`# Slack canvas: ${title}`, `url: ${url}`, content.content.trim()].join("\n\n"),
+    };
+  });
+
+  const readList = Effect.fn("slack.read_list")(function* (id: string, file: FileInfo | null) {
+    const { items } = yield* call(
+      "slackLists.items.list",
+      { list_id: id, limit: String(LIST_ITEMS_LIMIT) },
+      ListItemsData,
+    );
+    // Only an item read carries the column schema, so read the first row again for it.
+    const first = items[0];
+    const info =
+      first === undefined
+        ? null
+        : yield* call("slackLists.items.info", { list_id: id, id: first.id }, ListItemInfoData);
+    const columns = (info?.list.list_metadata?.schema ?? []).map((column): SlackListColumn => ({
+      id: column.id,
+      name: column.name ?? column.key ?? column.id,
+      isPrimary: column.is_primary_column === true,
+      choices: new Map(
+        (column.options?.choices ?? []).map((choice) => [
+          choice.value,
+          choice.label ?? choice.value,
+        ]),
+      ),
+    }));
+    yield* resolveNames(items.flatMap((item) => item.fields.flatMap((cell) => cell.user ?? [])));
+    const title =
+      info?.list.title ||
+      info?.list.name ||
+      fileTitle(file ?? Option.getOrNull(yield* fileInfo(id).pipe(Effect.option))) ||
+      "Untitled list";
+    return {
+      title,
+      body: (url: string) =>
+        renderSlackList(
+          { title, url, columns, rows: items, names },
+          SLACK_RESOURCE_MARKDOWN_MAX_CHARS,
+        ),
+    };
+  });
+
+  const readFile = Effect.fn("slack.read_file")(function* (file: FileInfo) {
+    const mimetype = file.mimetype ?? "";
+    const readable =
+      file.url_private_download !== undefined &&
+      TEXT_MIMETYPE.test(mimetype) &&
+      (file.size ?? Number.POSITIVE_INFINITY) <= FILE_TEXT_MAX_BYTES;
+    const token = yield* auth.accessToken;
+    const text =
+      readable && file.url_private_download !== undefined
+        ? yield* slackDownloadText(token, file.url_private_download).pipe(Effect.provide(services))
+        : null;
+    if (file.user !== undefined) yield* resolveNames([file.user]);
+    const title = fileTitle(file) ?? file.id;
+    return {
+      title,
+      body: (url: string) =>
+        renderSlackFile(
+          {
+            title,
+            url,
+            typeLabel: file.pretty_type ?? (mimetype || file.filetype || "file"),
+            sizeBytes: file.size ?? null,
+            uploaderName: file.user === undefined ? null : (names.get(file.user) ?? file.user),
+            createdAt: file.created === undefined ? null : slackTsToIso(String(file.created)),
+            text,
+          },
+          SLACK_RESOURCE_MARKDOWN_MAX_CHARS,
+        ),
+    };
+  });
+
+  const readProfile = Effect.fn("slack.read_profile")(function* (id: string) {
+    const { user } = yield* call("users.info", { user: id }, ProfileData);
+    const name =
+      user.profile?.display_name || user.profile?.real_name || user.real_name || user.name;
+    const status = [user.profile?.status_emoji, user.profile?.status_text]
+      .filter((part) => part)
+      .join(" ");
+    return {
+      title: name,
+      body: (url: string) =>
+        renderSlackProfile({
+          name,
+          realName: user.profile?.real_name || user.real_name || null,
+          title: user.profile?.title || null,
+          status: status || null,
+          timeZone: user.tz ?? null,
+          isBot: user.is_bot === true,
+          deactivated: user.deleted === true,
+          url,
+        }),
+    };
+  });
+
+  const getResource = Effect.fn("slack.get_resource")(function* (input: SlackGetResourceInput) {
+    const account = yield* auth.account;
+    const file = input.resourceType === "file" ? yield* fileInfo(input.id) : null;
+    const filetype = file?.filetype ?? "";
+    const resourceType =
+      file === null
+        ? input.resourceType
+        : CANVAS_FILETYPES.has(filetype)
+          ? "canvas"
+          : filetype === "list"
+            ? "list"
+            : "file";
+    const read =
+      resourceType === "canvas"
+        ? yield* readCanvas(input.id, file)
+        : resourceType === "list"
+          ? yield* readList(input.id, file)
+          : resourceType === "user" || file === null
+            ? yield* readProfile(input.id)
+            : yield* readFile(file);
+    return {
+      teamId: account.teamId,
+      resourceType,
+      id: input.id,
+      title: read.title.slice(0, TITLE_MAX_CHARS),
+      url: input.url,
+      markdown: truncate(read.body(input.url), SLACK_RESOURCE_MARKDOWN_MAX_CHARS),
+    } satisfies SlackResourceContext;
+  });
+
+  return SlackApi.of({
+    searchMessages,
+    suggestions,
+    searchMentions,
+    getThread,
+    getResource,
+    getLinkPreview,
+  });
 });
 
 /** Link previews persist under the caches directory, or in memory when it cannot be used. */

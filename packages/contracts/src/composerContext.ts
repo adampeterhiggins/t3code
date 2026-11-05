@@ -20,7 +20,12 @@ import { ProviderInstanceId } from "./providerInstance.ts";
 import { GRANOLA_NOTE_MARKDOWN_MAX_CHARS } from "./granola.ts";
 import { NOTION_PAGE_MARKDOWN_MAX_CHARS, NotionLinkedBlock } from "./notion.ts";
 import { GOOGLE_FILE_MARKDOWN_MAX_CHARS } from "./google.ts";
-import { SLACK_THREAD_MARKDOWN_MAX_CHARS } from "./slack.ts";
+import {
+  SLACK_RESOURCE_MARKDOWN_MAX_CHARS,
+  SLACK_THREAD_MARKDOWN_MAX_CHARS,
+  SlackResourceType,
+  SlackSnapshotScope,
+} from "./slack.ts";
 import { DISCORD_THREAD_MARKDOWN_MAX_CHARS } from "./discord.ts";
 import { INTEGRATION_CONTEXT_KINDS } from "./composerContextIntegrations.ts";
 import { GUEST_MESSAGE_MAX_LENGTH, GUEST_NAME_MAX_LENGTH } from "./guestShare.ts";
@@ -320,8 +325,9 @@ export const GitHubIssueContextRecord = Schema.Struct({
 export type GitHubIssueContextRecord = typeof GitHubIssueContextRecord.Type;
 
 /**
- * A Slack thread, or one message from it, rendered as markdown when the chip was inserted.
- * `ts` is the linked message; `threadTs` the thread it belongs to, when it is a reply.
+ * A Slack thread, one message from it, or a channel's newest messages, rendered as markdown when
+ * the chip was inserted. `ts` is the linked (or newest) message; `threadTs` the thread it belongs
+ * to, when it is a reply.
  */
 export const SlackThreadContextRecord = Schema.Struct({
   ...recordBase,
@@ -335,12 +341,25 @@ export const SlackThreadContextRecord = Schema.Struct({
   authorName: ShortString,
   title: ShortString,
   replyCount: NonNegativeInt,
-  scope: Schema.Literals(["thread", "message"]),
+  scope: SlackSnapshotScope,
   markdown: BoundedString(SLACK_THREAD_MARKDOWN_MAX_CHARS),
   /** Absent on records captured before clients drew threads as messages. */
   messages: Schema.optional(ChatThreadMessages),
 });
 export type SlackThreadContextRecord = typeof SlackThreadContextRecord.Type;
+
+/** A Slack canvas, list, file, or person, rendered as markdown when the chip was inserted. */
+export const SlackResourceContextRecord = Schema.Struct({
+  ...recordBase,
+  kind: Schema.Literal("slack-resource"),
+  teamId: TrimmedNonEmptyString.check(Schema.isMaxLength(64)),
+  resourceType: SlackResourceType,
+  resourceId: TrimmedNonEmptyString.check(Schema.isMaxLength(64)),
+  title: ShortString,
+  url: ShortString,
+  markdown: BoundedString(SLACK_RESOURCE_MARKDOWN_MAX_CHARS),
+});
+export type SlackResourceContextRecord = typeof SlackResourceContextRecord.Type;
 
 /**
  * A Discord thread, or one message from it, rendered as markdown when the chip was inserted.
@@ -599,6 +618,7 @@ const KnownComposerContextRecordGroupA = Schema.Union([
 const KnownComposerContextRecordGroupB = Schema.Union([
   CheckoutContextRecord,
   SlackThreadContextRecord,
+  SlackResourceContextRecord,
   DiscordThreadContextRecord,
   NotionPageContextRecord,
   GoogleFileContextRecord,
