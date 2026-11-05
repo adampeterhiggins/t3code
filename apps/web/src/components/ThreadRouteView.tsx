@@ -233,7 +233,7 @@ export function ThreadRouteView({
       className={
         detachedPresentation === "compact"
           ? "h-auto min-h-0 flex-none self-start overflow-visible"
-          : "h-svh min-h-0 overflow-hidden overscroll-y-none md:h-dvh"
+          : "h-svh min-h-0 overflow-hidden overscroll-y-none md:h-[calc(100dvh-var(--app-footer-height,0px))]"
       }
       inert={background}
     >

@@ -369,6 +369,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     ],
   },
   {
+    id: "usage-footer",
+    title: "Usage footer",
+    to: "/settings/appearance",
+    searchTerms: ["status bar footer bottom usage limits quota 5 hour weekly percent used spend"],
+  },
+  {
     id: "effort-display",
     title: "Effort display",
     to: "/settings/appearance",

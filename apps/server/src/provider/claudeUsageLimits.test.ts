@@ -131,9 +131,11 @@ describe("claudeUsageResponseToLimits", () => {
   const monthlyWindow = {
     id: "monthly_spend",
     kind: "monthly",
-    label: "Monthly spend",
+    label: "Extra usage",
     usedPercent: expect.closeTo(9.262, 10),
+    spend: { usedMinor: 4_631, limitMinor: 50_000, currency: "USD", exponent: 2 },
   };
+  const { spend: _amounts, ...percentOnlyWindow } = monthlyWindow;
 
   it("maps the captured Enterprise budget precisely, preferring spend beside rolling windows", () => {
     expect(claudeUsageResponseToLimits({ checkedAt, response: enterpriseResponse }).limits).toEqual(
@@ -196,7 +198,30 @@ describe("claudeUsageResponseToLimits", () => {
     };
     expect(
       claudeUsageResponseToLimits({ checkedAt, response: utilizationOnly }).limits.windows,
-    ).toEqual([monthlyWindow]);
+    ).toEqual([percentOnlyWindow]);
+    const { decimal_places: _decimals, ...withoutDecimals } =
+      enterpriseResponse.rate_limits.extra_usage;
+    const poundsWithoutDecimals = {
+      ...response,
+      rate_limits: {
+        ...response.rate_limits,
+        extra_usage: {
+          ...withoutDecimals,
+          used_credits: 19_248,
+          monthly_limit: 150_000,
+          currency: "gbp",
+        },
+      },
+    };
+    expect(
+      claudeUsageResponseToLimits({ checkedAt, response: poundsWithoutDecimals }).limits.windows,
+    ).toEqual([
+      {
+        ...percentOnlyWindow,
+        usedPercent: expect.closeTo(12.832, 10),
+        spend: { usedMinor: 19_248, limitMinor: 150_000, currency: "GBP", exponent: 2 },
+      },
+    ]);
   });
 
   it("omits disabled budgets and refuses invalid money without an enabled fallback", () => {
