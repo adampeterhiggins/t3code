@@ -81,7 +81,33 @@ function percentFromAmounts(used: number | null | undefined, limit: number | nul
   return Number.isFinite(percent) ? clampPercent(percent) : undefined;
 }
 
-function readSpendPercent(rateLimits: NonNullable<SDKControlGetUsageResponse["rate_limits"]>) {
+type SpendAmounts = NonNullable<ServerProviderUsageWindow["spend"]>;
+
+function currencyFractionDigits(currency: string): number | undefined {
+  try {
+    return new Intl.NumberFormat("en", { style: "currency", currency }).resolvedOptions()
+      .maximumFractionDigits;
+  } catch {
+    return undefined;
+  }
+}
+
+function spendAmounts(used: number, limit: number, currency: string, exponent: number) {
+  const code = currency.trim().toUpperCase();
+  return Number.isSafeInteger(used) &&
+    Number.isSafeInteger(limit) &&
+    Number.isSafeInteger(exponent) &&
+    used >= 0 &&
+    limit > 0 &&
+    exponent >= 0 &&
+    code.length > 0
+    ? { usedMinor: used, limitMinor: limit, currency: code, exponent }
+    : undefined;
+}
+
+function readSpend(
+  rateLimits: NonNullable<SDKControlGetUsageResponse["rate_limits"]>,
+): { readonly usedPercent: number; readonly spend?: SpendAmounts } | undefined {
   const spend = Option.getOrUndefined(
     decodeSpendBudget((rateLimits as { readonly spend?: unknown }).spend),
   );
@@ -93,15 +119,31 @@ function readSpendPercent(rateLimits: NonNullable<SDKControlGetUsageResponse["ra
     spend.used.exponent === spend.limit.exponent
   ) {
     const percent = percentFromAmounts(spend.used.amount_minor, spend.limit.amount_minor);
-    if (percent !== undefined) return percent;
+    if (percent !== undefined) {
+      const amounts = spendAmounts(
+        spend.used.amount_minor,
+        spend.limit.amount_minor,
+        spend.used.currency,
+        spend.used.exponent,
+      );
+      return { usedPercent: percent, ...(amounts ? { spend: amounts } : {}) };
+    }
   }
 
   const extra = rateLimits.extra_usage;
   if (extra?.is_enabled !== true) return undefined;
-  const percent = percentFromAmounts(extra.used_credits, extra.monthly_limit) ?? extra.utilization;
-  return typeof percent === "number" && Number.isFinite(percent) && percent >= 0
-    ? clampPercent(percent)
-    : undefined;
+  const fromAmounts = percentFromAmounts(extra.used_credits, extra.monthly_limit);
+  const percent = fromAmounts ?? extra.utilization;
+  if (typeof percent !== "number" || !Number.isFinite(percent) || percent < 0) return undefined;
+  // Untyped by the SDK; amounts are otherwise in the currency's usual minor unit.
+  const decimals =
+    (extra as { readonly decimal_places?: number | null }).decimal_places ??
+    (extra.currency ? currencyFractionDigits(extra.currency) : undefined);
+  const amounts =
+    fromAmounts !== undefined && extra.currency && decimals !== undefined
+      ? spendAmounts(extra.used_credits!, extra.monthly_limit!, extra.currency, decimals)
+      : undefined;
+  return { usedPercent: clampPercent(percent), ...(amounts ? { spend: amounts } : {}) };
 }
 
 /**
@@ -201,13 +243,13 @@ export function claudeUsageResponseToLimits(input: {
     );
     overageIncluded ??= entry.display_name;
   }
-  const spendPercent = readSpendPercent(response.rate_limits);
-  if (spendPercent !== undefined) {
+  const spend = readSpend(response.rate_limits);
+  if (spend !== undefined) {
     windows.push({
       id: "monthly_spend",
       kind: "monthly",
-      label: "Monthly spend",
-      usedPercent: spendPercent,
+      label: "Extra usage",
+      ...spend,
     });
   }
   return {

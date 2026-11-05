@@ -36,7 +36,7 @@ function ChatRouteLayout() {
       {shownTarget ? (
         <ThreadRouteView target={shownTarget} background={modalOpen} />
       ) : modalOpen ? (
-        <SidebarInset className="h-dvh" />
+        <SidebarInset className="h-[calc(100dvh-var(--app-footer-height,0px))]" />
       ) : (
         <Outlet />
       )}

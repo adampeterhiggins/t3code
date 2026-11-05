@@ -19,13 +19,9 @@ import {
   SlidersHorizontalIcon,
 } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
-import { settlePromise } from "@t3tools/client-runtime/state/runtime";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
 import * as Cause from "effect/Cause";
-import {
-  cursorKeychainAccessEnvironments,
-  refreshUsageLimits,
-} from "@t3tools/client-runtime/state/usage";
+import { cursorKeychainAccessEnvironments } from "@t3tools/client-runtime/state/usage";
 import {
   updatingProvidersLabel,
   usageEnvironmentProgress,
@@ -91,6 +87,7 @@ import {
 import { MenuChoiceLabel } from "../MenuChoiceLabel";
 import { WorkspacePageContainer } from "../WorkspacePageContainer";
 import { UsageLimitsSection } from "./UsageLimits";
+import { useRefreshUsageLimits } from "./useRefreshUsageLimits";
 import { UsagePriceOverrides } from "./UsagePriceOverrides";
 import { UsageProviderChart } from "./UsageProviderChart";
 import { SpeedPremium, UsageModelDialog } from "./UsageModelDialog";
@@ -251,9 +248,7 @@ export function UsagePage() {
   const cursorAccessEnvironments = hiddenProviders.has("cursor")
     ? []
     : cursorKeychainAccessEnvironments(selectedEnvironments);
-  const refreshProviders = useAtomCommand(serverEnvironment.refreshProviders, {
-    reportFailure: false,
-  });
+  const refreshAllUsageLimits = useRefreshUsageLimits();
 
   const canReadDiagnostics = selectedEnvironments.some(
     (environment) => environment.canReadDiagnostics,
@@ -291,21 +286,7 @@ export function UsagePage() {
   };
   const refreshLimits = (automatic = false, afterPending = false) =>
     // Settled so the timestamp still advances when a refresh throws.
-    settlePromise(() =>
-      Promise.all(
-        Array.from(presentations, ([environmentId, presentation]) => {
-          if (selectedEnvironmentIds !== null && !selectedEnvironmentIds.has(environmentId)) return;
-          if (presentation.connection.phase === "connected" && presentation.serverConfig !== null) {
-            return refreshUsageLimits(
-              environmentId,
-              () => refreshProviders({ environmentId, input: {} }),
-              automatic,
-              afterPending,
-            );
-          }
-        }),
-      ),
-    ).then((result) => {
+    refreshAllUsageLimits(selectedEnvironmentIds, automatic, afterPending).then((result) => {
       setLimitsNow(Date.now());
       if (!AsyncResult.isSuccess(result)) throw Cause.squash(result.cause);
     });

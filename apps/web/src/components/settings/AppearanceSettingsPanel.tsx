@@ -310,6 +310,31 @@ export function AppearanceSettingsPanel() {
         />
         <ThreadDetailsItemsRow />
         <SettingsRow
+          {...searchableSetting("usage-footer")}
+          description="Show how much of each provider's usage limits you have used in a bar along the bottom of the window."
+          resetAction={
+            settings.usageFooterEnabled !== DEFAULT_UNIFIED_SETTINGS.usageFooterEnabled ? (
+              <SettingResetButton
+                label="usage footer"
+                onClick={() =>
+                  updateSettings({
+                    usageFooterEnabled: DEFAULT_UNIFIED_SETTINGS.usageFooterEnabled,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.usageFooterEnabled}
+              onCheckedChange={(checked) =>
+                updateSettings({ usageFooterEnabled: Boolean(checked) })
+              }
+              aria-label="Show usage footer"
+            />
+          }
+        />
+        <SettingsRow
           {...searchableSetting("effort-display")}
           description="Show reasoning effort in the composer as its name, such as High, or as bars."
           resetAction={

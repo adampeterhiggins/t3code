@@ -5,7 +5,7 @@ import { WorkspacePageHeader } from "./WorkspacePageHeader";
 
 export function NoActiveThreadState() {
   return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none">
+    <SidebarInset className="h-[calc(100dvh-var(--app-footer-height,0px))] min-h-0 overflow-hidden overscroll-y-none">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden bg-background">
         <WorkspacePageHeader electron={isElectron} className="border-b border-border">
           {isElectron ? (
