@@ -27,6 +27,13 @@ export function useComposerMenuProps() {
   };
 }
 
+/** In the composer's `@`, `#`, `$`, or `/` menu, which a citation comment can open too. */
+export function isInsideComposerMenuLayer(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element && target.closest('[data-composer-drawer-layer="true"]') !== null
+  );
+}
+
 function isInsideComposerFloatingLayer(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest(COMPOSER_FLOATING_LAYER_SELECTOR) !== null;
 }

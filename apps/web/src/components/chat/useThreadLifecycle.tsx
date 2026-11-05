@@ -21,6 +21,7 @@ import {
   useComposerDraftStore,
 } from "../../composerDraftStore";
 import type { ComposerHandleRef } from "../../composerHandleContext";
+import type { ChatComposerHandle } from "./ChatComposer";
 import {
   isThreadWokeUnseen,
   branchMismatchKey,
@@ -99,7 +100,13 @@ import { Atom } from "effect/reactivity";
 import { environmentThreadDetails } from "../../state/threads";
 import { openSideChatTab } from "../../lib/sideChatPane";
 import type { useLocalDispatchState } from "./useLocalDispatchState";
-import { copyReferencedForkContexts, referencedForkMessageContext } from "./forkComposerContexts";
+import {
+  copyTextContent,
+  dropTextAttachments,
+  prepareTextMessage,
+  referencedDraftContent,
+  referencedForkMessageContext,
+} from "./forkComposerContexts";
 const RELATED_THREAD_SHELL_WAIT_MS = 1_000;
 const NO_RUN_STOP_ATOM = Atom.make<RunStopPresentation | null>(null).pipe(
   Atom.withLabel("web-thread-run-stop:empty"),
@@ -583,6 +590,7 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
     text: string,
     failureMessage: string,
     dispatchMode?: ComposerDispatchMode,
+    prepared?: Awaited<ReturnType<typeof prepareTextMessage>>["message"],
   ): Promise<boolean> => {
     if (!activeThread || !clientSettingsHydrated || sendInFlightRef.current) return false;
     if (!activeThread || !clientSettingsHydrated || sendInFlightRef.current) return false;
@@ -632,8 +640,10 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
                 messageId,
                 role: "user",
                 text,
-                attachments: [],
-                ...referencedForkMessageContext(threadId, text),
+                ...(prepared ?? {
+                  attachments: [],
+                  ...referencedForkMessageContext(threadId, text),
+                }),
               },
               modelSelection: context.selectedModelSelection,
               runtimeMode,
@@ -658,9 +668,55 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
     return result._tag !== "Failure";
   };
   const sendStandaloneCommandStable = useStableCallback(sendStandaloneCommand);
+  // A citation's comment can name the composer's attachments and records. They travel with it,
+  // uploaded first, and attachments only it named leave the composer once it lands.
+  const prepareCitation = async (text: string) => {
+    if (!activeThread) return null;
+    const draft = composerRef.current?.getSendContext();
+    try {
+      const prepared = await prepareTextMessage({
+        environmentId,
+        sourceThreadId: activeThread.id,
+        draftTarget: composerDraftTarget,
+        draft,
+        text,
+      });
+      return {
+        ...prepared,
+        // The quote leaves the prompt once it lands; what is left decides what stays.
+        drop: (release: boolean) =>
+          dropTextAttachments({
+            draftTarget: composerDraftTarget,
+            attachments: prepared.attachments,
+            remainingPrompt: (composerRef.current?.getSendContext().prompt ?? "").replace(text, ""),
+            release,
+          }),
+      };
+    } catch (error) {
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Could not send the quote",
+          description: error instanceof Error ? error.message : undefined,
+        }),
+      );
+      return null;
+    }
+  };
   // A citation comment sends on its own, leaving the rest of the composer for later.
-  const sendCitationStable = useStableCallback((text: string, dispatchMode: ComposerDispatchMode) =>
-    sendStandaloneCommand(text, "Failed to send the citation.", dispatchMode),
+  const sendCitationStable = useStableCallback(
+    async (text: string, dispatchMode: ComposerDispatchMode) => {
+      const prepared = await prepareCitation(text);
+      if (!prepared) return false;
+      const sent = await sendStandaloneCommand(
+        text,
+        "Failed to send the citation.",
+        dispatchMode,
+        prepared.message,
+      );
+      if (sent) prepared.drop(true);
+      return sent;
+    },
   );
   const announceCitationDelivered = (title: string, threadRef: ScopedThreadRef) => {
     toastManager.add(
@@ -680,6 +736,27 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
       }),
     );
   };
+  // Saving the quote into another composer takes its chips' records and attachments along.
+  const moveCitation = (input: {
+    from: {
+      threadId: ThreadId;
+      draftTarget: ComposerThreadTarget;
+      draft: ReturnType<ChatComposerHandle["getSendContext"]> | undefined;
+    };
+    to: Parameters<typeof copyTextContent>[0]["to"];
+    text: string;
+  }) => {
+    copyTextContent(input);
+    const { draft, draftTarget } = input.from;
+    if (!draft) return;
+    const moved = referencedDraftContent(draft, input.text);
+    dropTextAttachments({
+      draftTarget,
+      attachments: [...moved.images, ...moved.files],
+      remainingPrompt: draft.prompt.replace(input.text, ""),
+      release: false,
+    });
+  };
   // A citation the comment panel sends to a new thread starts it with the project and model the
   // reader picked, and leaves the reader here. In this thread's own project it shares this
   // checkout; another project starts at that project's root.
@@ -688,6 +765,8 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
     text: string,
   ): Promise<boolean> => {
     if (!activeThread || !isServerThread) return false;
+    const prepared = await prepareCitation(text);
+    if (!prepared) return false;
     const sameProject = destination.projectId === activeProject?.id;
     const createdAt = new Date().toISOString();
     const nextThreadId = newThreadId();
@@ -714,13 +793,7 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
             environmentId,
             input: {
               threadId: nextThreadId,
-              message: {
-                messageId: newMessageId(),
-                role: "user",
-                text,
-                attachments: [],
-                ...referencedForkMessageContext(activeThread.id, text),
-              },
+              message: { messageId: newMessageId(), role: "user", text, ...prepared.message },
               modelSelection: destination.modelSelection,
               titleSeed: title,
               runtimeMode,
@@ -744,6 +817,7 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
       }
       return false;
     }
+    prepared.drop(true);
     announceCitationDelivered("Started a new thread", nextThreadRef);
     return true;
   };
@@ -753,9 +827,17 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
     text: string,
   ): Promise<boolean> => {
     const sourceThreadId = activeThread?.id;
+    const draft = composerRef.current?.getSendContext();
+    const sourceDraftTarget = composerDraftTarget;
     const opened = await handleNewThread(scopeProjectRef(environmentId, destination.projectId));
     if (!opened) return false;
-    if (sourceThreadId) copyReferencedForkContexts(sourceThreadId, opened.threadId, text);
+    if (sourceThreadId) {
+      moveCitation({
+        from: { threadId: sourceThreadId, draftTarget: sourceDraftTarget, draft },
+        to: { threadId: opened.threadId, draftTarget: opened.draftId },
+        text,
+      });
+    }
     const store = useComposerDraftStore.getState();
     store.setModelSelection(opened.draftId, destination.modelSelection, {
       explicit: true,
@@ -785,7 +867,15 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
     const targetRef = scopeThreadRef(environmentId, destination.threadId);
     const targetTitle = destination.title || "Untitled thread";
     if (action === "save") {
-      copyReferencedForkContexts(activeThread.id, destination.threadId, text);
+      moveCitation({
+        from: {
+          threadId: activeThread.id,
+          draftTarget: composerDraftTarget,
+          draft: composerRef.current?.getSendContext(),
+        },
+        to: { threadId: destination.threadId, draftTarget: targetRef },
+        text,
+      });
       const store = useComposerDraftStore.getState();
       store.setPrompt(
         targetRef,
@@ -794,14 +884,16 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
       announceCitationDelivered(`Added to the composer in ${targetTitle}`, targetRef);
       return true;
     }
+    const prepared = await prepareCitation(text);
+    if (!prepared) return false;
     if (action === "draft") {
       const saved = await messageDraftActions.save(environmentId, {
         threadId: destination.threadId,
         text,
-        attachments: [],
-        ...referencedForkMessageContext(activeThread.id, text),
+        ...prepared.message,
       });
       if (saved === null) return false;
+      prepared.drop(true);
       announceCitationDelivered(`Saved as a draft in ${targetTitle}`, targetRef);
       return true;
     }
@@ -816,13 +908,7 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
       environmentId,
       input: {
         threadId: target.id,
-        message: {
-          messageId: newMessageId(),
-          role: "user",
-          text,
-          attachments: [],
-          ...referencedForkMessageContext(activeThread.id, text),
-        },
+        message: { messageId: newMessageId(), role: "user", text, ...prepared.message },
         modelSelection: target.modelSelection,
         runtimeMode: target.runtimeMode,
         interactionMode: target.interactionMode,
@@ -843,6 +929,7 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
       }
       return false;
     }
+    prepared.drop(true);
     announceCitationDelivered(
       dispatchMode === "queue" ? `Queued in ${targetTitle}` : `Sent to ${targetTitle}`,
       targetRef,

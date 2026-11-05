@@ -27,16 +27,7 @@ import {
   useResolveComposerObjectLink,
 } from "./useResolveComposerObjectLink";
 import { pendingDraftWork } from "./pendingDraftWork";
-
-/**
- * Text other than the prompt whose links convert the same way, such as a citation's comment.
- * `read` is null once that text is gone, so a link that loads afterwards stays a link.
- */
-export interface ObjectLinkTextTarget {
-  readonly key: string;
-  readonly read: () => string | null;
-  readonly replace: (start: number, end: number, text: string) => boolean;
-}
+import type { ComposerTextTarget } from "./composerTextTarget";
 
 export type ComposerUnreadLinkActions = {
   retry: (record: UnreadLinkContextRecord) => void;
@@ -86,7 +77,7 @@ export function useComposerObjectLinks({
   const [loadingObjectLinks, setLoadingObjectLinks] = useState<
     ReadonlyArray<{ readonly url: string; readonly workKey: string }>
   >([]);
-  const handledObjectLinks = (target?: ObjectLinkTextTarget) => {
+  const handledObjectLinks = (target?: ComposerTextTarget) => {
     const key = target?.key ?? composerDraftTargetKeyRef.current;
     let handled = handledObjectLinksRef.current.get(key);
     if (handled === undefined) {
@@ -101,7 +92,7 @@ export function useComposerObjectLinks({
     url: string,
     index: number,
     resolved: ResolvedComposerObjectLink,
-    target: ObjectLinkTextTarget | undefined,
+    target: ComposerTextTarget | undefined,
   ) => {
     if (target) {
       const text = target.read();
@@ -164,7 +155,7 @@ export function useComposerObjectLinks({
       link: ComposerObjectLink;
       index: number;
     }>,
-    target?: ObjectLinkTextTarget,
+    target?: ComposerTextTarget,
   ) => {
     const started = {
       draftTarget: composerDraftTarget,
@@ -223,7 +214,7 @@ export function useComposerObjectLinks({
     pastedText: string,
     keepAsText: boolean,
     pasteStart: number,
-    target?: ObjectLinkTextTarget,
+    target?: ComposerTextTarget,
   ) => {
     const text = target ? target.read() : promptRef.current;
     if (text === null) return;
@@ -240,7 +231,7 @@ export function useComposerObjectLinks({
     previousPrompt: string,
     nextPrompt: string,
     expandedCursor: number,
-    target?: ObjectLinkTextTarget,
+    target?: ComposerTextTarget,
   ) => {
     // One typed character, so pastes, chip insertions, and caret moves never count.
     if (nextPrompt.length !== previousPrompt.length + 1) return;

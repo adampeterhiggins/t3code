@@ -38,7 +38,7 @@ import {
 } from "./AssistantCitationCommentEditor";
 import { resolveAssistantCitationCommentDismissal } from "./assistantCitationCommentDismissal";
 import { observeAssistantCitationCommentSource } from "./AssistantCitationSource";
-import { composerFloatingLayerProps } from "./composerEventScope";
+import { composerFloatingLayerProps, isInsideComposerMenuLayer } from "./composerEventScope";
 import { observeResize } from "~/lib/observeResize";
 import { textDirection } from "~/textDirection";
 
@@ -230,6 +230,15 @@ export function AssistantCitationChip({
         <Popover
           open={commentEditor.open}
           onOpenChange={(open, eventDetails) => {
+            // The comment's own `@` and `#` menu floats outside this popup.
+            if (
+              !open &&
+              eventDetails.reason === "outside-press" &&
+              isInsideComposerMenuLayer(eventDetails.event.target)
+            ) {
+              eventDetails.cancel();
+              return;
+            }
             if (!open && !settleDraftOnClose(eventDetails.reason)) {
               eventDetails.cancel();
               return;

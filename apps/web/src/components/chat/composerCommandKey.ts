@@ -219,32 +219,27 @@ export function composerCommandKeyHandler(input: {
       return true;
     }
     const { trigger } = resolveActiveComposerTrigger();
-    const menuIsActive =
-      !isLiteralPendingAnswer && (composerMenuOpenRef.current || trigger !== null);
-    if (key === "Escape") {
-      if (!menuIsActive || event.isComposing || event.keyCode === 229) return false;
-      dismissComposerTrigger(trigger);
-      composerMenuOpenRef.current = false;
-      setReferenceSelection(null);
+    if (
+      !isLiteralPendingAnswer &&
+      handleComposerMenuKey(key, event, {
+        open: composerMenuOpenRef.current,
+        trigger,
+        submissionIntent,
+        items: composerMenuItemsRef.current,
+        activeItem: activeComposerMenuItemRef.current,
+        dismiss: (dismissed) => {
+          dismissComposerTrigger(dismissed);
+          composerMenuOpenRef.current = false;
+          setReferenceSelection(null);
+        },
+        nudge: nudgeComposerMenuHighlight,
+        commitReferenceSelection,
+        select: onSelectComposerItem,
+      })
+    ) {
       return true;
     }
-    if (menuIsActive && (submissionIntent === null || submissionIntent === "foreground")) {
-      const currentItems = composerMenuItemsRef.current;
-      const selectedItem = activeComposerMenuItemRef.current ?? currentItems[0];
-      if (key === "ArrowDown" && currentItems.length > 0) {
-        nudgeComposerMenuHighlight("ArrowDown");
-        return true;
-      }
-      if (key === "ArrowUp" && currentItems.length > 0) {
-        nudgeComposerMenuHighlight("ArrowUp");
-        return true;
-      }
-      if (key === "Enter" && commitReferenceSelection()) return true;
-      if ((key === "Enter" || key === "Tab") && selectedItem) {
-        onSelectComposerItem(selectedItem, { link: event.metaKey || event.ctrlKey });
-        return true;
-      }
-    }
+    if (key === "Escape") return false;
     if ((key === "ArrowUp" || key === "ArrowDown") && submissionIntent === null) {
       return navigatePromptHistory(key === "ArrowUp" ? "backward" : "forward", event);
     }
@@ -269,4 +264,43 @@ export function composerCommandKeyHandler(input: {
   };
 
   return onComposerCommandKey;
+}
+
+/**
+ * The open `@`, `#`, `$`, or `/` menu's keys, for the prompt and for a citation comment that
+ * opened the menu. True when the menu took the key.
+ */
+export function handleComposerMenuKey(
+  key: string,
+  event: KeyboardEvent,
+  menu: {
+    readonly open: boolean;
+    readonly trigger: ComposerTrigger | null;
+    readonly submissionIntent: ComposerSubmissionIntent | null;
+    readonly items: ReadonlyArray<ComposerCommandItem>;
+    readonly activeItem: ComposerCommandItem | null;
+    readonly dismiss: (trigger: ComposerTrigger | null) => void;
+    readonly nudge: (key: "ArrowDown" | "ArrowUp") => void;
+    readonly commitReferenceSelection: () => boolean;
+    readonly select: (item: ComposerCommandItem, options: { link: boolean }) => void;
+  },
+): boolean {
+  if (!menu.open && menu.trigger === null) return false;
+  if (key === "Escape") {
+    if (event.isComposing || event.keyCode === 229) return false;
+    menu.dismiss(menu.trigger);
+    return true;
+  }
+  if (menu.submissionIntent !== null && menu.submissionIntent !== "foreground") return false;
+  const selectedItem = menu.activeItem ?? menu.items[0];
+  if ((key === "ArrowDown" || key === "ArrowUp") && menu.items.length > 0) {
+    menu.nudge(key);
+    return true;
+  }
+  if (key === "Enter" && menu.commitReferenceSelection()) return true;
+  if ((key === "Enter" || key === "Tab") && selectedItem) {
+    menu.select(selectedItem, { link: event.metaKey || event.ctrlKey });
+    return true;
+  }
+  return false;
 }
