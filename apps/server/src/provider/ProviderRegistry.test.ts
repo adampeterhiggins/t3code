@@ -3726,8 +3726,7 @@ it.layer(
 
     it.effect("reports an ambient ANTHROPIC_API_KEY as external", () =>
       Effect.gen(function* () {
-        const previous = process.env.ANTHROPIC_API_KEY;
-        process.env.ANTHROPIC_API_KEY = "test-key";
+        vi.stubEnv("ANTHROPIC_API_KEY", "test-key");
         try {
           const status = yield* checkClaudeProviderStatus(
             defaultClaudeSettings,
@@ -3738,11 +3737,7 @@ it.layer(
           assert.strictEqual(status.auth.label, "ANTHROPIC_API_KEY");
           assert.strictEqual(status.auth.external, true);
         } finally {
-          if (previous === undefined) {
-            delete process.env.ANTHROPIC_API_KEY;
-          } else {
-            process.env.ANTHROPIC_API_KEY = previous;
-          }
+          vi.unstubAllEnvs();
         }
       }).pipe(
         Effect.provide(
@@ -3781,8 +3776,7 @@ it.layer(
         // distinguishes it from a signed-out init. With no ambient
         // `ANTHROPIC_API_KEY` the key lives on the instance and `onLogout`
         // can remove it, so it is not external.
-        const previous = process.env.ANTHROPIC_API_KEY;
-        delete process.env.ANTHROPIC_API_KEY;
+        vi.stubEnv("ANTHROPIC_API_KEY", undefined);
         try {
           const status = yield* checkClaudeProviderStatus(
             defaultClaudeSettings,
@@ -3794,7 +3788,7 @@ it.layer(
           assert.strictEqual(status.auth.label, "Claude API Key");
           assert.strictEqual(status.auth.external, undefined);
         } finally {
-          if (previous !== undefined) process.env.ANTHROPIC_API_KEY = previous;
+          vi.unstubAllEnvs();
         }
       }).pipe(
         Effect.provide(

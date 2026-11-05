@@ -8,7 +8,7 @@ import { formatComposerContextReference } from "@t3tools/shared/composerContextR
 import { linearIssueContextRecord } from "@t3tools/source-control-definitions/integrationContextRecords";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import * as Context from "effect/Context";
-import * as Data from "effect/Data";
+import * as Schema from "effect/Schema";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -28,9 +28,10 @@ import { LinearThreadLinks } from "./LinearThreadLinks.ts";
 const POLL_INTERVAL = "2 minutes";
 const DEFAULT_PROMPT = "This Linear issue was just assigned to me. Work on it.";
 
-class TriggerProjectMissing extends Data.TaggedError("TriggerProjectMissing")<{
-  readonly projectId: string;
-}> {}
+class TriggerProjectMissing extends Schema.TaggedError<TriggerProjectMissing>()(
+  "TriggerProjectMissing",
+  { projectId: Schema.String },
+) {}
 
 function matchesAssignmentTrigger(
   rule: Pick<LinearAssignmentTrigger, "teamId" | "labelName">,

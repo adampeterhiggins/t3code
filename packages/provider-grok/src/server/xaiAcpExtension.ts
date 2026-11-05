@@ -1294,14 +1294,19 @@ function xAiPromptFailure(
       code: -32603,
       errorMessage: "Grok ended the turn with an error.",
       operation: "receive-response",
-      ...(agentResult === undefined ? {} : { cause: new XAiPromptFailureText(agentResult) }),
+      ...(agentResult === undefined
+        ? {}
+        : { cause: new XAiPromptFailureText({ message: agentResult }) }),
     });
   }
   return null;
 }
 
 /** Keep unbounded provider text out of structured attributes; read only at presentation. */
-export class XAiPromptFailureText extends Error {}
+export class XAiPromptFailureText extends Schema.TaggedError<XAiPromptFailureText>()(
+  "XAiPromptFailureText",
+  { message: Schema.String },
+) {}
 
 const registerXAiPromptCompletionFallback = Effect.fn(
   "xaiAcpExtension.registerXAiPromptCompletionFallback",
@@ -1558,21 +1563,22 @@ export const makeXAiPromptCompletionRuntime = Effect.fn("makeXAiPromptCompletion
             ),
           ),
           Deferred.await(fallback.deferred).pipe(
-            Effect.flatMap((response) => {
-              if (response.stopReason === "cancelled" || response._meta?.usage !== undefined) {
-                return Effect.succeed(response);
-              }
-              // Grok 1.0.41 sends an empty prompt_complete before turn_completed
-              // and the RPC response, both of which carry prompt-wide usage.
-              // Keep the legacy hung-RPC fallback, but let either measured
-              // terminal payload win without adding latency to normal replies.
-              return Deferred.await(fallback.usageCompletion).pipe(
-                Effect.timeoutOrElse({
-                  duration: Duration.millis(250),
-                  orElse: () => Effect.succeed(response),
-                }),
-              );
-            }),
+            Effect.filterOrElse(
+              (response) =>
+                response.stopReason === "cancelled" || response._meta?.usage !== undefined,
+              (response) => {
+                // Grok 1.0.41 sends an empty prompt_complete before turn_completed
+                // and the RPC response, both of which carry prompt-wide usage.
+                // Keep the legacy hung-RPC fallback, but let either measured
+                // terminal payload win without adding latency to normal replies.
+                return Deferred.await(fallback.usageCompletion).pipe(
+                  Effect.timeoutOrElse({
+                    duration: Duration.millis(250),
+                    orElse: () => Effect.succeed(response),
+                  }),
+                );
+              },
+            ),
           ),
         ).pipe(
           Effect.tap((response) =>

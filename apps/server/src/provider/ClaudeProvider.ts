@@ -338,7 +338,10 @@ const readStoredClaudeAccountEmail = Effect.fn("ClaudeProvider.readStoredClaudeA
     const path = yield* Path.Path;
     const homePath = yield* resolveClaudeHomePath(claudeSettings);
     const contents = yield* fileSystem.readFileString(path.join(homePath, ".claude.json"));
-    const parsed = yield* Effect.try(() => decodeClaudeAccountFile(contents));
+    const parsed = yield* Effect.try({
+      try: () => decodeClaudeAccountFile(contents),
+      catch: (cause) => new ClaudeAccountFileError({ cause }),
+    });
     const email = parsed.oauthAccount?.emailAddress;
     return email === undefined ? undefined : nonEmptyProbeString(email);
   },
@@ -368,6 +371,15 @@ function claudeGatewayDiscoveryGraceMs(environment: Readonly<Record<string, unkn
   return Number.isFinite(configured) && configured > 0 ? configured : 3_000;
 }
 
+class ClaudeCapabilitiesProbeSdkError extends Schema.TaggedError<ClaudeCapabilitiesProbeSdkError>()(
+  "ClaudeCapabilitiesProbeSdkError",
+  { operation: Schema.Literals(["initialize", "usage"]), cause: Schema.Defect() },
+) {
+  override get message(): string {
+    return `Claude capability probe ${this.operation} failed.`;
+  }
+}
+
 /** A never-yielding prompt allows local initialization IPC without sending an Anthropic request. */
 const probeClaudeCapabilities = (
   claudeSettings: ClaudeSettings,
@@ -393,22 +405,25 @@ const probeClaudeCapabilities = (
           ...(yield* readClaudeSettingsEnv(claudeSettings, cwd, claudeEnvironment)),
         })
       : 0;
-    return yield* Effect.tryPromise(async () => {
-      const q = claudeQuery({
-        // oxlint-disable-next-line require-yield -- never yields, so no prompt reaches the API
-        prompt: (async function* (): AsyncGenerator<SDKUserMessage> {
-          await waitForAbortSignal(abort.signal);
-        })(),
-        options: buildClaudeCapabilitiesProbeQueryOptions({
-          executablePath,
-          abortController: abort,
-          environment: claudeEnvironment,
-          cwd,
-          managedMcpConfig,
-        }),
-      });
-      const init = await q.initializationResult();
-      return { q, init, graceMs };
+    return yield* Effect.tryPromise({
+      try: async () => {
+        const q = claudeQuery({
+          // oxlint-disable-next-line require-yield -- never yields, so no prompt reaches the API
+          prompt: (async function* (): AsyncGenerator<SDKUserMessage> {
+            await waitForAbortSignal(abort.signal);
+          })(),
+          options: buildClaudeCapabilitiesProbeQueryOptions({
+            executablePath,
+            abortController: abort,
+            environment: claudeEnvironment,
+            cwd,
+            managedMcpConfig,
+          }),
+        });
+        const init = await q.initializationResult();
+        return { q, init, graceMs };
+      },
+      catch: (cause) => new ClaudeCapabilitiesProbeSdkError({ operation: "initialize", cause }),
     });
   }).pipe(
     Effect.timeout(CAPABILITIES_PROBE_TIMEOUT_MS),
@@ -419,9 +434,13 @@ const probeClaudeCapabilities = (
         // `behaviors`: with a few GB of transcripts it outlasts the deadline.
         const usageCheckedAt = DateTime.formatIso(yield* DateTime.now);
         const usageResult = includeUsage
-          ? yield* Effect.tryPromise(() =>
-              q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }),
-            ).pipe(Effect.timeout(DEFAULT_TIMEOUT_MS), Effect.result)
+          ? yield* Effect.tryPromise({
+              try: () =>
+                q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({
+                  skipBehaviors: true,
+                }),
+              catch: (cause) => new ClaudeCapabilitiesProbeSdkError({ operation: "usage", cause }),
+            }).pipe(Effect.timeout(DEFAULT_TIMEOUT_MS), Effect.result)
           : undefined;
         const usage =
           usageResult && Result.isSuccess(usageResult)
@@ -814,3 +833,8 @@ export const makePendingClaudeProvider = Effect.fn("ClaudeProvider.makePendingCl
 );
 
 export { probeClaudeCapabilities };
+
+class ClaudeAccountFileError extends Schema.TaggedError<ClaudeAccountFileError>()(
+  "ClaudeAccountFileError",
+  { cause: Schema.Defect() },
+) {}

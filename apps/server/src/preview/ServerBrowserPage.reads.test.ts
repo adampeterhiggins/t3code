@@ -41,6 +41,8 @@ const makeBrowser = () => {
         return Promise.resolve({ result: { value: png } });
       case "Runtime.evaluate":
         return Promise.resolve({ result: { value: 42 } });
+      case "Runtime.terminateExecution":
+        return Promise.resolve({});
       default:
         return Promise.reject(new Error(`Unexpected CDP method: ${method}`));
     }
@@ -326,6 +328,7 @@ describe("bounded server browser reads", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(browser.send.mock.calls.map(([method]) => method)).toEqual([
       "Runtime.evaluate",
+      "Runtime.terminateExecution",
       "Runtime.evaluate",
     ]);
   });
@@ -351,6 +354,8 @@ describe("bounded server browser reads", () => {
     abort.controller.abort();
     await failed;
     abort.expectClean();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(browser.send).not.toHaveBeenCalledWith("Runtime.terminateExecution", undefined);
     stalled.reject(new Error("Late aborted read failure"));
     await vi.advanceTimersByTimeAsync(0);
     expect(await ServerBrowserPage.evaluate(browser.cdp, { expression: "42" })).toBe(42);

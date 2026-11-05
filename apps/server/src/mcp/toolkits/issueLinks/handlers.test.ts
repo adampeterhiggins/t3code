@@ -119,7 +119,7 @@ const makeHarness = (settings: Parameters<typeof ServerSettings.layerTest>[0] = 
         }),
     }),
     Layer.mock(GoogleThreadLinks.GoogleThreadLinks)({
-      forThread: () => Effect.sync(() => undefined),
+      forThread: () => Effect.undefined,
     }),
     Layer.mock(SlackApi.SlackApi)({
       searchMessages: ({ query }) =>
@@ -136,10 +136,10 @@ const makeHarness = (settings: Parameters<typeof ServerSettings.layerTest>[0] = 
         }),
     }),
     Layer.mock(SlackThreadLinks.SlackThreadLinks)({
-      forThread: () => Effect.sync(() => undefined),
+      forThread: () => Effect.undefined,
     }),
     Layer.mock(DiscordThreadLinks.DiscordThreadLinks)({
-      forThread: () => Effect.sync(() => undefined),
+      forThread: () => Effect.undefined,
     }),
     Layer.mock(NotionThreadLinks.NotionThreadLinks)({
       forThread: (threadId) => Effect.sync(() => notion.get(threadId)),
@@ -159,7 +159,7 @@ const makeHarness = (settings: Parameters<typeof ServerSettings.layerTest>[0] = 
       unlink: ({ threadId }) => Effect.sync(() => void notion.delete(threadId)),
     }),
     Layer.mock(GranolaThreadLinks.GranolaThreadLinks)({
-      forThread: () => Effect.sync(() => undefined),
+      forThread: () => Effect.undefined,
     }),
     Layer.mock(McpContextLinks.McpContextLinks)({
       read: (url) =>

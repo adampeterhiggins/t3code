@@ -1832,6 +1832,8 @@ export const ServerSettings = Schema.Struct({
   contextRepositoryOwner: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   /** Workspace-relative folder attached repositories are cloned into. Empty means `.context`. */
   contextRepositoryDirectory: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  /** Clones default to `<addProjectBaseDirectory>/<host>/<owner>/<repo>`, like ghq. */
+  ghqCloneLayout: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   textGenerationModelSelection: ModelSelection.pipe(
     Schema.withDecodingDefault(
       Effect.succeed({
@@ -2235,6 +2237,7 @@ export const ServerSettingsPatch = Schema.Struct({
   contextRepositoryOwners: Schema.optionalKey(ContextRepositoryOwners),
   contextRepositoryOwner: Schema.optionalKey(TrimmedString),
   contextRepositoryDirectory: Schema.optionalKey(TrimmedString),
+  ghqCloneLayout: Schema.optionalKey(Schema.Boolean),
   textGenerationModelSelection: Schema.optionalKey(ModelSelectionPatch),
   threadTitleInstructions: Schema.optionalKey(TrimmedString),
   branchNamingMode: Schema.optionalKey(BranchNamingMode),

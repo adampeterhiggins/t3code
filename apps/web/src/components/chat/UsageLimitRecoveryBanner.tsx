@@ -15,6 +15,13 @@ import { useDeadlinePassed } from "../../hooks/useDeadline";
 import { formatUpcomingTimestamp } from "../../timestampFormat";
 import { toastManager } from "../ui/toast";
 import type { ComposerBannerStackItem } from "./ComposerBannerStack";
+import {
+  CHATGPT_USAGE_LIMIT_CODE,
+  CHATGPT_WORKSPACE_USAGE_LIMIT_CODE,
+} from "@t3tools/shared/usageLimits";
+import { OpenAI } from "../Icons";
+import { ChatGptUsageButton } from "../settings/ChatGptUsageButton";
+import { copyAdminRequest } from "./ThreadErrorBanner";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 
 export interface UsageLimitAlternative {
@@ -31,6 +38,7 @@ export interface UsageLimitContinueElsewhere {
 
 type RecoveryProps = {
   runId: RunId;
+  errorCode: string | null;
   resetAt: string | null;
   stoppedAt: string;
   snoozedUntil: string | null;
@@ -47,23 +55,39 @@ export function usageLimitRecoveryBannerItem(props: RecoveryProps): ComposerBann
   const canSchedule = resetAt !== null && Date.parse(resetAt) > Date.parse(stoppedAt);
   const scheduled =
     recovery?.runId === runId && recovery.resetAt === resetAt && recovery.autoResume;
+  const workspaceLimit = props.errorCode === CHATGPT_WORKSPACE_USAGE_LIMIT_CODE;
+  const chatGptLimit = workspaceLimit || props.errorCode === CHATGPT_USAGE_LIMIT_CODE;
   return {
     id: `usage-limit-recovery:${runId}`,
     variant: "warning",
-    icon: <GaugeIcon />,
-    title: "Usage limit reached",
+    icon: chatGptLimit ? <OpenAI aria-hidden="true" /> : <GaugeIcon />,
+    title: chatGptLimit ? "ChatGPT usage limit reached" : "Usage limit reached",
     // The action buttons take the rest of the row. Stacking the reset time
     // under the title wraps it inside that leftover column.
     descriptionPlacement: "details",
-    description: resetAt
-      ? scheduled
-        ? `Resumes automatically about a minute after ${formatUpcomingTimestamp(resetAt, timestampFormat)}`
-        : `Resets ${formatUpcomingTimestamp(resetAt, timestampFormat)}`
-      : "Reset time unavailable; retry manually",
-    actions:
-      canSchedule || props.onResumeNow || props.continueElsewhere ? (
-        <RecoveryActions key={`${runId}:${resetAt}`} {...props} />
-      ) : null,
+    description: workspaceLimit
+      ? "You've reached your workspace's limit for using your ChatGPT plan in other apps."
+      : resetAt
+        ? scheduled
+          ? `Resumes automatically about a minute after ${formatUpcomingTimestamp(resetAt, timestampFormat)}`
+          : `Resets ${formatUpcomingTimestamp(resetAt, timestampFormat)}`
+        : "Reset time unavailable; retry manually",
+    actions: (
+      <>
+        {canSchedule || props.onResumeNow || props.continueElsewhere ? (
+          <RecoveryActions key={`${runId}:${resetAt}`} {...props} />
+        ) : null}
+        {chatGptLimit ? (
+          workspaceLimit ? (
+            <Button size="xs" variant="ghost" onClick={copyAdminRequest}>
+              Copy request for admin
+            </Button>
+          ) : (
+            <ChatGptUsageButton size="xs" variant="ghost" />
+          )
+        ) : null}
+      </>
+    ),
   };
 }
 

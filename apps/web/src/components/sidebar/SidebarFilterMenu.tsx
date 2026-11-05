@@ -30,6 +30,7 @@ import type { OrganisationOption, SidebarPage } from "./organization.logic";
 import { OrganisationIcon } from "./OrganisationIcon";
 import { ThreadGroupIcon } from "./ThreadGroupIcon";
 import { MenuChoiceLabel } from "../MenuChoiceLabel";
+import { ProjectRowActions } from "../ProjectComboboxRow";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { Button } from "../ui/button";
 import {
@@ -270,27 +271,33 @@ function SidebarProjectFilter(props: {
                       onOnly={() => props.onOnly(project.projectKey)}
                       onExclude={() => props.onExclude(project.projectKey)}
                     />
-                    {canPinProjectGroup(project) ? (
-                      <ProjectPinButton
-                        name={project.displayName}
-                        pinned={project.pinned}
-                        shortcutLabel={shortcutLabelForCommand(keybindings, "thread.pin")}
-                        onToggle={() => void toggleProjectGroupPin(project)}
-                      />
-                    ) : null}
                     {props.projectBadge(project)}
                     <ChoiceCount count={props.counts.get(project.projectKey) ?? 0} />
-                    <Button
-                      size="icon-xs"
-                      variant="ghost-muted"
-                      tabIndex={-1}
-                      aria-hidden="true"
-                      title={`Project settings for ${project.displayName}`}
-                      onPointerDown={(event) => event.stopPropagation()}
-                      onClick={(event) => props.onProjectSettings(event, project)}
-                    >
-                      <SettingsIcon className="size-3.5" />
-                    </Button>
+                    <ProjectRowActions
+                      pin={
+                        canPinProjectGroup(project) ? (
+                          <ProjectPinButton
+                            name={project.displayName}
+                            pinned={project.pinned}
+                            shortcutLabel={shortcutLabelForCommand(keybindings, "thread.pin")}
+                            onToggle={() => void toggleProjectGroupPin(project)}
+                          />
+                        ) : null
+                      }
+                      settings={
+                        <Button
+                          size="icon-xs"
+                          variant="ghost-muted"
+                          tabIndex={-1}
+                          aria-hidden="true"
+                          title={`Project settings for ${project.displayName}`}
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onClick={(event) => props.onProjectSettings(event, project)}
+                        >
+                          <SettingsIcon className="size-3.5" />
+                        </Button>
+                      }
+                    />
                   </span>
                 </MenuCheckboxItem>
               ))}

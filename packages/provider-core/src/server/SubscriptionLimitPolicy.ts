@@ -1,12 +1,12 @@
-import type {
-  ModelSelection,
+import {
+  type ModelSelection,
   OrchestrationV2ProviderFailure,
-  ServerProviderModel,
-  ServerProviderUsageLimits,
-  ThreadId,
+  type ServerProviderModel,
+  type ServerProviderUsageLimits,
+  type ThreadId,
 } from "@t3tools/contracts";
 import { getModelSelectionBooleanOptionValue } from "@t3tools/shared/model";
-import * as Data from "effect/Data";
+import * as Schema from "effect/Schema";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
@@ -46,9 +46,10 @@ export function withSubscriptionLimitOption(
  * A guarded turn refused before its prompt reached the provider. The run fails
  * with this usage-limit failure, so it gets the usual Limited recovery.
  */
-export class SubscriptionLimitStopError extends Data.TaggedError("SubscriptionLimitStopError")<{
-  readonly failure: OrchestrationV2ProviderFailure;
-}> {}
+export class SubscriptionLimitStopError extends Schema.TaggedError<SubscriptionLimitStopError>()(
+  "SubscriptionLimitStopError",
+  { failure: OrchestrationV2ProviderFailure },
+) {}
 
 /** The guard's failure anywhere in a start error's cause chain. */
 export function findSubscriptionLimitStop(

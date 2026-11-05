@@ -198,7 +198,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
             DateTime.now.pipe(
               Effect.flatMap((now) =>
                 capabilities.usage === undefined
-                  ? Effect.sync(() => undefined)
+                  ? Effect.undefined
                   : recordClaudeUsageResponse(scopedLimitNames, {
                       response: capabilities.usage,
                       checkedAt: capabilities.usageCheckedAt ?? DateTime.formatIso(now),

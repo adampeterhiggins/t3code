@@ -1,6 +1,6 @@
 import { RegistryContext } from "@effect/atom-react";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
-import type { PullRequestDiffResult } from "@t3tools/contracts";
+import { PullRequestOperationError, type PullRequestDiffResult } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import { Atom, AtomRegistry } from "effect/reactivity";
 import { act, useLayoutEffect, useState } from "react";
@@ -9,6 +9,7 @@ import { expect, it, vi } from "vite-plus/test";
 
 const mocks = vi.hoisted(() => ({ diff: vi.fn() }));
 vi.mock("../../state/pull-requests", () => ({ composerPullRequests: { diff: mocks.diff } }));
+vi.mock("../terminal/terminalTheme", () => ({ getMobileTerminalTheme: vi.fn() }));
 
 import { usePullRequestDiff, usePullRequestDiffEntry } from "./usePullRequestDiff";
 import * as reviewModel from "../review/reviewModel";
@@ -32,12 +33,14 @@ function setup() {
   }[] = [];
   const queries = Atom.family((cursor: string | null) =>
     Atom.make(
-      Effect.tryPromise(
-        () =>
+      Effect.tryPromise({
+        try: () =>
           new Promise<PullRequestDiffResult>((resolve, reject) => {
             requests.push({ cursor, resolve, reject });
           }),
-      ),
+        catch: (cause) =>
+          new PullRequestOperationError({ operation: "diff", detail: "Connection lost", cause }),
+      }),
     ).pipe(Atom.keepAlive),
   );
   mocks.diff.mockImplementation((target: { input: { cursor?: string } }) =>

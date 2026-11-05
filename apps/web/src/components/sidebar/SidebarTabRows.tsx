@@ -127,6 +127,7 @@ export function SidebarTabList(props: {
   const attachSensor = (sensor: SidebarPointerSensor) => {
     sensorRef.current = sensor;
   };
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Dispose the pointer sensor and its document listeners when the tab list unmounts.
   useEffect(() => () => sensorRef.current?.cancel(), []);
   const sensors = useSensors(
     useSensor(SidebarPointerSensor, {
@@ -150,6 +151,7 @@ export function SidebarTabList(props: {
     pairTargetRef.current = null;
     setPairTarget(null);
   };
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Cancel the pending drag-pair timer when its list lifecycle ends.
   useEffect(() => resetPairAim, [resetPairAim]);
   const collisionDetection: CollisionDetection = (args) => {
     const activeKey = String(args.active.id);
@@ -187,6 +189,7 @@ export function SidebarTabList(props: {
   // A list that just mounted is opening inside its disclosure, which owns that height change.
   const mountedRef = useRef(false);
   const tabMotionPass = { orderKey, dragging };
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Measure committed list DOM positions for the imperative row motion controller.
   useLayoutEffect(() => {
     if (tabMotionPass.dragging) return;
     motionRef.current?.update(true);
@@ -351,7 +354,15 @@ export function SidebarTabOverflowRow(props: {
   const { hidden, providerEntriesByEnvironment } = props;
   const summary = (() => {
     // Most urgent first, the same precedence as a row's own status.
-    const precedence = ["approval", "input", "failed", "limited", "working", "waiting"] as const;
+    const precedence = [
+      "approval",
+      "input",
+      "failed",
+      "limited",
+      "preparing",
+      "working",
+      "waiting",
+    ] as const;
     const counts = new Map<string, number>();
     for (const thread of hidden) {
       const status = resolveSidebarThreadStatus(thread);
@@ -385,6 +396,7 @@ export function SidebarTabOverflowRow(props: {
   const label = props.expanded ? "Show less" : `${hidden.length} more`;
   const onPreviewOpenChangeRef = useRef(props.onPreviewOpenChange);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Keep the mounted preview cleanup callback current before layout can remove its DOM.
   useLayoutEffect(() => {
     onPreviewOpenChangeRef.current = props.onPreviewOpenChange;
   });
@@ -392,12 +404,14 @@ export function SidebarTabOverflowRow(props: {
   const previewOpenRef = useRef(false);
   // The card unmounts when the row expands or the group leaves the list. Release the sort hold
   // if that happens while the preview is open and the pointer is no longer over the list.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Release the preview sort hold when expansion removes the hover-card trigger.
   useEffect(() => {
     if (props.expanded && previewOpenRef.current) {
       previewOpenRef.current = false;
       onPreviewOpenChangeRef.current?.(false);
     }
   }, [props.expanded]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Release the hover-card sort hold if its trigger unmounts while open.
   useEffect(
     () => () => {
       if (!previewOpenRef.current) return;
@@ -566,6 +580,7 @@ export const SidebarTabRow = memo(function SidebarTabRow(props: {
     addFiles: (files) => onFileDropThreads(threadRef, files),
     addFolders: () => {},
   });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Listen for native drag completion outside the row to clear its DOM drop highlight.
   useEffect(() => {
     if (!isFileDragOver) return;
     const clearFileDrag = () => setIsFileDragOver(false);

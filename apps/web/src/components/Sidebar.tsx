@@ -1,4 +1,3 @@
-import { liveShellEnvironmentIdsAtom } from "../state/shell";
 import { copyThreadReference } from "../lib/copyThreadReference";
 import { threadChipCopyTarget } from "@t3tools/client-runtime/thread-reference";
 import { attachSidebarTree } from "../lib/sidebarTree";
@@ -165,7 +164,6 @@ import { useNowMinute } from "../hooks/useNowMinute";
 import {
   useEnvironmentIdentities,
   useConnectedEnvironmentIds,
-  useEnvironmentConnectionSummaries,
   useEnvironmentMachines,
   usePrimaryEnvironmentId,
 } from "../state/environments";
@@ -234,7 +232,6 @@ import {
   resolveSidebarDropTarget,
   resolveSidebarDropVerb,
   searchSidebarThreads,
-  isSidebarEnvironmentDisconnected,
   shouldCreateNewThreadInCurrentProject,
   shouldNavigateAfterThreadPark,
   sidebarListItemId,
@@ -565,18 +562,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     ),
   );
   const delegatedUnderParent = useDelegatedUnderParent();
-  const environmentConnections = useEnvironmentConnectionSummaries();
-  const liveShellEnvironmentIds = useAtomValue(liveShellEnvironmentIdsAtom);
-  const disconnectedEnvironmentIds = new Set(
-    environmentConnections
-      .filter((environment) =>
-        isSidebarEnvironmentDisconnected(
-          environment.connectionState,
-          liveShellEnvironmentIds.has(environment.environmentId),
-        ),
-      )
-      .map((environment) => environment.environmentId),
-  );
   const nowMinute = useNowMinute();
   // Snooze wake times are second-precise, so classifying with the quantized
   // minute would hold a woken thread on the shelf for up to a minute.
@@ -723,7 +708,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     scopedProjectKeys,
     optimisticDrop,
     workingShelfEnabled,
-    disconnectedEnvironmentIds,
     sortActiveBySend: boringSidebarEnabled,
     clockKey: `${nowMinute}:${snoozeWakeTick}:${inboxReturnsVersion}`,
   });
