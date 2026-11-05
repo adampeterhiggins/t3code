@@ -240,7 +240,9 @@ const checkChanged = Effect.fn("checkChanged")(function* (input: {
   // --no-renames lists a rename as its old and new path, as CI does.
   const changedFiles = lines("diff", "--name-only", "--no-renames", base, "--");
   const untrackedFiles = lines("ls-files", "--others", "--exclude-standard");
-  const files = [...new Set([...(yield* changedFiles), ...(yield* untrackedFiles)])].sort();
+  const files = [...new Set([...(yield* changedFiles), ...(yield* untrackedFiles)])]
+    .filter((file) => !file.startsWith(".repos/"))
+    .sort();
 
   if (files.length === 0) {
     yield* Console.log(`check:changed: no changes since ${base.slice(0, 12)} (${ref}).`);

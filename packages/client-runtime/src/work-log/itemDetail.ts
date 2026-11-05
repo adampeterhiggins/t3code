@@ -51,6 +51,14 @@ function textFromBlocks(
     return textFromBlocks(value.content, depth + 1, imageBlocks);
   if (keys.length === 2 && keys.includes("content") && keys.includes("structuredContent")) {
     const text = textFromBlocks(value.content, depth + 1, imageBlocks);
+    const images = Array.isArray(value.content)
+      ? value.content.filter((block) => isRecord(block) && block.type === "image")
+      : [];
+    const structured = formatJsonValue(value.structuredContent);
+    if (structured !== null && (images.length > 0 || !text?.trim())) {
+      const markers = textFromBlocks(images, depth + 1, imageBlocks);
+      return [structured, markers].filter(Boolean).join("\n");
+    }
     return text?.trim() ? text : null;
   }
   return null;
@@ -112,6 +120,12 @@ function parseJson(text: string): unknown {
   }
 }
 
+export function isJsonToolText(text: string): boolean {
+  if (parseJson(text) !== undefined) return true;
+  const documents = text.trim().split(/\n\s*\n/);
+  return documents.length > 1 && documents.every((document) => parseJson(document) !== undefined);
+}
+
 /**
  * MCP tools often return JSON as minified text, one document per line. Indent each.
  * A document that is a single text field (a file's content, a page's markdown)
@@ -145,13 +159,9 @@ function prettyJsonText(text: string): string {
   return documents.map((document) => JSON.stringify(document, null, 2)).join("\n\n");
 }
 
-/** Formats a tool input or output for display: text blocks as text, the rest as JSON. */
-function formatToolValue(input: unknown, hasImagePreview = false): string | null {
-  const value = withoutTransportKeys(input);
+function formatJsonValue(value: unknown): string | null {
   if (value === undefined || value === null) return null;
-  if (hasImagePreview && isRecord(value) && value.type === "image") return null;
-  const text = textFromBlocks(value, 0, toolOutputImageBlocks(value));
-  if (text !== null) return text.trim() ? prettyJsonText(text) : null;
+  if (typeof value === "string" && !value.trim()) return null;
   let json: string | undefined;
   try {
     json = JSON.stringify(value, null, 2);
@@ -160,6 +170,15 @@ function formatToolValue(input: unknown, hasImagePreview = false): string | null
   }
   if (json === undefined || json === "{}" || json === "[]") return null;
   return json;
+}
+
+function formatToolValue(input: unknown, hasImagePreview = false): string | null {
+  const value = withoutTransportKeys(input);
+  if (value === undefined || value === null) return null;
+  if (hasImagePreview && isRecord(value) && value.type === "image") return null;
+  const text = textFromBlocks(value, 0, toolOutputImageBlocks(value));
+  if (text !== null) return text.trim() ? prettyJsonText(text) : null;
+  return formatJsonValue(value);
 }
 
 export function toolCallLines(input: {
