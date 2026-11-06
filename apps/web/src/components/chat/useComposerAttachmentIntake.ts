@@ -1,4 +1,5 @@
 import type { ChatComposerProps } from "./ChatComposer";
+import type { ComposerTextTarget } from "./composerTextTarget";
 import {
   type ChatFileAttachment,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
@@ -81,6 +82,7 @@ export function useComposerAttachmentIntake(input: {
   readonly insertAttachmentReferences: (
     references: ReadonlyArray<ComposerContextReference>,
     selection?: { start: number; end: number },
+    target?: ComposerTextTarget,
   ) => boolean;
 }) {
   const {
@@ -118,6 +120,8 @@ export function useComposerAttachmentIntake(input: {
       readonly source?: ChatFileAttachment["source"];
       readonly selection?: { start: number; end: number };
       readonly skipImageInlineChip?: boolean;
+      /** Text other than the prompt, such as a citation comment, that takes the chips. */
+      readonly target?: ComposerTextTarget;
     },
   ): Promise<boolean> => {
     if (!activeThreadId || files.length === 0 || isRevertingCheckpointRef.current) return false;
@@ -140,6 +144,7 @@ export function useComposerAttachmentIntake(input: {
     const imageAttachmentsGetChips =
       !options?.skipImageInlineChip &&
       (options?.selection !== undefined ||
+        options?.target !== undefined ||
         pendingUserInputs.length > 0 ||
         projectSelectionRequired ||
         stripInlineContextReferences(promptRef.current).trim().length > 0);
@@ -225,6 +230,7 @@ export function useComposerAttachmentIntake(input: {
         insertedAny = insertAttachmentReferences(
           storedFiles.map(fileContextReference),
           options?.selection,
+          options?.target,
         );
       }
       if (options?.source?._tag === "pasted-text" && storedFiles.length > 0) {
@@ -312,7 +318,11 @@ export function useComposerAttachmentIntake(input: {
     }
     if (storedImages.length > 0 && imageAttachmentsGetChips) {
       insertedAny =
-        insertAttachmentReferences(storedImages.map(imageContextReference)) || insertedAny;
+        insertAttachmentReferences(
+          storedImages.map(imageContextReference),
+          undefined,
+          options?.target,
+        ) || insertedAny;
     }
     // Only failures are reported here. Success must not pass `null`: by
     // now other work (a failed send, an overlapping paste) may have set a
@@ -360,17 +370,23 @@ export function useComposerAttachmentIntake(input: {
     plainText: string,
     bypassAutoAttachment: boolean,
     selectionOverride?: { start: number; end: number },
+    target?: ComposerTextTarget,
   ): boolean => {
     if (isLiteralPendingAnswer) return false;
+    const targetText = target?.read() ?? null;
+    const targetCaret = target ? target.caret() : 0;
     const questionCanAttach =
       pendingUserInputs.length === 0 ||
       (supportsQuestionAttachments &&
         activePendingProgress?.activeQuestion?.allowCustomAnswer !== false &&
         !activePendingIsResponding);
     const hasAttachmentSlot = countReservedAttachments() < PROVIDER_SEND_TURN_MAX_ATTACHMENTS;
-    const selection = selectionOverride ?? composerEditorRef.current?.readSelectionRange();
+    const selection =
+      targetText !== null
+        ? { start: targetCaret, end: targetCaret }
+        : (selectionOverride ?? composerEditorRef.current?.readSelectionRange());
     const wouldExceedInputLimit = wouldTextPasteExceedLimit({
-      valueLength: promptRef.current.length,
+      valueLength: (targetText ?? promptRef.current).length,
       selection: selection ?? { start: 0, end: 0 },
       textLength: plainText.length,
       maxLength: PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
@@ -428,7 +444,7 @@ export function useComposerAttachmentIntake(input: {
 
     void addComposerAttachments([foldedFile], {
       source: { _tag: "pasted-text" },
-      ...(selection ? { selection } : {}),
+      ...(target ? { target } : selection ? { selection } : {}),
     });
     return true;
   };

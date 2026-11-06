@@ -4,9 +4,16 @@ import {
   ASSISTANT_CITATION_MAX_SEGMENTS,
   ASSISTANT_CITATION_MAX_TEXT_LENGTH,
   AssistantCitation,
+  type ComposerContextRecord,
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+
+import {
+  projectComposerContextForProvider,
+  replaceComposerContextReferences,
+} from "./composerContextReferences.ts";
+import { composerFileMentionsToLabels } from "./composerInlineTokens.ts";
 
 const CITATION_PROTOCOL = "t3-citation:";
 const CITATION_HREF_PREFIX = `${CITATION_PROTOCOL}//v1/`;
@@ -134,9 +141,16 @@ function transcriptSummary(citation: AssistantCitation): string | null {
     .join(", ");
 }
 
+/** A comment holds composer chips; plain-text readers see each chip as its label. */
+function commentAsPlainText(comment: string): string {
+  return composerFileMentionsToLabels(
+    replaceComposerContextReferences(comment, (occurrence) => occurrence.label),
+  );
+}
+
 export function assistantCitationLabel(citation: AssistantCitation): string {
   const preview = (
-    citation.comment?.trim() ||
+    (citation.comment === undefined ? "" : commentAsPlainText(citation.comment).trim()) ||
     transcriptSummary(citation) ||
     citation.text
   ).replace(/\s+/g, " ");
@@ -178,7 +192,7 @@ export function assistantCitationsToPlainText(prompt: string): string {
     if (!citation) return source;
     return citation.comment === undefined
       ? citation.text
-      : `${citation.text}\nComment: ${citation.comment}`;
+      : `${citation.text}\nComment: ${commentAsPlainText(citation.comment)}`;
   });
 }
 
@@ -219,6 +233,27 @@ export function expandAssistantCitationsForProvider(prompt: string): string {
   return `${text}\n\n<assistant_citations>\n${description}${transcript}\n${data}\n</assistant_citations>`;
 }
 
+/**
+ * The user message as the agent reads it. Citations expand first, so chips in their comments
+ * are projected and listed with the message's own.
+ */
+export function projectUserMessageForProvider(input: {
+  text: string;
+  records: ReadonlyArray<ComposerContextRecord>;
+}): string {
+  return projectComposerContextForProvider({
+    text: expandAssistantCitationsForProvider(input.text),
+    records: input.records,
+  });
+}
+
+/** Every comment in `text`'s citations, which can hold the same chips as the prompt itself. */
+export function collectAssistantCitationComments(text: string): string[] {
+  return collectAssistantCitations(text).flatMap(({ citation }) =>
+    citation.comment === undefined ? [] : [citation.comment],
+  );
+}
+
 function escapeMarkdownText(text: string): string {
   return text
     .replace(/&/g, "&amp;")
@@ -240,7 +275,7 @@ export function renderAssistantCitationsAsText(prompt: string): string {
       .map((line) => `> ${line}`)
       .join("\n")}\n\n`;
     if (match.citation.comment !== undefined) {
-      text += `Comment: ${escapeMarkdownText(match.citation.comment)}\n\n`;
+      text += `Comment: ${escapeMarkdownText(commentAsPlainText(match.citation.comment))}\n\n`;
     }
     cursor = match.end;
   }

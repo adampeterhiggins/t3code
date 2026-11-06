@@ -1807,6 +1807,38 @@ Code: `SubmitChoiceButton` in
 `sendCitationElsewhere` in
 [useThreadLifecycle.tsx](../apps/web/src/components/chat/useThreadLifecycle.tsx).
 
+## Citation comments take chips, links, menus, and attachments
+
+Upstream edits a citation's comment in a plain text box. The fork edits it in the composer's own
+editor, so the comment reads Markdown, inline context chips, file links, and pasted chips the way
+the message does, and a pasted or typed link becomes a chip as described in
+[Pasted and typed links become chips](#pasted-and-typed-links-become-chips) (a broken link chip in a
+comment has no **Retry**). Typing `@` or `#` in a comment opens the composer's own menu above the
+comment, and what it attaches, including chips that load later, lands in the comment. `$` and `/`
+stay the prompt's, since skills and slash commands act on the message or composer. Pasting or
+dropping files, images, or folders onto a comment attaches them to the message with their chips in
+the comment, and a long paste folds into a file there too. A file-tree path or pull request dragged
+onto a comment lands in it too.
+
+The records and attachments behind a comment's chips travel with the quote. Saving it into the
+composer keeps them with the message; sending it on its own or to another thread uploads the
+attachments it names and carries its records, and saving it to another thread's composer moves
+them there. Attachments that only the quote named then leave this composer. Hovering the quote
+draws its comment's chips. The server expands citations before the agent reads the message, as the
+composer's length check already assumed, so the agent gets each quote and comment as data with the
+comment's chips listed alongside the message's own, rather than the raw `t3-citation://` link.
+
+Code: `CitationCommentPromptInput` in
+[ComposerPromptEditorTiptap.tsx](../apps/web/src/components/ComposerPromptEditorTiptap.tsx),
+`ComposerTextTarget` in [composerTextTarget.ts](../apps/web/src/components/chat/composerTextTarget.ts),
+`menuTextEdit`, `onCitationCommentPaste`, and `citationCommentDropHost` in
+[ChatComposer.tsx](../apps/web/src/components/chat/ChatComposer.tsx),
+`prepareTextMessage` in [forkComposerContexts.ts](../apps/web/src/components/chat/forkComposerContexts.ts),
+`collectInlineContextIds` in
+[composerContextReferences.ts](../apps/web/src/lib/composerContextReferences.ts), and
+`projectUserMessageForProvider` in
+[assistantCitations.ts](../packages/shared/src/assistantCitations.ts).
+
 ## Message drafts and send button menus
 
 A message can be saved in a thread as a draft and sent later. Drafts are stored by the server per

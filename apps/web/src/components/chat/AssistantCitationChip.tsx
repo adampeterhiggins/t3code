@@ -12,6 +12,7 @@ import {
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
 } from "react";
 import {
   findAssistantCitationSourceAnchor,
@@ -23,7 +24,7 @@ import {
 } from "../../lib/assistantCitationNavigation";
 import { cn } from "~/lib/utils";
 import { useThreadShell } from "~/state/entities";
-import ChatMarkdown from "../ChatMarkdown";
+import ChatMarkdown, { type ChatMarkdownContextReference } from "../ChatMarkdown";
 import { ContextChip, ContextChipAction, ContextChipLabel } from "../ContextChip";
 import { ContextChipPopover } from "../contextChipParts";
 import { Popover, PopoverClose, PopoverPopup, PopoverTrigger } from "../ui/popover";
@@ -32,10 +33,12 @@ import { getVirtualizedScrollFadeClassName } from "../ui/scroll-area";
 import {
   AssistantCitationCommentEditor,
   type AssistantCitationDestinations,
+  type CitationCommentInputHandle,
+  type CitationCommentInputProps,
 } from "./AssistantCitationCommentEditor";
 import { resolveAssistantCitationCommentDismissal } from "./assistantCitationCommentDismissal";
 import { observeAssistantCitationCommentSource } from "./AssistantCitationSource";
-import { composerFloatingLayerProps } from "./composerEventScope";
+import { composerFloatingLayerProps, isInsideComposerMenuLayer } from "./composerEventScope";
 import { observeResize } from "~/lib/observeResize";
 import { textDirection } from "~/textDirection";
 
@@ -43,12 +46,15 @@ export function AssistantCitationChip({
   citation,
   composer = false,
   currentThreadId,
+  renderContextReference,
   commentEditor,
 }: {
   citation: AssistantCitation;
   composer?: boolean;
   /** The thread showing the chip; a quote from any other thread names where it came from. */
   currentThreadId?: ThreadId | undefined;
+  /** Draws chips in the comment the way the surrounding text draws its own. */
+  renderContextReference?: ((reference: ChatMarkdownContextReference) => ReactNode) | undefined;
   commentEditor?: {
     open: boolean;
     sourceAnchor?: AssistantCitationSourceAnchor | undefined;
@@ -61,10 +67,11 @@ export function AssistantCitationChip({
     onDraftChange?: (comment: string) => void;
     onRestoreFocus?: () => void;
     destinations?: AssistantCitationDestinations;
+    renderInput: (props: CitationCommentInputProps) => ReactNode;
   };
 }) {
   const navigate = useNavigate();
-  const commentInputRef = useRef<HTMLTextAreaElement>(null);
+  const commentInputRef = useRef<CitationCommentInputHandle>(null);
   const commentPopupRef = useRef<HTMLDivElement>(null);
   const draftCommentRef = useRef<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -172,7 +179,10 @@ export function AssistantCitationChip({
           {sourceLine ? (
             <div className="flex text-xs text-muted-foreground">{sourceLine}</div>
           ) : null}
-          <AssistantCitationQuote citation={citation} />
+          <AssistantCitationQuote
+            citation={citation}
+            renderContextReference={renderContextReference}
+          />
         </div>
       </PreviewCardPopup>
     </PreviewCard>
@@ -200,7 +210,10 @@ export function AssistantCitationChip({
               Go to source
             </PopoverClose>
           </div>
-          <AssistantCitationQuote citation={citation} />
+          <AssistantCitationQuote
+            citation={citation}
+            renderContextReference={renderContextReference}
+          />
         </div>
       </ContextChipPopover>
     );
@@ -217,6 +230,15 @@ export function AssistantCitationChip({
         <Popover
           open={commentEditor.open}
           onOpenChange={(open, eventDetails) => {
+            // The comment's own `@` and `#` menu floats outside this popup.
+            if (
+              !open &&
+              eventDetails.reason === "outside-press" &&
+              isInsideComposerMenuLayer(eventDetails.event.target)
+            ) {
+              eventDetails.cancel();
+              return;
+            }
             if (!open && !settleDraftOnClose(eventDetails.reason)) {
               eventDetails.cancel();
               return;
@@ -238,7 +260,7 @@ export function AssistantCitationChip({
               align="end"
               anchor={popupAnchor}
               initialFocus={() => {
-                commentInputRef.current?.focus({ preventScroll: true });
+                commentInputRef.current?.focus();
                 return false;
               }}
               finalFocus={
@@ -265,6 +287,7 @@ export function AssistantCitationChip({
                 key={serializeAssistantCitation(citation)}
                 citation={citation}
                 inputRef={commentInputRef}
+                renderInput={commentEditor.renderInput}
                 onDraftChange={(comment) => {
                   draftCommentRef.current = comment;
                   commentEditor.onDraftChange?.(comment);
@@ -323,7 +346,13 @@ export function AssistantCitationChip({
   );
 }
 
-function AssistantCitationQuote({ citation }: { citation: AssistantCitation }) {
+function AssistantCitationQuote({
+  citation,
+  renderContextReference,
+}: {
+  citation: AssistantCitation;
+  renderContextReference: ((reference: ChatMarkdownContextReference) => ReactNode) | undefined;
+}) {
   const [fade, setFade] = useState({ top: false, bottom: false });
   const updateFade = (element: HTMLElement) => {
     const top = element.scrollTop > 1;
@@ -355,7 +384,12 @@ function AssistantCitationQuote({ citation }: { citation: AssistantCitation }) {
       </blockquote>
       {citation.comment ? (
         <div dir={textDirection(citation.comment)}>
-          <ChatMarkdown text={citation.comment} cwd={undefined} lineBreaks />
+          <ChatMarkdown
+            text={citation.comment}
+            cwd={undefined}
+            lineBreaks
+            renderContextReference={renderContextReference}
+          />
         </div>
       ) : null}
     </div>

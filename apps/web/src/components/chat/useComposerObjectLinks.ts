@@ -27,6 +27,7 @@ import {
   useResolveComposerObjectLink,
 } from "./useResolveComposerObjectLink";
 import { pendingDraftWork } from "./pendingDraftWork";
+import type { ComposerTextTarget } from "./composerTextTarget";
 
 export type ComposerUnreadLinkActions = {
   retry: (record: UnreadLinkContextRecord) => void;
@@ -76,8 +77,8 @@ export function useComposerObjectLinks({
   const [loadingObjectLinks, setLoadingObjectLinks] = useState<
     ReadonlyArray<{ readonly url: string; readonly workKey: string }>
   >([]);
-  const handledObjectLinks = () => {
-    const key = composerDraftTargetKeyRef.current;
+  const handledObjectLinks = (target?: ComposerTextTarget) => {
+    const key = target?.key ?? composerDraftTargetKeyRef.current;
     let handled = handledObjectLinksRef.current.get(key);
     if (handled === undefined) {
       handled = new Set();
@@ -91,7 +92,14 @@ export function useComposerObjectLinks({
     url: string,
     index: number,
     resolved: ResolvedComposerObjectLink,
+    target: ComposerTextTarget | undefined,
   ) => {
+    if (target) {
+      const text = target.read();
+      const edit = text === null ? null : objectLinkChipEdit(text, url, index, resolved.reference);
+      if (edit !== null && target.replace(edit.start, edit.end, edit.text)) resolved.commit();
+      return;
+    }
     const destination = objectLinkChipDestination(
       started,
       composerEditorRef.current === null
@@ -147,6 +155,7 @@ export function useComposerObjectLinks({
       link: ComposerObjectLink;
       index: number;
     }>,
+    target?: ComposerTextTarget,
   ) => {
     const started = {
       draftTarget: composerDraftTarget,
@@ -154,18 +163,21 @@ export function useComposerObjectLinks({
       workKey: attachmentTargetKeyRef.current,
     };
     const threadId = routeThreadRef.threadId;
-    const handled = handledObjectLinks();
+    const handled = handledObjectLinks(target);
     for (const { link, index } of links) {
       handled.add(link.url);
-      const loading = { url: link.url, workKey: started.workKey };
+      const loading = { url: link.url, workKey: target?.key ?? started.workKey };
       setLoadingObjectLinks((current) => [...current, loading]);
-      const retry = () => {
-        if (composerDraftTargetKeyRef.current !== started.draftKey) return;
-        unreadLinkActionsRef.current?.retry(unreadLinkContextRecord(link, "unreadable"));
-      };
+      // A broken chip's retry looks for it in the prompt, so only the prompt's links offer one.
+      const retry = target
+        ? undefined
+        : () => {
+            if (composerDraftTargetKeyRef.current !== started.draftKey) return;
+            unreadLinkActionsRef.current?.retry(unreadLinkContextRecord(link, "unreadable"));
+          };
       pendingDraftWork.begin(started.workKey);
       void resolveObjectLinkWithin(
-        resolveComposerObjectLink(link, { retry }),
+        resolveComposerObjectLink(link, retry ? { retry } : undefined),
         OBJECT_LINK_TIMEOUT_MS,
       )
         .then((result) => {
@@ -174,7 +186,7 @@ export function useComposerObjectLinks({
           // from a link nobody tried. The agent still receives the link.
           const resolved =
             typeof result === "string" ? unreadLinkChip(threadId, link, result) : result;
-          applyResolvedObjectLinkStable(started, link.url, index, resolved);
+          applyResolvedObjectLinkStable(started, link.url, index, resolved, target);
         })
         .finally(() => {
           pendingDraftWork.end(started.workKey);
@@ -202,26 +214,30 @@ export function useComposerObjectLinks({
     pastedText: string,
     keepAsText: boolean,
     pasteStart: number,
+    target?: ComposerTextTarget,
   ) => {
-    const links = findPastedComposerObjectLinks(promptRef.current, pastedText, pasteStart);
+    const text = target ? target.read() : promptRef.current;
+    if (text === null) return;
+    const links = findPastedComposerObjectLinks(text, pastedText, pasteStart);
     if (links.length === 0) return;
     if (keepAsText) {
-      for (const { link } of links) handledObjectLinks().add(link.url);
+      for (const { link } of links) handledObjectLinks(target).add(link.url);
       return;
     }
-    convertObjectLinks(links);
+    convertObjectLinks(links, target);
   };
   // Read by `onPromptChange`, which is declared before the replacement helpers this needs.
   const convertTypedObjectLink = (
     previousPrompt: string,
     nextPrompt: string,
     expandedCursor: number,
+    target?: ComposerTextTarget,
   ) => {
     // One typed character, so pastes, chip insertions, and caret moves never count.
     if (nextPrompt.length !== previousPrompt.length + 1) return;
     const typed = findTypedComposerObjectLink(nextPrompt, expandedCursor);
-    if (typed === null || handledObjectLinks().has(typed.link.url)) return;
-    convertObjectLinks([typed]);
+    if (typed === null || handledObjectLinks(target).has(typed.link.url)) return;
+    convertObjectLinks([typed], target);
   };
 
   return { loadingObjectLinks, convertTypedObjectLink, convertPastedObjectLinks };

@@ -10,12 +10,11 @@ import {
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { ChevronDownIcon } from "lucide-react";
-import { useRef, useState, type MouseEvent, type RefObject } from "react";
+import { useState, type MouseEvent, type ReactNode, type RefObject } from "react";
 
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { readLocalApi } from "~/localApi";
 import { useThreadShell } from "~/state/entities";
-import { textDirection } from "~/textDirection";
 
 import { Button } from "../ui/button";
 import { Group, GroupSeparator } from "../ui/group";
@@ -53,6 +52,26 @@ type SubmitChoices = Record<
   { label: string; description: string; contextMenuLabel?: string }
 >;
 type DraftChoice = { label: string; description: string };
+
+export interface CitationCommentInputHandle {
+  focus: () => void;
+}
+
+/**
+ * The comment's text field. The composer supplies its own editor, so a comment reads chips,
+ * links, and pasted context exactly as the prompt does.
+ */
+export interface CitationCommentInputProps {
+  value: string;
+  onChange: (value: string) => void;
+  /** Enter, with or without Command/Ctrl but not Shift. False leaves it to the field. */
+  onEnter: (event: KeyboardEvent) => boolean;
+  inputRef: RefObject<CitationCommentInputHandle | null>;
+  ariaLabel: string;
+  ariaDescription: string;
+  invalid: boolean;
+  placeholder: string;
+}
 
 /** Lets the panel send the citation to another thread instead of the composer it sits in. */
 export interface AssistantCitationDestinations {
@@ -105,6 +124,7 @@ function elsewhereChoices(
 export function AssistantCitationCommentEditor({
   citation,
   inputRef,
+  renderInput,
   onSubmit,
   onSubmitAndSend,
   onSubmitAndSaveDraft,
@@ -114,7 +134,8 @@ export function AssistantCitationCommentEditor({
   destinations,
 }: {
   citation: AssistantCitation;
-  inputRef?: RefObject<HTMLTextAreaElement | null>;
+  inputRef: RefObject<CitationCommentInputHandle | null>;
+  renderInput: (props: CitationCommentInputProps) => ReactNode;
   onSubmit: (comment: string) => boolean;
   onSubmitAndSend?: (comment: string) => boolean;
   /** Saves the comment into the prompt, then keeps the whole message as a thread draft. */
@@ -125,8 +146,6 @@ export function AssistantCitationCommentEditor({
   destinations?: AssistantCitationDestinations | undefined;
 }) {
   const [comment, setComment] = useState(citation.comment ?? "");
-  const ownTextareaRef = useRef<HTMLTextAreaElement>(null);
-  const textareaRef = inputRef ?? ownTextareaRef;
   const [choice, setChoice] = useLocalStorage(
     SUBMIT_CHOICE_STORAGE_KEY,
     "send",
@@ -192,38 +211,28 @@ export function AssistantCitationCommentEditor({
         }
       }}
     >
-      <textarea
-        ref={textareaRef}
-        aria-label="Comment on selected text"
-        aria-description={
+      {renderInput({
+        value: comment,
+        onChange: (next) => {
+          setComment(next);
+          onDraftChange?.(next);
+        },
+        onEnter: (event) => {
+          if (event.isComposing || event.keyCode === 229) return false;
+          // Enter does what the button shows; the modifier does the other choice.
+          const alternate = event.metaKey || event.ctrlKey;
+          runChoice(alternate ? (enterChoice === "send" ? "save" : "send") : enterChoice);
+          return true;
+        },
+        inputRef,
+        ariaLabel: "Comment on selected text",
+        ariaDescription:
           enterChoice === "send"
             ? `Enter to save and ${sendVerb}; Command/Ctrl+Enter to save the citation comment; Shift+Enter for a new line.`
-            : `Enter to save the citation comment; Command/Ctrl+Enter to save and ${sendVerb}; Shift+Enter for a new line.`
-        }
-        aria-invalid={commentTooLong || undefined}
-        placeholder="Add an optional comment..."
-        rows={2}
-        dir={textDirection(comment)}
-        className="field-sizing-content block max-h-40 min-h-16 w-full resize-none bg-transparent px-1 py-1.5 text-base outline-none placeholder:text-muted-foreground sm:text-sm"
-        value={comment}
-        onChange={(event) => {
-          setComment(event.currentTarget.value);
-          onDraftChange?.(event.currentTarget.value);
-        }}
-        onKeyDown={(event) => {
-          if (
-            event.key === "Enter" &&
-            !event.shiftKey &&
-            !event.nativeEvent.isComposing &&
-            event.keyCode !== 229
-          ) {
-            event.preventDefault();
-            // Enter does what the button shows; the modifier does the other choice.
-            const alternate = event.metaKey || event.ctrlKey;
-            runChoice(alternate ? (enterChoice === "send" ? "save" : "send") : enterChoice);
-          }
-        }}
-      />
+            : `Enter to save the citation comment; Command/Ctrl+Enter to save and ${sendVerb}; Shift+Enter for a new line.`,
+        invalid: commentTooLong,
+        placeholder: "Add an optional comment...",
+      })}
       {commentTooLong ? (
         <p role="status" className="pt-1 text-xs text-destructive">
           Comments can contain up to {ASSISTANT_CITATION_MAX_COMMENT_LENGTH.toLocaleString()}{" "}
@@ -240,7 +249,7 @@ export function AssistantCitationCommentEditor({
               defaultModelSelection={destinations.modelSelection}
               destination={destination}
               onChange={setDestination}
-              onModelPicked={() => textareaRef.current?.focus()}
+              onModelPicked={() => inputRef.current?.focus()}
             />
           </div>
         ) : null}

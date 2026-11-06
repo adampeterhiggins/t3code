@@ -1,4 +1,5 @@
 import type { ComposerContextId, ComposerContextKind } from "@t3tools/contracts";
+import { collectAssistantCitationComments } from "@t3tools/shared/assistantCitations";
 import {
   collectComposerContextReferences,
   formatComposerContextReference,
@@ -27,9 +28,14 @@ export function formatInlineContextReference(reference: ComposerContextReference
   });
 }
 
+/** Chips in a citation's comment count too: the message sends their records with its own. */
 export function collectInlineContextIds(prompt: string): string[] {
   return Array.from(
-    new Set(collectComposerContextReferences(prompt).map((occurrence) => occurrence.contextId)),
+    new Set(
+      [prompt, ...collectAssistantCitationComments(prompt)].flatMap((text) =>
+        collectComposerContextReferences(text).map((occurrence) => occurrence.contextId),
+      ),
+    ),
   );
 }
 

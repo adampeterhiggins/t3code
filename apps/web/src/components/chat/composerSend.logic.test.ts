@@ -1,9 +1,10 @@
-import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, MessageId, ThreadId } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { describe, expect, it } from "vite-plus/test";
 import { formatInlineContextReference } from "../../lib/composerContextReferences";
 import { threadContextReference } from "../../lib/composerContextRecords";
 import { threadContextRecord } from "@t3tools/shared/composerContextReferences";
+import { serializeAssistantCitation } from "@t3tools/shared/assistantCitations";
 import {
   approvalRedirectNotice,
   loadBalancingSendWarning,
@@ -22,6 +23,24 @@ describe("referencedThreadContexts", () => {
     expect(
       referencedThreadContexts({ prompt, threadContexts: [localThread, remoteThread] }),
     ).toEqual([remoteThread]);
+  });
+
+  it("keeps the attached threads a citation's comment links", () => {
+    const citation = serializeAssistantCitation({
+      version: 1,
+      environmentId: local,
+      threadId: ThreadId.make("source"),
+      messageId: MessageId.make("message"),
+      text: "quote",
+      start: 0,
+      end: 5,
+      prefix: "",
+      suffix: "",
+      comment: `compare ${formatInlineContextReference(threadContextReference(localThread))}`,
+    });
+    expect(
+      referencedThreadContexts({ prompt: `see ${citation}`, threadContexts: [localThread] }),
+    ).toEqual([localThread]);
   });
 });
 

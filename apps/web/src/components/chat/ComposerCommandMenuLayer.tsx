@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { observeResize } from "~/lib/observeResize";
 
 type ComposerCommandMenuPosition = {
+  /** Anchored outside the composer, in a popup such as a citation's comment, so it sits above it. */
+  overPopup: boolean;
   bottom: number;
   left: number;
   maxHeight: number;
@@ -14,7 +16,11 @@ function composerCommandMenuPositionsEqual(
   b: ComposerCommandMenuPosition,
 ): boolean {
   return (
-    a.bottom === b.bottom && a.left === b.left && a.maxHeight === b.maxHeight && a.width === b.width
+    a.overPopup === b.overPopup &&
+    a.bottom === b.bottom &&
+    a.left === b.left &&
+    a.maxHeight === b.maxHeight &&
+    a.width === b.width
   );
 }
 
@@ -40,14 +46,15 @@ export function ComposerCommandMenuLayer(props: {
       const drawerInsetRem = Number.parseFloat(
         window.getComputedStyle(form ?? anchor).getPropertyValue("--chat-composer-drawer-inset"),
       );
-      const drawerInset = drawerInsetRem * rootFontSizePx;
+      const drawerInset = form ? drawerInsetRem * rootFontSizePx : 0;
       const width = rect.width - drawerInset * 2;
       if (width <= 0) {
         setPosition(null);
         return;
       }
-      const composerOverlap = rootFontSizePx + 1;
+      const composerOverlap = form ? rootFontSizePx + 1 : 0;
       const next = {
+        overPopup: !form,
         bottom: window.innerHeight - rect.top - composerOverlap,
         left: rect.left + drawerInset,
         maxHeight: Math.max(96, rect.top - 24 + composerOverlap),
@@ -79,7 +86,11 @@ export function ComposerCommandMenuLayer(props: {
 
   return createPortal(
     <div
-      className="pointer-events-auto fixed z-40 flex flex-col"
+      className={
+        position.overPopup
+          ? "pointer-events-auto fixed z-[131] flex flex-col"
+          : "pointer-events-auto fixed z-40 flex flex-col"
+      }
       data-composer-drawer-layer="true"
       style={{
         bottom: position.bottom,

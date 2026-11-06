@@ -12,6 +12,12 @@ import {
 } from "../../composerDraftStore";
 
 import { useComposerObjectLinks, type ComposerUnreadLinkActions } from "./useComposerObjectLinks";
+import {
+  type ComposerTextTarget,
+  citationCommentTrigger,
+  insertAtComposerTextTargetCaret,
+  insertAtComposerTextTargetEnd,
+} from "./composerTextTarget";
 import { useComposerAttachControls } from "./useComposerAttachControls";
 import { useComposerPathMenu } from "./useComposerPathMenu";
 import {
@@ -42,6 +48,7 @@ import {
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   type ComposerContextRecord,
   type ThreadPullRequestLink,
+  type PullRequestContextMetadata,
 } from "@t3tools/contracts";
 import { PlayIcon } from "lucide-react";
 
@@ -73,6 +80,7 @@ import { resolveComposerSnapshot, type ComposerSnapshot } from "./composerPendin
 import {
   type ComposerCitationDestinations,
   type ComposerCitationCommentRequest,
+  type CitationCommentDropHost,
   type ComposerPromptEditorHandle,
   ComposerPromptEditor,
 } from "../ComposerPromptEditor";
@@ -333,7 +341,7 @@ import {
   usePreparingComposerImages,
 } from "./preparingComposerImages";
 import { ComposerControlsBar } from "./ComposerControlsBar";
-import { composerCommandKeyHandler } from "./composerCommandKey";
+import { composerCommandKeyHandler, handleComposerMenuKey } from "./composerCommandKey";
 
 function consumePasteAsTextShortcut(deadline: { current: number }): boolean {
   const armed = Date.now() <= deadline.current;
@@ -1136,6 +1144,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     isLiteralPendingAnswer ? null : detectComposerTrigger(prompt, prompt.length),
   );
   const [composerHighlightedItemId, setComposerHighlightedItemId] = useState<string | null>(null);
+  // A citation comment whose `@` or `#` opened the menu. The menu then edits that comment.
+  const [commentMenu, setCommentMenuState] = useState<{
+    target: ComposerTextTarget;
+    anchor: HTMLElement;
+  } | null>(null);
+  const commentMenuRef = useRef(commentMenu);
+  const setCommentMenu = (next: typeof commentMenu) => {
+    commentMenuRef.current = next;
+    setCommentMenuState(next);
+  };
+  // The open citation comment. Chips that arrive while it is open land in it, not the prompt.
+  const openCitationCommentRef = useRef<ComposerTextTarget | null>(null);
   const composerSuggestionId = useId();
   const composerSuggestionListId = `${composerSuggestionId}-${encodeURIComponent(draftId ?? activeThreadId ?? "new")}-suggestions`;
   const promptHistoryPositionRef = useRef<{
@@ -1915,9 +1935,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       addComposerDraftFiles(attachmentDraftTarget, attachmentChanges.filesToRestore);
     }
     setComposerCursor(nextCursor);
-    setComposerTrigger(
-      cursorAdjacentToMention ? null : detectComposerTrigger(nextPrompt, expandedCursor),
-    );
+    // The prompt's selection can move while a comment's menu is open; only its edits take the menu.
+    if (commentMenuRef.current === null || nextPrompt !== previousPrompt) {
+      if (commentMenuRef.current) setCommentMenu(null);
+      setComposerTrigger(
+        cursorAdjacentToMention ? null : detectComposerTrigger(nextPrompt, expandedCursor),
+      );
+    }
     convertTypedObjectLinkRef.current?.(previousPrompt, nextPrompt, expandedCursor);
   };
   const onPromptChangeStable = useStableCallback(onPromptChange);
@@ -2043,6 +2067,19 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     snapshot: { value: string; cursor: number; expandedCursor: number };
     trigger: ComposerTrigger | null;
   } => {
+    const comment = commentMenuRef.current?.target;
+    if (comment) {
+      const value = comment.read() ?? "";
+      const expandedCursor = comment.caret();
+      return {
+        snapshot: {
+          value,
+          cursor: collapseExpandedComposerCursor(value, expandedCursor),
+          expandedCursor,
+        },
+        trigger: resolveComposerTrigger(citationCommentTrigger(value, expandedCursor)),
+      };
+    }
     const snapshot = readComposerSnapshot();
     return {
       snapshot,
@@ -2050,6 +2087,45 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         ? null
         : resolveComposerTrigger(detectComposerTrigger(snapshot.value, snapshot.expandedCursor)),
     };
+  };
+
+  // The text the menu edits: the prompt, or the citation comment that opened it.
+  const menuTextEdit = (): {
+    readSnapshot: () => { value: string; expandedCursor: number } | null;
+    replace: (
+      rangeStart: number,
+      rangeEnd: number,
+      replacement: string,
+      options?: { expectedText?: string; focusEditorAfterReplace?: boolean },
+    ) => boolean;
+  } => {
+    const comment = commentMenuRef.current?.target;
+    if (!comment) return { readSnapshot: readComposerSnapshot, replace: applyPromptReplacement };
+    return {
+      readSnapshot: () => {
+        const value = comment.read();
+        return value === null ? null : { value, expandedCursor: comment.caret() };
+      },
+      replace: (rangeStart, rangeEnd, replacement, options) => {
+        const value = comment.read();
+        if (value === null) return false;
+        if (
+          options?.expectedText !== undefined &&
+          value.slice(rangeStart, rangeEnd) !== options.expectedText
+        ) {
+          return false;
+        }
+        if (!comment.replace(rangeStart, rangeEnd, replacement)) return false;
+        closeCitationCommentMenu(comment);
+        if (options?.focusEditorAfterReplace !== false) comment.focus();
+        return true;
+      },
+    };
+  };
+  const closeCitationCommentMenu = (target: ComposerTextTarget) => {
+    if (commentMenuRef.current?.target !== target) return;
+    setCommentMenu(null);
+    setComposerTrigger(null);
   };
 
   /**
@@ -2076,7 +2152,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         replacement.length > 0
           ? extendReplacementRangeForTrailingSpace(prompt, trigger.rangeEnd, replacement)
           : trigger.rangeEnd;
-      const applied = applyPromptReplacement(trigger.rangeStart, replacementRangeEnd, replacement, {
+      const applied = menuTextEdit().replace(trigger.rangeStart, replacementRangeEnd, replacement, {
         expectedText: prompt.slice(trigger.rangeStart, replacementRangeEnd),
       });
       if (!applied) return;
@@ -2121,6 +2197,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     });
     const { snapshot, trigger } = resolveActiveComposerTrigger();
     if (!trigger) return;
+    const edit = menuTextEdit();
     if (item.type === "path") {
       if (!isPathSuggestionCurrent(item.searchTarget, trigger, environmentId, gitCwd)) return;
       const replacement = `${serializeComposerFileLink(item.path)} `;
@@ -2129,7 +2206,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         trigger.rangeEnd,
         replacement,
       );
-      const applied = applyPromptReplacement(trigger.rangeStart, replacementRangeEnd, replacement, {
+      const applied = edit.replace(trigger.rangeStart, replacementRangeEnd, replacement, {
         expectedText: snapshot.value.slice(trigger.rangeStart, replacementRangeEnd),
       });
       if (applied) {
@@ -2139,7 +2216,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }
     if (item.type === "thread-tab") {
       if (!captureThreadTabContext) return;
-      const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
+      const applied = edit.replace(trigger.rangeStart, trigger.rangeEnd, "", {
         expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
       });
       if (!applied) return;
@@ -2148,13 +2225,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       // wherever it is by then.
       captureThreadTabContext.capture(item.threadId, item.label).then(
         (reference) => {
-          const current = readComposerSnapshot();
-          const edit = inlineContextReferenceReplacement(
+          const current = edit.readSnapshot();
+          if (!current) return;
+          const change = inlineContextReferenceReplacement(
             current.value,
             { start: current.expandedCursor, end: current.expandedCursor },
             [reference],
           );
-          applyPromptReplacement(edit.start, edit.end, edit.text);
+          edit.replace(change.start, change.end, change.text);
         },
         (cause: unknown) => {
           toastManager.add({
@@ -2168,7 +2246,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }
     if (item.type === "slash-command") {
       if (item.command === "model") {
-        const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
+        const applied = edit.replace(trigger.rangeStart, trigger.rangeEnd, "", {
           expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
           focusEditorAfterReplace: false,
         });
@@ -2180,18 +2258,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       }
       if (item.command === "side" || item.command === "btw") {
         if (props.sideChatDisabledReason) return;
-        const applied = applyPromptReplacement(
-          trigger.rangeStart,
-          trigger.rangeEnd,
-          `/${item.command} `,
-          { expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd) },
-        );
+        const applied = edit.replace(trigger.rangeStart, trigger.rangeEnd, `/${item.command} `, {
+          expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
+        });
         if (applied) setComposerHighlightedItemId(null);
         return;
       }
       if (!planModeUiEnabled) return;
       void handleInteractionModeChange(item.command === "plan" ? "plan" : "default");
-      const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
+      const applied = edit.replace(trigger.rangeStart, trigger.rangeEnd, "", {
         expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
       });
       if (applied) {
@@ -2201,7 +2276,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }
     if (item.type === "provider-slash-command") {
       if (item.command.name === USAGE_LIMITS_COMMAND.name && onUsageLimitsCommand) {
-        const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
+        const applied = edit.replace(trigger.rangeStart, trigger.rangeEnd, "", {
           expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
           focusEditorAfterReplace: false,
         });
@@ -2217,7 +2292,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         trigger.rangeEnd,
         replacement,
       );
-      const applied = applyPromptReplacement(trigger.rangeStart, replacementRangeEnd, replacement, {
+      const applied = edit.replace(trigger.rangeStart, replacementRangeEnd, replacement, {
         expectedText: snapshot.value.slice(trigger.rangeStart, replacementRangeEnd),
       });
       if (applied) {
@@ -2232,7 +2307,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         trigger.rangeEnd,
         replacement,
       );
-      const applied = applyPromptReplacement(trigger.rangeStart, replacementRangeEnd, replacement, {
+      const applied = edit.replace(trigger.rangeStart, replacementRangeEnd, replacement, {
         expectedText: snapshot.value.slice(trigger.rangeStart, replacementRangeEnd),
       });
       if (applied) {
@@ -2264,7 +2339,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     if (item.type === "subagent") {
       if (trigger.kind !== "path") return;
       // The query text leaves first; the chip lands at the caret once its record resolves.
-      const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
+      const applied = edit.replace(trigger.rangeStart, trigger.rangeEnd, "", {
         expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
       });
       if (!applied) return;
@@ -2277,7 +2352,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }
     if (item.type === "model") {
       if (trigger.kind !== "path") return;
-      const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
+      const applied = edit.replace(trigger.rangeStart, trigger.rangeEnd, "", {
         expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
       });
       if (!applied) return;
@@ -2300,7 +2375,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         trigger.rangeEnd,
         replacement,
       );
-      const applied = applyPromptReplacement(trigger.rangeStart, replacementRangeEnd, replacement, {
+      const applied = edit.replace(trigger.rangeStart, replacementRangeEnd, replacement, {
         expectedText: snapshot.value.slice(trigger.rangeStart, replacementRangeEnd),
       });
       if (applied) {
@@ -2320,7 +2395,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         trigger.rangeEnd,
         replacement,
       );
-      const applied = applyPromptReplacement(trigger.rangeStart, replacementRangeEnd, replacement, {
+      const applied = edit.replace(trigger.rangeStart, replacementRangeEnd, replacement, {
         expectedText: snapshot.value.slice(trigger.rangeStart, replacementRangeEnd),
       });
       if (applied) {
@@ -2854,8 +2929,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const insertAttachmentReferences = (
     references: ReadonlyArray<ComposerContextReference>,
     selection?: { start: number; end: number },
+    target?: ComposerTextTarget,
   ): boolean => {
     if (references.length === 0) return false;
+    // A comment closed while its image compressed keeps the image in the strip, unreferenced.
+    if (target) {
+      return insertAtComposerTextTargetCaret(
+        target,
+        `${references.map(formatInlineContextReference).join(" ")} `,
+      );
+    }
     // Question answers carry attachments beside the answer, never as chips. Falling back to
     // the thread prompt here would hide the file behind a reference the question never shows.
     if (questionAttachmentTarget) return false;
@@ -2921,7 +3004,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   };
   const insertComposerTextAtEndStable = useStableCallback(insertComposerTextAtEnd);
 
-  const addComposerFolders = (folders: File[]) => {
+  const addComposerFolders = (folders: File[], textTarget?: ComposerTextTarget) => {
     const target = folderDropTarget({
       localEnvironmentDisabled: isLocalEnvironmentDisabled(),
       environmentId,
@@ -2946,9 +3029,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         });
         continue;
       }
-      const inserted = insertComposerTextAtEndStable(`${serializeComposerFileLink(path)} `, {
-        ensureLeadingBoundary: true,
-      });
+      const link = `${serializeComposerFileLink(path)} `;
+      const inserted = textTarget
+        ? insertAtComposerTextTargetCaret(textTarget, link)
+        : insertComposerTextAtEndStable(link, { ensureLeadingBoundary: true });
       if (!inserted) {
         toastManager.add({
           type: "error",
@@ -2958,7 +3042,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         break;
       }
     }
-    focusComposer();
+    if (!textTarget) focusComposer();
   };
   const addComposerFoldersStable = useStableCallback(addComposerFolders);
 
@@ -3006,12 +3090,105 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // The editor is memoized; fresh closures here re-render it on every parent
   // render, which during a stream is every delta.
   const onComposerPasteStable = useStableCallback(onComposerPaste);
+  // A citation comment takes pastes as the prompt does. Its files and images join the message's
+  // attachments, with their chips in the comment.
+  const onCitationCommentPaste = (
+    target: ComposerTextTarget,
+    event: React.ClipboardEvent<HTMLElement>,
+    pasteStart: number,
+  ) => {
+    const { files, folders } = splitTransferredFiles(event.clipboardData);
+    const plainText = event.clipboardData.getData("text/plain");
+    const keepAsText = consumePasteAsTextShortcut(pasteAsTextShortcutUntilRef);
+    if (
+      folders.length > 0 ||
+      (activeThreadId &&
+        files.length > 0 &&
+        shouldHandleComposerAttachmentPaste({ files, plainText }))
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (folders.length > 0) addComposerFoldersStable(folders, target);
+      if (files.length > 0) {
+        void addComposerAttachments(files, { skipImageInlineChip: keepAsText, target });
+      }
+      return;
+    }
+    if ((readPastedComposerContext(event.clipboardData)?.records.length ?? 0) > 0) return;
+    if (foldPastedText(plainText, keepAsText, undefined, target)) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    setTimeout(
+      () => convertPastedObjectLinksRef.current?.(plainText, keepAsText, pasteStart, target),
+      0,
+    );
+  };
+  const onCitationCommentPasteStable = useStableCallback(onCitationCommentPaste);
+  const onCitationCommentChange = (
+    target: ComposerTextTarget,
+    previous: string,
+    next: string,
+    expandedCursor: number,
+    anchor: HTMLElement | null,
+  ) => {
+    convertTypedObjectLinkRef.current?.(previous, next, expandedCursor, target);
+    if (anchor === null) return;
+    const trigger = citationCommentTrigger(next, expandedCursor);
+    // Resolved the way the prompt's is, so a menu dismissed with Escape stays shut for that token.
+    const current = commentMenuRef.current;
+    if (resolveComposerTrigger(trigger) === null) {
+      if (current?.target === target) setCommentMenu(null);
+    } else if (current?.target !== target || current.anchor !== anchor) {
+      setCommentMenu({ target, anchor });
+    }
+    setComposerTrigger(trigger);
+  };
+  const onCitationCommentChangeStable = useStableCallback(onCitationCommentChange);
+  const onCitationCommentKey = (target: ComposerTextTarget, key: string, event: KeyboardEvent) => {
+    if (commentMenuRef.current?.target !== target) return false;
+    return handleComposerMenuKey(key, event, {
+      open: composerMenuOpenRef.current,
+      trigger: resolveActiveComposerTrigger().trigger,
+      submissionIntent: null,
+      items: composerMenuItemsRef.current,
+      activeItem: activeComposerMenuItemRef.current,
+      dismiss: (dismissed) => {
+        dismissComposerTrigger(dismissed);
+        setCommentMenu(null);
+        setReferenceSelection(null);
+      },
+      nudge: nudgeComposerMenuHighlight,
+      commitReferenceSelection,
+      select: onSelectComposerItem,
+    });
+  };
+  const onCitationCommentKeyStable = useStableCallback(onCitationCommentKey);
+  const onCitationCommentOpen = (target: ComposerTextTarget) => {
+    openCitationCommentRef.current = target;
+    // A menu the prompt left open would otherwise sit over the comment.
+    if (commentMenuRef.current === null) setComposerTrigger(null);
+    return () => {
+      if (openCitationCommentRef.current === target) openCitationCommentRef.current = null;
+      closeCitationCommentMenu(target);
+    };
+  };
+  const onCitationCommentOpenStable = useStableCallback(onCitationCommentOpen);
+  const isCitationCommentPathQueryActiveStable = useStableCallback(
+    (target: ComposerTextTarget) =>
+      commentMenuRef.current?.target === target &&
+      resolveActiveComposerTrigger().trigger?.kind === "path",
+  );
+  // Chips that load later, such as an issue picked from `#`, land in an open citation comment.
   const insertContextReferencesAtCaret = (
     references: ReadonlyArray<ComposerContextReference>,
-  ): boolean =>
-    insertComposerText(`${references.map(formatInlineContextReference).join(" ")} `, "cursor", {
-      ensureLeadingBoundary: true,
-    });
+  ): boolean => {
+    const text = `${references.map(formatInlineContextReference).join(" ")} `;
+    const comment = openCitationCommentRef.current;
+    if (comment && insertAtComposerTextTargetCaret(comment, text)) return true;
+    return insertComposerText(text, "cursor", { ensureLeadingBoundary: true });
+  };
   const insertContextReferencesAtCaretStable = useStableCallback(insertContextReferencesAtCaret);
   const setContextInsertionHandler = useComposerDraftStore(
     (store) => store.setContextInsertionHandler,
@@ -3021,30 +3198,53 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     return setContextInsertionHandler(composerDraftTarget, insertContextReferencesAtCaretStable);
   }, [composerDraftTarget, insertContextReferencesAtCaretStable, setContextInsertionHandler]);
 
+  const insertDroppedPullRequest = (
+    pullRequest: PullRequestContextMetadata,
+    insert: (text: string) => boolean,
+  ) => {
+    const comment = buildPullRequestReferenceContext(pullRequest);
+    const inserted = insert(
+      `${formatInlineContextReference(reviewCommentContextReference(comment))} `,
+    );
+    if (inserted) {
+      addComposerDraftReviewComment(composerDraftTarget, comment, { appendReference: false });
+    }
+    return inserted;
+  };
+  const onDropInsertRejected = () => {
+    toastManager.add({
+      type: "error",
+      title: "Unable to add to chat",
+      description: "The composer is busy; try again once it is ready.",
+    });
+  };
   // Capture drops before the editor; mention handlers own native propagation and moves.
   const composerMentionDragHandlers = makeComposerMentionDragHandlers({
     insertMentionAtEnd: (text) =>
       insertComposerTextAtEndStable(text, { ensureLeadingBoundary: true }),
-    insertPullRequestAtEnd: (pullRequest) => {
-      const comment = buildPullRequestReferenceContext(pullRequest);
-      const inserted = insertComposerTextAtEndStable(
-        `${formatInlineContextReference(reviewCommentContextReference(comment))} `,
-        { ensureLeadingBoundary: true },
-      );
-      if (inserted) {
-        addComposerDraftReviewComment(composerDraftTarget, comment, { appendReference: false });
-      }
-      return inserted;
-    },
+    insertPullRequestAtEnd: (pullRequest) =>
+      insertDroppedPullRequest(pullRequest, (text) =>
+        insertComposerTextAtEndStable(text, { ensureLeadingBoundary: true }),
+      ),
     setDragActive: setIsDragOverComposer,
-    onInsertRejected: () => {
-      toastManager.add({
-        type: "error",
-        title: "Unable to add to chat",
-        description: "The composer is busy; try again once it is ready.",
-      });
-    },
+    onInsertRejected: onDropInsertRejected,
   });
+  // A drop on an open citation comment lands in it, as the same drop on the prompt lands there.
+  const citationCommentDropHost = (target: ComposerTextTarget): CitationCommentDropHost => {
+    const insertAtEnd = (text: string) => {
+      if (!insertAtComposerTextTargetEnd(target, text)) return false;
+      target.focus();
+      return true;
+    };
+    return {
+      addFiles: (files) => void addComposerAttachments(files, { target }),
+      addFolders: (folders) => addComposerFoldersStable(folders, target),
+      insertMentionAtEnd: insertAtEnd,
+      insertPullRequestAtEnd: (pullRequest) => insertDroppedPullRequest(pullRequest, insertAtEnd),
+      onInsertRejected: onDropInsertRejected,
+    };
+  };
+  const citationCommentDropHostStable = useStableCallback(citationCommentDropHost);
 
   const attachDroppedThreadFile = useEffectEvent((file: File) => addComposerAttachments([file]));
   const importDroppedThread = useEffectEvent(
@@ -3831,7 +4031,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   : ""}
               </div>
               {composerSuggestionsVisible && (
-                <ComposerCommandMenuLayer anchor={composerMenuAnchor}>
+                <ComposerCommandMenuLayer anchor={commentMenu?.anchor ?? composerMenuAnchor}>
                   <ComposerCommandMenu
                     listId={composerSuggestionListId}
                     items={composerMenuItems}
@@ -3897,7 +4097,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     ariaLabel={activeThread ? `Message ${activeThread.title}` : "Message"}
                     suggestionListId={composerSuggestionListId}
                     activeSuggestionId={
-                      composerSuggestionListVisible && activeComposerMenuItem
+                      composerSuggestionListVisible && activeComposerMenuItem && !commentMenu
                         ? composerSuggestionOptionId(
                             composerSuggestionListId,
                             activeComposerMenuItem.id,
@@ -3941,6 +4141,28 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                           }
                         : undefined
                     }
+                    citationCommentInput={{
+                      onOpen: onCitationCommentOpenStable,
+                      onPaste: onCitationCommentPasteStable,
+                      onChange: onCitationCommentChangeStable,
+                      onCommandKey: onCitationCommentKeyStable,
+                      isPathQueryActive: isCitationCommentPathQueryActiveStable,
+                      dropHost: citationCommentDropHostStable,
+                      menu: commentMenu
+                        ? {
+                            targetKey: commentMenu.target.key,
+                            listId: composerSuggestionListId,
+                            activeItemId:
+                              composerSuggestionListVisible && activeComposerMenuItem
+                                ? composerSuggestionOptionId(
+                                    composerSuggestionListId,
+                                    activeComposerMenuItem.id,
+                                  )
+                                : undefined,
+                          }
+                        : null,
+                      loading: loadingObjectLinks,
+                    }}
                     onCitationDraftSave={saveCitationDraftToPromptStable}
                     onPaste={onComposerPasteStable}
                     placeholder={

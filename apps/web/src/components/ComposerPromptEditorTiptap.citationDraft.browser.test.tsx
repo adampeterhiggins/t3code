@@ -3,6 +3,10 @@ import {
   serializeAssistantCitation,
   withAssistantCitationComment,
 } from "@t3tools/shared/assistantCitations";
+import {
+  formatComposerContextReference,
+  threadContextRecord,
+} from "@t3tools/shared/composerContextReferences";
 import { createRef, useState } from "react";
 import { expect, it, vi } from "vite-plus/test";
 
@@ -32,12 +36,14 @@ function Composer({
   question,
   editorRef,
   onCitationSubmitAndSend,
+  initialPrompt = promptBefore,
 }: {
   question: boolean;
   editorRef: React.RefObject<ComposerPromptEditorHandle | null>;
   onCitationSubmitAndSend?: (citationText: string) => Promise<boolean>;
+  initialPrompt?: string;
 }) {
-  const [prompt, setPrompt] = useState(promptBefore);
+  const [prompt, setPrompt] = useState(initialPrompt);
   const [answer, setAnswer] = useState("");
   return (
     <>
@@ -145,10 +151,40 @@ it("keeps the commented citation in the composer when its send fails", async () 
   );
   await openCitationComment(editorRef);
 
-  await act(async () => userEvent.keyboard("{Enter}"));
+  await userEvent.keyboard("{Enter}");
 
   expect(send).toHaveBeenCalledOnce();
   expect(screen.container.querySelector("output")?.dataset.prompt).toBe(
     `See ${serializeAssistantCitation(withAssistantCitationComment(citation, "check this"))} `,
+  );
+});
+
+it("edits a comment's chips in the composer's own editor", async () => {
+  localStorage.removeItem("t3code:citation-comment-submit:v1");
+  const chip = formatComposerContextReference(
+    threadContextRecord(
+      { environmentId: citation.environmentId, threadId: ThreadId.make("linked") },
+      "Linked thread",
+    ),
+  );
+  const commented = withAssistantCitationComment(citation, `Compare ${chip}`);
+  const editorRef = createRef<ComposerPromptEditorHandle>();
+  await using screen = await render(
+    <Composer
+      question={false}
+      editorRef={editorRef}
+      initialPrompt={`See ${serializeAssistantCitation(commented)} `}
+    />,
+  );
+
+  await page.getByLabelText("Edit citation comment").click();
+  const comment = page.getByLabelText("Comment on selected text");
+  await expect.element(comment.getByText("Linked thread")).toBeVisible();
+  // The panel focuses the comment with its caret after the chip.
+  await expect.element(comment).toHaveFocus();
+  await userEvent.keyboard(" too{Enter}");
+
+  expect(screen.container.querySelector("output")?.dataset.prompt).toBe(
+    `See ${serializeAssistantCitation(withAssistantCitationComment(citation, `Compare ${chip} too`))} `,
   );
 });

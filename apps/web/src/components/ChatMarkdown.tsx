@@ -1353,7 +1353,13 @@ const CHAT_MARKDOWN_COMPONENTS = {
     const text = use(ChatMarkdownTextContext);
     const citation = href ? parseAssistantCitationHref(href) : null;
     if (citation) {
-      return <AssistantCitationChip citation={citation} currentThreadId={threadRef?.threadId} />;
+      return (
+        <AssistantCitationChip
+          citation={citation}
+          currentThreadId={threadRef?.threadId}
+          renderContextReference={renderContextReference}
+        />
+      );
     }
     const threadLink = href ? parseThreadLinkHref(href) : null;
     if (threadLink) {

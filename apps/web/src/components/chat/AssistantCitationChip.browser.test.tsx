@@ -6,7 +6,7 @@ import {
   ProviderInstanceId,
   ThreadId,
 } from "@t3tools/contracts";
-import { useState, type ReactNode } from "react";
+import { useImperativeHandle, useRef, useState, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
@@ -40,7 +40,10 @@ vi.mock(import("@tanstack/react-router"), async (importOriginal) => ({
 }));
 
 import { AssistantCitationChip } from "./AssistantCitationChip";
-import type { AssistantCitationDestinations } from "./AssistantCitationCommentEditor";
+import type {
+  AssistantCitationDestinations,
+  CitationCommentInputProps,
+} from "./AssistantCitationCommentEditor";
 
 const citation = {
   version: 1 as const,
@@ -69,6 +72,26 @@ function setup() {
   return { sourceAnchor, [Symbol.dispose]: () => source.remove() };
 }
 
+// The composer supplies its editor as the field; these tests drive the panel around it.
+function CommentTextarea(props: CitationCommentInputProps) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useImperativeHandle(props.inputRef, () => ({ focus: () => ref.current?.focus() }));
+  return (
+    <textarea
+      ref={ref}
+      aria-label={props.ariaLabel}
+      aria-invalid={props.invalid || undefined}
+      value={props.value}
+      onChange={(event) => props.onChange(event.currentTarget.value)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" && !event.shiftKey && props.onEnter(event.nativeEvent)) {
+          event.preventDefault();
+        }
+      }}
+    />
+  );
+}
+
 function mount(
   sourceAnchor: AssistantCitationSourceAnchor,
   onSave: (comment: string) => boolean,
@@ -86,6 +109,7 @@ function mount(
           sourceAnchor,
           onOpenChange: setOpen,
           onSave,
+          renderInput: (input) => <CommentTextarea {...input} />,
           ...(onSaveAndSend ? { onSaveAndSend } : {}),
           ...(destinations ? { destinations } : {}),
         }}
