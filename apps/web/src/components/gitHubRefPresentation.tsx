@@ -1,11 +1,13 @@
-import { parseGitHubRefUrl, type GitHubRefType } from "@t3tools/contracts";
-import { GitBranchIcon, GitCommitHorizontalIcon, TagIcon } from "lucide-react";
+import { parseGitHubRefUrl, type GitHubRefLink, type GitHubRefType } from "@t3tools/contracts";
+import { CirclePlayIcon, GitBranchIcon, GitCommitHorizontalIcon, TagIcon } from "lucide-react";
 
 const GITHUB_REF_TYPE_LABELS: Record<GitHubRefType, string> = {
   release: "Release",
   tag: "Tag",
   branch: "Branch",
   commit: "Commit",
+  "workflow-run": "Workflow run",
+  "workflow-job": "Workflow job",
 };
 
 export function gitHubRefTypeLabel(refType: GitHubRefType): string {
@@ -17,7 +19,7 @@ export function gitHubRefKindLabel(refType: GitHubRefType): string {
   return `GitHub ${GITHUB_REF_TYPE_LABELS[refType].toLowerCase()}`;
 }
 
-/** GitHub's own glyphs: a release is drawn as the tag it publishes. */
+/** GitHub's own glyphs: a release is drawn as the tag it publishes, Actions as a play button. */
 export function GitHubRefIcon({
   refType,
   className,
@@ -33,6 +35,9 @@ export function GitHubRefIcon({
       return <GitBranchIcon className={className} />;
     case "commit":
       return <GitCommitHorizontalIcon className={className} />;
+    case "workflow-run":
+    case "workflow-job":
+      return <CirclePlayIcon className={className} />;
   }
 }
 
@@ -43,6 +48,19 @@ export function GitHubRefIcon({
 export function gitHubRefTypeFromUrl(url: string): GitHubRefType | null {
   const link = parseGitHubRefUrl(url);
   if (link === null) return null;
-  if (link.linkType === "tree") return link.ref.includes("/") ? null : "branch";
-  return link.linkType;
+  return gitHubRefTypeFromLink(link);
+}
+
+/** The ref kind a parsed link shows before it is read. */
+export function gitHubRefTypeFromLink(link: GitHubRefLink): GitHubRefType | null {
+  switch (link.linkType) {
+    case "tree":
+      return link.ref.includes("/") ? null : "branch";
+    case "run":
+      return "workflow-run";
+    case "job":
+      return "workflow-job";
+    default:
+      return link.linkType;
+  }
 }

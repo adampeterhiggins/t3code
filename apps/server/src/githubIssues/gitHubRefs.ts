@@ -109,7 +109,7 @@ function commitFacts(commit: CommitJson, label: string): string[] {
 }
 
 function render(header: string, url: string, facts: string[], body: string, maxChars: number) {
-  const head = [header, url, "", ...facts].join("\n");
+  const head = [header, url, "", ...facts.map((fact) => `- ${fact}`)].join("\n");
   const text = body.trim();
   return truncate(text.length === 0 ? head : `${head}\n\n${text}`, maxChars);
 }
@@ -192,5 +192,143 @@ export function toGitHubRefContext(
       commit.message,
       maxChars,
     ),
+  };
+}
+
+const StepJson = Schema.Struct({
+  name: Schema.String,
+  status: Schema.String,
+  conclusion: Schema.NullishOr(Schema.String),
+});
+
+export const GitHubActionsJob = Schema.Struct({
+  id: Schema.Number,
+  run_id: Schema.Number,
+  name: Schema.String,
+  workflow_name: Schema.NullishOr(Schema.String),
+  html_url: Schema.NullishOr(Schema.String),
+  status: Schema.String,
+  conclusion: Schema.NullishOr(Schema.String),
+  head_branch: Schema.NullishOr(Schema.String),
+  head_sha: Schema.String,
+  run_attempt: Schema.optional(Schema.Number),
+  started_at: Schema.NullishOr(Schema.String),
+  completed_at: Schema.NullishOr(Schema.String),
+  steps: Schema.optional(Schema.Array(StepJson)),
+});
+type GitHubActionsJobJson = typeof GitHubActionsJob.Type;
+
+export const GitHubActionsRun = Schema.Struct({
+  id: Schema.Number,
+  name: Schema.NullishOr(Schema.String),
+  display_title: Schema.NullishOr(Schema.String),
+  run_number: Schema.Number,
+  run_attempt: Schema.optional(Schema.Number),
+  event: Schema.String,
+  status: Schema.NullishOr(Schema.String),
+  conclusion: Schema.NullishOr(Schema.String),
+  head_branch: Schema.NullishOr(Schema.String),
+  head_sha: Schema.String,
+  html_url: Schema.String,
+  created_at: Schema.String,
+  run_started_at: Schema.optional(Schema.NullishOr(Schema.String)),
+  actor: Schema.NullishOr(Schema.Struct({ login: Schema.String })),
+  pull_requests: Schema.optional(Schema.Array(Schema.Struct({ number: Schema.Number }))),
+});
+type GitHubActionsRunJson = typeof GitHubActionsRun.Type;
+
+export const GitHubActionsRunJobs = Schema.Struct({ jobs: Schema.Array(GitHubActionsJob) });
+
+/** `failure`, or `in_progress` while it has no conclusion yet. */
+function outcome(item: {
+  readonly status?: string | null | undefined;
+  readonly conclusion?: string | null | undefined;
+}): string {
+  return (item.conclusion ?? item.status ?? "unknown").replaceAll("_", " ");
+}
+
+function failedSteps(job: GitHubActionsJobJson): string[] {
+  return (job.steps ?? []).filter((step) => step.conclusion === "failure").map((step) => step.name);
+}
+
+function jobLine(job: GitHubActionsJobJson): string {
+  const failed = failedSteps(job);
+  const name = job.html_url ? `[${job.name}](${job.html_url})` : job.name;
+  return `- ${name}: ${outcome(job)}${failed.length === 0 ? "" : ` (failed: ${failed.join(", ")})`}`;
+}
+
+/** A workflow run with the outcome of each of its jobs. */
+export function toGitHubActionsRunContext(
+  link: GitHubRefLink,
+  url: string,
+  run: GitHubActionsRunJson,
+  jobs: ReadonlyArray<GitHubActionsJobJson>,
+  maxChars: number,
+): GitHubRefContext {
+  const workflow = run.name?.trim() || "Workflow";
+  const title = `${workflow} #${run.run_number}`;
+  const date = run.run_started_at ?? run.created_at;
+  const pullRequests = (run.pull_requests ?? []).map((pr) => `#${pr.number}`);
+  const facts = [
+    ...(run.display_title ? [`Title: ${run.display_title}`] : []),
+    `Result: ${outcome(run)}`,
+    `Event: ${run.event}`,
+    ...(run.head_branch ? [`Branch: ${run.head_branch}`] : []),
+    `Commit: ${run.head_sha}`,
+    ...(pullRequests.length === 0 ? [] : [`Pull requests: ${pullRequests.join(", ")}`]),
+    ...(run.actor ? [`Triggered by: ${run.actor.login}`] : []),
+    ...((run.run_attempt ?? 1) > 1 ? [`Attempt: ${run.run_attempt}`] : []),
+    `Started: ${date}`,
+  ];
+  const body = jobs.length === 0 ? "" : ["## Jobs", ...jobs.map(jobLine)].join("\n");
+  return {
+    repository: link.repository,
+    refType: "workflow-run",
+    ref: String(run.id),
+    title,
+    url,
+    sha: run.head_sha,
+    authorLogin: run.actor?.login ?? null,
+    date,
+    isPrerelease: false,
+    markdown: render(`# ${link.repository} workflow run ${title}`, url, facts, body, maxChars),
+  };
+}
+
+/** One job of a workflow run with the outcome of each of its steps. */
+export function toGitHubActionsJobContext(
+  link: GitHubRefLink,
+  url: string,
+  job: GitHubActionsJobJson,
+  maxChars: number,
+): GitHubRefContext {
+  const title = job.workflow_name ? `${job.workflow_name} / ${job.name}` : job.name;
+  const failed = failedSteps(job);
+  const facts = [
+    `Result: ${outcome(job)}`,
+    ...(failed.length === 0 ? [] : [`Failed steps: ${failed.join(", ")}`]),
+    ...(job.head_branch ? [`Branch: ${job.head_branch}`] : []),
+    `Commit: ${job.head_sha}`,
+    `Run: https://github.com/${link.repository}/actions/runs/${job.run_id}`,
+    ...((job.run_attempt ?? 1) > 1 ? [`Attempt: ${job.run_attempt}`] : []),
+    ...(job.started_at ? [`Started: ${job.started_at}`] : []),
+    ...(job.completed_at ? [`Completed: ${job.completed_at}`] : []),
+  ];
+  const steps = job.steps ?? [];
+  const body =
+    steps.length === 0
+      ? ""
+      : ["## Steps", ...steps.map((step) => `- ${step.name}: ${outcome(step)}`)].join("\n");
+  return {
+    repository: link.repository,
+    refType: "workflow-job",
+    ref: String(job.id),
+    title,
+    url,
+    sha: job.head_sha,
+    authorLogin: null,
+    date: job.started_at ?? null,
+    isPrerelease: false,
+    markdown: render(`# ${link.repository} workflow job ${title}`, url, facts, body, maxChars),
   };
 }

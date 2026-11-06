@@ -539,8 +539,8 @@ export const PromptLinkContextRecord = Schema.Struct({
 export type PromptLinkContextRecord = typeof PromptLinkContextRecord.Type;
 
 /**
- * Fork: a GitHub release, tag, branch, or commit, with its release notes or commit message as
- * read when the chip was inserted.
+ * Fork: a GitHub release, tag, branch, commit, or Actions run or job, with its release notes,
+ * commit message, or run summary as read when the chip was inserted.
  */
 export const GitHubRefContextRecord = Schema.Struct({
   ...recordBase,

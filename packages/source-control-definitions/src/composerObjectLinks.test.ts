@@ -73,8 +73,19 @@ describe("parseComposerObjectLink", () => {
       linkType: "commit",
       ref: "ad4eeea",
     });
-    // Release lists, commit lists, and enterprise hosts stay links.
+    expect(
+      parseComposerObjectLink(
+        "https://github.com/focaldata/cin-iac-manual/actions/runs/42188779869/job/127795366523?pr=482",
+      ),
+    ).toMatchObject({ kind: "github-ref", linkType: "job", ref: "127795366523" });
+    expect(
+      parseComposerObjectLink("https://github.com/acme/api/actions/runs/42188779869/attempts/2"),
+    ).toMatchObject({ kind: "github-ref", linkType: "run", ref: "42188779869" });
+    // Release lists, commit lists, workflow pages, and enterprise hosts stay links.
     expect(parseComposerObjectLink("https://github.com/acme/api/releases")).toBeNull();
+    expect(
+      parseComposerObjectLink("https://github.com/acme/api/actions/workflows/ci.yml"),
+    ).toBeNull();
     expect(parseComposerObjectLink("https://github.com/acme/api/commits/main")).toBeNull();
     expect(parseComposerObjectLink("https://github.com/acme/api/commit/not-a-sha")).toBeNull();
     expect(parseComposerObjectLink("https://github.acme.com/acme/api/tree/main")).toBeNull();

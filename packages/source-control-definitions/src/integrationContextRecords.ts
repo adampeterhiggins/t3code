@@ -93,13 +93,15 @@ export function gitHubIssueContextRecord(issue: GitHubIssueContext): GitHubIssue
   };
 }
 
-/** `repo@v1.2.0`, `repo@main`, or `repo@abc1234`: the label a ref's chip shows. */
-function gitHubRefLabel(ref: {
-  readonly repository: string;
-  readonly refType: GitHubRefContext["refType"];
-  readonly ref: string;
-}): string {
+/**
+ * `repo@v1.2.0`, `repo@main`, or `repo@abc1234`: the label a ref's chip shows. An Actions run or
+ * job has no ref name worth reading, so it shows its workflow: `repo: ci / test`.
+ */
+function gitHubRefLabel(ref: GitHubRefContext): string {
   const name = ref.repository.split("/").at(-1) ?? ref.repository;
+  if (ref.refType === "workflow-run" || ref.refType === "workflow-job") {
+    return `${name}: ${ref.title}`;
+  }
   return `${name}@${ref.refType === "commit" ? ref.ref.slice(0, 7) : ref.ref}`;
 }
 
