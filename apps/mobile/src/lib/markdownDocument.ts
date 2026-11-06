@@ -361,9 +361,7 @@ export function markdownWithHtml(markdown: string, appearance: "light" | "dark" 
     }
   };
   visit(parser.parse(markdown), false, false);
-  for (const edit of edits.reverse())
-    markdown = markdown.slice(0, edit.start) + edit.content + markdown.slice(edit.end);
-  return markdown;
+  return applyMarkdownEdits(markdown, edits);
 }
 
 const BARE_URL = /https?:\/\/[^\s<>()[\]"'`]+/giu;

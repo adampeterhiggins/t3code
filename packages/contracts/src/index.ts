@@ -50,6 +50,7 @@ export * from "./githubRefs.ts";
 export * from "./contextRepositories.ts";
 export * from "./checkouts.ts";
 export * from "./projectClone.ts";
+export * from "./speech.ts";
 export * from "./pullRequest.ts";
 export * from "./pullRequestReviewGuide.ts";
 export * from "./orchestrationDispatch.ts";

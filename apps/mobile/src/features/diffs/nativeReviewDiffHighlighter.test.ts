@@ -8,23 +8,28 @@ import { highlightNativeReviewDiffVisibleRows } from "./nativeReviewDiffHighligh
 import { buildNativeReviewDiffData } from "../review/nativeReviewDiffAdapter";
 import { buildReviewParsedDiff } from "../review/reviewModel";
 
+vi.mock("../terminal/terminalTheme", () => ({ getMobileTerminalTheme: vi.fn() }));
+
 const tokenization = vi.hoisted(() => ({
   calls: [] as string[],
   afterCall: undefined as (() => void) | undefined,
 }));
 
-vi.mock("expo", async () => {
+vi.mock("react-native-nitro-modules", async () => {
   const { createWasmHighlightsModule } = await import("../../lib/highlights.testing");
   const module = createWasmHighlightsModule();
   return {
-    requireOptionalNativeModule: () => ({
-      tokenize(code: string, language: number) {
-        tokenization.calls.push(code);
-        const records = module.tokenize(code, language);
-        tokenization.afterCall?.();
-        return records;
-      },
-    }),
+    NitroModules: {
+      hasHybridObject: () => true,
+      createHybridObject: () => ({
+        tokenize(code: string, language: number) {
+          tokenization.calls.push(code);
+          const records = module.tokenize(code, language);
+          tokenization.afterCall?.();
+          return records;
+        },
+      }),
+    },
   };
 });
 

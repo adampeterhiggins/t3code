@@ -1,3 +1,4 @@
+import type { AppBarMenuItem } from "../../components/ui/AppBar.types";
 import type { EnvironmentId } from "@t3tools/contracts";
 
 import type { ThreadGroups } from "@t3tools/contracts/settings";
@@ -24,26 +25,7 @@ export function filterChoiceTitle(label: string, count: number | undefined): str
   return count === undefined ? label : `${label} (${count})`;
 }
 
-type HomeListFilterMenuAction = {
-  readonly type: "action";
-  readonly title: string;
-  readonly subtitle?: string;
-  readonly state?: "on" | "off";
-  readonly onPress: () => void;
-};
-
-type HomeListFilterMenuSubmenu = {
-  readonly type: "submenu";
-  readonly title: string;
-  readonly items: HomeListFilterMenuAction[];
-};
-
-export interface HomeListFilterMenu {
-  readonly title: string;
-  readonly items: Array<HomeListFilterMenuAction | HomeListFilterMenuSubmenu>;
-}
-
-export function buildHomeListFilterMenu(props: {
+export function buildHomeListFilterMenuItems(props: {
   readonly environments: ReadonlyArray<HomeListFilterMenuEnvironment>;
   readonly projects: ReadonlyArray<HomeListFilterMenuProject>;
   readonly selectedEnvironmentId: EnvironmentId | null;
@@ -65,27 +47,24 @@ export function buildHomeListFilterMenu(props: {
   readonly organisationKeys: ReadonlyArray<string>;
   readonly onToggleOrganisation: (key: string) => void;
   readonly onClearOrganisations: () => void;
-}): HomeListFilterMenu {
-  const items: Array<HomeListFilterMenuAction | HomeListFilterMenuSubmenu> = [];
+}): AppBarMenuItem[] {
+  const items: AppBarMenuItem[] = [];
 
   items.push({
-    type: "submenu",
+    id: "environment",
     title: "Environment",
     items: [
       {
-        type: "action",
+        id: "environment:all",
         title: "All environments",
         subtitle: "Show threads from every environment",
-        state: props.selectedEnvironmentId === null ? "on" : "off",
+        selected: props.selectedEnvironmentId === null,
         onPress: () => props.onEnvironmentChange(null),
       },
       ...props.environments.map((environment) => ({
-        type: "action" as const,
+        id: `environment:${environment.environmentId}`,
         title: filterChoiceTitle(environment.label, environment.count),
-        state:
-          props.selectedEnvironmentId === environment.environmentId
-            ? ("on" as const)
-            : ("off" as const),
+        selected: props.selectedEnvironmentId === environment.environmentId,
         onPress: () => props.onEnvironmentChange(environment.environmentId),
       })),
     ],
@@ -93,22 +72,20 @@ export function buildHomeListFilterMenu(props: {
 
   if (props.organisations.length > 0) {
     items.push({
-      type: "submenu",
+      id: "organisations",
       title: "Organisations",
       items: [
         {
-          type: "action",
+          id: "organisation:all",
           title: "All organisations",
           subtitle: "Show threads from every organisation",
-          state: props.organisationKeys.length === 0 ? "on" : "off",
+          selected: props.organisationKeys.length === 0,
           onPress: props.onClearOrganisations,
         },
         ...props.organisations.map((organisation) => ({
-          type: "action" as const,
+          id: `organisation:${organisation.key}`,
           title: filterChoiceTitle(organisation.label, organisation.count),
-          state: props.organisationKeys.includes(organisation.key)
-            ? ("on" as const)
-            : ("off" as const),
+          selected: props.organisationKeys.includes(organisation.key),
           onPress: () => props.onToggleOrganisation(organisation.key),
         })),
       ],
@@ -117,20 +94,20 @@ export function buildHomeListFilterMenu(props: {
 
   if (props.projects.length > 0) {
     items.push({
-      type: "submenu",
+      id: "project",
       title: "Project",
       items: [
         {
-          type: "action",
+          id: "project:all",
           title: "All projects",
           subtitle: "Show threads from every project",
-          state: props.selectedProjectKey === null ? "on" : "off",
+          selected: props.selectedProjectKey === null,
           onPress: () => props.onProjectChange(null),
         },
         ...props.projects.map((project) => ({
-          type: "action" as const,
+          id: `project:${project.key}`,
           title: filterChoiceTitle(project.label, project.count),
-          state: props.selectedProjectKey === project.key ? ("on" as const) : ("off" as const),
+          selected: props.selectedProjectKey === project.key,
           onPress: () => props.onProjectChange(project.key),
         })),
       ],
@@ -139,26 +116,23 @@ export function buildHomeListFilterMenu(props: {
 
   // Multi-select: each page toggles; the last selected page stays on.
   items.push({
-    type: "submenu",
+    id: "show",
     title: "Show",
     items: [
       ...props.availablePages.map((page) => ({
-        type: "action" as const,
+        id: `page:${page}`,
         title: filterChoiceTitle(
           threadListPageLabel(page, props.groups),
           props.pageCounts?.get(page),
         ),
-        state: props.pages.includes(page) ? ("on" as const) : ("off" as const),
+        selected: props.pages.includes(page),
         onPress: () => props.onTogglePage(page),
       })),
       ...(props.onCreateGroup
-        ? [{ type: "action" as const, title: "New group…", onPress: props.onCreateGroup }]
+        ? [{ id: "new-group", title: "New group…", onPress: props.onCreateGroup }]
         : []),
     ],
   });
 
-  return {
-    title: "Thread list options",
-    items,
-  };
+  return items;
 }

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   detectComposerTrigger,
   pastedFilePathsAsComposerFileLinks,
+  parseSideChatCommand,
   serializeComposerFileLink,
 } from "./composerTrigger.ts";
 
@@ -130,5 +131,21 @@ describe("pastedFilePathsAsComposerFileLinks", () => {
     "",
   ])("leaves %j as text", (pasted) => {
     expect(pastedFilePathsAsComposerFileLinks(pasted)).toBeNull();
+  });
+});
+
+describe("parseSideChatCommand", () => {
+  it("reads an optional prompt after /side or /btw", () => {
+    expect(parseSideChatCommand("/side")).toEqual({ prompt: "" });
+    expect(parseSideChatCommand("  /SIDE  why does this fail?\nline two ")).toEqual({
+      prompt: "why does this fail?\nline two",
+    });
+    expect(parseSideChatCommand("/btw check @src/a.ts")).toEqual({ prompt: "check @src/a.ts" });
+  });
+
+  it("ignores other commands and inline mentions", () => {
+    expect(parseSideChatCommand("/sidebar")).toBeNull();
+    expect(parseSideChatCommand("/btwx")).toBeNull();
+    expect(parseSideChatCommand("ask /side later")).toBeNull();
   });
 });

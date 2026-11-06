@@ -3,18 +3,19 @@ import type {
   CheckoutContextRecord,
   ElementContextRecord,
   EnvironmentContextRecord,
-  EnvironmentId,
   PreviewAnnotationPayload,
   RepositoryContextRecord,
   ThreadContextRecord,
   ThreadTabContextRecord,
-  UnreadLinkContextRecord,
-  ModelContextRecord,
 } from "@t3tools/contracts";
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
 import { videoMimeType } from "@t3tools/shared/video";
 import { MessageCircleIcon, MousePointerClickIcon } from "lucide-react";
-import { createContext, type MouseEvent, type ReactElement, use } from "react";
+import { createContext, type ReactElement, use } from "react";
+import {
+  ComposerContextActionsContext,
+  type ComposerContextActions,
+} from "./composerContextActions";
 
 import type { ComposerFileAttachment, ComposerImageAttachment } from "~/composerDraftStore";
 import type { IssueContextRecord } from "~/issueContextStore";
@@ -100,33 +101,10 @@ export type ComposerContextChipEntry =
   | { kind: "skill"; record: ComposerSkillChipRecord }
   | { kind: "element"; record: ElementContextRecord };
 
-export interface ComposerContextActions {
-  environmentId: EnvironmentId | null;
-  cwd?: string | undefined;
-  expandImage: (imageId: string) => void;
-  expandVideo: (fileId: string) => void;
-  openFile: (fileId: string) => void;
-  openMention: (path: string) => void;
-  openPullRequest: (event: MouseEvent<HTMLElement>, url: string) => void;
-  openLink: (event: MouseEvent<HTMLElement>, url: string) => void;
-  retryUnreadLink: (record: UnreadLinkContextRecord) => void;
-  keepUnreadLinkAsText: (record: UnreadLinkContextRecord) => void;
-  /** Replaces a model chip's record, such as after its traits change. */
-  updateModelChip: (record: ModelContextRecord) => void;
-}
-
-export const ComposerContextActionsContext = createContext<ComposerContextActions>({
-  environmentId: null,
-  expandImage: () => {},
-  expandVideo: () => {},
-  openFile: () => {},
-  openMention: () => {},
-  openPullRequest: () => {},
-  openLink: () => {},
-  retryUnreadLink: () => {},
-  keepUnreadLinkAsText: () => {},
-  updateModelChip: () => {},
-});
+export {
+  ComposerContextActionsContext,
+  type ComposerContextActions,
+} from "./composerContextActions";
 
 export type ComposerDraftContextRecords = ReadonlyMap<string, ComposerDraftContextRecord>;
 

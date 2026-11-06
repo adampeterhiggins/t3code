@@ -35,7 +35,7 @@ import { PreviewOrb, PreviewPane } from "./appearance/sections/ThemeAppearanceSe
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
 import { leaveSettingsPage } from "./settings-navigation";
-import { workspaceHasColumns } from "../workspace/workspace-selection-store";
+import { workspaceHasColumns } from "../layout/workspace/workspace-selection-store";
 
 const APPEARANCE_OPTIONS = [
   { value: "light", label: "Light" },

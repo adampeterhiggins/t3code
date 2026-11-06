@@ -136,6 +136,8 @@ it("keeps the usage-limit reset time on the details hover", async () => {
       <ComposerBannerStack
         items={[
           usageLimitRecoveryBannerItem({
+            settled: false,
+            requestPending: false,
             errorCode: null,
             runId,
             resetAt,
@@ -202,6 +204,8 @@ it("offers one details button when the usage-limit title is clipped", async () =
         items={[
           {
             ...usageLimitRecoveryBannerItem({
+              settled: false,
+              requestPending: false,
               errorCode: null,
               runId,
               resetAt,

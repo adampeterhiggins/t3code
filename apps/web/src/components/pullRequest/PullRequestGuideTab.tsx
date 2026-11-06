@@ -18,6 +18,7 @@ import {
   usePendingReviewComments,
   usePullRequestReviewStore,
 } from "./pullRequestReviewStore";
+import type { PullRequestCompletionScope } from "./PullRequestMarkdownTextarea";
 
 export function PullRequestGuideTab({
   environmentId,
@@ -27,8 +28,9 @@ export function PullRequestGuideTab({
   active,
   canComment,
   rangeComments,
+  completionScope,
   onAskAboutLines,
-  canSaveAgentDraft,
+  canSaveAgentDraft = false,
   onAskAboutStop,
   onFinishReview,
   onOpenFile,
@@ -46,7 +48,8 @@ export function PullRequestGuideTab({
     | ((comment: ReviewCommentContext, request: string, delivery: PullRequestAgentDelivery) => void)
     | null;
   /** The agent's composer is an existing thread's, so a request can wait there as a draft. */
-  canSaveAgentDraft: boolean;
+  canSaveAgentDraft?: boolean;
+  completionScope: PullRequestCompletionScope | null;
   onAskAboutStop:
     | ((stop: PullRequestReviewGuideStop, index: number, question: string) => void)
     | null;
@@ -69,6 +72,7 @@ export function PullRequestGuideTab({
       : {
           canComment,
           rangeComments,
+          completionScope,
           pending,
           onComment: ({ path, oldPath, position, startPosition, body }) =>
             addComment(reviewKey, {

@@ -66,6 +66,7 @@ const makeTerminalManagerLayer = (overrides: TerminalOverrides) =>
     clear: () => Effect.void,
     close: () => Effect.void,
     closeIdle: () => Effect.void,
+    closeOnSettle: () => Effect.void,
     subscribe: () => Effect.succeed(() => undefined),
     subscribeMetadata: () => Effect.succeed(() => undefined),
     ...overrides,
@@ -116,6 +117,7 @@ describe("ProjectSetupScriptRunner", () => {
       yield* TestClock.adjust("3 seconds");
       expect(result).toMatchObject({ status: "started", scriptId: "default-setup" });
       expect(open).toHaveBeenCalledWith({
+        stopOnSettle: false,
         threadId: "thread-1",
         terminalId: "setup-default-setup",
         cwd: "/repo/worktrees/a",
@@ -349,6 +351,7 @@ describe("ProjectSetupScriptRunner", () => {
           async: true,
         });
         expect(open).toHaveBeenCalledWith({
+          stopOnSettle: false,
           threadId: "thread-1",
           terminalId: "setup-setup",
           cwd: "/repo/worktrees/a",
@@ -935,6 +938,7 @@ const makeHarness = Effect.fn(function* (options: {
       }),
     write: (input) => Queue.offer(writes, input.data).pipe(Effect.asVoid),
     closeIdle: () => Effect.void,
+    closeOnSettle: () => Effect.void,
   });
   const runner = yield* ProjectSetupScriptRunner.make.pipe(
     Effect.provide(

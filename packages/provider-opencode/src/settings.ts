@@ -4,6 +4,7 @@ import {
   makeBinaryPathSetting,
   makeProviderSettingsSchema,
   secretSetting,
+  SettingsSecretValue,
   TrimmedString,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -45,7 +46,7 @@ export const OpenCodeSettings = makeProviderSettingsSchema(
         },
       }),
     ),
-    serverPassword: TrimmedString.pipe(
+    serverPassword: SettingsSecretValue.pipe(
       secretSetting,
       Schema.withDecodingDefault(Effect.succeed("")),
       Schema.annotateKey({
