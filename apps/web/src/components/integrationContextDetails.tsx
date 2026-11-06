@@ -285,15 +285,24 @@ export function GitHubIssueDetails(props: {
 }
 
 /**
- * An attached GitHub release, tag, branch, or commit: the release notes or commit message the
- * agent received, with a link back to GitHub.
+ * An attached GitHub release, tag, branch, commit, or Actions run or job: what the agent received,
+ * with a link back to GitHub.
  */
 export function GitHubRefDetails(props: {
-  record: Pick<GitHubRefContextRecord, "repository" | "refType" | "ref" | "url" | "markdown">;
+  record: Pick<
+    GitHubRefContextRecord,
+    "repository" | "refType" | "ref" | "title" | "url" | "markdown"
+  >;
   onOpenLink: (event: MouseEvent<HTMLElement>, url: string) => void;
 }) {
   const { record } = props;
-  const name = record.refType === "commit" ? record.ref.slice(0, 7) : record.ref;
+  // A run or job id means nothing to a reader; its workflow name does.
+  const name =
+    record.refType === "commit"
+      ? record.ref.slice(0, 7)
+      : record.refType === "workflow-run" || record.refType === "workflow-job"
+        ? record.title
+        : record.ref;
   return (
     <div className="flex flex-col gap-2">
       <IssueDetailsHeader

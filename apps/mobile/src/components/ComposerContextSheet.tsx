@@ -54,6 +54,8 @@ const GITHUB_REF_TYPE_LABELS = {
   tag: "Tag",
   branch: "Branch",
   commit: "Commit",
+  "workflow-run": "Workflow run",
+  "workflow-job": "Workflow job",
 } as const;
 
 const THREAD_TAB_SUMMARY_ROLE_LABELS = {
@@ -513,9 +515,10 @@ export function ComposerContextSheet(props: {
                     {record.title}
                   </Text>
                   <Text className="text-sm text-foreground-muted">
-                    {record.repository}@
-                    {record.refType === "commit" ? record.ref.slice(0, 7) : record.ref} ·{" "}
-                    {GITHUB_REF_TYPE_LABELS[record.refType]}
+                    {record.refType === "workflow-run" || record.refType === "workflow-job"
+                      ? record.repository
+                      : `${record.repository}@${record.refType === "commit" ? record.ref.slice(0, 7) : record.ref}`}{" "}
+                    · {GITHUB_REF_TYPE_LABELS[record.refType]}
                   </Text>
                 </View>
                 {/^https?:\/\//i.test(record.url) ? (

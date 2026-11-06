@@ -21,7 +21,7 @@ import {
 /**
  * A link in composer text to something the composer can attach as a chip instead: a Linear
  * issue, project, document, or initiative, a GitHub issue, a pull request, a GitHub repository
- * root, a GitHub release, tag, branch, or commit, a Slack channel or message, a Discord message, a Notion page, a
+ * root, a GitHub release, tag, branch, commit, or Actions run or job, a Slack channel or message, a Discord message, a Notion page, a
  * Granola note, or a T3 Code prompt link.
  */
 export type ComposerObjectLink =
@@ -379,6 +379,9 @@ export function objectLinkLabel(url: string): string | null {
     case "github-ref":
       // A `tree` link with a slash may be a folder, which is not a ref; it keeps its URL.
       if (link.linkType === "tree" && link.ref.includes("/")) return null;
+      if (link.linkType === "run" || link.linkType === "job") {
+        return `${link.repository} ${link.linkType} ${link.ref}`;
+      }
       return `${link.repository}@${link.linkType === "commit" ? link.ref.slice(0, 7) : link.ref}`;
     case "github-issue": {
       const issue = parseGitHubIssueUrl(url);
@@ -424,7 +427,7 @@ const OBJECT_LINK_NOUNS: Record<ComposerObjectLink["kind"], string> = {
   "discord-message": "Discord message",
   "github-issue": "GitHub issue",
   "pull-request": "pull request",
-  "github-ref": "GitHub release, branch, tag, or commit",
+  "github-ref": "GitHub release, branch, tag, commit, or Actions run",
   "prompt-link": "T3 Code prompt link",
   repository: "repository",
 };

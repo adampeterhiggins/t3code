@@ -114,12 +114,17 @@ const PULL_REQUEST_CHIP_PRESENTATIONS = {
   closed: { accent: "#d55665", icon: "git-pull-request-closed" },
 } as const satisfies Record<string, ContextChipPresentation>;
 
-/** A release uses the tag it publishes; both native surfaces share the same glyph assets. */
+/**
+ * A release uses the tag it publishes; both native surfaces share the same glyph assets. An
+ * Actions run or job reuses the terminal glyph rather than shipping a new native asset.
+ */
 const GITHUB_REF_CHIP_ICONS = {
   release: "tag",
   tag: "tag",
   branch: "git-branch",
   commit: "git-commit-horizontal",
+  "workflow-run": "terminal",
+  "workflow-job": "terminal",
 } as const;
 
 /** A GitHub issue chip is green while open and purple once closed, the way GitHub colours it. */

@@ -19,7 +19,16 @@ import * as Schema from "effect/Schema";
 
 import { GitHubCli, type GitHubCliError } from "../sourceControl/GitHubCli.ts";
 import { renderGitHubIssueMarkdown } from "./gitHubIssueMarkdown.ts";
-import { GITHUB_REF_QUERY, GitHubRefResponse, toGitHubRefContext } from "./gitHubRefs.ts";
+import {
+  GITHUB_REF_QUERY,
+  GitHubActionsJob,
+  GitHubActionsRun,
+  GitHubActionsRunJobs,
+  GitHubRefResponse,
+  toGitHubActionsJobContext,
+  toGitHubActionsRunContext,
+  toGitHubRefContext,
+} from "./gitHubRefs.ts";
 
 const LIST_LIMIT = 50;
 const SUMMARY_FIELDS = "number,title,url,state,stateReason,author,assignees,labels,updatedAt";
@@ -63,6 +72,11 @@ const decodeSummaries = Schema.decodeUnknownEffect(
 );
 const decodeDetail = Schema.decodeUnknownEffect(Schema.fromJsonString(IssueDetailJson));
 const decodeRefResponse = Schema.decodeUnknownEffect(Schema.fromJsonString(GitHubRefResponse));
+const decodeActionsRun = Schema.decodeUnknownEffect(Schema.fromJsonString(GitHubActionsRun));
+const decodeActionsJob = Schema.decodeUnknownEffect(Schema.fromJsonString(GitHubActionsJob));
+const decodeActionsRunJobs = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(GitHubActionsRunJobs),
+);
 
 /** `NOT_PLANNED` reads as `not planned`; a reopened issue has no reason to show. */
 function stateReason(raw: string | null | undefined): string | null {
@@ -138,14 +152,17 @@ export class GitHubIssues extends Context.Service<
     readonly getIssueSummary: (
       input: GitHubGetIssueInput,
     ) => Effect.Effect<GitHubIssueSummary, GitHubIssueError>;
-    /** A release, tag, branch, or commit link, read through the same `gh` session as issues. */
+    /**
+     * A release, tag, branch, commit, or Actions run or job link, read through the same `gh`
+     * session as issues.
+     */
     readonly getRef: (
       input: GitHubGetRefInput,
     ) => Effect.Effect<GitHubRefContext, GitHubIssueError>;
   }
 >()("t3/githubIssues/GitHubIssues") {}
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const gh = yield* GitHubCli;
 
@@ -234,6 +251,33 @@ export const make = Effect.gen(function* () {
   const getRef = Effect.fn("github_issues.get_ref")(function* (input: GitHubGetRefInput) {
     const link = parseGitHubRefUrl(input.url);
     if (link === null) return yield* notFound();
+    const api = (path: string) => run(process.cwd(), ["api", `repos/${link.repository}/${path}`]);
+    if (link.linkType === "job") {
+      const job = yield* api(`actions/jobs/${link.ref}`).pipe(
+        Effect.flatMap((raw) => decodeActionsJob(raw).pipe(Effect.mapError(decodeError))),
+      );
+      return toGitHubActionsJobContext(link, input.url, job, GITHUB_REF_MARKDOWN_MAX_CHARS);
+    }
+    if (link.linkType === "run") {
+      const [runJson, jobs] = yield* Effect.all(
+        [
+          api(`actions/runs/${link.ref}`).pipe(
+            Effect.flatMap((raw) => decodeActionsRun(raw).pipe(Effect.mapError(decodeError))),
+          ),
+          api(`actions/runs/${link.ref}/jobs?per_page=100`).pipe(
+            Effect.flatMap((raw) => decodeActionsRunJobs(raw).pipe(Effect.mapError(decodeError))),
+          ),
+        ],
+        { concurrency: 2 },
+      );
+      return toGitHubActionsRunContext(
+        link,
+        input.url,
+        runJson,
+        jobs.jobs,
+        GITHUB_REF_MARKDOWN_MAX_CHARS,
+      );
+    }
     const [owner, name] = link.repository.split("/") as [string, string];
     const raw = yield* run(process.cwd(), [
       "api",

@@ -12,7 +12,7 @@ import { FolderGit2Icon, MessageSquareTextIcon } from "lucide-react";
 import { createRoot, type Root } from "react-dom/client";
 
 import { ContextChip, type ContextChipKind, ContextChipLabel } from "./ContextChip";
-import { GitHubRefIcon } from "./gitHubRefPresentation";
+import { GitHubRefIcon, gitHubRefTypeFromLink } from "./gitHubRefPresentation";
 import {
   DiscordIcon,
   GitHubIcon,
@@ -46,13 +46,7 @@ function loadingLinkIcon(link: ComposerObjectLink) {
     case "pull-request":
       return <PullRequestGlyph.pullRequest />;
     case "github-ref":
-      return (
-        <GitHubRefIcon
-          refType={
-            link.linkType === "tree" ? "branch" : link.linkType === "commit" ? "commit" : "release"
-          }
-        />
-      );
+      return <GitHubRefIcon refType={gitHubRefTypeFromLink(link) ?? "branch"} />;
     case "repository":
       return <FolderGit2Icon />;
     case "notion-page":

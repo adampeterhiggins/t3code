@@ -1603,8 +1603,9 @@ deleted chip stick. Mobile does not convert links.
 A bare link of one of those kinds that is still a link when the message renders, in any message on
 web, desktop, or mobile, shows its short name instead of the URL: `owner/repo#162` for a pull
 request or GitHub issue (with `L4-L14` appended for a link to lines), `ENG-123` for a Linear issue,
-`owner/repo` for a repository, and `owner/repo@<ref>` for a release, branch, tag, or commit (a
-`/tree/` link whose ref has a slash keeps its URL, since it may be a folder). It still opens,
+`owner/repo` for a repository, `owner/repo@<ref>` for a release, branch, tag, or commit (a
+`/tree/` link whose ref has a slash keeps its URL, since it may be a folder), and
+`owner/repo run <id>` or `owner/repo job <id>` for a GitHub Actions run or job. It still opens,
 previews, and copies as the full URL. Link text the writer chose is left alone. A bare Slack link
 is not one of these: it names the message only when Slack is on and connected (see
 [Slack messages and threads](#slack-messages-and-threads)).
@@ -1619,7 +1620,7 @@ Code: `packages/source-control-definitions/src/composerObjectLinks.ts`,
 
 On web and desktop, hovering a link in any message (an agent's reply included, whatever its link
 text) to something a chip could hold shows the card that chip would show. That covers Linear and
-GitHub issues, GitHub releases, branches, tags and commits, repositories, Notion pages, Granola
+GitHub issues, GitHub releases, branches, tags, commits, and Actions runs and jobs, repositories, Notion pages, Granola
 notes, Slack and Discord messages, and T3 Code prompt links. The link is read when it is hovered,
 through the same read and record a pasted copy of it would become, so an agent's link and your
 chip for the same thing look alike. A link whose integration is turned off, or that can't be read,

@@ -66,8 +66,55 @@ const refRepositories: Record<string, unknown> = {
   [SHA.slice(0, 7)]: { ...empty, object: commit(SHA, "Back off retries") },
 };
 
+const actionsJob = {
+  id: 7,
+  run_id: 5,
+  name: "plan (prod)",
+  workflow_name: "terraform",
+  html_url: "https://github.com/acme/app/actions/runs/5/job/7",
+  status: "completed",
+  conclusion: "failure",
+  head_branch: "feature/retry",
+  head_sha: SHA,
+  run_attempt: 1,
+  started_at: "2026-11-06T08:35:34Z",
+  completed_at: "2026-11-06T08:36:01Z",
+  steps: [
+    { name: "Plan", status: "completed", conclusion: "success" },
+    { name: "Surface plan failures", status: "completed", conclusion: "failure" },
+  ],
+};
+
+// What `gh api repos/acme/app/<path>` answers.
+const restResponses: Record<string, unknown> = {
+  "actions/jobs/7": actionsJob,
+  "actions/runs/5": {
+    id: 5,
+    name: "terraform",
+    display_title: "Back off retries",
+    run_number: 407,
+    run_attempt: 1,
+    event: "pull_request",
+    status: "completed",
+    conclusion: "failure",
+    head_branch: "feature/retry",
+    head_sha: SHA,
+    html_url: "https://github.com/acme/app/actions/runs/5",
+    created_at: "2026-11-06T08:35:31Z",
+    actor: { login: "ada" },
+    pull_requests: [{ number: 482 }],
+  },
+  "actions/runs/5/jobs?per_page=100": {
+    jobs: [actionsJob, { ...actionsJob, id: 8, name: "lint", conclusion: "success" }],
+  },
+};
+
 const execute: GitHubCli.GitHubCli["Service"]["execute"] = (input) => {
   calls.push(input.args);
+  const restPath = input.args[0] === "api" ? input.args[1]?.replace("repos/acme/app/", "") : null;
+  if (restPath && restPath in restResponses) {
+    return Effect.succeed(output(JSON.stringify(restResponses[restPath])));
+  }
   if (input.args[0] === "api") {
     const ref = input.args.find((arg) => arg.startsWith("ref="))?.slice(4) ?? "";
     return Effect.succeed(
@@ -230,6 +277,38 @@ layer("GitHubIssues", (it) => {
       assert.include(ref, { refType: "commit", ref: SHA, title: "Back off retries" });
       assert.include(ref.markdown, "Changes: 2 files, +12 −3");
       assert.include(ref.markdown, "Why it changed.");
+    }),
+  );
+
+  it.effect("reads an Actions run with its jobs, and a job with its failed step", () =>
+    Effect.gen(function* () {
+      const issues = yield* GitHubIssues.GitHubIssues;
+      const run = yield* issues.getRef({
+        url: "https://github.com/acme/app/actions/runs/5/attempts/1",
+      });
+      assert.include(run, {
+        refType: "workflow-run",
+        ref: "5",
+        title: "terraform #407",
+        sha: SHA,
+      });
+      assert.include(run.markdown, "Result: failure");
+      assert.include(run.markdown, "Pull requests: #482");
+      assert.include(
+        run.markdown,
+        "- [plan (prod)](https://github.com/acme/app/actions/runs/5/job/7): failure (failed: Surface plan failures)",
+      );
+      assert.include(
+        run.markdown,
+        "- [lint](https://github.com/acme/app/actions/runs/5/job/7): success",
+      );
+
+      const job = yield* issues.getRef({
+        url: "https://github.com/acme/app/actions/runs/5/job/7?pr=482",
+      });
+      assert.include(job, { refType: "workflow-job", ref: "7", title: "terraform / plan (prod)" });
+      assert.include(job.markdown, "Failed steps: Surface plan failures");
+      assert.include(job.markdown, "Run: https://github.com/acme/app/actions/runs/5");
     }),
   );
 });
