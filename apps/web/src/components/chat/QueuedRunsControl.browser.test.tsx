@@ -58,6 +58,8 @@ const baseProps = {
   onEditQueuedRun: () => undefined,
   onCancelEdit: () => undefined,
   timestampFormat: "locale",
+  markdownCwd: undefined,
+  skills: [],
   onOpenThread: () => undefined,
 } satisfies ComponentProps<typeof QueuedRunsControl>;
 
@@ -65,7 +67,7 @@ async function renderQueue(props: Partial<ComponentProps<typeof QueuedRunsContro
   return renderUi(<QueuedRunsControl {...baseProps} {...props} />);
 }
 
-it("previews assistant quotes as readable text and preserves the citation when editing", async () => {
+it("renders queued markdown and quotes like a sent message and preserves the citation when editing", async () => {
   setup();
   const quotedText = "Cache the parsed config per worktree.";
   const quote = serializeAssistantCitation({
@@ -79,7 +81,7 @@ it("previews assistant quotes as readable text and preserves the citation when e
     prefix: "",
     suffix: "",
   });
-  const quoteAndText = `${quote}\n\nWhy per worktree?`;
+  const quoteAndText = `${quote}\n\nWhy **per worktree**?\n\n` + "```\nprod/main.tf\n```\n";
   state.projection = { projection: { messages: [] } };
   state.workflow = {
     activeRun: { id: "run:active" },
@@ -100,10 +102,12 @@ it("previews assistant quotes as readable text and preserves the citation when e
   const onEditQueuedRun = vi.fn();
   await using _screen = await renderQueue({ onEditQueuedRun });
 
-  await expect.element(page.getByText(quotedText, { exact: true })).toBeVisible();
+  await expect.element(page.getByLabelText(/^Quoted assistant text:/).nth(1)).toBeVisible();
   await expect
-    .element(page.getByText(`${quotedText} Why per worktree?`, { exact: true }))
-    .toBeVisible();
+    .element(page.getByText("per worktree", { exact: true }))
+    .toHaveProperty("tagName", "STRONG");
+  await expect.element(page.getByText("prod/main.tf", { exact: true })).toBeVisible();
+  expect(page.getByText("```").elements()).toHaveLength(0);
 
   await page.getByRole("button", { name: "Edit queued message", exact: true }).nth(1).click();
   expect(onEditQueuedRun).toHaveBeenCalledExactlyOnceWith(

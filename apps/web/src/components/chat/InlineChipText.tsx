@@ -76,7 +76,7 @@ type Segment = {
 
 /**
  * One-line message text with references, mentions and quotes drawn as static label chips, for
- * previews with no records to open (queued messages). Chips have no hover previews: callers make
+ * previews with no records to open (draft rows). Chips have no hover previews: callers make
  * the whole line a tooltip trigger, where a chip's own preview could not be reached.
  */
 export function InlineChipText({
@@ -103,7 +103,7 @@ export function InlineChipText({
     ...collectComposerContextReferences(text).map((reference) => ({
       start: reference.start,
       end: reference.end,
-      kind: reference.kind in CHIP_ICONS ? (reference.kind as ContextChipKind) : "neutral",
+      kind: contextChipKind(reference.kind),
       label: hideImages && reference.kind === "image" ? "" : reference.label,
     })),
     ...collectAssistantCitations(text).map((match) => ({
@@ -131,22 +131,34 @@ export function InlineChipText({
           ) : null}
         </span>,
       );
-    } else if (segment.label) {
+    } else if (segment.label && segment.path !== undefined) {
       parts.push(
         <ContextChip key={segment.start} kind={segment.kind}>
-          {segment.path === undefined ? (
-            <>
-              {CHIP_ICONS[segment.kind]}
-              <ContextChipLabel>{segment.label}</ContextChipLabel>
-            </>
-          ) : (
-            <FileTagChipContent path={segment.path} label={segment.label} theme={resolvedTheme} />
-          )}
+          <FileTagChipContent path={segment.path} label={segment.label} theme={resolvedTheme} />
         </ContextChip>,
+      );
+    } else if (segment.label) {
+      parts.push(
+        <StaticContextChip key={segment.start} kind={segment.kind} label={segment.label} />,
       );
     }
     cursor = segment.end;
   }
   parts.push(text.slice(cursor));
   return <>{parts}</>;
+}
+
+function contextChipKind(kind: string): ContextChipKind {
+  return kind in CHIP_ICONS ? (kind as ContextChipKind) : "neutral";
+}
+
+/** A reference's label chip with no record behind it, for text whose context is not resolved. */
+export function StaticContextChip(props: { kind: string; label: string }) {
+  const kind = contextChipKind(props.kind);
+  return (
+    <ContextChip kind={kind}>
+      {CHIP_ICONS[kind]}
+      <ContextChipLabel>{props.label}</ContextChipLabel>
+    </ContextChip>
+  );
 }

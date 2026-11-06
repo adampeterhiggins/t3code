@@ -2,7 +2,8 @@ import { useAtomValue } from "@effect/atom-react";
 import { readLocalApi } from "../../localApi";
 import { messageDraftEnvironment } from "../../state/messageDrafts";
 import { useMessageDraftActions } from "./useMessageDraftActions";
-import { InlineChipText } from "./InlineChipText";
+import { StaticContextChip } from "./InlineChipText";
+import ChatMarkdown, { type ChatMarkdownContextReference } from "../ChatMarkdown";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { deriveThreadQueueWorkflowState } from "@t3tools/client-runtime/state/thread-workflows";
 import { assistantCitationsToPlainText } from "@t3tools/shared/assistantCitations";
@@ -12,6 +13,7 @@ import {
 } from "@t3tools/shared/composerContextReferences";
 import type {
   ChatAttachment as ContractChatAttachment,
+  ServerProviderSkill,
   EnvironmentId,
   MessageId,
   RunId,
@@ -49,7 +51,7 @@ import { Button, InlineButton } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { GuestMessageName } from "./guestMessageStyle";
-import { TimelineRowTimestamp } from "./TimelineRowParts";
+import { MESSAGE_HEADING_LEVEL, TimelineRowTimestamp } from "./TimelineRowParts";
 import { FoldedMessageHeader, useScheduledTaskTitle } from "./TimelineUserMessageRow";
 
 export interface EditQueuedRunRequest {
@@ -104,6 +106,8 @@ export function QueuedRunsControl({
   readonly onEditQueuedRun: (request: EditQueuedRunRequest) => void;
   readonly onCancelEdit: () => void;
   readonly timestampFormat: TimestampFormat;
+  readonly markdownCwd: string | undefined;
+  readonly skills: ReadonlyArray<ServerProviderSkill>;
   readonly onOpenThread: (threadId: ThreadId) => void;
 }) {
   const projection = useThreadProjection(
@@ -358,8 +362,12 @@ export function QueuedRunsControl({
             >
               <QueuedMessage
                 environmentId={props.environmentId}
+                threadId={props.threadId}
                 message={item.message}
+                text={isAttachmentOnlyBootstrapPrompt(item.text) ? "" : item.text}
                 previewText={previewText}
+                markdownCwd={props.markdownCwd}
+                skills={props.skills}
                 thumbnails={item.thumbnails}
                 isEditing={isEditing}
                 timestampFormat={props.timestampFormat}
@@ -496,8 +504,13 @@ type QueuedRunMessage = NonNullable<ThreadQueueProjection["messages"][number]>;
 /** A queued turn wears its sent form's attribution; only the dashed edge and controls differ. */
 function QueuedMessage(props: {
   readonly environmentId: EnvironmentId;
+  readonly threadId: ThreadId;
   readonly message: QueuedRunMessage | undefined;
+  /** Markdown as written; `previewText` is its plain one-line form for summaries. */
+  readonly text: string;
   readonly previewText: string;
+  readonly markdownCwd: string | undefined;
+  readonly skills: ReadonlyArray<ServerProviderSkill>;
   readonly thumbnails: ReadonlyArray<QueuedRowThumbnail>;
   readonly isEditing: boolean;
   readonly timestampFormat: TimestampFormat;
@@ -530,6 +543,11 @@ function QueuedMessage(props: {
           }
         : null;
   const bodyVisible = fold === null || expanded;
+  // Queued context has no timeline records to open, so references draw as label chips.
+  const renderContextReference = (reference: ChatMarkdownContextReference) =>
+    reference.kind === "image" && props.thumbnails.length > 0 ? null : (
+      <StaticContextChip kind={reference.kind} label={reference.label} />
+    );
 
   return (
     <>
@@ -590,13 +608,18 @@ function QueuedMessage(props: {
             ) : null}
             {/* In full, like a sent turn: a queued message is read before it is sent. */}
             {props.previewText ? (
-              <p className="whitespace-pre-wrap wrap-anywhere">
-                <InlineChipText
-                  text={props.message?.text ?? props.previewText}
-                  hideImages={props.thumbnails.length > 0}
-                  expandCitations
-                />
-              </p>
+              <ChatMarkdown
+                text={props.text}
+                cwd={props.markdownCwd}
+                threadRef={scopeThreadRef(props.environmentId, props.threadId)}
+                skills={props.skills}
+                lineBreaks
+                parseRawHtml={false}
+                renderContextReference={renderContextReference}
+                headingLevelOffset={MESSAGE_HEADING_LEVEL}
+                linkBareGitHubReferences
+                inlineCodeFileLinks={false}
+              />
             ) : null}
           </div>
         ) : null}
