@@ -3367,6 +3367,8 @@ export default function ChatView(props: ChatViewProps) {
           onEditQueuedRun={queuedRunEdit.beginEdit}
           onCancelEdit={queuedRunEdit.cancelEdit}
           timestampFormat={timestampFormat}
+          markdownCwd={gitCwd ?? undefined}
+          skills={timelineSkills}
           onOpenThread={onOpenRelatedThreadStable}
         />
       </>
