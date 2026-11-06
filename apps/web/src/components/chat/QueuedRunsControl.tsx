@@ -613,6 +613,7 @@ function QueuedMessage(props: {
                 cwd={props.markdownCwd}
                 threadRef={scopeThreadRef(props.environmentId, props.threadId)}
                 skills={props.skills}
+                className="text-inherit [--code-foreground:currentColor] [--contrast-foreground:currentColor] [--contrast-message-foreground:currentColor]"
                 lineBreaks
                 parseRawHtml={false}
                 renderContextReference={renderContextReference}
