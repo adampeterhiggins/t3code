@@ -341,6 +341,80 @@ describe("renderGhosttySnapshot", () => {
     ]);
   });
 
+  it("fits Nerd Font icons to their cells and centres them in the row", () => {
+    const calls: unknown[][] = [];
+    const record =
+      (name: string) =>
+      (...args: unknown[]) =>
+        calls.push([name, ...args]);
+    const context = {
+      canvas: { width: 200, height: 40 },
+      beginPath: () => {},
+      clip: () => {},
+      fillRect: () => {},
+      fillText: record("fillText"),
+      // An icon's ink: 12px wide, 14px tall, sitting on the baseline.
+      measureText: () => ({
+        actualBoundingBoxLeft: 0,
+        actualBoundingBoxRight: 12,
+        actualBoundingBoxAscent: 14,
+        actualBoundingBoxDescent: 0,
+      }),
+      rect: () => {},
+      resetTransform: () => {},
+      restore: () => {},
+      save: () => {},
+      scale: record("scale"),
+      translate: record("translate"),
+      set fillStyle(_value: string) {},
+      set font(_value: string) {},
+      set textBaseline(_value: string) {},
+    } as unknown as CanvasRenderingContext2D;
+    const icon = "\uf023";
+    const cells = [cell(icon), cell(" "), cell("a"), cell(icon), cell("b")];
+    const snapshot: GhosttySnapshot = {
+      cols: 5,
+      rows: 1,
+      foreground: { r: 255, g: 255, b: 255 },
+      background: { r: 0, g: 0, b: 0 },
+      cursor: { r: 255, g: 255, b: 255 },
+      cursorX: -1,
+      cursorY: -1,
+      cursorVisible: false,
+      cursorBlinking: false,
+      cursorStyle: 1,
+      dirtyRows: new Set([0]),
+      rowData: [
+        { cells, text: `${icon} a${icon}b`, isWrapContinuation: false, wrapsToNext: false },
+      ],
+    };
+
+    renderGhosttySnapshot({
+      context,
+      snapshot,
+      metrics: { width: 6, height: 24, baseline: 17 },
+      fontSize: 20,
+      fontFamily: "monospace",
+      padding: 4,
+      forceFull: false,
+      cursorOn: false,
+    });
+
+    expect(calls).toEqual([
+      // A blank after the icon lends it a second cell. 0.7em (14px) caps its height,
+      // and the wider-than-a-cell icon starts at the cell's left edge.
+      ["translate", 10, 16],
+      ["scale", 1, 1],
+      ["fillText", icon, -6, 7],
+      ["fillText", " a", 10, 21, 12],
+      // Followed by text, the icon shrinks to fit one cell, centred in it.
+      ["translate", 25, 16],
+      ["scale", 0.5, 0.5],
+      ["fillText", icon, -6, 7],
+      ["fillText", "b", 28, 21, 6],
+    ]);
+  });
+
   it("repaints the cell without an overlay during the blink off phase", () => {
     const fillTextCalls: unknown[][] = [];
     const context = {
