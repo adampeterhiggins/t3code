@@ -92,6 +92,7 @@ import {
   convertBulletItemToTask,
   ComposerCodeExtension,
   ComposerEmphasisExtensions,
+  ComposerLinkExtension,
   ComposerTaskItemExtension,
   ComposerTaskListExtension,
   flatToMarkdown,
@@ -1087,6 +1088,7 @@ function createComposerExtensions(richText: boolean) {
           ComposerMarkdownSourceExtension,
           ComposerBoldSelectionOnlyExtension,
           ...ComposerEmphasisExtensions,
+          ComposerLinkExtension,
           ComposerCodeExtension,
           ComposerCodeBlockExtension.extend({
             addNodeView() {

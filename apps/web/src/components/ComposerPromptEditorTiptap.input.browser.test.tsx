@@ -536,6 +536,25 @@ describe("Markdown markers around styled text", () => {
     expect(serializeEditorDoc(editor.state.doc).value).toBe(value);
   });
 
+  it("links typed Markdown and shows its source again while the caret is in the label", async () => {
+    const value = "see [the docs](https://example.com) now";
+    await using screen = await mountEditor("see ");
+    const { editor } = screen;
+    await focusAt(editor, "end");
+    // A doubled `[` types one bracket in user-event's key syntax.
+    await userEvent.keyboard("[[the docs](https://example.com) now");
+    await vi.waitFor(() => expect(editor.state.doc.textContent).toBe("see the docs now"));
+    expect(textWithMark(editor, "link")).toEqual(["the docs"]);
+    expect(serializeEditorDoc(editor.state.doc).value).toBe(value);
+
+    await focusAt(editor, "see th".length + 1);
+    await vi.waitFor(() => expect(editor.state.doc.textContent).toBe(value));
+    expect(textWithMark(editor, "link")).toEqual([]);
+    await userEvent.keyboard("{End}");
+    await vi.waitFor(() => expect(textWithMark(editor, "link")).toEqual(["the docs"]));
+    expect(serializeEditorDoc(editor.state.doc).value).toBe(value);
+  });
+
   it("undoes a marker edit in one step without an extra step for showing markers", async () => {
     await using screen = await mountEditor("**bold** after");
     const { editor } = screen;

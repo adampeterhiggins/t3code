@@ -2591,6 +2591,12 @@ code {
   text-decoration: none;
 }
 
+/* Matches links in sent messages; a link and its shown label read the same. */
+.composer-tiptap .composer-link {
+  color: var(--info-foreground);
+  text-decoration: none;
+}
+
 /* Delimiters of source restored by undo or redo, once the caret leaves it. */
 .composer-rich-marker-hidden {
   display: none;

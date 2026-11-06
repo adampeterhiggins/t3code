@@ -21,8 +21,10 @@ markers edit like any other text: delete them to remove the style, or change
 plain Markdown with no styling, turn off **Settings → Chat → Rich text
 composer**. Lines starting with `- `, `1. `, `- [ ] `, `> `, `# ` or `---`
 become lists, task lists, quotes, headings and rules; ` ``` ` followed by Enter
-opens a code block. What you typed is what the agent receives, markers and
-numbering included, and `#1234` without a space still looks up a pull request.
+opens a code block. `[text](url)` becomes a link that shows only its text;
+`Cmd`-click (`Ctrl`-click elsewhere) opens it. What you typed is what the agent
+receives, markers and numbering included, and `#1234` without a space still
+looks up a pull request.
 
 Some styled text containing or touching literal Markdown characters, such as a
 bold `path\` or `2*3`, keeps its styling without showing markers. Use formatting
