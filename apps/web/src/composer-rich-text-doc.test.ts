@@ -23,6 +23,7 @@ import {
   ComposerListExtensions,
   ComposerCodeExtension,
   ComposerEmphasisExtensions,
+  ComposerLinkExtension,
   ComposerTaskItemExtension,
   flatToMarkdown,
   flatToPm,
@@ -58,8 +59,10 @@ const schema = getSchemaByResolvedExtensions(
       gapcursor: false,
       trailingNode: false,
       code: false,
+      link: false,
     }),
     ComposerCodeExtension,
+    ComposerLinkExtension,
     stubAtom("composer-mention", { path: { default: "" }, source: { default: "" } }),
     stubAtom("composer-skill", {
       skillName: { default: "" },
@@ -310,6 +313,10 @@ describe("composer rich text document model", () => {
     "snake_case stays literal",
     "unmatched ** stays literal",
     "**bold** then @README.md then *italic*",
+    "see [the docs](https://example.com) now",
+    "[a **b** `c`](https://x.y/z_(w))",
+    "**[bold link](u)** and [a](u)[b](v)",
+    "[ spaced ](u)",
   ])("round-trips %s through a real ProseMirror document", (value) => {
     expect(roundTrip(value).value).toBe(value);
   });
@@ -322,6 +329,7 @@ describe("composer rich text document model", () => {
     "- [ ] parent\n  - [ ] child\n- [ ]",
     "para\n- [ ] task\npara",
     "**before @README.md after**",
+    "see [the **docs**](https://example.com) now",
   ])("maps editable positions in %s", (value) => {
     const doc = ProseMirrorNode.fromJSON(
       schema,
@@ -1005,9 +1013,16 @@ describe("emphasis input rules", () => {
   function typeAtEnd(value: string, char: string) {
     const editor = new Editor({
       extensions: [
-        StarterKit.configure({ bold: false, italic: false, strike: false, code: false }),
+        StarterKit.configure({
+          bold: false,
+          italic: false,
+          strike: false,
+          code: false,
+          link: false,
+        }),
         ...ComposerEmphasisExtensions,
         ComposerCodeExtension,
+        ComposerLinkExtension,
       ],
       content: buildDocJson(value, (name) => ({ label: name, description: null })),
     });
@@ -1023,6 +1038,15 @@ describe("emphasis input rules", () => {
     editor.destroy();
     return result;
   }
+
+  it("links `[label](href)` when its `)` is typed", () => {
+    expect(typeAtEnd("see [the *docs*](https://example.com", ")")).toEqual({
+      value: "see [the *docs*](https://example.com)",
+      styled: true,
+    });
+    expect(typeAtEnd("see \\[a](u", ")").styled).toBe(false);
+    expect(typeAtEnd("open [a.ts](src/a.ts", ")").styled).toBe(false);
+  });
 
   it("does not open emphasis from a marker inside inline code", () => {
     expect(typeAtEnd("run `ls *.ts` then text", "*")).toEqual({

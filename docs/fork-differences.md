@@ -1616,6 +1616,19 @@ Code: `packages/source-control-definitions/src/composerObjectLinks.ts`,
 `apps/server/src/githubIssues/gitHubRefs.ts`. User guide:
 [composer.md](./user/composer.md#context-in-your-message).
 
+## Markdown links in the composer
+
+On web and desktop, `[text](url)` in the rich text composer is a link, as it is once sent: it shows
+only its text, in the link colour, and like bold or italic its Markdown shows again while the cursor
+is in it. Typing the closing `)` makes the link, and pasting or restoring a draft parses it.
+`Cmd`-click (`Ctrl`-click elsewhere) opens a web or mail link. A file link labelled with its file
+name stays a file chip, and a link's URL never becomes an object chip. The agent receives the
+Markdown as typed. Mobile's composer is plain text.
+
+Code: `parseInlineMarkdownPieces` in [`composer-rich-text.ts`](../apps/web/src/composer-rich-text.ts)
+and `ComposerLinkExtension` in [`composer-rich-text-doc.ts`](../apps/web/src/composer-rich-text-doc.ts).
+User guide: [composer.md](./user/composer.md#formatting).
+
 ## Links in messages preview like chips
 
 On web and desktop, hovering a link in any message (an agent's reply included, whatever its link

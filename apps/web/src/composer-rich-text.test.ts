@@ -57,6 +57,39 @@ describe("composer rich text markdown", () => {
     ]);
   });
 
+  it("parses links, binding tighter than emphasis", () => {
+    const link = "link:https://example.com/a_(b)";
+    expect(parseInlineMarkdown("see [the **docs**](https://example.com/a_(b)) now")).toEqual([
+      { text: "see ", marks: [] },
+      { text: "the ", marks: [link] },
+      { text: "docs", marks: [link, "bold"] },
+      { text: " now", marks: [] },
+    ]);
+    expect(parseInlineMarkdown("**[a](u)** *x [y* z](v)")).toEqual([
+      { text: "a", marks: ["bold", "link:u"] },
+      { text: " *x ", marks: [] },
+      { text: "y* z", marks: ["link:v"] },
+    ]);
+    expect(parseInlineMarkdown("[a](u)[b](v)")).toEqual([
+      { text: "a", marks: ["link:u"] },
+      { text: "b", marks: ["link:v"] },
+    ]);
+  });
+
+  it("leaves non-links, and file links that become chips, literal", () => {
+    for (const text of [
+      "[]()",
+      "[a]()",
+      "[a] (u)",
+      "[a](u v)",
+      "\\[a](u)",
+      "[a.ts](src/a.ts)",
+      "- [ ] task",
+    ]) {
+      expect(parseInlineMarkdown(text)).toEqual([{ text, marks: [] }]);
+    }
+  });
+
   it("maps each source character to its marks, or null for a dropped delimiter", () => {
     const bold = ["bold"];
     expect(inlineMarkdownUnitMarks("**`*` w** \\*")).toEqual([
