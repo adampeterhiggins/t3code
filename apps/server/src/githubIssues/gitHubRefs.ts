@@ -109,7 +109,7 @@ function commitFacts(commit: CommitJson, label: string): string[] {
 }
 
 function render(header: string, url: string, facts: string[], body: string, maxChars: number) {
-  const head = [header, url, "", ...facts].join("\n");
+  const head = [header, url, "", ...facts.map((fact) => `- ${fact}`)].join("\n");
   const text = body.trim();
   return truncate(text.length === 0 ? head : `${head}\n\n${text}`, maxChars);
 }
