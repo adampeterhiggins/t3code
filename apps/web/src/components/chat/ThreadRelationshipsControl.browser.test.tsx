@@ -56,6 +56,7 @@ vi.mock(import("../../state/environments"), async (original) => ({
   useEnvironmentProviders: (() => new Map()) as never,
 }));
 vi.mock(import("../../lib/archivedThreadsState"), () => ({
+  refreshArchivedThreadsForEnvironment: (() => {}) as never,
   useArchivedThreadSnapshots: (() => ({
     snapshots: [{ environmentId: "environment", snapshot: { threads: state.archivedThreads } }],
   })) as never,
@@ -323,6 +324,11 @@ it("shows a remote subagent's full title in its tooltip even when its environmen
     { router: "/environment/fork" },
   );
 
+  // A finished remote task sits with the other finished agents, not in its own list.
+  await expect
+    .element(screen.getByRole("button", { name: new RegExp(longTitle) }))
+    .not.toBeInTheDocument();
+  await screen.getByRole("button", { name: /Previous agents/ }).click();
   const row = screen.getByRole("button", { name: new RegExp(longTitle) });
   await userEvent.hover(row);
   await vi.waitFor(() =>
