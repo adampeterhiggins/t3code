@@ -353,11 +353,11 @@ it("reconciles provider skills and metadata without losing formatting, caret, or
     editor.commands.setTextSelection("run use $baby".length + 1);
   });
   editor = await screen.update(value, true, [disabled, babysit]);
-  expect(editor.state.doc.textContent).toBe("run use  now then $HOME");
+  expect(editor.state.doc.textContent).toBe("run **use  now** then $HOME");
   const chip = serializeEditorDoc(editor.state.doc).runs.find((run) => run.kind === "token")!;
   expect(editor.state.selection.from).toBe(chip.pmPos + 1);
   editor = await screen.update(value, true, [disabled]);
-  expect.soft(editor.state.doc.textContent).toBe("run use $babysit now then $HOME");
+  expect.soft(editor.state.doc.textContent).toBe("run **use $babysit now** then $HOME");
   expect(serializeEditorDoc(editor.state.doc).value).toBe(value);
   await act(async () => {
     editor.commands.insertContent("X");
@@ -367,7 +367,7 @@ it("reconciles provider skills and metadata without losing formatting, caret, or
     editor.commands.undo();
   });
   expect(serializeEditorDoc(editor.state.doc).value).toBe(value);
-  expect(editor.state.doc.textContent).toBe("run use $babysit now then $HOME");
+  expect(editor.state.doc.textContent).toBe("run **use $babysit now** then $HOME");
 
   editor = await screen.update(value, true, [babysit]);
   await act(async () => {
@@ -377,7 +377,7 @@ it("reconciles provider skills and metadata without losing formatting, caret, or
   await act(async () => {
     editor.commands.undo();
   });
-  expect(editor.state.doc.textContent).toBe("run use $babysit now then $HOME");
+  expect(editor.state.doc.textContent).toBe("run **use $babysit now** then $HOME");
   expect(serializeEditorDoc(editor.state.doc).value).toBe(value);
 
   editor = await screen.update(value, true, [

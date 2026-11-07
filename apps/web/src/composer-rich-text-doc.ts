@@ -340,6 +340,7 @@ function withoutOpenersInCode(rules: InputRule[] | undefined): InputRule[] {
         find: rule.find,
         undoable: rule.undoable,
         handler: (props) => {
+          if (touchesMarkdownSource(props.state, props.range.from, props.range.to)) return null;
           const opener = props.range.from + Math.max(props.match[0].search(/\S/), 0);
           const code = props.state.schema.marks.code;
           if (code && props.state.doc.rangeHasMark(opener, opener + 1, code)) return null;
