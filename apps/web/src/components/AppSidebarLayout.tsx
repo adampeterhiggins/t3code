@@ -449,7 +449,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         <SidebarProvider
           className="h-[calc(100dvh-var(--app-footer-height,0px))]! min-h-0!"
           data-panel-animations={routePanelAnimationsActive ? "true" : "false"}
-          defaultOpen
+          storageKey="chat_thread_sidebar_open"
           style={sidebarProviderStyle}
         >
           <SidebarBrandWidthProbe isElectron={isElectron} onWidthChange={setBrandWidth} />

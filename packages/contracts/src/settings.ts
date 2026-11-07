@@ -60,6 +60,7 @@ import {
 import { PullRequestMergeMethod } from "./pullRequest.ts";
 import { ContextRepositoryOwners } from "./contextRepositories.ts";
 import {
+  CloudSpeechModelId,
   SpeechAcceleration,
   SpeechCorrectionCue,
   SpeechCustomWords,
@@ -143,7 +144,7 @@ export const SidebarAutoSettleAfterDays = Schema.Number.check(
   }),
 );
 export type SidebarAutoSettleAfterDays = typeof SidebarAutoSettleAfterDays.Type;
-const DEFAULT_SIDEBAR_AUTO_SETTLE_AFTER_DAYS: SidebarAutoSettleAfterDays = 3;
+const DEFAULT_SIDEBAR_AUTO_SETTLE_AFTER_DAYS: SidebarAutoSettleAfterDays = 7;
 
 export const MAX_SNOOZE_PRESET_MINUTES = 30 * 24 * 60;
 export const MAX_SNOOZE_PRESETS = 8;
@@ -505,11 +506,24 @@ const DEFAULT_SIDEBAR_THREAD_PREVIEW_COUNT: SidebarThreadPreviewCount = 6;
 export const VoiceShortcutMode = Schema.Literals(["auto", "hold", "toggle"]);
 export type VoiceShortcutMode = typeof VoiceShortcutMode.Type;
 
-/** Where this device sends microphone audio. A later backend adds its own kind here. */
-export const VoiceTranscriptionDestination = Schema.Struct({
-  kind: Schema.Literal("environment"),
-  environmentId: EnvironmentId,
-});
+/**
+ * Where this device sends microphone audio. A cloud grant names the forwarding environment and
+ * the provider; an OpenRouter grant also names the exact model, since OpenRouter has no default.
+ */
+export const VoiceTranscriptionDestination = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("environment"), environmentId: EnvironmentId }),
+  Schema.Struct({
+    kind: Schema.Literal("cloud"),
+    environmentId: EnvironmentId,
+    provider: Schema.Literals(["openai", "xai"]),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("cloud"),
+    environmentId: EnvironmentId,
+    provider: Schema.Literal("openrouter"),
+    model: CloudSpeechModelId,
+  }),
+]);
 export type VoiceTranscriptionDestination = typeof VoiceTranscriptionDestination.Type;
 
 export const ClientSettingsSchema = Schema.Struct({
@@ -1677,6 +1691,14 @@ export type LinearAssignmentTrigger = typeof LinearAssignmentTrigger.Type;
 export const LinearAssignmentTriggers = Schema.Array(LinearAssignmentTrigger).check(
   Schema.isMaxLength(50),
 );
+const CloudSpeechCredential = SettingsSecretValue.pipe(
+  Schema.withDecodingDefault(Effect.succeed("")),
+);
+export const CloudSpeechCredentials = Schema.Struct({
+  openai: CloudSpeechCredential,
+  xai: CloudSpeechCredential,
+  openrouter: CloudSpeechCredential,
+});
 
 export const ServerSettings = Schema.Struct({
   customEditors: Schema.Array(CustomEditor).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
@@ -1742,6 +1764,9 @@ export const ServerSettings = Schema.Struct({
   ),
 
   enableAgentBrowserAccess: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  cloudSpeechCredentials: CloudSpeechCredentials.pipe(
+    Schema.withDecodingDefault(Effect.succeed({ openai: "", xai: "", openrouter: "" })),
+  ),
   speechModelId: Schema.String.pipe(
     Schema.withDecodingDefault(Effect.succeed("handy-computer/parakeet-unified-en-0.6b-gguf")),
   ),
@@ -2218,6 +2243,13 @@ export const ServerSettingsPatch = Schema.Struct({
   linearAssignmentTriggers: Schema.optionalKey(LinearAssignmentTriggers),
   continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
   enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
+  cloudSpeechCredentials: Schema.optionalKey(
+    Schema.Struct({
+      openai: Schema.optionalKey(SettingsSecretValue),
+      xai: Schema.optionalKey(SettingsSecretValue),
+      openrouter: Schema.optionalKey(SettingsSecretValue),
+    }),
+  ),
   speechModelId: Schema.optionalKey(Schema.String),
   speechAcceleration: Schema.optionalKey(SpeechAcceleration),
   speechModelUnloadTimeout: Schema.optionalKey(SpeechModelUnloadTimeout),
