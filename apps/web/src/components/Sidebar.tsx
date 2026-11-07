@@ -3284,6 +3284,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                         searchMatchQuery={threadSearch.query}
                         onHighlight={() => setActiveSearchResultIndex(index)}
                         onSelect={() => selectThreadSearchResult(thread)}
+                        onContextMenu={handleThreadContextMenu}
                         onFileDropThreads={handleThreadFileDrop}
                       />
                     );
