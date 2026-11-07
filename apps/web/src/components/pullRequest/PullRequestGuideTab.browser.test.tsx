@@ -56,6 +56,7 @@ it("keeps Try again inside a short panel when a failed guide has long diagnostic
       canComment={false}
       canSaveAgentDraft={false}
       rangeComments={false}
+      completionScope={null}
       onAskAboutLines={null}
       onAskAboutStop={null}
       onFinishReview={null}

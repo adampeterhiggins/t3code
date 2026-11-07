@@ -1,13 +1,19 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { availableThreadListPages } from "../threads/threadListV2";
-import { buildHomeListFilterMenu } from "./home-list-filter-menu";
+import type { AppBarMenuItem } from "../../components/ui/AppBar.types";
 
-describe("buildHomeListFilterMenu", () => {
+function select(item: AppBarMenuItem | undefined) {
+  if (item && "onPress" in item) item.onPress?.();
+}
+
+import { availableThreadListPages } from "../threads/threadListV2";
+import { buildHomeListFilterMenuItems } from "./home-list-filter-menu";
+
+describe("buildHomeListFilterMenuItems", () => {
   it("adds a multi-select Show submenu with group pages after Threads", () => {
     const onTogglePage = vi.fn();
     const build = (hidingSupported: boolean) =>
-      buildHomeListFilterMenu({
+      buildHomeListFilterMenuItems({
         environments: [],
         projects: [],
         selectedEnvironmentId: null,
@@ -21,23 +27,23 @@ describe("buildHomeListFilterMenu", () => {
         organisationKeys: [],
         onToggleOrganisation: vi.fn(),
         onClearOrganisations: vi.fn(),
-      }).items.find((item) => item.type === "submenu" && item.title === "Show");
+      }).find((item) => item.title === "Show");
 
     const show = build(true);
     expect(show).toMatchObject({
       items: [
-        { title: "Threads", state: "on" },
-        { title: "Ops", state: "on" },
-        { title: "Web", state: "off" },
-        { title: "Automations", state: "off" },
-        { title: "Snoozed", state: "off" },
-        { title: "Hidden", state: "off" },
-        { title: "Settled", state: "on" },
+        { title: "Threads", selected: true },
+        { title: "Ops", selected: true },
+        { title: "Web", selected: false },
+        { title: "Automations", selected: false },
+        { title: "Snoozed", selected: false },
+        { title: "Hidden", selected: false },
+        { title: "Settled", selected: true },
       ],
     });
-    if (show?.type !== "submenu") throw new Error("Expected show submenu");
-    show.items[2]?.onPress();
-    show.items[5]?.onPress();
+    if (!show || !("items" in show)) throw new Error("Expected show submenu");
+    select(show.items[2]);
+    select(show.items[5]);
     expect(onTogglePage).toHaveBeenNthCalledWith(1, "group:Web");
     expect(onTogglePage).toHaveBeenNthCalledWith(2, "hidden");
     expect(build(false)).toMatchObject({
@@ -55,7 +61,7 @@ describe("buildHomeListFilterMenu", () => {
   it("adds an Organisations multi-select before Project", () => {
     const onToggleOrganisation = vi.fn();
     const onClearOrganisations = vi.fn();
-    const menu = buildHomeListFilterMenu({
+    const menu = buildHomeListFilterMenuItems({
       environments: [],
       projects: [{ key: "environment-1:project-1", label: "App" }],
       selectedEnvironmentId: null,
@@ -73,19 +79,20 @@ describe("buildHomeListFilterMenu", () => {
       onToggleOrganisation,
       onClearOrganisations,
     });
-    const titles = menu.items.map((item) => item.title);
+    const titles = menu.map((item) => item.title);
     expect(titles.indexOf("Organisations")).toBe(titles.indexOf("Project") - 1);
-    const organisationsMenu = menu.items.find((item) => item.title === "Organisations");
+    const organisationsMenu = menu.find((item) => item.title === "Organisations");
     expect(organisationsMenu).toMatchObject({
       items: [
-        { title: "All organisations", state: "off" },
-        { title: "acme", state: "off" },
-        { title: "zed", state: "on" },
+        { title: "All organisations", selected: false },
+        { title: "acme", selected: false },
+        { title: "zed", selected: true },
       ],
     });
-    if (organisationsMenu?.type !== "submenu") throw new Error("Expected organisations submenu");
-    organisationsMenu.items[1]?.onPress();
-    organisationsMenu.items[0]?.onPress();
+    if (!organisationsMenu || !("items" in organisationsMenu))
+      throw new Error("Expected organisations submenu");
+    select(organisationsMenu.items[1]);
+    select(organisationsMenu.items[0]);
     expect(onToggleOrganisation).toHaveBeenCalledWith("github.com/acme");
     expect(onClearOrganisations).toHaveBeenCalled();
   });

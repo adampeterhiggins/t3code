@@ -54,7 +54,7 @@ import {
   useThreadSlackNotionLinks,
 } from "./ThreadSlackNotionLinks";
 import { ThreadStartedByChip } from "./ThreadStartedByChip";
-import { useSelectWorkspaceDetail } from "../workspace/useSelectWorkspaceDetail";
+import { useSelectWorkspaceDetail } from "../layout/workspace/useSelectWorkspaceDetail";
 
 const NEW_TAB_ACTION = "tab:new";
 const CLOSE_TAB_ACTION = "tab:close";
@@ -126,7 +126,7 @@ export function ThreadTabs({
   const archive = useAtomCommand(threadEnvironment.archive, { reportFailure: false });
   const stopSession = useAtomCommand(threadEnvironment.stopSession, { reportFailure: false });
   const [nameRevision, setNameRevision] = useState(0);
-  // oxlint-disable-next-line t3code/react-effect-budget -- Subscribes to group renames made elsewhere.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Subscribes to group renames made elsewhere.
   useEffect(() => subscribeThreadTabGroupNames(() => setNameRevision((value) => value + 1)), []);
   const [group, setGroup] = useState<ThreadTabGroup | null>(null);
   const [selected, setSelected] = useState<ReadonlyArray<ThreadId>>(() =>
@@ -162,7 +162,7 @@ export function ThreadTabs({
     [modelSelection, projectId, serverConfig],
   );
 
-  // oxlint-disable-next-line t3code/react-effect-budget -- Loads the tab group over RPC when the thread or a group name changes.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Loads the tab group over RPC when the thread or a group name changes.
   useEffect(() => {
     if (Option.isNone(prepared)) return;
     let active = true;

@@ -1,6 +1,6 @@
-import type {
-  SubagentWorkflowGroup,
-  RuntimeSubagent,
+import {
+  type SubagentWorkflowGroup,
+  type RuntimeSubagent,
 } from "@t3tools/client-runtime/state/subagentRuntime";
 import {
   ThreadId,

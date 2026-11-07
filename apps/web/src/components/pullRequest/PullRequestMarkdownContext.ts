@@ -13,6 +13,7 @@ export const PullRequestMarkdownContext = createContext<{
   remarkPlugins: PluggableList;
   lineBreaks: boolean;
   threadRef: ScopedThreadRef | null;
+  repository: string | null;
 } | null>(null);
 
 /**

@@ -28,6 +28,7 @@ const makeStubTextGeneration = (
     generateIgnoredNames: () =>
       Effect.die("generateIgnoredNames stub not configured for this test"),
     generateReviewGuide: () => Effect.die("generateReviewGuide stub not configured for this test"),
+    generateTranscriptionPostProcessing: () => Effect.die("unused"),
     ...overrides,
   });
 

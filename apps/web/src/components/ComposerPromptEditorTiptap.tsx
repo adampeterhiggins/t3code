@@ -704,7 +704,14 @@ function CitationCommentPromptInput({
   const [cursor, setCursor] = useState(() =>
     collapseExpandedComposerCursor(input.value, input.value.length),
   );
-  useImperativeHandle(input.inputRef, () => ({ focus: () => editorRef.current?.focus() }));
+  useImperativeHandle(input.inputRef, () => ({
+    focus: () => editorRef.current?.focus(),
+    readSelection: () =>
+      editorRef.current?.readSelectionRange() ?? {
+        start: valueRef.current.length,
+        end: valueRef.current.length,
+      },
+  }));
   const setValue = (next: string, nextCursor: number) => {
     valueRef.current = next;
     setCursor(nextCursor);
@@ -805,7 +812,7 @@ function CitationCommentPromptInput({
         loadingLinkUrls={(shared?.loading ?? [])
           .filter((entry) => entry.workKey === target.key)
           .map((entry) => entry.url)}
-        disabled={false}
+        disabled={input.readOnly ?? false}
         placeholder={input.placeholder}
         ariaLabel={input.ariaLabel}
         ariaDescription={input.ariaDescription}

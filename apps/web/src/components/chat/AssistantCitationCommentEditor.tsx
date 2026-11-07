@@ -10,12 +10,15 @@ import {
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { ChevronDownIcon } from "lucide-react";
-import { useState, type MouseEvent, type ReactNode, type RefObject } from "react";
+import { use, useEffect, useState, type MouseEvent, type ReactNode, type RefObject } from "react";
 
+import { useEnvironmentSpeechInput } from "~/speech/useEnvironmentSpeechInput";
+import { TextFieldSpeechControls } from "~/speech/useTextFieldSpeech";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { readLocalApi } from "~/localApi";
 import { useThreadShell } from "~/state/entities";
 
+import { ComposerContextActionsContext } from "../composerContextActions";
 import { Button } from "../ui/button";
 import { Group, GroupSeparator } from "../ui/group";
 import { Menu, MenuItem, MenuItemLabel, MenuPopup, MenuTrigger } from "../ui/menu";
@@ -55,6 +58,7 @@ type DraftChoice = { label: string; description: string };
 
 export interface CitationCommentInputHandle {
   focus: () => void;
+  readSelection?: () => { start: number; end: number };
 }
 
 /**
@@ -70,6 +74,7 @@ export interface CitationCommentInputProps {
   ariaLabel: string;
   ariaDescription: string;
   invalid: boolean;
+  readOnly?: boolean;
   placeholder: string;
 }
 
@@ -125,6 +130,7 @@ export function AssistantCitationCommentEditor({
   citation,
   inputRef,
   renderInput,
+  onVoiceSetupOpenChange,
   onSubmit,
   onSubmitAndSend,
   onSubmitAndSaveDraft,
@@ -143,6 +149,7 @@ export function AssistantCitationCommentEditor({
   submitAndSendQueues?: boolean;
   onCancel: () => void;
   onDraftChange?: (comment: string) => void;
+  onVoiceSetupOpenChange?: (open: boolean) => void;
   destinations?: AssistantCitationDestinations | undefined;
 }) {
   const [comment, setComment] = useState(citation.comment ?? "");
@@ -164,23 +171,56 @@ export function AssistantCitationCommentEditor({
   const elsewhereMenu = elsewhere ? elsewhereChoices(elsewhere, elsewhereQueues) : null;
   // Without a send path the button only saves, so Enter must too.
   const enterChoice: SubmitChoice = onSubmitAndSend || elsewhere ? choice : "save";
+  const { environmentId, projectId } = use(ComposerContextActionsContext);
+  const updateComment = (text: string) => {
+    setComment(text);
+    onDraftChange?.(text);
+  };
+  const recording = useEnvironmentSpeechInput({
+    environmentId: environmentId ?? citation.environmentId,
+    projectId,
+    ownerKey: JSON.stringify([
+      "citation",
+      citation.threadId,
+      citation.messageId,
+      citation.start,
+      citation.end,
+    ]),
+    draftText: comment,
+    readDraft: () => ({
+      text: comment,
+      selection: inputRef.current?.readSelection?.() ?? {
+        start: comment.length,
+        end: comment.length,
+      },
+    }),
+    commitDraft: (text) => {
+      updateComment(text);
+      inputRef.current?.focus();
+    },
+  });
+  const speech = { ...recording, shortcutLabel: null };
+  const setupOpen = speech.setup.open;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the citation popover open while voice setup owns focus
+  useEffect(() => {
+    onVoiceSetupOpenChange?.(setupOpen);
+    return () => onVoiceSetupOpenChange?.(false);
+  }, [onVoiceSetupOpenChange, setupOpen]);
   const commentTooLong = comment.length > ASSISTANT_CITATION_MAX_COMMENT_LENGTH;
-  const submitElsewhere = (action: CitationDestinationAction) => {
-    if (!commentTooLong && elsewhere) destinations?.onSubmit(elsewhere, action, comment);
+  const submitElsewhere = (action: CitationDestinationAction, text = comment) => {
+    if (text.length <= ASSISTANT_CITATION_MAX_COMMENT_LENGTH && elsewhere)
+      destinations?.onSubmit(elsewhere, action, text);
   };
-  const submit = () => {
-    if (elsewhere) return submitElsewhere("save");
-    if (!commentTooLong) onSubmit(comment);
-  };
-  const submitAndSend = () => {
-    if (elsewhere) return submitElsewhere("send");
-    if (commentTooLong) return;
-    if (onSubmitAndSend) {
-      onSubmitAndSend(comment);
-    } else {
-      onSubmit(comment);
-    }
-  };
+  const submit = () =>
+    speech.submitAfterDictation((text) => {
+      if (elsewhere) return submitElsewhere("save", text);
+      if (text.length <= ASSISTANT_CITATION_MAX_COMMENT_LENGTH) onSubmit(text);
+    });
+  const submitAndSend = () =>
+    speech.submitAfterDictation((text) => {
+      if (elsewhere) return submitElsewhere("send", text);
+      if (text.length <= ASSISTANT_CITATION_MAX_COMMENT_LENGTH) (onSubmitAndSend ?? onSubmit)(text);
+    });
   const runChoice = (next: SubmitChoice) => (next === "send" ? submitAndSend() : submit());
   const sendVerb = elsewhere
     ? (elsewhereMenu?.choices.send.label.toLowerCase() ?? "send")
@@ -189,12 +229,13 @@ export function AssistantCitationCommentEditor({
       : "send";
   const saveDraft = elsewhere
     ? elsewhereMenu?.draft
-      ? () => submitElsewhere("draft")
+      ? () => speech.submitAfterDictation((text) => submitElsewhere("draft", text))
       : undefined
     : onSubmitAndSaveDraft
-      ? () => {
-          if (!commentTooLong) onSubmitAndSaveDraft(comment);
-        }
+      ? () =>
+          speech.submitAfterDictation((text) => {
+            if (text.length <= ASSISTANT_CITATION_MAX_COMMENT_LENGTH) onSubmitAndSaveDraft(text);
+          })
       : undefined;
 
   return (
@@ -207,12 +248,14 @@ export function AssistantCitationCommentEditor({
         if (event.nativeEvent.isComposing || event.keyCode === 229) return;
         if (event.key === "Escape") {
           event.preventDefault();
-          onCancel();
+          if (speech.state.phase !== "idle") speech.cancel();
+          else onCancel();
         }
       }}
     >
       {renderInput({
         value: comment,
+        readOnly: speech.freezesEditor,
         onChange: (next) => {
           setComment(next);
           onDraftChange?.(next);
@@ -239,7 +282,8 @@ export function AssistantCitationCommentEditor({
           characters.
         </p>
       ) : null}
-      <div className="mt-2 flex items-center justify-end gap-2">
+      <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
+        <TextFieldSpeechControls speech={speech} />
         {destinations ? (
           <div className="me-auto flex min-w-0">
             <CitationDestinationPicker

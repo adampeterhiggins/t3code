@@ -18,7 +18,7 @@ import {
 
 import { RelativeTime } from "~/components/RelativeTime";
 import { useOpenPrLink } from "~/lib/openPullRequestLink";
-import { pullRequestEnvironment } from "~/state/pullRequests";
+import { pullRequestEnvironment, useSharedPullRequestSummary } from "~/state/pullRequests";
 import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
 import { useEnvironmentQuery } from "~/state/query";
 
@@ -97,6 +97,10 @@ export function PullRequestLinkPreview({
         })
       : null,
   );
+  const summary = useSharedPullRequestSummary(
+    open ? target.environmentId : null,
+    open ? target.input : null,
+  );
   const readPreview = useAtomQueryRunner(pullRequestEnvironment.preview, {
     reportFailure: false,
     reportDefect: false,
@@ -125,12 +129,14 @@ export function PullRequestLinkPreview({
         })
       : link;
   const preview = previewQuery.data;
-  const showCard = preview !== null || (previewQuery.error !== null && fallback !== undefined);
+  const card = preview ?? summary;
+  const showCard = card !== null || (previewQuery.error !== null && fallback !== undefined);
   const showUrlTooltip = open && previewQuery.error !== null && !showCard;
   const state =
-    preview === null
+    card === null
       ? null
-      : resolvePullRequestState({ state: preview.state, isDraft: preview.isDraft });
+      : resolvePullRequestState({ state: card.state, isDraft: card.isDraft ?? false });
+
   const linkedComment =
     activityQuery.data === null ? null : findPullRequestComment(activityQuery.data, originalUrl);
 
@@ -160,13 +166,13 @@ export function PullRequestLinkPreview({
       {showCard ? (
         <PreviewCardPopup {...cursorAnchor.popupProps} className="w-80 max-w-[calc(100vw-2rem)]">
           <div className="p-3">
-            {preview === null ? (
+            {card === null ? (
               fallback
             ) : (
               <div className="min-w-0">
                 <div className="flex min-w-0 items-center gap-1.5 text-2xs text-muted-foreground">
-                  <span className="min-w-0 truncate">{preview.repository}</span>
-                  <span className="shrink-0">#{preview.number}</span>
+                  <span className="min-w-0 truncate">{card.repository}</span>
+                  <span className="shrink-0">#{card.number}</span>
                   <span aria-hidden>·</span>
                   {state === null ? null : (
                     <span className="inline-flex shrink-0 items-center gap-1">
@@ -175,12 +181,12 @@ export function PullRequestLinkPreview({
                     </span>
                   )}
                   <a
-                    href={linkedComment?.comment.url ?? preview.url}
+                    href={linkedComment?.comment.url ?? card.url}
                     target="_blank"
                     rel="noreferrer"
                     className="ml-auto shrink-0 pl-2 underline-offset-2 hover:text-foreground hover:underline"
                     onClick={(event) => {
-                      if (openPrLink(event, linkedComment?.comment.url ?? preview.url)) {
+                      if (openPrLink(event, linkedComment?.comment.url ?? card.url)) {
                         setOpen(false);
                       }
                     }}
@@ -189,15 +195,15 @@ export function PullRequestLinkPreview({
                   </a>
                 </div>
                 <p className="mt-1 text-sm font-medium leading-snug text-foreground text-pretty">
-                  {preview.title}
+                  {card.title}
                 </p>
                 {linkedComment === null ? (
                   <div className="mt-2 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-                    <PullRequestActorAvatar actor={preview.author} className="size-4" />
-                    <span className="min-w-0 truncate">{actorLabel(preview.author)}</span>
+                    <PullRequestActorAvatar actor={card.author ?? null} className="size-4" />
+                    <span className="min-w-0 truncate">{actorLabel(card.author ?? null)}</span>
                     <span aria-hidden>·</span>
                     <span className="shrink-0">
-                      opened <RelativeTime timestamp={preview.createdAt} />
+                      opened {preview ? <RelativeTime timestamp={preview.createdAt} /> : null}
                     </span>
                   </div>
                 ) : (

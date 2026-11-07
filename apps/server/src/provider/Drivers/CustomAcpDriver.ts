@@ -53,6 +53,7 @@ const unsupportedTextGeneration: TextGeneration["Service"] = (() => {
     generateThreadTitle: () => fail("generateThreadTitle"),
     generateIgnoredNames: () => fail("generateIgnoredNames"),
     generateReviewGuide: () => fail("generateReviewGuide"),
+    generateTranscriptionPostProcessing: () => fail("generateTranscriptionPostProcessing"),
   };
 })();
 

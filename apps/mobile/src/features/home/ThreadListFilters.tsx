@@ -1,9 +1,9 @@
 import { Pressable, ScrollView } from "react-native";
 import { SymbolView } from "../../components/ui/AppSymbol";
-import { ListFilterMenu } from "../workspace/ListFilterMenu";
+import { ListFilterMenu } from "../layout/workspace/ListFilterMenu";
 import { isDefaultThreadListPages, threadListPageLabel } from "../threads/threadListV2";
 import { filterChoiceTitle } from "./home-list-filter-menu";
-import type { HomeHeaderProps } from "./HomeHeader.types";
+import type { HomeHeaderProps } from "./ThreadListFilters.types";
 
 export function ThreadListFilters(
   props: Pick<

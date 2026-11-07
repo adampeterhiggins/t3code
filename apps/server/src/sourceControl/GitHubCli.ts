@@ -150,6 +150,7 @@ function fromGitHubApiError(
       return new GitHubPullRequestNotFoundError(context);
     case "GitHubApiResponseError":
       return new GitHubCliCommandError({ ...context, httpStatus: error.status });
+    case "SettingsSecretUnresolvedError":
     case "GitHubApiRequestError":
       return new GitHubCliCommandError(context);
   }

@@ -5,10 +5,19 @@ import { useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { Button } from "~/components/ui/button";
 import { Group, GroupSeparator } from "~/components/ui/group";
 import { Menu, MenuItem, MenuItemLabel, MenuPopup, MenuTrigger } from "~/components/ui/menu";
-import { Textarea } from "~/components/ui/textarea";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { readLocalApi } from "~/localApi";
+import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
+import {
+  PullRequestMarkdownTextarea,
+  type PullRequestCompletionScope,
+} from "~/components/pullRequest/PullRequestMarkdownTextarea";
+import {
+  SpeechTextField,
+  TextFieldSpeechControls,
+  type TextFieldSpeech,
+} from "~/speech/useTextFieldSpeech";
 import { textDirection } from "~/textDirection";
 
 import { isCommentSubmitShortcut } from "./commentSubmitShortcut";
@@ -40,6 +49,10 @@ const SAVE_DRAFT_ACTION = {
 } as const;
 
 interface DiffCommentAnnotationProps {
+  /** With an environment, the draft can be dictated; its project supplies vocabulary. */
+  environmentId?: EnvironmentId | undefined;
+  projectId?: ProjectId | null | undefined;
+  ownerKey?: string;
   kind: "draft" | "comment";
   rangeLabel: string;
   text: string;
@@ -53,9 +66,14 @@ interface DiffCommentAnnotationProps {
   pending?: boolean;
   agentAction?: DiffCommentAgentAction;
   focusOnMount?: boolean;
+  /** Set only for pull request comments, where `@` completes the repository's users. */
+  completionScope?: PullRequestCompletionScope | null;
 }
 
 export function DiffCommentAnnotation({
+  environmentId,
+  projectId,
+  ownerKey,
   kind,
   rangeLabel,
   text,
@@ -68,6 +86,7 @@ export function DiffCommentAnnotation({
   pending = false,
   agentAction,
   focusOnMount = true,
+  completionScope = null,
 }: DiffCommentAnnotationProps) {
   const [localDraftText, setLocalDraftText] = useState("");
   const displayedText = kind === "draft" && !onTextChange ? localDraftText : text;
@@ -123,23 +142,37 @@ export function DiffCommentAnnotation({
     );
   }
 
+  const submit = (
+    speech: TextFieldSpeech | undefined,
+    action: (text: string) => void,
+    allowEmpty = false,
+  ) => {
+    const finish = (value: string) => {
+      if (!pending && (allowEmpty || value.trim())) action(value.trim());
+    };
+    if (speech) speech.submitAfterDictation(finish);
+    else finish(displayedText);
+  };
+
   // Pierre hides native carets and selection; textarea comments need their own visible feedback.
-  return (
+  const renderDraft = (speech?: TextFieldSpeech) => (
     <div
       data-diff-comment-annotation
       className="px-3 py-2 font-sans text-foreground caret-foreground selection:bg-primary selection:text-primary-foreground"
       contentEditable={false}
       onPointerDown={(event) => event.stopPropagation()}
     >
-      <Textarea
+      <PullRequestMarkdownTextarea
         ref={textareaRef}
+        completionScope={completionScope}
+        readOnly={speech?.freezesEditor}
         autoFocus={focusOnMount}
         size="sm"
         value={displayedText}
         dir={textDirection(displayedText)}
         placeholder={placeholder}
         aria-label={`Comment on lines ${rangeLabel}`}
-        onChange={(event) => (onTextChange ?? setLocalDraftText)(event.target.value)}
+        onValueChange={onTextChange ?? setLocalDraftText}
         onFocus={(event) => {
           const end = event.currentTarget.value.length;
           event.currentTarget.setSelectionRange(end, end);
@@ -147,7 +180,8 @@ export function DiffCommentAnnotation({
         onKeyDown={(event) => {
           if (event.key === "Escape") {
             event.preventDefault();
-            onCancel();
+            if (speech && speech.state.phase !== "idle") speech.cancel();
+            else onCancel();
           }
           if (!isCommentSubmitShortcut(event, trimmedText, pending)) return;
           // Shift picks the agent where both are offered; the agent is all there is without a review.
@@ -156,7 +190,7 @@ export function DiffCommentAnnotation({
             agentAction[AGENT_ACTION_HANDLERS[agentChoice]](trimmedText);
           } else if (onComment) {
             event.preventDefault();
-            onComment(trimmedText);
+            submit(speech, onComment);
           }
         }}
       />
@@ -169,14 +203,16 @@ export function DiffCommentAnnotation({
           </TooltipTrigger>
           <TooltipPopup side="top">{shortcutHint}</TooltipPopup>
         </Tooltip>
+        {speech ? <TextFieldSpeechControls speech={speech} disabled={pending} /> : null}
         <Button variant="ghost" size="xs" onClick={onCancel}>
           Cancel
         </Button>
         {onComment ? (
           <Button
             size="xs"
-            disabled={pending || !trimmedText}
-            onClick={() => onComment(trimmedText)}
+            variant="outline"
+            disabled={speech?.preparing || pending || (!speech?.blocksSubmission && !trimmedText)}
+            onClick={() => submit(speech, onComment)}
           >
             {submitLabel}
           </Button>
@@ -193,6 +229,22 @@ export function DiffCommentAnnotation({
         ) : null}
       </div>
     </div>
+  );
+
+  return environmentId ? (
+    <SpeechTextField
+      environmentId={environmentId}
+      projectId={projectId}
+      ownerKey={ownerKey ?? rangeLabel}
+      text={displayedText}
+      textareaRef={textareaRef}
+      onTextChange={onTextChange ?? setLocalDraftText}
+      disabled={pending}
+    >
+      {renderDraft}
+    </SpeechTextField>
+  ) : (
+    renderDraft()
   );
 }
 
