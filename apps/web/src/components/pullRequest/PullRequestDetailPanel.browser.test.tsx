@@ -66,7 +66,8 @@ vi.mock(import("~/state/sourceControlActions"), async (original) => ({
 }));
 vi.mock(import("~/state/use-atom-command"), async (original) => ({
   ...(await original()),
-  useAtomCommand: ((command: unknown) => (command === queries.update ? update : hostCommand)) as never,
+  useAtomCommand: ((command: unknown) =>
+    command === queries.update ? update : hostCommand) as never,
 }));
 vi.mock(import("~/state/pullRequests"), async (original) => {
   const actual = await original();

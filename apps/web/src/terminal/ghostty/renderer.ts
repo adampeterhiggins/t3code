@@ -17,9 +17,6 @@ export interface GhosttyCellRange {
   readonly end: { readonly x: number; readonly y: number };
 }
 
-const POWERLINE_SOLID_RIGHT = "\ue0b0";
-const POWERLINE_SOLID_LEFT = "\ue0b2";
-
 const DEFAULT_SELECTION_BACKGROUND = "rgba(72, 122, 191, 0.35)";
 
 function cssColor(color: GhosttyColor): string {
@@ -36,30 +33,6 @@ function sameTextStyle(left: GhosttyCell, right: GhosttyCell): boolean {
   );
 }
 
-function isSolidPowerlineSeparator(text: string): boolean {
-  return text === POWERLINE_SOLID_RIGHT || text === POWERLINE_SOLID_LEFT;
-}
-
-// Fallback fonts inset or scale these private-use glyphs, leaving a gap where
-// the separator should meet the next cell. Fill the triangle from the cell's
-// own edges instead, as native terminals do.
-function fillSolidPowerlineSeparator(
-  context: CanvasRenderingContext2D,
-  text: string,
-  left: number,
-  top: number,
-  metrics: GhosttyCellMetrics,
-): void {
-  const right = left + metrics.width;
-  const [base, point] = text === POWERLINE_SOLID_RIGHT ? [left, right] : [right, left];
-  context.beginPath();
-  context.moveTo(base, top);
-  context.lineTo(point, top + metrics.height / 2);
-  context.lineTo(base, top + metrics.height);
-  context.closePath();
-  context.fill();
-}
-
 export function ghosttyTextRunEnd(
   cells: readonly GhosttyCell[],
   start: number,
@@ -73,7 +46,14 @@ export function ghosttyTextRunEnd(
       end += 1;
       continue;
     }
-    if (next.text.length === 0 || POWERLINE_SEPARATORS.has(next.text) || !sameStyle(next)) break;
+    if (
+      next.text.length === 0 ||
+      POWERLINE_SEPARATORS.has(next.text) ||
+      isIconGlyph(next.text) ||
+      !sameStyle(next)
+    ) {
+      break;
+    }
     end += 1;
   }
   return end;
@@ -124,6 +104,55 @@ function drawPowerlineSeparator(
     context.strokeStyle = context.fillStyle;
     context.stroke();
   }
+}
+
+// Nerd Font icons live in the private-use planes. Powerline and powerline-extra
+// glyphs (U+E0A0–U+E0D7) are cell-shaped, so they keep their font placement.
+function isIconGlyph(text: string): boolean {
+  const code = text.codePointAt(0);
+  if (code === undefined || (code >= 0xe0a0 && code <= 0xe0d7)) return false;
+  return (code >= 0xe000 && code <= 0xf8ff) || (code >= 0xf0000 && code <= 0xffffd);
+}
+
+const ICON_HEIGHT_EM = 0.7;
+
+/**
+ * Fits an icon's ink inside `width` and 0.7em of height, keeping its
+ * proportions, and centres it in the row, as Ghostty does. Drawn on the
+ * baseline, icons ride low in tall rows and get squashed to one cell.
+ */
+function drawIconGlyph(
+  context: CanvasRenderingContext2D,
+  text: string,
+  left: number,
+  top: number,
+  width: number,
+  metrics: GhosttyCellMetrics,
+  fontSize: number,
+): void {
+  const ink = context.measureText(text);
+  const inkWidth = ink.actualBoundingBoxLeft + ink.actualBoundingBoxRight;
+  const inkHeight = ink.actualBoundingBoxAscent + ink.actualBoundingBoxDescent;
+  if (!(inkWidth > 0 && inkHeight > 0)) {
+    context.fillText(text, left, top + metrics.baseline, width);
+    return;
+  }
+  const maxHeight = Math.min(fontSize * ICON_HEIGHT_EM, metrics.height);
+  const scale = Math.min(width / inkWidth, maxHeight / inkHeight);
+  context.save();
+  context.beginPath();
+  context.rect(left, top, width, metrics.height);
+  context.clip();
+  // Icons wider than a cell start at its left edge, keeping the gap before the next word.
+  const centreX = left + Math.max(metrics.width, inkWidth * scale) / 2;
+  context.translate(centreX, top + metrics.height / 2);
+  context.scale(scale, scale);
+  context.fillText(
+    text,
+    (ink.actualBoundingBoxLeft - ink.actualBoundingBoxRight) / 2,
+    (ink.actualBoundingBoxAscent - ink.actualBoundingBoxDescent) / 2,
+  );
+  context.restore();
 }
 
 function fontForCell(cell: GhosttyCell, fontSize: number, fontFamily: string): string {
@@ -292,6 +321,26 @@ export function renderGhosttySnapshot(options: {
         runStart += 1;
         continue;
       }
+      if (isIconGlyph(first.text)) {
+        if (!first.invisible) {
+          const next = row.cells[runStart + 1];
+          const spread =
+            first.wide === GHOSTTY_CELL_WIDE.wide || next?.text === "" || next?.text === " ";
+          context.font = fontForCell(first, fontSize, fontFamily);
+          context.fillStyle = cssColor(first.foreground);
+          drawIconGlyph(
+            context,
+            first.text,
+            padding + runStart * metrics.width,
+            top,
+            (spread ? 2 : 1) * metrics.width,
+            metrics,
+            fontSize,
+          );
+        }
+        runStart += 1;
+        continue;
+      }
       const runEnd = ghosttyTextRunEnd(
         row.cells,
         runStart,
@@ -371,7 +420,11 @@ export function renderGhosttySnapshot(options: {
           drawPowerlineSeparator(context, separator, left, top, metrics.width, metrics.height);
         } else {
           context.font = fontForCell(cell, fontSize, fontFamily);
-          context.fillText(cell.text, left, top + metrics.baseline, metrics.width);
+          if (isIconGlyph(cell.text)) {
+            drawIconGlyph(context, cell.text, left, top, metrics.width, metrics, fontSize);
+          } else {
+            context.fillText(cell.text, left, top + metrics.baseline, metrics.width);
+          }
         }
       }
     }

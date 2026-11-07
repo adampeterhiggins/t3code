@@ -23,18 +23,25 @@ import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 
 import {
   inlineMarkdownUnitMarks,
+  linkHref,
   MARKDOWN_SOURCE_MARK,
   type RichTextMark,
+  type RichTextStyle,
 } from "~/composer-rich-text";
-import { caretTakesMarksBefore, serializeEditorDoc } from "~/composer-rich-text-doc";
+import {
+  caretTakesMarksBefore,
+  createRichTextMark,
+  richTextMarksOf,
+  serializeEditorDoc,
+} from "~/composer-rich-text-doc";
 
 // Styled text the selection touches becomes source text with the source mark,
 // parsed back once the selection leaves. History steps only replay on the shape
 // they were recorded in, so the history records both rewrites. Recording would
 // clear redo after undo or redo, so until the next edit see `normalizeDetached`.
 
-const STYLE_MARKS: RichTextMark[] = ["bold", "italic", "strike", "code"];
-const PREVIEW_TAGS: Record<Exclude<RichTextMark, "code">, string> = {
+const STYLE_MARK_NAMES = ["bold", "italic", "strike", "code", "link"];
+const PREVIEW_TAGS: Record<Exclude<RichTextStyle, "code">, string> = {
   bold: "strong",
   italic: "em",
   strike: "s",
@@ -53,7 +60,6 @@ function collectStyledRanges(doc: ProseMirrorNode): StyledRange[] {
   const ranges: StyledRange[] = [];
   const map = serializeEditorDoc(doc);
   let range: StyledRange | null = null;
-  let openLength = 0;
   for (const run of map.runs) {
     if (run.nodeName === "codeBlock") continue;
     if (run.openLen > 0) {
@@ -81,8 +87,7 @@ function collectStyledRanges(doc: ProseMirrorNode): StyledRange[] {
         text: map.value.slice(end - run.closeLen, end),
       });
     }
-    openLength += run.openLen - run.closeLen;
-    if (openLength === 0) {
+    if (!run.openMarks) {
       ranges.push(range);
       range = null;
     }
@@ -110,7 +115,7 @@ function revealsFaithfully(doc: ProseMirrorNode, range: StyledRange): boolean {
   };
   doc.nodesBetween(range.from, range.to, (node, pos) => {
     if (!node.isInline) return true;
-    const marks = STYLE_MARKS.filter((name) => node.marks.some((mark) => mark.type.name === name));
+    const marks = richTextMarksOf(node.marks);
     const from = Math.max(pos, range.from);
     const content = node.isText ? node.text!.slice(from - pos, range.to - pos) : ATOM_TEXT;
     for (let index = 0; index < content.length; index++) {
@@ -206,8 +211,8 @@ function collapseRegion(tr: Transaction, region: TextRange, type: MarkType): voi
   tr.removeMark(region.from, region.to, type);
   forEachUnitRun(units, (start, end, marks) => {
     for (const name of marks ?? []) {
-      const markType = schema.marks[name];
-      if (markType) tr.addMark(region.from + start, region.from + end, markType.create());
+      const mark = createRichTextMark(schema, name);
+      if (mark) tr.addMark(region.from + start, region.from + end, mark);
     }
   });
   const deletions: TextRange[] = [];
@@ -266,7 +271,7 @@ function revealStyledText(tr: Transaction, type: MarkType, typed: boolean, takes
   const revealed: { range: TextRange; step: number }[] = [];
   const insertions: { at: number; length: number; closing: boolean }[] = [];
   for (const range of ranges.toReversed()) {
-    for (const name of STYLE_MARKS) {
+    for (const name of STYLE_MARK_NAMES) {
       const markType = schema.marks[name];
       if (markType) tr.removeMark(range.from, range.to, markType);
     }
@@ -387,10 +392,18 @@ function previewDecorations(
     const codeTicks = new Set<number>();
     forEachUnitRun(units, (start, end, marks) => {
       for (const name of marks ?? []) {
+        if (linkHref(name) !== null) {
+          decorations.push(
+            Decoration.inline(region.from + start, region.from + end, {
+              class: "composer-link",
+            }),
+          );
+          continue;
+        }
         if (name !== "code") {
           decorations.push(
             Decoration.inline(region.from + start, region.from + end, {
-              nodeName: PREVIEW_TAGS[name],
+              nodeName: PREVIEW_TAGS[name as Exclude<RichTextStyle, "code">],
             }),
           );
           continue;
@@ -548,7 +561,7 @@ export const ComposerMarkdownSourceExtension = TiptapMark.create({
   addKeyboardShortcuts() {
     // Shown markers are plain text, so toggling a style there would wrap them
     // in another style. Parse the source first and toggle the result.
-    const toggle = (name: RichTextMark) => () => {
+    const toggle = (name: RichTextStyle) => () => {
       const { state } = this.editor;
       if (state.selection.empty) return false;
       const touched = sourceRegions(state.doc, this.type).some((region) =>

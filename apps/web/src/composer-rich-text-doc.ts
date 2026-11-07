@@ -5,6 +5,7 @@ import {
   type MarkType,
   type Node as ProseMirrorNode,
   type ResolvedPos,
+  type Schema,
 } from "@tiptap/pm/model";
 import { Bold } from "@tiptap/extension-bold";
 import { Code } from "@tiptap/extension-code";
@@ -18,6 +19,7 @@ import {
   type Editor,
   InputRule,
   Extension,
+  Mark as TiptapMark,
   markInputRule,
   markPasteRule,
   mergeAttributes,
@@ -43,31 +45,53 @@ import {
 } from "~/composer-editor-mentions";
 import { nextOrderedMarkerText } from "~/composer-list-continuation";
 import {
+  isChipLinkSource,
+  linkHref,
+  linkMark,
   MARKDOWN_SOURCE_MARK,
   parseInlineMarkdown,
-  RICH_TEXT_DELIMITERS,
+  richTextDelimiters,
   type RichTextMark,
+  type RichTextStyle,
 } from "~/composer-rich-text";
 import { collectInlineContextIds } from "~/lib/composerContextReferences";
+import { readLocalApi } from "~/localApi";
 import { composerMathRanges } from "@t3tools/shared/composerInlineTokens";
 
 export type SkillMeta = { label: string; description: string | null };
 
-const MARK_NESTING_ORDER: RichTextMark[] = ["strike", "bold", "italic", "code"];
+// Markdown allows code in a link label, never a link in code.
+const MARK_NESTING_ORDER = ["strike", "bold", "italic", "link", "code"] as const;
+const STYLE_NAMES: ReadonlySet<string> = new Set<RichTextStyle>([
+  "bold",
+  "italic",
+  "strike",
+  "code",
+]);
 
-const MARK_TO_TIPTAP: Record<RichTextMark, string> = {
-  bold: "bold",
-  italic: "italic",
-  strike: "strike",
-  code: "code",
-};
+function nestingRank(mark: RichTextMark): number {
+  return MARK_NESTING_ORDER.indexOf(linkHref(mark) === null ? (mark as RichTextStyle) : "link");
+}
 
-const TIPTAP_TO_MARK: Record<string, RichTextMark> = {
-  bold: "bold",
-  italic: "italic",
-  strike: "strike",
-  code: "code",
-};
+/** The composer's marks among `marks`, as the Markdown they write. */
+export function richTextMarksOf(marks: readonly Mark[]): RichTextMark[] {
+  return marks.flatMap((mark): RichTextMark[] => {
+    if (mark.type.name === "link") return [linkMark(String(mark.attrs.href ?? ""))];
+    return STYLE_NAMES.has(mark.type.name) ? [mark.type.name as RichTextStyle] : [];
+  });
+}
+
+function richTextMarkJson(mark: RichTextMark): Record<string, unknown> {
+  const href = linkHref(mark);
+  return href === null ? { type: mark } : { type: "link", attrs: { href } };
+}
+
+export function createRichTextMark(schema: Schema, mark: RichTextMark): Mark | null {
+  const href = linkHref(mark);
+  return (
+    schema.marks[href === null ? mark : "link"]?.create(href === null ? null : { href }) ?? null
+  );
+}
 
 type CodePair = { from: number; to: number };
 
@@ -343,6 +367,83 @@ export const ComposerEmphasisExtensions = [
     },
   }),
 ];
+
+// Mirrors the parser's destination, less the `)` that triggers the rule.
+const LINK_INPUT_REGEX =
+  /(?<![\\!])\[([^[\]\n]+)\]\(((?:[^\s()\\]|\\.|\((?:[^\s()\\]|\\.)*\))+)\)$/;
+const OPENABLE_LINK = /^(?:https?|mailto):/i;
+
+function linkInputRule(type: MarkType): InputRule {
+  return new InputRule({
+    find: LINK_INPUT_REGEX,
+    handler: ({ state, range, match }) => {
+      const [source, label, href] = match as unknown as [string, string, string];
+      if (touchesMarkdownSource(state, range.from, range.to)) return null;
+      if (isChipLinkSource(source)) return null;
+      let plain = true;
+      state.doc.nodesBetween(range.from, range.to, (node) => {
+        if (node.isInline && (!node.isText || node.marks.some((mark) => mark.type.spec.code))) {
+          plain = false;
+        }
+      });
+      if (!plain) return null;
+      const { tr } = state;
+      const labelEnd = range.from + 1 + label.length;
+      tr.delete(labelEnd, range.to);
+      tr.delete(range.from, range.from + 1);
+      tr.addMark(range.from, range.from + label.length, type.create({ href }));
+      tr.removeStoredMark(type);
+    },
+  });
+}
+
+/**
+ * `[label](href)` links. A plain click places the caret, which shows the
+ * Markdown to edit; Mod+click opens web and mail links.
+ */
+export const ComposerLinkExtension = TiptapMark.create({
+  name: "link",
+  inclusive: false,
+  addAttributes() {
+    return { href: { default: "" } };
+  },
+  parseHTML() {
+    return [
+      {
+        tag: "a.composer-link[href]",
+        getAttrs: (element) => ({ href: element.getAttribute("href") ?? "" }),
+      },
+    ];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["a", mergeAttributes(HTMLAttributes, { class: "composer-link" }), 0];
+  },
+  addInputRules() {
+    return [linkInputRule(this.type)];
+  },
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        props: {
+          handleDOMEvents: {
+            // Mousedown, before the caret lands and reveals the source in place of the link.
+            mousedown: (_view, event) => {
+              if (!(event.metaKey || event.ctrlKey) || event.button !== 0) return false;
+              const href =
+                event.target instanceof Element
+                  ? event.target.closest("a.composer-link")?.getAttribute("href")
+                  : null;
+              if (!href || !OPENABLE_LINK.test(href)) return false;
+              event.preventDefault();
+              void readLocalApi()?.shell.openExternal(href);
+              return true;
+            },
+          },
+        },
+      }),
+    ];
+  },
+});
 
 /**
  * Mod+B bolds selected text only. Without a selection Tiptap would toggle bold
@@ -732,8 +833,8 @@ function textJsonForSpan(text: string, marks: RichTextMark[]): Record<string, un
   const json: Record<string, unknown> = { type: "text", text };
   if (marks.length > 0) {
     json.marks = [...marks]
-      .sort((a, b) => MARK_NESTING_ORDER.indexOf(a) - MARK_NESTING_ORDER.indexOf(b))
-      .map((mark) => ({ type: MARK_TO_TIPTAP[mark] }));
+      .sort((a, b) => nestingRank(a) - nestingRank(b))
+      .map((mark) => richTextMarkJson(mark));
   }
   return json;
 }
@@ -996,6 +1097,8 @@ export interface RichRun {
   mdLen: number;
   openLen: number;
   closeLen: number;
+  /** Inline marks still open after this run; a link's delimiters differ in length, so count marks. */
+  openMarks?: number;
   pmPos: number;
   mdStart: number;
   nodeName?: string;
@@ -1093,8 +1196,8 @@ function appendInlineRuns(
       offset = boundary;
     }
   });
-  for (const mark of MARK_NESTING_ORDER) {
-    if (mark === "code") continue;
+  // Emphasis cannot open or close on whitespace; a link label can.
+  for (const mark of ["strike", "bold", "italic"]) {
     for (const direction of [1, -1]) {
       let hasContent = false;
       for (
@@ -1125,20 +1228,15 @@ function appendInlineRuns(
   const orderedMarks: RichTextMark[][] = [];
   for (let index = children.length - 1; index >= 0; index -= 1) {
     const child = children[index]!;
-    const marks =
-      child.type.name === "hardBreak"
-        ? []
-        : child.marks
-            .map((mark) => TIPTAP_TO_MARK[mark.type.name])
-            .filter((mark): mark is RichTextMark => Boolean(mark));
-    for (const mark of MARK_NESTING_ORDER) {
+    const marks = child.type.name === "hardBreak" ? [] : richTextMarksOf(child.marks);
+    for (const mark of markEnds.keys()) {
       if (!marks.includes(mark)) markEnds.delete(mark);
-      else if (!markEnds.has(mark)) markEnds.set(mark, index);
+    }
+    for (const mark of marks) {
+      if (!markEnds.has(mark)) markEnds.set(mark, index);
     }
     orderedMarks[index] = marks.sort(
-      (a, b) =>
-        markEnds.get(b)! - markEnds.get(a)! ||
-        MARK_NESTING_ORDER.indexOf(a) - MARK_NESTING_ORDER.indexOf(b),
+      (a, b) => markEnds.get(b)! - markEnds.get(a)! || nestingRank(a) - nestingRank(b),
     );
   }
   for (let index = 1; index < orderedMarks.length; index += 1) {
@@ -1166,12 +1264,13 @@ function appendInlineRuns(
     const marks = orderedMarks[index]!;
     const open = marks
       .slice(commonLength(marks, orderedMarks[index - 1] ?? []))
-      .map((mark) => RICH_TEXT_DELIMITERS[mark])
+      .map((mark) => richTextDelimiters(mark).open)
       .join("");
+    const stillOpen = commonLength(marks, orderedMarks[index + 1] ?? []);
     const close = marks
-      .slice(commonLength(marks, orderedMarks[index + 1] ?? []))
+      .slice(stillOpen)
       .toReversed()
-      .map((mark) => RICH_TEXT_DELIMITERS[mark])
+      .map((mark) => richTextDelimiters(mark).close)
       .join("");
     const source = child.isText ? child.text! : readAtomSource(child);
     const docLen = child.isText ? source.length : 1;
@@ -1183,6 +1282,7 @@ function appendInlineRuns(
       mdLen: mdText.length,
       openLen: open.length,
       closeLen: close.length,
+      openMarks: stillOpen,
       pmPos,
       mdStart: acc.md,
       ...(child.isText ? {} : { nodeName: child.type.name }),
