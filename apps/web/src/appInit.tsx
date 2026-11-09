@@ -37,6 +37,7 @@ import { startDefaultThemeAdoption } from "./hooks/useDefaultTheme";
 import { startEnvironmentThemeRepaint, startSharedThemeFollow } from "./hooks/useEnvironmentTheme";
 import { readLocalStorageValue, subscribeLocalStorageKey } from "./hooks/useLocalStorage";
 import { startThemeSync } from "./hooks/useThemeSync";
+import { startHostEnvironmentLookup } from "./state/primaryEnvironment";
 import {
   getClientSettings,
   startModelPreferencesMigration,
@@ -187,6 +188,7 @@ export function startAppServices(): AppRouter {
   installDesktopPasteAsText(window.desktopBridge, window);
 
   startClientAppearance();
+  startHostEnvironmentLookup();
   startEnvironmentThemeRepaint();
   // The legacy panel shares the main profile and must not run draft writers.
   // The floating chat has its own partition, so reconciliation is safe there.

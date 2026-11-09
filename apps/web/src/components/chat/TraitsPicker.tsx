@@ -572,7 +572,6 @@ export const TraitsPicker = memo(function TraitsPicker({
     speedLabel,
     otherLabels,
   } = buildTraitsTriggerDisplay({
-    provider,
     descriptors: visibleDescriptors,
     primarySelectDescriptorId: primarySelectDescriptor?.id ?? null,
     ultrathinkPromptControlled,

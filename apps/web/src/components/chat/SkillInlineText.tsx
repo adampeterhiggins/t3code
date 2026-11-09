@@ -1,4 +1,6 @@
-import type { ScopedThreadRef, ServerProviderSkill } from "@t3tools/contracts";
+import { collectComposerModelMentions } from "@t3tools/client-runtime/composer-model-mentions";
+import { ModelMentionChip } from "./ModelMentionChip";
+import type { EnvironmentId, ScopedThreadRef, ServerProviderSkill } from "@t3tools/contracts";
 import { formatProviderSkillDisplayName, matchInlineSkills } from "@t3tools/shared/inlineSkills";
 import { Children, cloneElement, isValidElement, type ReactNode } from "react";
 
@@ -73,31 +75,51 @@ function SkillInlineText(props: {
   text: string;
   skills: ReadonlyArray<MessageSkill>;
   threadRef: ScopedThreadRef | null;
+  environmentId: EnvironmentId | null;
 }) {
+  const chips: Array<{ start: number; end: number; node: ReactNode }> = [];
+  for (const { start, end, skill, rawText } of matchInlineSkills(props.text, props.skills)) {
+    chips.push({
+      start,
+      end,
+      node: (
+        <ContextPreviewHover
+          key={`${start}:${skill.name}`}
+          kind="skill"
+          {...messageSkillChip({
+            name: skill.name,
+            skill,
+            copyMarkdown: rawText,
+            threadRef: props.threadRef,
+          })}
+        />
+      ),
+    });
+  }
+  for (const mention of collectComposerModelMentions(props.text)) {
+    chips.push({
+      start: mention.start,
+      end: mention.end,
+      node: (
+        <ModelMentionChip
+          key={`${mention.start}:model`}
+          environmentId={props.environmentId}
+          instanceId={mention.instanceId}
+          model={mention.model}
+          source={mention.source}
+        />
+      ),
+    });
+  }
   const nodes: ReactNode[] = [];
   let cursor = 0;
-
-  for (const { start, end, skill, rawText } of matchInlineSkills(props.text, props.skills)) {
-    if (start > cursor) {
-      nodes.push(props.text.slice(cursor, start));
+  for (const chip of chips.toSorted((left, right) => left.start - right.start)) {
+    if (chip.start < cursor) continue;
+    if (chip.start > cursor) {
+      nodes.push(props.text.slice(cursor, chip.start));
     }
-    nodes.push(
-      <ContextPreviewHover
-        key={`${start}:${skill.name}`}
-        kind="skill"
-        {...messageSkillChip({
-          name: skill.name,
-          skill,
-          copyMarkdown: rawText,
-          threadRef: props.threadRef,
-        })}
-      />,
-    );
-    cursor = end;
-  }
-
-  if (cursor === 0) {
-    return <>{props.text}</>;
+    nodes.push(chip.node);
+    cursor = chip.end;
   }
   if (cursor < props.text.length) {
     nodes.push(props.text.slice(cursor));
@@ -109,10 +131,18 @@ export function renderSkillInlineMarkdownChildren(
   children: ReactNode,
   skills: ReadonlyArray<MessageSkill>,
   threadRef: ScopedThreadRef | null,
+  environmentId: EnvironmentId | null = null,
 ): ReactNode {
   return Children.map(children, (child) => {
     if (typeof child === "string") {
-      return <SkillInlineText text={child} skills={skills} threadRef={threadRef} />;
+      return (
+        <SkillInlineText
+          text={child}
+          skills={skills}
+          threadRef={threadRef}
+          environmentId={environmentId}
+        />
+      );
     }
     if (!isValidElement<{ children?: ReactNode; node?: { tagName?: string } }>(child)) {
       return child;
@@ -128,7 +158,7 @@ export function renderSkillInlineMarkdownChildren(
     return cloneElement(
       child,
       undefined,
-      renderSkillInlineMarkdownChildren(child.props.children, skills, threadRef),
+      renderSkillInlineMarkdownChildren(child.props.children, skills, threadRef, environmentId),
     );
   });
 }

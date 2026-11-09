@@ -1,3 +1,4 @@
+import type { ProviderInteractionMode } from "@t3tools/contracts";
 import { getProviderModelCapabilities } from "../../providerModels";
 import { preserveCompatibleOptions } from "../ChatView.modelOptions";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
@@ -8,7 +9,6 @@ import {
   ProviderInstanceId,
   type ServerProvider,
   type ThreadId,
-  ProviderInteractionMode,
   RuntimeMode,
 } from "@t3tools/contracts";
 import { type Dispatch, type SetStateAction } from "react";
@@ -301,11 +301,11 @@ export function useComposerSelection(input: ComposerSelectionInput) {
     modelRequiresFork,
     handleInteractionModeChange,
     handleInteractionModeChangeStable,
+    toggleInteractionModeStable,
     handleRuntimeModeChangeStable,
     onEnvModeChangeStable,
     onProviderModelSelectStable,
     onStartFromOriginChange,
     openProviderSetupStable,
-    toggleInteractionModeStable,
   };
 }

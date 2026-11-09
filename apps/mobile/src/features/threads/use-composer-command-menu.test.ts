@@ -6,6 +6,7 @@ import {
   ProviderInstanceId,
   ThreadId,
   type OrchestrationV2Subagent,
+  type ServerProvider,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import { act, createElement } from "react";
@@ -42,7 +43,9 @@ vi.mock("../../state/server", () => ({
 }));
 
 import { getComposerDraftSnapshot, setComposerDraftContext } from "../../state/use-composer-drafts";
+import type { ModelOption } from "../../lib/modelOptions";
 import {
+  buildComposerModelItems,
   useComposerCommandMenu,
   buildComposerSlashCommandItems,
   resolveComposerCommandSelection,
@@ -166,6 +169,74 @@ describe("mobile slash commands", () => {
         allowInteractionMode: false,
       }),
     ).toEqual({ text: "/plan ", cursor: 6, interactionMode: null });
+  });
+});
+
+describe("mobile model mentions", () => {
+  const provider = (
+    instanceId: string,
+    overrides: Partial<ServerProvider> = {},
+  ): ServerProvider => ({
+    instanceId: ProviderInstanceId.make(instanceId),
+    driver: ProviderDriverKind.make("codex"),
+    enabled: true,
+    installed: true,
+    version: null,
+    status: "ready",
+    auth: { status: "authenticated" },
+    checkedAt: "2026-01-01T00:00:00.000Z",
+    models: [],
+    slashCommands: [],
+    skills: [],
+    ...overrides,
+  });
+  const option = (key: string, overrides: Partial<ModelOption> = {}): ModelOption => {
+    const [instanceId = "", model = ""] = key.split(":");
+    return {
+      key,
+      label: "GPT-6.1",
+      subtitle: "",
+      providerKey: instanceId,
+      providerLabel: "Traex",
+      providerDriver: "codex",
+      isDefault: false,
+      isLegacy: false,
+      capabilities: null,
+      selection: { instanceId: ProviderInstanceId.make(instanceId), model },
+      ...overrides,
+    };
+  };
+
+  it("offers current, visible models labelled with their provider", () => {
+    const items = buildComposerModelItems(
+      [
+        option("traex:gpt-6.1"),
+        option("opencode:traex/gpt-6.1", {
+          subtitle: "Traex",
+          providerLabel: "OpenCode",
+          providerDriver: "opencode",
+        }),
+        option("hidden:gpt-6.1", { isHidden: true }),
+        option("gone:gpt-6.1", { isUnavailable: true }),
+        option("old:gpt-5", { label: "GPT-5", isLegacy: true }),
+      ],
+      "gpt",
+      ["traex", "opencode", "hidden", "gone", "old"].map((id) => provider(id)),
+    );
+    expect(items.map((item) => [item.id, item.description]).toSorted()).toEqual([
+      ["model:opencode:traex/gpt-6.1", "OpenCode · Traex"],
+      ["model:traex:gpt-6.1", "Traex"],
+    ]);
+  });
+
+  it.each([
+    ["missing", []],
+    ["not installed", [provider("traex", { installed: false })]],
+    ["signed out", [provider("traex", { auth: { status: "unauthenticated" } })]],
+    ["not ready", [provider("traex", { status: "error" })]],
+    ["unavailable", [provider("traex", { availability: "unavailable" })]],
+  ] as const)("does not suggest a preserved selection whose provider is %s", (_, providers) => {
+    expect(buildComposerModelItems([option("traex:gpt-6.1")], "gpt", providers)).toEqual([]);
   });
 });
 

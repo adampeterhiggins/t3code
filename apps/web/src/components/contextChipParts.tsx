@@ -99,6 +99,7 @@ export function ContextChipPopover(props: {
   label: string;
   copyMarkdown?: string | undefined;
   accessibleLabel: string;
+  accent?: string | undefined;
   onIntent?: () => void;
   stayOpenAfterPress?: boolean;
   children: ReactNode;
@@ -108,6 +109,9 @@ export function ContextChipPopover(props: {
       trigger={
         <ContextChipButton
           kind={props.kind}
+          style={
+            props.accent ? ({ "--context-chip-accent": props.accent } as CSSProperties) : undefined
+          }
           {...(props.state ? { state: props.state } : {})}
           icon={props.icon}
           label={props.label}

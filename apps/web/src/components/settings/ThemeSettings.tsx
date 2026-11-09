@@ -22,7 +22,7 @@ import { useEnvironmentThemeDefinitions } from "../../hooks/useEnvironmentTheme"
 import { readThemeHalvesRaw } from "../../hooks/useTheme";
 import { cn } from "../../lib/utils";
 import { primaryEnvironmentIdAtom } from "../../state/primaryEnvironment";
-import { primaryServerEnvironmentThemesAtom, serverEnvironment } from "../../state/server";
+import { themeServerEnvironmentThemesAtom, serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import {
   environmentThemeFileFromDefinition,
@@ -602,7 +602,7 @@ export function ThemeLibrary({
   const openThemeEditor = useThemeEditorStore((store) => store.openThemeEditor);
   const environmentThemes = useEnvironmentThemeDefinitions();
   const primaryEnvironmentId = useAtomValue(primaryEnvironmentIdAtom);
-  const publishedThemes = useAtomValue(primaryServerEnvironmentThemesAtom);
+  const publishedThemes = useAtomValue(themeServerEnvironmentThemesAtom);
   const canShareThemes = useAtomValue(
     serverEnvironment.publishEnvironmentTheme.permissionAtom(primaryEnvironmentId),
   );

@@ -1,9 +1,11 @@
-import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { orchestrationEnvironment } from "../../state/orchestration";
+import { useEnvironmentQuery } from "../../state/query";
+import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentId } from "@t3tools/contracts";
 import {
   formatHostedThreadLink,
   guessThreadLinkRef,
-  percentDecodedThreadLinkId,
+  threadLinkCandidates,
   type ThreadLink,
   unknownThreadLinkLabel,
 } from "@t3tools/shared/threadLinks";
@@ -13,6 +15,7 @@ import { MessageSquareTextIcon } from "lucide-react";
 import { useProject, useThreadRefs, useThreadShell } from "../../state/entities";
 import { configuredHostedAppUrl } from "../../hostedPairing";
 import { ProjectFavicon } from "../ProjectFavicon";
+import { UnresolvedChip } from "../contextChipParts";
 import { ContextPreviewHover } from "../contextPreviewRegistry";
 
 /** `label` is the link's written text; an autolink has none. */
@@ -21,24 +24,48 @@ export function MarkdownThreadLink(props: {
   readonly link: ThreadLink;
   readonly label: string | null;
 }) {
-  const linkEnvironmentId = props.link.environmentId ?? props.environmentId;
-  const decodedId = percentDecodedThreadLinkId(props.link.threadId);
-  const written = useThreadShell(scopeThreadRef(linkEnvironmentId, props.link.threadId));
-  const decoded = useThreadShell(
-    written === null && decodedId !== null ? scopeThreadRef(linkEnvironmentId, decodedId) : null,
+  const candidates = threadLinkCandidates(props.link, props.environmentId);
+  const writtenRef = candidates[0]!;
+  const written = useThreadShell(writtenRef);
+  const lookup = useEnvironmentQuery(
+    written === null
+      ? orchestrationEnvironment.threadLinkMetadata({
+          environmentId: writtenRef.environmentId,
+          input: { threadIds: candidates.map((ref) => ref.threadId) },
+        })
+      : null,
   );
-  const local = written ?? decoded;
-  const guess = local === null && props.link.environmentId === null;
+  const settled = lookup.isSuccess && !lookup.isPending;
+  const target =
+    written !== null
+      ? { ref: writtenRef, metadata: written }
+      : (candidates.flatMap((ref) => {
+          const metadata = lookup.data?.[ref.threadId];
+          return metadata ? [{ ref, metadata }] : [];
+        })[0] ?? null);
+  const missing = target === null && settled;
+  const guess = missing && props.link.environmentId === null;
   const refs = useThreadRefs(guess);
-  const remote = useThreadShell(guess ? guessThreadLinkRef(props.link, refs) : null);
-  const thread = local ?? remote;
-  const environmentId = thread?.environmentId ?? linkEnvironmentId;
-  const threadId = thread?.id ?? props.link.threadId;
+  const remoteRef = guess
+    ? guessThreadLinkRef(
+        props.link,
+        refs.filter((ref) => ref.environmentId !== writtenRef.environmentId),
+      )
+    : null;
+  const remote = useThreadShell(remoteRef);
+  const resolved = target ?? (remoteRef && remote ? { ref: remoteRef, metadata: remote } : null);
+  const environmentId = resolved?.ref.environmentId ?? writtenRef.environmentId;
+  const threadId = resolved?.ref.threadId ?? writtenRef.threadId;
   const project = useProject(
-    thread === null ? null : scopeProjectRef(environmentId, thread.projectId),
+    resolved?.metadata.projectId
+      ? scopeProjectRef(environmentId, resolved.metadata.projectId)
+      : null,
   );
-  const title =
-    thread?.title.trim() || props.label || unknownThreadLinkLabel(props.link, props.environmentId);
+  if (missing && resolved === null) {
+    const unknown = unknownThreadLinkLabel(props.link, props.environmentId);
+    return <UnresolvedChip label={props.label ?? unknown} tooltip={unknown} />;
+  }
+  const title = resolved?.metadata.title.trim() || props.label || "Thread";
   return (
     <ContextPreviewHover
       kind="thread"
@@ -46,6 +73,7 @@ export function MarkdownThreadLink(props: {
       preview={{ record: { environmentId, threadId, title } }}
       trigger={
         <Link
+          aria-label={`Thread, ${title}`}
           to="/$environmentId/$threadId"
           params={{ environmentId, threadId }}
           data-markdown-copy={formatHostedThreadLink(
@@ -54,10 +82,7 @@ export function MarkdownThreadLink(props: {
             configuredHostedAppUrl(),
           )}
         >
-          <span
-            className="ms-[0.25em] me-[0.2em] inline-flex size-[14px] [vertical-align:-0.125em]"
-            aria-hidden
-          >
+          <span className="ms-[0.25em] me-[0.2em] inline-flex size-[14px] [vertical-align:-0.125em]">
             {project === null ? (
               <MessageSquareTextIcon className="block size-full shrink-0" />
             ) : (

@@ -53,7 +53,7 @@ export function SubagentModelLabel(props: {
             descriptor.type === "boolean" &&
             typeof saved?.value === "boolean"
           ) {
-            return getTraitsSpeedDisplay(provider.driver, {
+            return getTraitsSpeedDisplay({
               ...descriptor,
               currentValue: saved.value,
             });
@@ -65,7 +65,7 @@ export function SubagentModelLabel(props: {
             typeof saved?.value === "string" &&
             descriptor.options.some((option) => option.id === saved.value)
           ) {
-            return getTraitsSpeedDisplay(provider.driver, {
+            return getTraitsSpeedDisplay({
               ...descriptor,
               currentValue: saved.value,
             });

@@ -5,7 +5,7 @@ import { providerModelKey } from "~/modelOrdering";
 import { isProviderInstancePickerVisible, type ProviderInstanceEntry } from "~/providerInstances";
 
 import type { ComposerCommandItem } from "./ComposerCommandMenu";
-import { rankModelPickerSearch } from "./modelPickerSearch";
+import { rankModelPickerSearch } from "@t3tools/client-runtime/model-search";
 
 export type ComposerModelItem = Extract<ComposerCommandItem, { type: "model" }>;
 

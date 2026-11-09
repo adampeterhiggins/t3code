@@ -1,3 +1,11 @@
+import { ComposerPlanFollowUpBanner } from "./ComposerPlanFollowUpBanner";
+import {
+  providerSupportsManualCompaction,
+  resolveContextWindowModelDisplayName,
+  shouldReserveContextWindowMeter,
+} from "./ContextWindowMeter.logic";
+import type { LatestProposedPlanState } from "../../session-logic";
+import type { ThreadShell } from "../../types";
 import type { ContextWindowSnapshot } from "@t3tools/client-runtime/state/context-window";
 import { useComposerIntegrationReferences } from "./useComposerIntegrationReferences";
 import {
@@ -129,7 +137,7 @@ import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import * as Schema from "effect/Schema";
 import { isPasteAsTextShortcut } from "@t3tools/client-runtime/text-paste";
-
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { folderDropTarget, resolveDroppedFolderPath } from "./folderDrop";
 import { splitTransferredFiles } from "./workspaceFileDrop";
 import { createModelSelection, normalizeModelSlug } from "@t3tools/shared/model";
@@ -273,16 +281,10 @@ import {
 
 import { ComposerFooterPrimaryActions } from "./ComposerFooterControls";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
-import { ComposerPlanFollowUpBanner } from "./ComposerPlanFollowUpBanner";
 import { resolveComposerMenuActiveItemId } from "./composerMenuHighlight";
 import { buildPullRequestReferenceContext } from "../pullRequest/pullRequestDetail.logic";
 import { getComposerPromptInjectionState, getComposerReasoningStep } from "./composerProviderState";
 import { readPromptUltrathink } from "./TraitsPicker";
-import {
-  providerSupportsManualCompaction,
-  resolveContextWindowModelDisplayName,
-  shouldReserveContextWindowMeter,
-} from "./ContextWindowMeter.logic";
 import {
   buildAttachmentVideoPreview,
   buildExpandedImagePreview,
@@ -309,15 +311,10 @@ import { proposedPlanTitle } from "@t3tools/shared/proposedPlanText";
 import { hasProviderSetup } from "./ProviderStatusBanner";
 import { type AppModelOption, getAppModelOptionsForInstance } from "../../modelSelection";
 import type { UnifiedSettings } from "@t3tools/contracts/settings";
-import { isVideoAttachment, type SessionPhase, type Thread, type ThreadShell } from "../../types";
+import { isVideoAttachment, type SessionPhase, type Thread } from "../../types";
 import { type ComposerPromptHistoryPosition } from "./composerPromptHistory";
 import type { PendingUserInputDraftAnswer } from "@t3tools/client-runtime/state/pending-user-input";
-import type {
-  LatestProposedPlanState,
-  PendingApproval,
-  PendingUserInput,
-  TimelineEntry,
-} from "../../session-logic";
+import type { PendingApproval, PendingUserInput, TimelineEntry } from "../../session-logic";
 import {
   resolveComposerDispatchMode,
   type ComposerDispatchMode,
@@ -328,6 +325,7 @@ import {
   resolveProviderSlashCommandsForCwd,
 } from "@t3tools/client-runtime/providerSkills";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
+import { Kbd } from "../ui/kbd";
 import { useSoftwareKeyboardOpen } from "../../hooks/useSoftwareKeyboardOpen";
 import { useStableCallback } from "../../hooks/useStableCallback";
 import { usePanelAnimationSettings } from "../../panelAnimations";
@@ -348,6 +346,8 @@ import {
 } from "./preparingComposerImages";
 import { ComposerControlsBar } from "./ComposerControlsBar";
 import { composerCommandKeyHandler, handleComposerMenuKey } from "./composerCommandKey";
+import { usePromptSuggestion } from "./usePromptSuggestion";
+import { useFreshSessionArmed } from "./freshSessionArms";
 
 function consumePasteAsTextShortcut(deadline: { current: number }): boolean {
   const armed = Date.now() <= deadline.current;
@@ -2456,6 +2456,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       }
       return;
     }
+
     if (item.type === "environment") {
       if (trigger.kind !== "path") return;
       const record = environmentContextRecord(item.environmentId, item.label);
@@ -2770,6 +2771,27 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   useLayoutEffect(() => {
     convertPastedObjectLinksRef.current = convertPastedObjectLinks;
   });
+  // Escape dismisses the suggestion so Tab moves focus again.
+  const { suggestion: promptSuggestion, dismiss: dismissPromptSuggestion } = usePromptSuggestion(
+    environmentId,
+    activeThread,
+  );
+  // After /clear the next message starts a fresh session that cannot see what the suggestion refers to.
+  const freshSessionArmed = useFreshSessionArmed(scopedThreadKey(routeThreadRef));
+  // Offered only where the default placeholder would show, so it never hides a pending question.
+  const offeredPromptSuggestion =
+    phase !== "running" &&
+    !isSendBusy &&
+    !freshSessionArmed &&
+    !speechInput.freezesEditor &&
+    composerContextRecords.size === 0 &&
+    !isComposerApprovalState &&
+    !activePendingProgress &&
+    !projectSelectionRequired &&
+    !showProviderUnavailable &&
+    !showPlanFollowUpPrompt
+      ? promptSuggestion
+      : null;
 
   const onComposerCommandKey = (key: string, event: KeyboardEvent, isTaskItem?: boolean) =>
     composerCommandKeyHandler({
@@ -2810,6 +2832,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       readComposerSnapshot,
       applyPromptReplacement,
       submitComposer,
+      promptSuggestion: offeredPromptSuggestion,
+      dismissPromptSuggestion,
     })(key, event, isTaskItem);
 
   const {
@@ -3834,8 +3858,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       selectedPromptEffort,
       selectedProvider,
       selectedProviderModels,
-      interactionMode,
-      planModeUiEnabled,
       compactThreadContextStable,
       saveMessageDraftStable,
       openMessageDraftStable,
@@ -4290,7 +4312,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                               ? "Choose a project above to start a thread"
                               : showProviderUnavailable
                                 ? "Enable a provider in Settings to send a message"
-                                : DEFAULT_COMPOSER_PLACEHOLDER
+                                : (offeredPromptSuggestion ?? DEFAULT_COMPOSER_PLACEHOLDER)
+                    }
+                    placeholderSuffix={
+                      offeredPromptSuggestion !== null ? (
+                        <span className="ml-2 inline-flex align-[1px]">
+                          <Kbd variant="outline">⇥ Tab</Kbd>
+                        </span>
+                      ) : undefined
                     }
                     disabled={
                       projectSelectionRequired ||

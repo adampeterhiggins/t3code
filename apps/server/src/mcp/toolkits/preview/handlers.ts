@@ -226,6 +226,7 @@ const handlers = {
       ...operationInput,
       // Saving still needs a capture even when the response contains only its path.
       ...(includeImage === false && save !== true ? { includeImage: false } : {}),
+      ...(save === true ? { fullScreenshot: true } : {}),
     });
   }),
   preview_act: McpToolAccess.actsAsCaller(({ action, ...input }) =>

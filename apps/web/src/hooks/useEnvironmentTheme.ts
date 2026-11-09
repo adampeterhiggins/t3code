@@ -4,7 +4,7 @@ import * as Equal from "effect/Equal";
 import * as Schema from "effect/Schema";
 
 import { appAtomRegistry, subscribeAtomChanges } from "../rpc/atomRegistry";
-import { primaryServerConfigAtom, primaryServerEnvironmentThemesAtom } from "../state/server";
+import { primaryServerConfigAtom, themeServerEnvironmentThemesAtom } from "../state/server";
 import {
   environmentThemeDefinitionsAtom,
   environmentThemeShareState,
@@ -50,7 +50,7 @@ function readSharedThemeBases(): Record<string, EnvironmentThemeFile> {
 
 function followSharedThemes(): void {
   if (appAtomRegistry.get(primaryServerConfigAtom) === null) return;
-  const published = appAtomRegistry.get(primaryServerEnvironmentThemesAtom);
+  const published = appAtomRegistry.get(themeServerEnvironmentThemesAtom);
   const bases = readSharedThemeBases();
   let basesChanged = false;
   for (const local of getCustomThemes()) {
@@ -81,7 +81,7 @@ function followSharedThemes(): void {
 /** Keeps shared custom themes in step with edits made to them on other devices. */
 export function startSharedThemeFollow(): () => void {
   const unsubscribes = [
-    appAtomRegistry.subscribe(primaryServerEnvironmentThemesAtom, followSharedThemes),
+    appAtomRegistry.subscribe(themeServerEnvironmentThemesAtom, followSharedThemes),
     subscribeToCustomThemes(followSharedThemes),
   ];
   followSharedThemes();

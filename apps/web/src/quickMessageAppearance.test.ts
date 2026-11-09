@@ -13,7 +13,7 @@ vi.mock(import("./state/server"), async () => {
   publishedThemes.atom = Atom.make<ReadonlyArray<import("@t3tools/contracts").EnvironmentTheme>>(
     [],
   );
-  return { primaryServerEnvironmentThemesAtom: publishedThemes.atom } as never;
+  return { themeServerEnvironmentThemesAtom: publishedThemes.atom } as never;
 });
 import { appAtomRegistry } from "./rpc/atomRegistry";
 const app = { theme: "light", appearance: "light" as const, halves: null };

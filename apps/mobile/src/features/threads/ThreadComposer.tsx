@@ -40,7 +40,7 @@ import { useEffect, useEffectEvent, useRef, useState, type RefObject } from "rea
 import { I18nManager, Keyboard, Platform, View, type ViewStyle } from "react-native";
 import { composerImageGallery } from "../../lib/composerImageGallery";
 import { filePreviewGallery } from "../../lib/filePreviewGallery";
-import { FilePreviewModal, type FilePreviewSource } from "../../components/FilePreviewModal";
+import { FilePreviewModal, type FilePreviewSource } from "../../components/ui/FilePreviewModal";
 import {
   composerAttachmentUploadBlockReason,
   composerAttachmentsStillUploading,
@@ -91,7 +91,7 @@ import {
   ComposerAttachmentStrip,
   ComposerAttachmentThumbnail,
 } from "../../components/ComposerAttachmentStrip";
-import { VideoPreviewModal, type VideoPreviewSource } from "../../components/VideoPreviewModal";
+import { VideoPreviewModal, type VideoPreviewSource } from "../../components/ui/VideoPreviewModal";
 import { GlassSurface } from "../../components/ui/GlassSurface";
 import { ComposerEditor, type ComposerEditorHandle } from "../../components/ComposerEditor";
 import { fileRoutePathSegments } from "../files/filePath";
@@ -613,6 +613,13 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     selectThreadSubagents,
   );
   const mentionableEnvironments = useMentionableEnvironments();
+  // Mentions name any model for the agent, so they aren't limited to models this thread can switch to.
+  const mentionModelOptions = buildModelOptions(
+    props.serverConfig,
+    currentModelSelection,
+    undefined,
+    props.selectedThread.projectId,
+  );
   const composerMenu = useComposerCommandMenu({
     draftMessage: draftMessage,
     ownerKey: composerOwnerKey,
@@ -642,6 +649,8 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     offersUsageLimits: usageLimitsOffered,
     onUsageLimits:
       usageLimitsOffered && draftAttachments.length === 0 ? openUsageLimits : undefined,
+    modelOptions: mentionModelOptions,
+    modelProviders: props.serverConfig?.providers,
     ...(props.onFreshSession === undefined ? {} : { onFreshSession: props.onFreshSession }),
     offersSideChat: props.offersSideChat === true,
   });

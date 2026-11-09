@@ -88,7 +88,13 @@ vi.mock("../../onboarding/useProjectScans", () => ({
 vi.mock("../../connection/onboarding", () => ({ connectPairing: vi.fn() }));
 vi.mock("../../state/terminal", () => ({ terminalEnvironment: {} }));
 vi.mock("../clerk/useT3ConnectAuthPrompt", () => ({ useT3ConnectAuthPrompt: vi.fn() }));
-vi.mock("../../cloud/publicConfig", () => ({ hasCloudPublicConfig: () => false }));
+vi.mock(import("../../cloud/publicConfig"), async (original) => ({
+  ...(await original()),
+  hasCloudPublicConfig: () => false,
+}));
+vi.mock("../settings/CliCommandSettingsRow", () => ({
+  useDesktopCliCommand: () => ({ state: null, busy: false, run: () => {} }),
+}));
 vi.mock("../ThreadTerminalDrawer", () => ({ TerminalViewport: () => null }));
 vi.mock("../settings/ChatGptWelcomeCoordinator", () => ({ ChatGptWelcomeCoordinator: () => null }));
 vi.mock("../settings/CodexSetupSection", () => ({

@@ -71,7 +71,7 @@ export {
   THEME_COLOR_ROLES,
 };
 import { appAtomRegistry, subscribeAtomChanges } from "./rpc/atomRegistry";
-import { primaryServerEnvironmentThemesAtom } from "./state/server";
+import { themeServerEnvironmentThemesAtom } from "./state/server";
 
 export type { ThemeAppearance, ThemeColorRole, ThemeColors, ThemeDefinition, ThemeVariants };
 
@@ -357,7 +357,7 @@ export function publishedThemeDefinitions(
 // Every reconnect snapshot delivers a fresh but usually identical array; keeping the
 // previous one skips regenerating palettes and repainting the document for it.
 const publishedThemesAtom = Atom.make((get): ReadonlyArray<EnvironmentTheme> => {
-  const next = get(primaryServerEnvironmentThemesAtom);
+  const next = get(themeServerEnvironmentThemesAtom);
   const previous = Option.getOrNull(get.self<ReadonlyArray<EnvironmentTheme>>());
   return previous !== null && Equal.equals(previous, next) ? previous : next;
 }).pipe(Atom.withLabel("web-published-environment-themes"));
@@ -569,6 +569,17 @@ export function readableThemeColorOn(color: string, surface: string, minContrast
   // Return the 8-bit color the solver measured: the unrounded OKLCH can round
   // to a neighbor just under the target once it is stored and read back.
   return themeRgbToHexColor(themeOklchToRgb(solved));
+}
+
+/** A chip kind's per-theme contrast-solved lightness with `color`'s hue and chroma. */
+export function contextChipAccentWithHueOf(
+  kind: ContextChipAccentKind,
+  color: string,
+): string | null {
+  const parsed = parseThemeColor(color);
+  if (!parsed) return null;
+  const { C, h } = parsed.color;
+  return `oklch(from var(${contextChipColorVariable(kind)}) l ${Number(C.toFixed(4))} ${Number(h.toFixed(2))})`;
 }
 
 const CONTEXT_CHIP_CONTRAST = 5;

@@ -17,7 +17,7 @@ import { appAtomRegistry } from "../rpc/atomRegistry";
 import { primaryEnvironmentIdAtom } from "../state/primaryEnvironment";
 import {
   primaryServerConfigAtom,
-  primaryServerEnvironmentThemesAtom,
+  themeServerEnvironmentThemesAtom,
   serverEnvironment,
 } from "../state/server";
 import {
@@ -144,7 +144,7 @@ function notifySyncFailure(result: Awaited<ReturnType<typeof runPush>>): void {
 
 /** Other devices can only render a custom theme once it is shared, and current, on the server. */
 async function shareCustomThemes(environmentId: EnvironmentId, ids: ReadonlyArray<string>) {
-  const published = appAtomRegistry.get(primaryServerEnvironmentThemesAtom);
+  const published = appAtomRegistry.get(themeServerEnvironmentThemesAtom);
   for (const definition of getCustomThemes()) {
     if (!ids.includes(definition.id)) continue;
     if (environmentThemeShareState(definition, published) === "shared") continue;
