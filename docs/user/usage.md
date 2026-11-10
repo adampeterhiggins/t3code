@@ -173,7 +173,7 @@ provider's accounts beside the list, **Detailed** shows every account at once. C
 footer button at the bottom of the sidebar, `mod+alt+u` (`usage.toggleFooter`), the command
 palette, or **Usage footer** in **Settings → Appearance**.
 
-The sliders button at the top of that panel customizes the bar: pick which providers it shows,
+The sliders button at the top of that panel, or the rows under **Usage footer** in **Settings → Appearance**, customize the bar: pick which providers it shows,
 show one entry per account instead of one per provider (useful with several Cursor accounts,
 where you can also hide single accounts), show the percent left instead of used, and turn the
 reset time and provider names on or off. If you hide everything, the bar shows **Usage** so you

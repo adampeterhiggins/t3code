@@ -418,13 +418,73 @@ function FooterItem({
   );
 }
 
+export function updateUsageFooterDisplay(patch: Partial<UsageFooterDisplay>): void {
+  void updateClientSettings({
+    usageFooterDisplay: { ...getClientSettings().usageFooterDisplay, ...patch },
+  });
+}
+
+function toggleKey(list: readonly string[], key: string, shown: boolean): string[] {
+  return shown ? list.filter((entry) => entry !== key) : [...list, key];
+}
+
+/** The live limit pools across connected environments, as the footer reads them. */
+export function useUsageLimitPools(): readonly LimitPool[] {
+  const presentations = useAtomValue(environmentPresentations.presentationsWithProvidersAtom);
+  const minute = useNowMinute();
+  return collectLimitPools(collectLimitAccounts(presentations), Date.parse(`${minute}:00Z`));
+}
+
+/** Checkboxes for each provider and, with one entry per account, each of its accounts. */
+export function UsageFooterProviderItems({ pools }: { readonly pools: readonly LimitPool[] }) {
+  const display = useClientSettings((settings) => settings.usageFooterDisplay);
+  const separate = display.accounts === "separate";
+  return (
+    <>
+      {pools.map((pool) => {
+        const providerShown = !display.hiddenProviders.includes(pool.driver);
+        return (
+          <MenuGroup key={pool.driver}>
+            <MenuCheckboxItem
+              checked={providerShown}
+              onCheckedChange={(shown) =>
+                updateUsageFooterDisplay({
+                  hiddenProviders: toggleKey(display.hiddenProviders, pool.driver, shown),
+                })
+              }
+            >
+              <span className="flex items-center gap-2">
+                <ProviderIcon driver={pool.driver} />
+                {providerLabel(pool.driver)}
+              </span>
+            </MenuCheckboxItem>
+            {separate && pool.accounts.length > 1
+              ? pool.accounts.map((account) => (
+                  <MenuCheckboxItem
+                    key={account.key}
+                    disabled={!providerShown}
+                    checked={providerShown && !display.hiddenAccounts.includes(account.key)}
+                    onCheckedChange={(shown) =>
+                      updateUsageFooterDisplay({
+                        hiddenAccounts: toggleKey(display.hiddenAccounts, account.key, shown),
+                      })
+                    }
+                  >
+                    <span className="block truncate ps-5">
+                      {accountShortName(account) ?? "Default account"}
+                    </span>
+                  </MenuCheckboxItem>
+                ))
+              : null}
+          </MenuGroup>
+        );
+      })}
+    </>
+  );
+}
+
 function UsageFooterCustomizeMenu({ pools }: { readonly pools: readonly LimitPool[] }) {
   const display = useClientSettings((settings) => settings.usageFooterDisplay);
-  const update = (patch: Partial<UsageFooterDisplay>) =>
-    void updateClientSettings({ usageFooterDisplay: { ...display, ...patch } });
-  const toggle = (list: readonly string[], key: string, shown: boolean) =>
-    shown ? list.filter((entry) => entry !== key) : [...list, key];
-  const separate = display.accounts === "separate";
   return (
     <Menu>
       <MenuTrigger
@@ -435,44 +495,7 @@ function UsageFooterCustomizeMenu({ pools }: { readonly pools: readonly LimitPoo
       <MenuPopup align="end">
         <MenuGroup>
           <MenuGroupLabel>Show in footer</MenuGroupLabel>
-          {pools.map((pool) => {
-            const providerShown = !display.hiddenProviders.includes(pool.driver);
-            return (
-              <MenuGroup key={pool.driver}>
-                <MenuCheckboxItem
-                  checked={providerShown}
-                  onCheckedChange={(shown) =>
-                    update({
-                      hiddenProviders: toggle(display.hiddenProviders, pool.driver, shown),
-                    })
-                  }
-                >
-                  <span className="flex items-center gap-2">
-                    <ProviderIcon driver={pool.driver} />
-                    {providerLabel(pool.driver)}
-                  </span>
-                </MenuCheckboxItem>
-                {separate && pool.accounts.length > 1
-                  ? pool.accounts.map((account) => (
-                      <MenuCheckboxItem
-                        key={account.key}
-                        disabled={!providerShown}
-                        checked={providerShown && !display.hiddenAccounts.includes(account.key)}
-                        onCheckedChange={(shown) =>
-                          update({
-                            hiddenAccounts: toggle(display.hiddenAccounts, account.key, shown),
-                          })
-                        }
-                      >
-                        <span className="block truncate ps-5">
-                          {accountShortName(account) ?? "Default account"}
-                        </span>
-                      </MenuCheckboxItem>
-                    ))
-                  : null}
-              </MenuGroup>
-            );
-          })}
+          <UsageFooterProviderItems pools={pools} />
         </MenuGroup>
         <MenuSeparator />
         <MenuGroup>
@@ -480,7 +503,8 @@ function UsageFooterCustomizeMenu({ pools }: { readonly pools: readonly LimitPoo
           <MenuRadioGroup
             value={display.accounts}
             onValueChange={(value) => {
-              if (value === "combined" || value === "separate") update({ accounts: value });
+              if (value === "combined" || value === "separate")
+                updateUsageFooterDisplay({ accounts: value });
             }}
           >
             <RadioChoice value="combined" label="One per provider" />
@@ -493,7 +517,7 @@ function UsageFooterCustomizeMenu({ pools }: { readonly pools: readonly LimitPoo
           <MenuRadioGroup
             value={display.value}
             onValueChange={(value) => {
-              if (value === "used" || value === "remaining") update({ value });
+              if (value === "used" || value === "remaining") updateUsageFooterDisplay({ value });
             }}
           >
             <RadioChoice value="used" label="Percent used" />
@@ -501,13 +525,13 @@ function UsageFooterCustomizeMenu({ pools }: { readonly pools: readonly LimitPoo
           </MenuRadioGroup>
           <MenuCheckboxItem
             checked={display.showReset}
-            onCheckedChange={(showReset) => update({ showReset })}
+            onCheckedChange={(showReset) => updateUsageFooterDisplay({ showReset })}
           >
             Time to reset
           </MenuCheckboxItem>
           <MenuCheckboxItem
             checked={display.showNames}
-            onCheckedChange={(showNames) => update({ showNames })}
+            onCheckedChange={(showNames) => updateUsageFooterDisplay({ showNames })}
           >
             Provider names
           </MenuCheckboxItem>

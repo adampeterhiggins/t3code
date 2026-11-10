@@ -39,6 +39,7 @@ import { AdvancedSettings } from "./AdvancedSettings";
 import { PanelAnimationsPreview } from "./PanelAnimationsPreview";
 import { TypographySection } from "./TypographySettings";
 import { ThreadDetailsItemsRow } from "./ThreadDetailsItemsRow";
+import { UsageFooterSettingsRows } from "./UsageFooterSettings";
 
 const ENVIRONMENT_IDENTIFICATION_LABELS: Record<EnvironmentIdentificationMode, string> = {
   artwork: "Artwork",
@@ -312,7 +313,7 @@ export function AppearanceSettingsPanel() {
         <ThreadDetailsItemsRow />
         <SettingsRow
           {...searchableSetting("usage-footer")}
-          description="Show how much of each provider's usage limits you have used in a bar along the bottom of the main view. Pick providers, accounts and format from the bar's panel."
+          description="Show how much of each provider's usage limits you have used in a bar along the bottom of the main view. Customize it below, or from the sliders in the bar's panel."
           resetAction={
             settings.usageFooterEnabled !== DEFAULT_UNIFIED_SETTINGS.usageFooterEnabled ||
             !Equal.equals(
@@ -340,6 +341,7 @@ export function AppearanceSettingsPanel() {
             />
           }
         />
+        <UsageFooterSettingsRows />
         <SettingsRow
           {...searchableSetting("effort-display")}
           description="Show reasoning effort in the composer as its name, such as High, or as bars."
