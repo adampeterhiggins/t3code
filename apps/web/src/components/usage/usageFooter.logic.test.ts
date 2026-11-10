@@ -9,6 +9,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   busiestPoolWindow,
   footerPercent,
+  footerWindows,
   formatSpend,
   nextResetLabel,
   usageFooterItems,
@@ -108,38 +109,62 @@ describe("usageFooterItems", () => {
     usageFooterItems(pools, { ...DEFAULT_USAGE_FOOTER_DISPLAY, ...display }, NOW).map((item) => [
       item.key,
       item.accountName,
-      item.window?.usedPercent,
+      item.windows.map((window) => window.usedPercent),
     ]);
 
   it("shows one pooled entry per provider by default", () => {
     expect(shown({})).toEqual([
-      ["claudeAgent", null, 10],
-      ["cursor", null, 50],
+      ["claudeAgent", null, [10]],
+      ["cursor", null, [50]],
     ]);
   });
 
   it("splits a provider's accounts and names them only when it has several", () => {
     expect(shown({ accounts: "separate" })).toEqual([
-      ["claude", null, 10],
-      ["home", "home", 20],
-      ["work", "work", 80],
+      ["claude", null, [10]],
+      ["home", "home", [20]],
+      ["work", "work", [80]],
     ]);
   });
 
   it("leaves out hidden providers and, when separate, hidden accounts", () => {
-    expect(shown({ hiddenProviders: ["claudeAgent"] })).toEqual([["cursor", null, 50]]);
+    expect(shown({ hiddenProviders: ["claudeAgent"] })).toEqual([["cursor", null, [50]]]);
     expect(shown({ accounts: "separate", hiddenAccounts: ["work"] })).toEqual([
-      ["claude", null, 10],
-      ["home", "home", 20],
+      ["claude", null, [10]],
+      ["home", "home", [20]],
     ]);
     expect(shown({ hiddenAccounts: ["work"] })).toEqual([
-      ["claudeAgent", null, 10],
-      ["cursor", null, 50],
+      ["claudeAgent", null, [10]],
+      ["cursor", null, [50]],
     ]);
   });
 
   it("reads remaining as the unused share", () => {
     const [item] = usageFooterItems(pools, DEFAULT_USAGE_FOOTER_DISPLAY, NOW);
-    expect(footerPercent(item!.window!, "remaining")).toBe(90);
+    expect(footerPercent(item!.windows[0]!, "remaining")).toBe(90);
+  });
+});
+
+describe("footerWindows", () => {
+  const [pool] = collectLimitPools(
+    [
+      account("a", [
+        { id: "five_hour", kind: "session", label: "Session", usedPercent: 38, resetsAt: at(124) },
+        { id: "seven_day", kind: "weekly", label: "Weekly", usedPercent: 95, resetsAt: at(5460) },
+      ]),
+    ],
+    NOW,
+  );
+  const labels = (windows: Record<string, string[]>) =>
+    footerWindows(pool!, { ...DEFAULT_USAGE_FOOTER_DISPLAY, windows }).map((w) => w.label);
+
+  it("shows the chosen windows in display order", () => {
+    expect(labels({ claudeAgent: ["seven_day", "five_hour"] })).toEqual(["Session", "Weekly"]);
+    expect(labels({ claudeAgent: ["five_hour"] })).toEqual(["Session"]);
+  });
+
+  it("falls back to the busiest when nothing chosen is reported", () => {
+    expect(labels({})).toEqual(["Weekly"]);
+    expect(labels({ claudeAgent: ["gone"] })).toEqual(["Weekly"]);
   });
 });

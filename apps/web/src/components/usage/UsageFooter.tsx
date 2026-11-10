@@ -8,6 +8,7 @@ import {
   formatResetsIn,
   type LimitAccount,
   type LimitPool,
+  type LimitPoolWindow,
   limitsNotice,
 } from "@t3tools/shared/usageLimits";
 import { useNavigate } from "@tanstack/react-router";
@@ -43,6 +44,9 @@ import {
   MenuRadioItem,
   MenuRadioItemIndicator,
   MenuSeparator,
+  MenuSub,
+  MenuSubPopup,
+  MenuSubTrigger,
   MenuTrigger,
 } from "../ui/menu";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
@@ -117,6 +121,12 @@ function UsedPercent({
       {suffix}
     </span>
   );
+}
+
+function poolWindowLabel(driver: LimitPool["driver"], window: LimitPoolWindow): string {
+  return driver === "cursor"
+    ? (cursorUsageWindowDetails(window.id)?.label ?? window.label)
+    : window.label;
 }
 
 function windowLabel(account: LimitAccount, window: ServerProviderUsageWindow): string {
@@ -391,7 +401,6 @@ function FooterItem({
   readonly display: UsageFooterDisplay;
   readonly now: number;
 }) {
-  const reset = item.window && display.showReset ? nextResetLabel(item.window, now) : null;
   return (
     <span className="flex items-center gap-1.5 whitespace-nowrap">
       <ProviderIcon driver={item.driver} />
@@ -401,18 +410,28 @@ function FooterItem({
       {item.accountName ? (
         <span className="max-w-32 truncate text-muted-foreground">{item.accountName}</span>
       ) : null}
-      {item.window ? (
-        <>
-          <UsedPercent
-            usedPercent={item.window.usedPercent}
-            shownPercent={footerPercent(item.window, display.value)}
-            suffix={display.value === "remaining" ? " left" : ""}
-            className="text-foreground"
-          />
-          {reset ? <span className="text-muted-foreground">{reset}</span> : null}
-        </>
-      ) : (
+      {item.windows.length === 0 ? (
         <span className="text-muted-foreground">n/a</span>
+      ) : (
+        item.windows.map((window, index) => {
+          const label = poolWindowLabel(item.driver, window);
+          const reset = display.showReset ? nextResetLabel(window, now) : null;
+          return (
+            <span key={window.id} className="flex items-center gap-1.5">
+              {index > 0 ? <span className="text-muted-foreground/60">·</span> : null}
+              {item.windows.length > 1 ? (
+                <span className="text-muted-foreground">{label}</span>
+              ) : null}
+              <UsedPercent
+                usedPercent={window.usedPercent}
+                shownPercent={footerPercent(window, display.value)}
+                suffix={display.value === "remaining" ? " left" : ""}
+                className="text-foreground"
+              />
+              {reset ? <span className="text-muted-foreground">{reset}</span> : null}
+            </span>
+          );
+        })
       )}
     </span>
   );
@@ -458,6 +477,7 @@ export function UsageFooterProviderItems({ pools }: { readonly pools: readonly L
                 {providerLabel(pool.driver)}
               </span>
             </MenuCheckboxItem>
+            {providerShown ? <UsageFooterWindowsSubmenu pool={pool} /> : null}
             {separate && pool.accounts.length > 1
               ? pool.accounts.map((account) => (
                   <MenuCheckboxItem
@@ -482,6 +502,58 @@ export function UsageFooterProviderItems({ pools }: { readonly pools: readonly L
     </>
   );
 }
+
+function UsageFooterWindowsSubmenu({ pool }: { readonly pool: LimitPool }) {
+  const chosen = useClientSettings(
+    (settings) => settings.usageFooterDisplay.windows[pool.driver] ?? EMPTY_WINDOW_IDS,
+  );
+  const windows = displayLimitWindows(pool);
+  if (windows.length < 2) return null;
+  const setChosen = (next: readonly string[]) => {
+    const rest = Object.fromEntries(
+      Object.entries(getClientSettings().usageFooterDisplay.windows).filter(
+        ([driver]) => driver !== pool.driver,
+      ),
+    );
+    updateUsageFooterDisplay({
+      windows: next.length > 0 ? { ...rest, [pool.driver]: next } : rest,
+    });
+  };
+  const shown = windows.filter((window) => chosen.includes(window.id));
+  return (
+    <MenuSub>
+      <MenuSubTrigger>
+        <span className="min-w-0 flex-1 truncate ps-5 text-muted-foreground">
+          {shown.length === 0
+            ? "Limit: busiest"
+            : `Limits: ${shown.map((window) => poolWindowLabel(pool.driver, window)).join(", ")}`}
+        </span>
+      </MenuSubTrigger>
+      <MenuSubPopup>
+        <MenuRadioGroup
+          value={shown.length === 0 ? "busiest" : null}
+          onValueChange={(value) => {
+            if (value === "busiest") setChosen([]);
+          }}
+        >
+          <RadioChoice value="busiest" label="Busiest limit" />
+        </MenuRadioGroup>
+        <MenuSeparator />
+        {windows.map((window) => (
+          <MenuCheckboxItem
+            key={window.id}
+            checked={chosen.includes(window.id)}
+            onCheckedChange={(checked) => setChosen(toggleKey(chosen, window.id, !checked))}
+          >
+            {poolWindowLabel(pool.driver, window)}
+          </MenuCheckboxItem>
+        ))}
+      </MenuSubPopup>
+    </MenuSub>
+  );
+}
+
+const EMPTY_WINDOW_IDS: readonly string[] = [];
 
 function UsageFooterCustomizeMenu({ pools }: { readonly pools: readonly LimitPool[] }) {
   const display = useClientSettings((settings) => settings.usageFooterDisplay);

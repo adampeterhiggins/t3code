@@ -65,7 +65,22 @@ export interface UsageFooterItem {
   readonly driver: LimitPool["driver"];
   /** Set when the item is one account of a provider that has several. */
   readonly accountName: string | null;
-  readonly window: LimitPoolWindow | null;
+  readonly windows: readonly LimitPoolWindow[];
+}
+
+/**
+ * The provider's chosen windows in display order, or its busiest when none are chosen or none
+ * of the chosen ones are reported any more.
+ */
+export function footerWindows(
+  pool: LimitPool,
+  display: UsageFooterDisplay,
+): readonly LimitPoolWindow[] {
+  const chosen = display.windows[pool.driver] ?? [];
+  const picked = displayLimitWindows(pool).filter((window) => chosen.includes(window.id));
+  if (picked.length > 0) return picked;
+  const busiest = busiestPoolWindow(pool);
+  return busiest ? [busiest] : [];
 }
 
 /** A short name that tells one account of a provider from another. */
@@ -88,7 +103,7 @@ export function usageFooterItems(
         key: pool.driver,
         driver: pool.driver,
         accountName: null,
-        window: busiestPoolWindow(pool),
+        windows: footerWindows(pool, display),
       });
       continue;
     }
@@ -99,7 +114,7 @@ export function usageFooterItems(
         key: account.key,
         driver: pool.driver,
         accountName: pool.accounts.length > 1 ? accountShortName(account) : null,
-        window: own ? busiestPoolWindow(own) : null,
+        windows: own ? footerWindows(own, display) : [],
       });
     }
   }

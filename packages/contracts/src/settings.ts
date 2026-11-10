@@ -475,6 +475,11 @@ export const UsageFooterDisplay = Schema.Struct({
   showNames: withDefault(Schema.Boolean, false),
   hiddenProviders: withDefault(Schema.Array(TrimmedNonEmptyString), []),
   hiddenAccounts: withDefault(Schema.Array(TrimmedNonEmptyString), []),
+  /** Chosen limit window ids per provider; a provider without an entry shows its busiest. */
+  windows: withDefault(
+    Schema.Record(TrimmedNonEmptyString, Schema.Array(TrimmedNonEmptyString)),
+    {},
+  ),
 });
 export type UsageFooterDisplay = typeof UsageFooterDisplay.Type;
 export const DEFAULT_USAGE_FOOTER_DISPLAY: UsageFooterDisplay = {
@@ -484,6 +489,7 @@ export const DEFAULT_USAGE_FOOTER_DISPLAY: UsageFooterDisplay = {
   showNames: false,
   hiddenProviders: [],
   hiddenAccounts: [],
+  windows: {},
 };
 
 export const ToolCallVisibility = Schema.Literals(["showAll", "hideSuccessful", "hideAll", "zen"]);
