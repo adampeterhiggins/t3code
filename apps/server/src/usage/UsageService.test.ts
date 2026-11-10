@@ -3399,12 +3399,14 @@ describe("UsageService", () => {
               ),
             },
             onCursorRequest: (request) => {
-              if (request.url.includes("/api/dashboard/")) {
-                const cookie = decodeURIComponent(
-                  String(request.headers.cookie).split("=")[1] ?? "",
-                );
-                dashboardCookies.push(cookie.split("::")[0] ?? "");
-                const output = cookie.startsWith("user_shared") ? 7 : 11;
+              if (request.url.includes("/aiserver.v1.DashboardService/GetFilteredUsageEvents")) {
+                const token = request.headers.authorization?.replace("Bearer ", "") ?? "";
+                const subject = JSON.parse(
+                  Buffer.from(token.split(".")[1] ?? "", "base64url").toString(),
+                ).sub as string;
+                const userId = subject.split("|").at(-1) ?? "";
+                dashboardCookies.push(userId);
+                const output = userId === "user_shared" ? 7 : 11;
                 return Response.json({
                   totalUsageEventsCount: 1,
                   usageEventsDisplay: [

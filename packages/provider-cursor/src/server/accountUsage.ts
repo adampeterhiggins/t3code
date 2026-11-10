@@ -195,7 +195,8 @@ export const readCursorAccountUsage = Effect.fn("readCursorAccountUsage")(functi
       return yield* invalid("Invalid date window");
     // The web dashboard rejects API-key tokens; Cursor's RPC API accepts them.
     const pageRequest =
-      typeof credentialSource !== "string" && credentialSource.kind === "apiKey"
+      typeof credentialSource !== "string" &&
+      (credentialSource.kind === "apiKey" || credentialSource.kind === "token")
         ? HttpClientRequest.post(
             `${DEFAULT_CURSOR_API_ENDPOINT}/aiserver.v1.DashboardService/GetFilteredUsageEvents`,
           ).pipe(

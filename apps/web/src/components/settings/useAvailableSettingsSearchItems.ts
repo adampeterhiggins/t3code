@@ -29,16 +29,28 @@ export function useAvailableSettingsSearchItems(scopeSearch: SettingsScopeSearch
         hasServerConfig: environment.serverConfig !== null,
       }),
     ) === true;
-  const hasMacProviderSettingsEnvironment =
+  // Any machine that offers it; the row then shows for a settings scope where all selected ones do.
+  const hasFastWorktreeCheckoutEnvironment =
     environments.some(
       (environment) =>
-        (scopeSearch.machine === undefined || environment.environmentId === scopeSearch.machine) &&
-        environment.serverConfig?.environment.platform.os === "darwin" &&
-        isProviderSettingsEnvironmentAvailable({
-          connectionPhase: environment.connection.phase,
-          hasServerConfig: true,
-        }),
+        environment.connection.phase === "connected" &&
+        environment.serverConfig?.environment.capabilities.fastWorktreeCheckout === true,
     ) === true;
+  const hasTextGeneratorsEnvironment =
+    environments.some(
+      (environment) =>
+        environment.serverConfig !== null &&
+        environment.serverConfig.managedPolicy?.limits?.providers?.allowedDrivers === undefined,
+    ) === true;
+  const hasMacProviderSettingsEnvironment = environments.some(
+    (environment) =>
+      (scopeSearch.machine === undefined || environment.environmentId === scopeSearch.machine) &&
+      environment.serverConfig?.environment.platform.os === "darwin" &&
+      isProviderSettingsEnvironmentAvailable({
+        connectionPhase: environment.connection.phase,
+        hasServerConfig: true,
+      }),
+  );
   const hasThreadAutoSettlement =
     getThreadAutoSettlementSearchAvailability(environments).eligibleEnvironmentIds.length > 0;
   const primaryEnvironmentId = usePrimaryEnvironmentId();
@@ -69,5 +81,7 @@ export function useAvailableSettingsSearchItems(scopeSearch: SettingsScopeSearch
     hasThreadAutoSettlement,
     managedTunnelActive,
     hasPeerLinkHost,
+    hasFastWorktreeCheckoutEnvironment,
+    hasTextGeneratorsEnvironment,
   });
 }

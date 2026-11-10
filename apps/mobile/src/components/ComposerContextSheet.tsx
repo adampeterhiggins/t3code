@@ -34,8 +34,8 @@ import {
   threadTabSummaryTools,
   type ThreadTabSummaryRole,
 } from "@t3tools/client-runtime/thread-tab-summary";
-import { FilePreviewModal } from "./FilePreviewModal";
-import { VideoPreviewModal } from "./VideoPreviewModal";
+import { FilePreviewModal } from "./ui/FilePreviewModal";
+import { VideoPreviewModal } from "./ui/VideoPreviewModal";
 import { granolaNoteDetail } from "./GranolaNotePickerSheet";
 import { ComposerContextAttachment } from "./ComposerContextAttachment";
 import { AppText as Text } from "./ui/AppText";

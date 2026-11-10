@@ -627,6 +627,7 @@ type SnapshotInput = {
   readonly cdp: CDPSession;
   /** Headless pages render at the scale the server set; a desktop page at its display's. */
   readonly renderScale: number | "display";
+  readonly fullScreenshot?: boolean | undefined;
   readonly consoleEntries: ReadonlyArray<PreviewAutomationConsoleEntry>;
   readonly networkEntries: ReadonlyArray<PreviewAutomationNetworkEntry>;
   readonly actionTimeline: PreviewAutomationSnapshot["actionTimeline"];
@@ -679,11 +680,22 @@ const capture = async (
     >,
     input.includeImage === false
       ? undefined
-      : captureViewportWithinBudget(input.page, input.cdp, { format: "png", scale }, budget),
+      : captureViewportWithinBudget(
+          input.page,
+          input.cdp,
+          { format: "png", scale: 1 },
+          budget,
+        ).then(async (full) => ({
+          data:
+            scale < 1
+              ? await budget("shrink screenshot", () => shrinkPng(input.cdp, full, scale))
+              : full,
+          full: input.fullScreenshot && scale < 1 ? full : undefined,
+        })),
   ]);
   void pageAndScreenshot.catch(constVoid);
   // Leaves time for the second read; a frame that never loads holds the tree until then.
-  const [[page, data], tree] = await Promise.all([
+  const [[page, captureResult], tree] = await Promise.all([
     pageAndScreenshot,
     budget("accessibility tree", (remainingMs) =>
       input.page.ariaSnapshot({
@@ -708,6 +720,8 @@ const capture = async (
     void iframe.dispose().catch(constVoid);
     if (frame && unread.includes(frame)) throw tooBusy();
   }
+  const data = captureResult?.data;
+  const full = captureResult?.full;
   if (state.generation !== generation) throw pageChanged();
   const mask = (text: string) => (dotted ? text.replace(dotted, MASKED_VALUE) : text);
   // Redacted before the cut, so a payload crossing it can't leave its start showing, and before
@@ -726,6 +740,7 @@ const capture = async (
     // Mask text before truncating so a value crossing the cut cannot leak its prefix.
     visibleText: mask(page.visibleText).slice(0, MAX_VISIBLE_TEXT_LENGTH),
     accessibilityTree,
+    ...(full === undefined ? {} : { fullScreenshot: { data: full, ...pngSize(full) } }),
     consoleEntries: [...input.consoleEntries],
     networkEntries: [...input.networkEntries],
     actionTimeline: [...input.actionTimeline],

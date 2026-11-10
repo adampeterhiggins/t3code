@@ -1,3 +1,4 @@
+import * as TextGenerators from "./TextGenerators.ts";
 import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as PubSub from "effect/PubSub";
@@ -91,6 +92,7 @@ describe("TextGeneration.make", () => {
             Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({
               resolveLink: () => Effect.die("Supplied context must not be fetched again"),
             }),
+            Layer.mock(TextGenerators.TextGenerators)({ runner: () => Effect.undefined }),
             ServerSettings.layerTest(),
           ),
         ),
@@ -138,6 +140,7 @@ describe("TextGeneration.make", () => {
             Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({
               resolveLink: () => Effect.die("No link lookup expected"),
             }),
+            Layer.mock(TextGenerators.TextGenerators)({ runner: () => Effect.undefined }),
             ServerSettings.layerTest(),
           ),
         ),
@@ -166,6 +169,7 @@ describe("TextGeneration.make", () => {
             Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({
               resolveLink: () => Effect.die("No link lookup expected"),
             }),
+            Layer.mock(TextGenerators.TextGenerators)({ runner: () => Effect.undefined }),
             ServerSettings.layerTest(),
           ),
         ),

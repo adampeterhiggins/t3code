@@ -291,12 +291,12 @@ describe("readCursorAccountUsage", () => {
   it.effect("reads an API key's account history through Cursor's API", () =>
     Effect.gen(function* () {
       const accessToken = `header.${Buffer.from(JSON.stringify({ sub: "auth|demo" })).toString("base64url")}.signature`;
-      const requests: Array<readonly [string, string | null]> = [];
-      const result = yield* readAccountUsage(
+      for (const credential of [
         { kind: "apiKey", apiKey: "api-key" },
-        0,
-        1781000000000,
-        ({ url, headers }) => {
+        { kind: "token", accessToken },
+      ] as const) {
+        const requests: Array<readonly [string, string | null]> = [];
+        const result = yield* readAccountUsage(credential, 0, 1781000000000, ({ url, headers }) => {
           requests.push([url, headers.get("authorization")]);
           return url.endsWith("/auth/exchange_user_api_key")
             ? Response.json({ accessToken })
@@ -306,17 +306,19 @@ describe("readCursorAccountUsage", () => {
                   { timestamp: "1780000000000", model: "gpt-5", tokenUsage: { outputTokens: 4 } },
                 ],
               });
-        },
-      );
-      assert.isNull(result.error);
-      assert.deepStrictEqual(requests, [
-        ["https://api2.cursor.sh/auth/exchange_user_api_key", "Bearer api-key"],
-        [
-          "https://api2.cursor.sh/aiserver.v1.DashboardService/GetFilteredUsageEvents",
-          `Bearer ${accessToken}`,
-        ],
-      ]);
-      assert.strictEqual(result.records[0]?.totals.outputTokens, 4);
+        });
+        assert.isNull(result.error);
+        assert.deepStrictEqual(requests, [
+          ...(credential.kind === "apiKey"
+            ? [["https://api2.cursor.sh/auth/exchange_user_api_key", "Bearer api-key"] as const]
+            : []),
+          [
+            "https://api2.cursor.sh/aiserver.v1.DashboardService/GetFilteredUsageEvents",
+            `Bearer ${accessToken}`,
+          ],
+        ]);
+        assert.strictEqual(result.records[0]?.totals.outputTokens, 4);
+      }
     }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 

@@ -1,10 +1,12 @@
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
-import type { ThreadContextRecord } from "@t3tools/contracts";
+import type { ThreadContextRecord, ProjectId } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
 import { MessagesSquareIcon } from "lucide-react";
 import type { ComponentProps } from "react";
 
 import { useProject, useThreadShell } from "~/state/entities";
+import { orchestrationEnvironment } from "~/state/orchestration";
+import { useEnvironmentQuery } from "~/state/query";
 import { ContextChip, ContextChipLabel } from "./ContextChip";
 import { ProjectFavicon } from "./ProjectFavicon";
 
@@ -13,16 +15,28 @@ export function ThreadChipTrigger({
   record,
   copyMarkdown,
   unreadable,
+  projectId: linkedProjectId,
   ...props
 }: Omit<ComponentProps<typeof ContextChip>, "kind" | "render" | "children"> & {
   record: Pick<ThreadContextRecord, "environmentId" | "threadId" | "title">;
+  projectId?: ProjectId | null;
   copyMarkdown?: string | undefined;
   unreadable?: boolean | undefined;
 }) {
   const { environmentId, threadId } = record;
   const shell = useThreadShell({ environmentId, threadId });
-  const project = useProject(shell ? scopeProjectRef(environmentId, shell.projectId) : null);
-  const title = shell?.title?.trim() || record.title;
+  const lookup = useEnvironmentQuery(
+    shell === null && linkedProjectId === undefined
+      ? orchestrationEnvironment.threadLinkMetadata({
+          environmentId,
+          input: { threadIds: [threadId] },
+        })
+      : null,
+  );
+  const metadata = lookup.data?.[threadId];
+  const projectId = shell?.projectId ?? linkedProjectId ?? metadata?.projectId;
+  const project = useProject(projectId ? scopeProjectRef(environmentId, projectId) : null);
+  const title = shell?.title?.trim() || metadata?.title.trim() || record.title;
   return (
     <ContextChip
       kind="thread"

@@ -15,6 +15,7 @@ const ExternalUrlTarget = Schema.Literals([
   "granola",
   "html-render",
   "mcp-app",
+  "secret-request",
 ]);
 
 export type ExternalUrlTarget = typeof ExternalUrlTarget.Type;

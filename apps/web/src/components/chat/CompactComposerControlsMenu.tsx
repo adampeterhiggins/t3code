@@ -4,10 +4,10 @@ import { EllipsisIcon } from "lucide-react";
 import {
   Menu,
   MenuPopup,
+  MenuTrigger,
   MenuRadioGroup,
   MenuRadioItem,
   MenuSeparator as MenuDivider,
-  MenuTrigger,
 } from "../ui/menu";
 import { ComposerControl, ComposerControlIcon } from "./ComposerControl";
 import { focusRequestedPermission, useComposerMenuProps } from "./composerEventScope";
@@ -19,12 +19,12 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
   interactionMode: ProviderInteractionMode;
   runtimeMode: RuntimeMode;
   runtimeModeOptions: ReadonlyArray<RuntimeModeOption>;
+  showPermissions: boolean;
   showInteractionModeToggle: boolean;
-  showPermissions?: boolean;
+  onToggleInteractionMode: () => void;
   size?: "sm" | "xs";
   /** Close the portaled popup when its trigger hides. */
   hidden?: boolean;
-  onToggleInteractionMode: () => void;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
 }) {
   const composerFloatingLayerProps = useComposerMenuProps();

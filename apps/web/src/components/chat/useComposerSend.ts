@@ -1,3 +1,5 @@
+import type { LatestProposedPlanState } from "../../session-logic";
+import { parseStandaloneComposerSlashCommand } from "../../composer-logic";
 import { isClearComposerCommand, parseSideChatCommand } from "@t3tools/shared/composerTrigger";
 import { armFreshSession, disarmFreshSession, readFreshSessionArm } from "./freshSessionArms";
 import {
@@ -75,7 +77,6 @@ import {
 import {
   type ComposerSubmissionIntent,
   collapseExpandedComposerCursor,
-  parseStandaloneComposerSlashCommand,
 } from "../../composer-logic";
 import { resolvePlanFollowUpSubmission } from "../../proposedPlan";
 import { type ChatMessage, type SessionPhase } from "../../types";
@@ -155,7 +156,6 @@ import type { ProviderInstanceEntry } from "../../providerInstances";
 
 import type { ComposerHandleRef } from "../../composerHandleContext";
 import type { useLogicalProjectEnvironments } from "../../hooks/useLogicalProjectEnvironments";
-import type { LatestProposedPlanState } from "../../session-logic";
 import type { useDraftEnvironmentRouting } from "./useDraftEnvironmentRouting";
 import type { useLocalDispatchState } from "./useLocalDispatchState";
 import type { usePendingThreadRequests } from "./usePendingThreadRequests";
@@ -369,6 +369,7 @@ export function useComposerSend(input: ComposerSendInput) {
     handleNewThreadInActiveProject,
     persistThreadSettingsForNextTurn,
   } = input;
+  const planModeEnabled = useEnvironmentSettings(environmentId, selectPlanModeEnabled);
   const linkedEnvironments = useLinkedEnvironments(environmentId);
   const handleNewThread = useNewThreadHandler();
   const getDraftSession = useComposerDraftStore((store) => store.getDraftSession);
@@ -378,7 +379,6 @@ export function useComposerSend(input: ComposerSendInput) {
   const navigate = useNavigate();
   const router = useRouter();
   const clientSettingsHydrated = useClientSettingsHydrated();
-  const planModeEnabled = useEnvironmentSettings(environmentId, selectPlanModeEnabled);
   const startThreadTurn = useOrchestrationCommand(threadEnvironment.startTurn, {
     reportFailure: false,
   });

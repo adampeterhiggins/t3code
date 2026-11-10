@@ -517,8 +517,9 @@ const registerPreviewSnapshot = Effect.fn("McpHttpServer.registerPreviewSnapshot
                   readonly width: number;
                   readonly height: number;
                 };
+                readonly fullScreenshot?: { readonly data: string };
               };
-              const { screenshot, ...page } = snapshot;
+              const { screenshot, fullScreenshot, ...page } = snapshot;
               const png =
                 screenshot === undefined
                   ? undefined
@@ -526,16 +527,23 @@ const registerPreviewSnapshot = Effect.fn("McpHttpServer.registerPreviewSnapshot
               const screenshotPath =
                 png === undefined
                   ? undefined
-                  : yield* artifacts.saveScreenshot(snapshot.url, png).pipe(
-                      // A thumbnail failure must not prevent the agent from reading the page.
-                      Effect.catch((error) =>
-                        payload?.save === true
-                          ? Effect.fail(error)
-                          : Effect.logWarning("Could not save snapshot thumbnail", error).pipe(
-                              Effect.as(undefined),
-                            ),
-                      ),
-                    );
+                  : yield* artifacts
+                      .saveScreenshot(
+                        snapshot.url,
+                        payload?.save === true && fullScreenshot
+                          ? new Uint8Array(Buffer.from(fullScreenshot.data, "base64"))
+                          : png,
+                      )
+                      .pipe(
+                        // A thumbnail failure must not prevent the agent from reading the page.
+                        Effect.catch((error) =>
+                          payload?.save === true
+                            ? Effect.fail(error)
+                            : Effect.logWarning("Could not save snapshot thumbnail", error).pipe(
+                                Effect.as(undefined),
+                              ),
+                        ),
+                      );
               // Images stay out of tool history unless asked for: providers replay them on every
               // later request, and some reject inline images outright.
               const includeImage = payload?.includeImage === true;

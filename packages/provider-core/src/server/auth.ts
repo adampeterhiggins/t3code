@@ -9,14 +9,7 @@ import type * as Effect from "effect/Effect";
 import type * as Scope from "effect/Scope";
 import type * as Stream from "effect/Stream";
 
-/**
- * Optional choices for `start`. `methodId` picks one of the provider's
- * advertised `setup.authMethods`; `credential` carries a pasted secret for
- * `paste-credential` methods. `stopSessions` stops this instance's running
- * sessions — only providers that share one process across threads (e.g.
- * Antigravity) use it; CLI providers keep sessions running since each
- * process owns its credentials.
- */
+/** Shared-process providers stop sessions before changing credentials; CLI sessions keep their own. */
 export interface ProviderAuthStartOptions {
   readonly methodId?: string | undefined;
   readonly credential?: string | undefined;
@@ -42,6 +35,9 @@ export interface ProviderAuthController {
   readonly isChangingCredentials?: Effect.Effect<boolean>;
   readonly invalidate?: Effect.Effect<void>;
   readonly refreshMethods?: Effect.Effect<void>;
+  readonly removeMethod?: (
+    methodId: string,
+  ) => Effect.Effect<ProviderAuthState, ProviderSetupError>;
   readonly withAccess?: <A, E, R>(
     task: Effect.Effect<A, E, R>,
   ) => Effect.Effect<A, E | ProviderSetupError, R | Scope.Scope>;

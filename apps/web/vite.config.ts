@@ -103,6 +103,7 @@ const browserTestProject = {
   optimizeDeps: {
     include: [
       "vite-plus/test/browser",
+      "@effect/vitest",
       "@tiptap/core",
       "@tiptap/extension-blockquote",
       "@tiptap/extension-bold",

@@ -55,11 +55,8 @@ const CONTEXT_WINDOW = selectDescriptor(
   "1m",
 );
 
-const CODEX = ProviderDriverKind.make("codex");
-
 function display(descriptors: ReadonlyArray<ProviderOptionDescriptor>) {
   return buildTraitsTriggerDisplay({
-    provider: CODEX,
     descriptors,
     primarySelectDescriptorId: "reasoningEffort",
     ultrathinkPromptControlled: false,
@@ -90,7 +87,6 @@ describe("buildTraitsTriggerDisplay", () => {
       for (const speed of [fastModeDescriptor(true), serviceTierDescriptor("priority")]) {
         expect(
           buildTraitsTriggerDisplay({
-            provider: CODEX,
             descriptors: [
               selectDescriptor("profile", [{ id: "balanced", label: "Balanced" }], "balanced"),
               CONTEXT_WINDOW,
@@ -104,7 +100,6 @@ describe("buildTraitsTriggerDisplay", () => {
       }
       expect(
         buildTraitsTriggerDisplay({
-          provider: CODEX,
           descriptors: [CONTEXT_WINDOW, { ...EFFORT, id }, serviceTierDescriptor("ultrafast")],
           primarySelectDescriptorId: CONTEXT_WINDOW.id,
           ultrathinkPromptControlled: false,
@@ -116,7 +111,6 @@ describe("buildTraitsTriggerDisplay", () => {
   it("pairs Cursor Fast with reasoning rather than the thinking toggle", () => {
     expect(
       buildTraitsTriggerDisplay({
-        provider: ProviderDriverKind.make("cursor"),
         descriptors: [
           CONTEXT_WINDOW,
           { ...EFFORT, id: "reasoning_effort" },
@@ -160,10 +154,9 @@ describe("buildTraitsTriggerDisplay", () => {
   it.each(["Low", "Medium", "High", "Extra High", "Max", "Ultra"])(
     "preserves %s reasoning with Fast across harnesses",
     (label) => {
-      for (const provider of ["codex", "claudeAgent", "cursor"]) {
+      {
         expect(
           buildTraitsTriggerDisplay({
-            provider: ProviderDriverKind.make(provider),
             descriptors: [
               { ...EFFORT, options: [{ id: "effort", label }], currentValue: "effort" },
               fastModeDescriptor(true),
@@ -277,7 +270,6 @@ describe("buildTraitsTriggerDisplay", () => {
   it("still renders prompt-controlled ultrathink with Fast", () => {
     expect(
       buildTraitsTriggerDisplay({
-        provider: CODEX,
         descriptors: [EFFORT, fastModeDescriptor(true)],
         primarySelectDescriptorId: "reasoningEffort",
         ultrathinkPromptControlled: true,

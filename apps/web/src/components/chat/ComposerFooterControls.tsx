@@ -1,3 +1,5 @@
+import { BotIcon, PencilRulerIcon } from "lucide-react";
+import { ContextWindowMeter, ContextWindowMeterPlaceholder } from "./ContextWindowMeter";
 import type {
   ModelSelection,
   ProviderInstanceId,
@@ -5,7 +7,6 @@ import type {
   RuntimeMode,
 } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
-import { BotIcon, PencilRulerIcon } from "lucide-react";
 import { type ComponentProps, memo, useId, useRef, useState } from "react";
 
 import type { ThreadUsageSummary } from "@t3tools/client-runtime/thread-usage";
@@ -18,7 +19,6 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ComposerControl, ComposerControlIcon } from "./ComposerControl";
 import { focusRequestedPermission, useComposerMenuProps } from "./composerEventScope";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
-import { ContextWindowMeter, ContextWindowMeterPlaceholder } from "./ContextWindowMeter";
 import { resolveModelPickerSelectedModel } from "./ModelPickerContent";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { runtimeModeConfig } from "./runtimeModeConfig";
@@ -256,6 +256,10 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
   threadUsage: ThreadUsageSummary | null;
   reserveContextWindowMeter: boolean;
   activeThreadModelDisplayName: string | null;
+  compactDisabled: boolean;
+  compactDisabledReason: string | null;
+  onCompactContext?: () => void;
+  onImplementPlanInNewThread: () => void;
   isPreparingWorktree: boolean;
   createWithoutMessage?: "worktree" | "thread" | null;
   pendingAction: {
@@ -284,10 +288,6 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
   onResume: () => void;
   onPreviousPendingQuestion: () => void;
   onInterrupt: () => void;
-  onImplementPlanInNewThread: () => void;
-  onCompactContext?: (() => void) | undefined;
-  compactDisabled: boolean;
-  compactDisabledReason: string | null;
   compactBeforeSendTokens: number | null;
   keepFullHistory: boolean;
   onToggleKeepFullHistory: () => void;
