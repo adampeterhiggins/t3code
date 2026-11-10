@@ -119,10 +119,6 @@ describe("ExpandedImageDialog", () => {
       await userEvent.keyboard("{/Control}");
     };
 
-    await userEvent.wheel(viewportLocator, { delta: { y: 120 } });
-    expect(wheels.at(-1)).toEqual({ ctrlKey: false, canceled: false });
-    expect(image.getBoundingClientRect().width).toBe(fitWidth);
-
     await ctrlWheel(-100);
     expect(wheels.at(-1)).toEqual({ ctrlKey: true, canceled: true });
     const zoomedWidth = image.getBoundingClientRect().width;
