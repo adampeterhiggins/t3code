@@ -1,16 +1,30 @@
-import { ProviderDriverKind, type ServerProviderUsageWindow } from "@t3tools/contracts";
+import {
+  DEFAULT_USAGE_FOOTER_DISPLAY,
+  ProviderDriverKind,
+  type ServerProviderUsageWindow,
+} from "@t3tools/contracts";
 import { collectLimitPools, type LimitAccount } from "@t3tools/shared/usageLimits";
 import { describe, expect, it } from "vite-plus/test";
 
-import { busiestPoolWindow, formatSpend, nextResetLabel } from "./usageFooter.logic";
+import {
+  busiestPoolWindow,
+  footerPercent,
+  formatSpend,
+  nextResetLabel,
+  usageFooterItems,
+} from "./usageFooter.logic";
 
 const NOW = Date.parse("2026-11-05T17:10:00Z");
 const at = (mins: number) => new Date(NOW + mins * 60_000).toISOString();
 
-function account(key: string, windows: ServerProviderUsageWindow[]): LimitAccount {
+function account(
+  key: string,
+  windows: ServerProviderUsageWindow[],
+  driver = "claudeAgent",
+): LimitAccount {
   return {
     key,
-    driver: ProviderDriverKind.make("claudeAgent"),
+    driver: ProviderDriverKind.make(driver),
     displayName: null,
     email: `${key}@example.com`,
     plan: undefined,
@@ -75,5 +89,57 @@ describe("formatSpend", () => {
     ],
   ])("formats %o in its currency", (spend, expected) => {
     expect(formatSpend(spend).replace(/ /g, " ")).toBe(expected);
+  });
+});
+
+describe("usageFooterItems", () => {
+  const weekly = (usedPercent: number): ServerProviderUsageWindow[] => [
+    { id: "seven_day", kind: "weekly", label: "Weekly", usedPercent },
+  ];
+  const pools = collectLimitPools(
+    [
+      account("claude", weekly(10)),
+      account("work", weekly(80), "cursor"),
+      account("home", weekly(20), "cursor"),
+    ],
+    NOW,
+  );
+  const shown = (display: Partial<typeof DEFAULT_USAGE_FOOTER_DISPLAY>) =>
+    usageFooterItems(pools, { ...DEFAULT_USAGE_FOOTER_DISPLAY, ...display }, NOW).map((item) => [
+      item.key,
+      item.accountName,
+      item.window?.usedPercent,
+    ]);
+
+  it("shows one pooled entry per provider by default", () => {
+    expect(shown({})).toEqual([
+      ["claudeAgent", null, 10],
+      ["cursor", null, 50],
+    ]);
+  });
+
+  it("splits a provider's accounts and names them only when it has several", () => {
+    expect(shown({ accounts: "separate" })).toEqual([
+      ["claude", null, 10],
+      ["home", "home", 20],
+      ["work", "work", 80],
+    ]);
+  });
+
+  it("leaves out hidden providers and, when separate, hidden accounts", () => {
+    expect(shown({ hiddenProviders: ["claudeAgent"] })).toEqual([["cursor", null, 50]]);
+    expect(shown({ accounts: "separate", hiddenAccounts: ["work"] })).toEqual([
+      ["claude", null, 10],
+      ["home", "home", 20],
+    ]);
+    expect(shown({ hiddenAccounts: ["work"] })).toEqual([
+      ["claudeAgent", null, 10],
+      ["cursor", null, 50],
+    ]);
+  });
+
+  it("reads remaining as the unused share", () => {
+    const [item] = usageFooterItems(pools, DEFAULT_USAGE_FOOTER_DISPLAY, NOW);
+    expect(footerPercent(item!.window!, "remaining")).toBe(90);
   });
 });

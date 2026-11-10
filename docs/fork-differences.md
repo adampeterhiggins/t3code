@@ -2270,7 +2270,9 @@ server keeps that spend's amounts on the window (`spend` on `ServerProviderUsage
 of only its percentage, and names it **Extra usage** rather than **Monthly spend**. At desktop
 widths the footer toggle replaces the sidebar's Usage button, since the popover opens Usage;
 toggle it from that button, `mod+alt+u` (`usage.toggleFooter`), the command palette, or
-**Usage footer** in **Settings → Appearance**.
+**Usage footer** in **Settings → Appearance**. A sliders menu in the popover picks the providers
+shown, one entry per provider or per account (with per-account hiding), percent used or left,
+and whether reset times and provider names show (`usageFooterDisplay` in client settings).
 
 Code: [`UsageFooter.tsx`](../apps/web/src/components/usage/UsageFooter.tsx) and
 [`claudeUsageLimits.ts`](../apps/server/src/provider/claudeUsageLimits.ts). User guide:

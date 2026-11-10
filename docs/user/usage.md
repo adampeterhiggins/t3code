@@ -173,6 +173,12 @@ provider's accounts beside the list, **Detailed** shows every account at once. C
 footer button at the bottom of the sidebar, `mod+alt+u` (`usage.toggleFooter`), the command
 palette, or **Usage footer** in **Settings → Appearance**.
 
+The sliders button at the top of that panel customizes the bar: pick which providers it shows,
+show one entry per account instead of one per provider (useful with several Cursor accounts,
+where you can also hide single accounts), show the percent left instead of used, and turn the
+reset time and provider names on or off. If you hide everything, the bar shows **Usage** so you
+can open the panel again.
+
 OpenCode Go reports its session, weekly, and monthly allowance when OpenCode runs locally in
 the environment. T3 cannot report limits for external OpenCode servers because their credentials
 belong to the remote server. Limits need an OpenCode Go API key, or an OpenCode Console connected

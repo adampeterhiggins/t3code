@@ -1,5 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
-import type { ServerProviderUsageWindow } from "@t3tools/contracts";
+import type { ServerProviderUsageWindow, UsageFooterDisplay } from "@t3tools/contracts";
 import {
   collectLimitAccounts,
   collectLimitPools,
@@ -12,7 +12,12 @@ import {
 } from "@t3tools/shared/usageLimits";
 import { useNavigate } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
-import { ChartNoAxesColumnIcon, ChevronRightIcon, SettingsIcon } from "lucide-react";
+import {
+  ChartNoAxesColumnIcon,
+  ChevronRightIcon,
+  SettingsIcon,
+  SlidersHorizontalIcon,
+} from "lucide-react";
 import { useState } from "react";
 
 import { useLocalStorage } from "../../hooks/useLocalStorage";
@@ -28,18 +33,34 @@ import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
 import { providerClients } from "../settings/providerDriverMeta";
 import { RedactedSensitiveText } from "../settings/RedactedSensitiveText";
 import { Button } from "../ui/button";
+import {
+  Menu,
+  MenuCheckboxItem,
+  MenuGroup,
+  MenuGroupLabel,
+  MenuPopup,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuRadioItemIndicator,
+  MenuSeparator,
+  MenuTrigger,
+} from "../ui/menu";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { RefreshIcon } from "../ui/refresh-icon";
 import { Separator } from "../ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "../ui/toggle-group";
 import { resetCreditsSummary } from "./UsageLimits";
 import {
+  accountShortName,
   busiestPoolWindow,
+  footerPercent,
   formatSpend,
   formatUsedPercent,
   nextResetLabel,
+  type UsageFooterItem,
   type UsageSeverity,
   usageSeverity,
+  usageFooterItems,
 } from "./usageFooter.logic";
 import { readUsagePagePreferences, saveUsagePagePreferences } from "./usagePagePreferences";
 import { useRefreshUsageLimits } from "./useRefreshUsageLimits";
@@ -73,9 +94,13 @@ function ProviderIcon({ driver }: { readonly driver: LimitPool["driver"] }) {
 /** Below 70% the number stays plain so only limits worth noticing draw the eye. */
 function UsedPercent({
   usedPercent,
+  shownPercent = usedPercent,
+  suffix,
   className,
 }: {
   readonly usedPercent: number;
+  readonly shownPercent?: number;
+  readonly suffix?: string;
   readonly className?: string;
 }) {
   const severity = usageSeverity(usedPercent);
@@ -88,7 +113,8 @@ function UsedPercent({
           : undefined
       }
     >
-      {formatUsedPercent(usedPercent)}
+      {formatUsedPercent(shownPercent)}
+      {suffix}
     </span>
   );
 }
@@ -274,17 +300,19 @@ function UsagePanel({
     <div ref={setPanel} className={cn("flex flex-col gap-2", detailed ? "w-96" : "w-80")}>
       <div className="flex items-center gap-2">
         <span className="text-sm font-medium">Usage limits</span>
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          className="ms-auto"
-          aria-label="Refresh limits"
-          aria-busy={refreshing}
-          disabled={refreshing}
-          onClick={onRefresh}
-        >
-          <RefreshIcon refreshing={refreshing} />
-        </Button>
+        <div className="ms-auto flex items-center gap-1">
+          <UsageFooterCustomizeMenu pools={pools} />
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Refresh limits"
+            aria-busy={refreshing}
+            disabled={refreshing}
+            onClick={onRefresh}
+          >
+            <RefreshIcon refreshing={refreshing} />
+          </Button>
+        </div>
       </div>
       <ToggleGroup
         className="w-full *:flex-1"
@@ -354,11 +382,159 @@ function UsagePanel({
   );
 }
 
+function FooterItem({
+  item,
+  display,
+  now,
+}: {
+  readonly item: UsageFooterItem;
+  readonly display: UsageFooterDisplay;
+  readonly now: number;
+}) {
+  const reset = item.window && display.showReset ? nextResetLabel(item.window, now) : null;
+  return (
+    <span className="flex items-center gap-1.5 whitespace-nowrap">
+      <ProviderIcon driver={item.driver} />
+      <span className={display.showNames ? "text-foreground" : "sr-only"}>
+        {providerLabel(item.driver)}
+      </span>
+      {item.accountName ? (
+        <span className="max-w-32 truncate text-muted-foreground">{item.accountName}</span>
+      ) : null}
+      {item.window ? (
+        <>
+          <UsedPercent
+            usedPercent={item.window.usedPercent}
+            shownPercent={footerPercent(item.window, display.value)}
+            suffix={display.value === "remaining" ? " left" : ""}
+            className="text-foreground"
+          />
+          {reset ? <span className="text-muted-foreground">{reset}</span> : null}
+        </>
+      ) : (
+        <span className="text-muted-foreground">n/a</span>
+      )}
+    </span>
+  );
+}
+
+function UsageFooterCustomizeMenu({ pools }: { readonly pools: readonly LimitPool[] }) {
+  const display = useClientSettings((settings) => settings.usageFooterDisplay);
+  const update = (patch: Partial<UsageFooterDisplay>) =>
+    void updateClientSettings({ usageFooterDisplay: { ...display, ...patch } });
+  const toggle = (list: readonly string[], key: string, shown: boolean) =>
+    shown ? list.filter((entry) => entry !== key) : [...list, key];
+  const separate = display.accounts === "separate";
+  return (
+    <Menu>
+      <MenuTrigger
+        render={<Button variant="ghost" size="icon-xs" aria-label="Customize usage footer" />}
+      >
+        <SlidersHorizontalIcon />
+      </MenuTrigger>
+      <MenuPopup align="end">
+        <MenuGroup>
+          <MenuGroupLabel>Show in footer</MenuGroupLabel>
+          {pools.map((pool) => {
+            const providerShown = !display.hiddenProviders.includes(pool.driver);
+            return (
+              <MenuGroup key={pool.driver}>
+                <MenuCheckboxItem
+                  checked={providerShown}
+                  onCheckedChange={(shown) =>
+                    update({
+                      hiddenProviders: toggle(display.hiddenProviders, pool.driver, shown),
+                    })
+                  }
+                >
+                  <span className="flex items-center gap-2">
+                    <ProviderIcon driver={pool.driver} />
+                    {providerLabel(pool.driver)}
+                  </span>
+                </MenuCheckboxItem>
+                {separate && pool.accounts.length > 1
+                  ? pool.accounts.map((account) => (
+                      <MenuCheckboxItem
+                        key={account.key}
+                        disabled={!providerShown}
+                        checked={providerShown && !display.hiddenAccounts.includes(account.key)}
+                        onCheckedChange={(shown) =>
+                          update({
+                            hiddenAccounts: toggle(display.hiddenAccounts, account.key, shown),
+                          })
+                        }
+                      >
+                        <span className="block truncate ps-5">
+                          {accountShortName(account) ?? "Default account"}
+                        </span>
+                      </MenuCheckboxItem>
+                    ))
+                  : null}
+              </MenuGroup>
+            );
+          })}
+        </MenuGroup>
+        <MenuSeparator />
+        <MenuGroup>
+          <MenuGroupLabel>Accounts</MenuGroupLabel>
+          <MenuRadioGroup
+            value={display.accounts}
+            onValueChange={(value) => {
+              if (value === "combined" || value === "separate") update({ accounts: value });
+            }}
+          >
+            <RadioChoice value="combined" label="One per provider" />
+            <RadioChoice value="separate" label="One per account" />
+          </MenuRadioGroup>
+        </MenuGroup>
+        <MenuSeparator />
+        <MenuGroup>
+          <MenuGroupLabel>Format</MenuGroupLabel>
+          <MenuRadioGroup
+            value={display.value}
+            onValueChange={(value) => {
+              if (value === "used" || value === "remaining") update({ value });
+            }}
+          >
+            <RadioChoice value="used" label="Percent used" />
+            <RadioChoice value="remaining" label="Percent left" />
+          </MenuRadioGroup>
+          <MenuCheckboxItem
+            checked={display.showReset}
+            onCheckedChange={(showReset) => update({ showReset })}
+          >
+            Time to reset
+          </MenuCheckboxItem>
+          <MenuCheckboxItem
+            checked={display.showNames}
+            onCheckedChange={(showNames) => update({ showNames })}
+          >
+            Provider names
+          </MenuCheckboxItem>
+        </MenuGroup>
+      </MenuPopup>
+    </Menu>
+  );
+}
+
+function RadioChoice({ value, label }: { readonly value: string; readonly label: string }) {
+  return (
+    <MenuRadioItem value={value}>
+      <span className="flex min-w-0 items-center gap-2">
+        <span className="min-w-0 flex-1">{label}</span>
+        <MenuRadioItemIndicator />
+      </span>
+    </MenuRadioItem>
+  );
+}
+
 function UsageFooterBar({
   pools,
+  display,
   now,
 }: {
   readonly pools: readonly LimitPool[];
+  readonly display: UsageFooterDisplay;
   readonly now: number;
 }) {
   const navigate = useNavigate();
@@ -371,6 +547,7 @@ function UsageFooterBar({
       if (!automatic) setRefreshing(false);
     });
   };
+  const items = usageFooterItems(pools, display, now);
   return (
     <div
       role="status"
@@ -387,23 +564,17 @@ function UsageFooterBar({
       >
         <PopoverTrigger render={<Button variant="ghost" size="micro" />}>
           <span className="flex items-center gap-3 font-normal">
-            {pools.map((pool) => {
-              const window = busiestPoolWindow(pool);
-              return (
-                <span key={pool.driver} className="flex items-center gap-1.5 whitespace-nowrap">
-                  <ProviderIcon driver={pool.driver} />
-                  <span className="sr-only">{providerLabel(pool.driver)}</span>
-                  {window ? (
-                    <>
-                      <UsedPercent usedPercent={window.usedPercent} className="text-foreground" />
-                      <span className="text-muted-foreground">{nextResetLabel(window, now)}</span>
-                    </>
-                  ) : (
-                    <span className="text-muted-foreground">n/a</span>
-                  )}
-                </span>
-              );
-            })}
+            {items.length === 0 ? (
+              // Every entry hidden: keep a way back into the panel that shows them again.
+              <span className="flex items-center gap-1.5 text-muted-foreground">
+                <ChartNoAxesColumnIcon className="size-3.5" />
+                Usage
+              </span>
+            ) : (
+              items.map((item) => (
+                <FooterItem key={item.key} item={item} display={display} now={now} />
+              ))
+            )}
           </span>
         </PopoverTrigger>
         <PopoverPopup side="top" align="start" sideOffset={6} initialFocus={false}>
@@ -433,9 +604,10 @@ export function toggleUsageFooter(): void {
 /** The usage strip at the bottom of the main column, between the sidebars. */
 export function UsageFooter() {
   const enabled = useClientSettings((settings) => settings.usageFooterEnabled);
+  const display = useClientSettings((settings) => settings.usageFooterDisplay);
   const presentations = useAtomValue(environmentPresentations.presentationsWithProvidersAtom);
   const minute = useNowMinute();
   const now = Date.parse(`${minute}:00Z`);
   const pools = enabled ? collectLimitPools(collectLimitAccounts(presentations), now) : [];
-  return pools.length > 0 ? <UsageFooterBar pools={pools} now={now} /> : null;
+  return pools.length > 0 ? <UsageFooterBar pools={pools} display={display} now={now} /> : null;
 }

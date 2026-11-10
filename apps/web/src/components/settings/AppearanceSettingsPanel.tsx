@@ -1,4 +1,5 @@
 import { QuickMessageAppearanceSettings } from "./QuickMessageAppearanceSettings";
+import * as Equal from "effect/Equal";
 import type { CSSProperties } from "react";
 import { useState } from "react";
 import {
@@ -311,14 +312,19 @@ export function AppearanceSettingsPanel() {
         <ThreadDetailsItemsRow />
         <SettingsRow
           {...searchableSetting("usage-footer")}
-          description="Show how much of each provider's usage limits you have used in a bar along the bottom of the window."
+          description="Show how much of each provider's usage limits you have used in a bar along the bottom of the main view. Pick providers, accounts and format from the bar's panel."
           resetAction={
-            settings.usageFooterEnabled !== DEFAULT_UNIFIED_SETTINGS.usageFooterEnabled ? (
+            settings.usageFooterEnabled !== DEFAULT_UNIFIED_SETTINGS.usageFooterEnabled ||
+            !Equal.equals(
+              settings.usageFooterDisplay,
+              DEFAULT_UNIFIED_SETTINGS.usageFooterDisplay,
+            ) ? (
               <SettingResetButton
                 label="usage footer"
                 onClick={() =>
                   updateSettings({
                     usageFooterEnabled: DEFAULT_UNIFIED_SETTINGS.usageFooterEnabled,
+                    usageFooterDisplay: DEFAULT_UNIFIED_SETTINGS.usageFooterDisplay,
                   })
                 }
               />
