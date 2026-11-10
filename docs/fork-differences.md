@@ -99,7 +99,7 @@ client-owned terminals) and adds the rest.
   not supported.
 - Devin also generates commit messages, PR content, branch names, and thread titles, updates
   through `devin update`, and signs in by browser, saved login, or a pasted API key.
-- The welcome wizard lists Devin with an **Enable** action, since the provider is opt-in.
+- The Welcome page lists Devin with an **Enable** action, since the provider is opt-in.
 
 Code: [`DevinDriver.ts`](../apps/server/src/provider/Drivers/DevinDriver.ts),
 [`DevinAdapterV2.ts`](../apps/server/src/orchestration-v2/Adapters/DevinAdapterV2.ts),
@@ -1455,7 +1455,7 @@ Code: [`threadTranscript.ts`](../apps/web/src/lib/threadTranscript.ts),
 
 ## Import a CLI conversation
 
-Upstream imports recent Claude Code, Codex, and Pi history in bulk from the welcome wizard. The
+Upstream imports recent Claude Code, Codex, and Pi history in bulk from the Welcome page. The
 fork adds a picker on web and desktop: **Import conversation…** in the command palette, which
 lists every project, and in the legacy sidebar's project menu, which starts on that project. Its
 **Filters** menu narrows the list to one project or one source. Search matches conversation titles,
@@ -1466,10 +1466,10 @@ holding it, so the picker opens that thread instead: an earlier import, found by
 `import:<instance>:<session>` thread id, or any unarchived thread whose active provider thread
 resumes that session, including threads T3 started itself. `agentSessions.import` takes an
 optional `session` to import just one through upstream's importer, from a fresh scan, and returns
-its thread in `threadIds`. The thread binds to the original session exactly like the wizard's
+its thread in `threadIds`. The thread binds to the original session exactly like the Welcome page's
 import, so the next turn resumes it. Upstream matches a conversation only to the project whose
 root is its exact working directory; the fork gives one started in a subfolder to the nearest
-project at or above it, for both the picker and the wizard's bulk import. The server advertises
+project at or above it, for both the picker and the Welcome page's bulk import. The server advertises
 the picker with the
 `agentSessionPicker` capability. Cursor, Grok, OpenCode, Antigravity, Devin, and mobile have no
 import.

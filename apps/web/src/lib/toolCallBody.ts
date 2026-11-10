@@ -16,11 +16,10 @@ export function parseToolCallBody(text: string) {
           const patchBody = block.slice("Diff\n".length);
           const patch = patchBody.endsWith("\n") ? patchBody : `${patchBody}\n`;
           // Worker-highlighted diffs are matched to their results by cache key.
-          const files = parsePatchFiles(
-            patch,
-            buildPatchCacheKey(patch, "tool-call"),
-            true,
-          ).flatMap((patch) => patch.files);
+          const files = parsePatchFiles(patch, {
+            cacheKeyPrefix: buildPatchCacheKey(patch, "tool-call"),
+            disableLineMatching: true,
+          }).flatMap((patch) => patch.files);
           if (files.length > 0) return { kind: "diff" as const, text: block, files };
         } catch {
           // Legacy/provider patches may be incomplete. Keep their readable text.

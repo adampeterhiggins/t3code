@@ -3,7 +3,6 @@ import * as Digest from "effect/crypto/Digest";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Base64Url from "effect/encoding/Base64Url";
-import * as Hex from "effect/encoding/Hex";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
@@ -58,10 +57,10 @@ const billedEventIdentity = (...fields: readonly unknown[]) => JSON.stringify(fi
 
 const textEncoder = new TextEncoder();
 
-// Untraced: each usage scan hashes every billed event.
-const accountHash = Effect.fnUntraced(function* (value: string) {
+// Untraced: the account identity hash shares its caller's span.
+const hashCursorAccount = Effect.fnUntraced(function* (value: string) {
   const digest = yield* Digest.Digest;
-  return Hex.encode(yield* digest.digest(Digest.sha256, textEncoder.encode(value)));
+  return yield* digest.digestHex(Digest.sha256, textEncoder.encode(value));
 });
 
 /** The account an access token names, as the key its history is deduplicated by. */
@@ -72,7 +71,7 @@ export const cursorAccountKey = Effect.fn("cursorAccountKey")(function* (accessT
   if (decoded._tag === "None") return null;
   const subject = object(decoded.value).sub;
   if (typeof subject !== "string" || !subject) return null;
-  return yield* accountHash(subject).pipe(Effect.orElseSucceed(() => null));
+  return yield* hashCursorAccount(subject).pipe(Effect.orElseSucceed(() => null));
 });
 
 function canonicalJson(value: unknown): string {
@@ -120,6 +119,8 @@ export const readCursorAccountUsage = Effect.fn("readCursorAccountUsage")(functi
 > {
   const fileSystem = yield* FileSystem.FileSystem;
   const httpClient = yield* HttpClient.HttpClient;
+  const digest = yield* Digest.Digest;
+  const accountHash = (value: string) => digest.digestHex(Digest.sha256, textEncoder.encode(value));
   const credential = yield* Effect.result<
     unknown,
     | PlatformError.PlatformError
@@ -211,8 +212,9 @@ export const readCursorAccountUsage = Effect.fn("readCursorAccountUsage")(functi
           );
     const records: UsageRecord[] = [];
     const occurrences = new Map<string, number>();
-    const pages: unknown[][] = [];
-    let completed = false;
+    const normalized: Array<(Omit<UsageRecord, "dedupeKey"> & { dedupeKey: string }) | null> = [];
+    const pages: Array<{ start: number; end: number; overlap: number }> = [];
+    let previousEvents: unknown[] = [];
     const pageSize = 1000;
     let total: number | undefined;
     const readPage = Effect.fn("CursorAccountUsage.readPage")(
@@ -297,30 +299,23 @@ export const readCursorAccountUsage = Effect.fn("readCursorAccountUsage")(functi
       const next = ahead.shift();
       const events = yield* next === undefined ? readPage(page) : Fiber.join(next);
       if (!Array.isArray(events)) return events;
-      pages.push(events);
-      if (events.length < pageSize) {
-        completed = true;
-        break;
-      }
-    }
-    if (!completed) return yield* invalid("Account usage page limit exceeded");
-    const rawCount = pages.reduce((sum, page) => sum + page.length, 0);
-    if (total !== undefined && rawCount < total)
-      return yield* invalid("Incomplete account usage pages");
-    let removalsRemaining = total === undefined ? 0 : rawCount - total;
-    let previousKeys: string[] = [];
-    for (const events of pages) {
-      const eventKeys =
-        removalsRemaining > 0
-          ? yield* Effect.forEach(events, (event) => accountHash(canonicalJson(event)))
-          : [];
-      const removalCount = Math.min(removalsRemaining, boundaryOverlap(previousKeys, eventKeys));
-      removalsRemaining -= removalCount;
-      previousKeys = eventKeys;
-      for (const raw of events.slice(removalCount)) {
+      const start = normalized.length;
+      const firstTimestamp = object(events[0]).timestamp;
+      // Equal raw events must have equal timestamps; avoid canonicalizing disjoint pages.
+      const mayOverlap =
+        (typeof firstTimestamp !== "string" && typeof firstTimestamp !== "number") ||
+        previousEvents.some((event) => object(event).timestamp === firstTimestamp);
+      const overlap = mayOverlap
+        ? boundaryOverlap(previousEvents.map(canonicalJson), events.map(canonicalJson))
+        : 0;
+      previousEvents = events;
+      for (const raw of events) {
         const event = object(raw);
         const usage = object(event.tokenUsage);
-        if (event.tokenUsage === undefined || event.tokenUsage === null) continue;
+        if (event.tokenUsage === undefined || event.tokenUsage === null) {
+          normalized.push(null);
+          continue;
+        }
         for (const key of [
           "inputTokens",
           "outputTokens",
@@ -347,7 +342,10 @@ export const readCursorAccountUsage = Effect.fn("readCursorAccountUsage")(functi
           !event.model
         )
           return yield* invalid("Invalid account usage event");
-        if (timestampMs < sinceMs || timestampMs > endDate) continue;
+        if (timestampMs < sinceMs || timestampMs > endDate) {
+          normalized.push(null);
+          continue;
+        }
         const totals = {
           uncachedInputTokens: tokens(usage.inputTokens),
           cachedInputTokens: tokens(usage.cacheReadTokens),
@@ -362,9 +360,7 @@ export const readCursorAccountUsage = Effect.fn("readCursorAccountUsage")(functi
         const key = yield* accountHash(
           billedEventIdentity(timestampMs, event.model, sessionId, totals, reportedCostUsd),
         );
-        const occurrence = occurrences.get(key) ?? 0;
-        occurrences.set(key, occurrence + 1);
-        records.push({
+        normalized.push({
           provider: "cursor",
           timestampMs,
           model: event.model,
@@ -373,12 +369,39 @@ export const readCursorAccountUsage = Effect.fn("readCursorAccountUsage")(functi
           totals,
           reportedCostUsd,
           speed: "standard",
-          dedupeKey: `cursor-account:${accountKey}:${key}:${occurrence}`,
+          dedupeKey: key,
         });
+      }
+      pages.push({ start, end: normalized.length, overlap });
+      if (events.length < pageSize) break;
+      yield* Effect.yieldNow;
+    }
+    const rawCount = normalized.length;
+    if (total !== undefined && rawCount < total)
+      return yield* invalid("Incomplete account usage pages");
+    let removalsRemaining = total === undefined ? 0 : rawCount - total;
+    // The final count proves which boundary copies to remove, including non-token events.
+    for (const page of pages) {
+      const removalCount = Math.min(removalsRemaining, page.overlap);
+      removalsRemaining -= removalCount;
+      for (let index = page.start; index < page.end; index++) {
+        const record = normalized[index];
+        normalized[index] = null;
+        if (index < page.start + removalCount || record == null) continue;
+        const key = record.dedupeKey;
+        const occurrence = occurrences.get(key) ?? 0;
+        occurrences.set(key, occurrence + 1);
+        record.dedupeKey = `cursor-account:${accountKey}:${key}:${occurrence}`;
+        records.push(record);
       }
       yield* Effect.yieldNow;
     }
     if (removalsRemaining !== 0) return yield* invalid("Inconsistent account usage boundaries");
+    yield* Effect.annotateCurrentSpan({
+      "cursor.usage.pages": pages.length,
+      "cursor.usage.events": rawCount,
+      "cursor.usage.records": records.length,
+    });
     return {
       accountKey,
       records,

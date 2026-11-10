@@ -83,5 +83,6 @@ export function useAvailableSettingsSearchItems(scopeSearch: SettingsScopeSearch
     hasPeerLinkHost,
     hasFastWorktreeCheckoutEnvironment,
     hasTextGeneratorsEnvironment,
+    hasPrimaryEnvironment: primaryEnvironmentId !== null,
   });
 }

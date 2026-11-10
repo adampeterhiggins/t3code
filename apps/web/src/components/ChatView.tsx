@@ -268,7 +268,7 @@ import { type TerminalContextDraft } from "../lib/terminalContext";
 import { collectInlineContextIds } from "../lib/composerContextReferences";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
 import { useKnownTerminalSessions, useThreadRunningTerminalIds } from "../state/terminalSessions";
-import { useEnvironmentQuery } from "../state/query";
+import { useEnvironmentQueryRefresh } from "../state/query";
 import { useEnvironmentScope } from "~/state/session";
 import {
   primaryServerAvailableEditorsAtom,
@@ -277,7 +277,13 @@ import {
 } from "../state/server";
 import { threadEnvironment } from "../state/threads";
 import { resolveProviderSkillsForCwd } from "@t3tools/client-runtime/providerSkills";
-import { vcsEnvironment } from "../state/vcs";
+import {
+  chatGitStatusAtom,
+  NO_CHAT_GIT_STATUS_ATOM,
+  checkoutStatusPendingAtom,
+  NO_CHECKOUT_STATUS_PENDING_ATOM,
+  vcsEnvironment,
+} from "../state/vcs";
 import {
   type EnvironmentPresentation,
   useEnvironment,
@@ -1767,14 +1773,17 @@ export default function ChatView(props: ChatViewProps) {
       })
     : null;
   const gitStatusCwd = activeThread?.worktreePath ?? gitCwd;
-  const gitStatusQuery = useEnvironmentQuery(
+  const gitStatusAtom =
     gitStatusCwd === null
       ? null
       : vcsEnvironment.status({
           environmentId,
           input: { cwd: gitStatusCwd },
-        }),
-  );
+        });
+  const gitStatusQuery = {
+    data: useAtomValue(gitStatusAtom ? chatGitStatusAtom(gitStatusAtom) : NO_CHAT_GIT_STATUS_ATOM),
+    refresh: useEnvironmentQueryRefresh(gitStatusAtom).refresh,
+  };
   useWorkspaceMutationRefresh({
     enabled: gitStatusCwd !== null,
     mutationId: workspaceMutationId,
@@ -1869,8 +1878,11 @@ export default function ChatView(props: ChatViewProps) {
   }, [environmentId, gitStatusCwd, liveIsGitRepo]);
   const knownIsGitRepo = liveIsGitRepo ?? recallCheckoutIsRepo(environmentId, gitStatusCwd);
   const isGitRepo = knownIsGitRepo ?? true;
+  const gitStatusPending = useAtomValue(
+    gitStatusAtom ? checkoutStatusPendingAtom(gitStatusAtom) : NO_CHECKOUT_STATUS_PENDING_ATOM,
+  );
   const checkoutKindPending =
-    gitStatusCwd !== null && knownIsGitRepo === undefined && gitStatusQuery.error === null;
+    gitStatusCwd !== null && knownIsGitRepo === undefined && gitStatusPending;
   // Provider-native subagents cannot take messages; requests go to their top-level parent.
   const showProviderSubagentBar = isProviderSubagent;
   const composerMounted = !showProviderSubagentBar;

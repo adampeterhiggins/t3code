@@ -2,6 +2,7 @@ import type { ProviderInteractionMode } from "@t3tools/contracts";
 import { getProviderModelCapabilities } from "../../providerModels";
 import { preserveCompatibleOptions } from "../ChatView.modelOptions";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
+import { useApplyThreadModelPick } from "./useApplyThreadModelPick";
 import {
   type UnifiedSettings,
   type EnvironmentId,
@@ -120,6 +121,7 @@ export function useComposerSelection(input: ComposerSelectionInput) {
     (store) => store.setInteractionMode,
   );
   const setDraftThreadContext = useComposerDraftStore((store) => store.setDraftThreadContext);
+  const applyThreadModelPick = useApplyThreadModelPick();
 
   const handleRuntimeModeChange = (mode: RuntimeMode) => {
     if (mode === runtimeMode) return;
@@ -248,12 +250,13 @@ export function useComposerSelection(input: ComposerSelectionInput) {
       if (options?.focusComposer !== false) scheduleComposerFocus();
       return;
     }
-    setComposerDraftModelSelection(
-      scopeThreadRef(activeThread.environmentId, activeThread.id),
-      nextModelSelection,
-      { explicit: true, replaceOptions: true },
-    );
+    const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
+    setComposerDraftModelSelection(threadRef, nextModelSelection, {
+      explicit: true,
+      replaceOptions: true,
+    });
     setStickyComposerModelSelection(nextModelSelection);
+    if (!isLocalDraftThread) applyThreadModelPick(threadRef);
     if (options?.focusComposer !== false) scheduleComposerFocus();
   };
   const onProviderModelSelectStable = useStableCallback(onProviderModelSelect);

@@ -1,6 +1,6 @@
-# Welcome wizard
+# Welcome page
 
-T3 Code shows a setup flow when you open a new installation. Existing
+T3 Code shows a Welcome page when you open a new installation. Existing
 workspaces skip this flow.
 
 The hosted app at app.t3.codes does not open setup. With no computer connected,
@@ -35,8 +35,7 @@ talk to this app. The message under its name says which side to update.
 
 Saved computers and computers discovered through T3 Connect are selected by
 default. Uncheck any you do not want to set up; this does not disconnect them.
-Continue when your selected computers are connected. Setup checks
-agents across the selected computers, then offers project import grouped by computer.
+The page checks agents and offers project import grouped by computer.
 
 If T3 Code cannot confirm the workspace during startup, the setup flow shows
 **Still connecting** instead of opening the app. Select **Reload** to try again.
@@ -47,7 +46,7 @@ unreadable settings with defaults.
 
 ## Check your agents
 
-T3 Code checks each selected computer for Claude Code and Codex. If an agent is
+T3 Code lists providers on each selected computer. If an agent is
 not installed or signed in, select its action to open a terminal with the
 correct command ready to run. Install uses the vendor's own installer, which
 keeps **Update now** working in Settings. Other providers can be enabled in
@@ -98,5 +97,4 @@ with up to 100,000 input records. Run import again to continue a large batch.
 Completed conversations are not imported again. You can continue without the
 remaining history.
 
-You can continue without configuring agents or importing projects, or return to an earlier step
-using the setup progress bar. Navigation pauses while an import is running.
+You can continue without configuring agents or importing projects.
