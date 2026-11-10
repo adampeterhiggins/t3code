@@ -2267,8 +2267,9 @@ each provider's busiest limit as a
 percentage used and its time to reset. Clicking it opens a popover with every account's windows,
 coloured by how close each one is, and Claude's extra-usage spend as an amount of its cap. The
 server keeps that spend's amounts on the window (`spend` on `ServerProviderUsageWindow`) instead
-of only its percentage, and names it **Extra usage** rather than **Monthly spend**. Toggle it
-from the sidebar's footer button, `mod+alt+u` (`usage.toggleFooter`), the command palette, or
+of only its percentage, and names it **Extra usage** rather than **Monthly spend**. At desktop
+widths the footer toggle replaces the sidebar's Usage button, since the popover opens Usage;
+toggle it from that button, `mod+alt+u` (`usage.toggleFooter`), the command palette, or
 **Usage footer** in **Settings → Appearance**.
 
 Code: [`UsageFooter.tsx`](../apps/web/src/components/usage/UsageFooter.tsx) and

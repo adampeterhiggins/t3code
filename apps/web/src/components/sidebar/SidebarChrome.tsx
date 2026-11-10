@@ -259,9 +259,7 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   };
 
   const handleUsageClick = () => {
-    if (isMobile) {
-      setOpenMobile(false);
-    }
+    closeMobileSidebar();
     void navigate({ to: "/usage" });
   };
 
@@ -293,13 +291,14 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
               onClick={handlePullRequestsClick}
             />
           ) : null}
-          <SidebarUtilityItem
-            icon={<ChartNoAxesColumnIcon />}
-            label="Usage"
-            onClick={handleUsageClick}
-          />
-          {/* The footer only shows at desktop widths. */}
-          {isMobile ? null : (
+          {/* Usage opens from the footer's panel; mobile widths have no footer. */}
+          {isMobile ? (
+            <SidebarUtilityItem
+              icon={<ChartNoAxesColumnIcon />}
+              label="Usage"
+              onClick={handleUsageClick}
+            />
+          ) : (
             <SidebarUtilityItem
               icon={usageFooterEnabled ? <PanelBottomCloseIcon /> : <PanelBottomOpenIcon />}
               label={usageFooterEnabled ? "Hide usage footer" : "Show usage footer"}
