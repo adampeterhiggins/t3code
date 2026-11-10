@@ -13,11 +13,15 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
 import { ChartNoAxesColumnIcon, ChevronRightIcon, SettingsIcon } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { useState } from "react";
 
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useNowMinute } from "../../hooks/useNowMinute";
-import { useClientSettings } from "../../hooks/useSettings";
+import {
+  getClientSettings,
+  updateClientSettings,
+  useClientSettings,
+} from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
 import { environmentPresentations } from "../../state/presentation";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
@@ -371,7 +375,7 @@ function UsageFooterBar({
     <div
       role="status"
       aria-label="Usage limits"
-      className="flex h-(--app-footer-height) shrink-0 items-center border-t bg-background px-2 text-xs max-md:hidden"
+      className="flex h-7 shrink-0 items-center border-t bg-background px-2 text-xs max-md:hidden"
     >
       <Popover
         open={open}
@@ -422,21 +426,16 @@ function UsageFooterBar({
   );
 }
 
-/**
- * Wraps the app shell and adds the usage strip below it. The shell reads `--app-footer-height`
- * to leave room, so the children never re-render when limits or the clock change.
- */
-export function UsageFooterFrame({ children }: { readonly children: ReactNode }) {
+export function toggleUsageFooter(): void {
+  void updateClientSettings({ usageFooterEnabled: !getClientSettings().usageFooterEnabled });
+}
+
+/** The usage strip at the bottom of the main column, between the sidebars. */
+export function UsageFooter() {
   const enabled = useClientSettings((settings) => settings.usageFooterEnabled);
   const presentations = useAtomValue(environmentPresentations.presentationsWithProvidersAtom);
   const minute = useNowMinute();
   const now = Date.parse(`${minute}:00Z`);
   const pools = enabled ? collectLimitPools(collectLimitAccounts(presentations), now) : [];
-  const shown = pools.length > 0;
-  return (
-    <div className={cn("contents", shown && "md:[--app-footer-height:--spacing(7)]")}>
-      {children}
-      {shown ? <UsageFooterBar pools={pools} now={now} /> : null}
-    </div>
-  );
+  return pools.length > 0 ? <UsageFooterBar pools={pools} now={now} /> : null;
 }

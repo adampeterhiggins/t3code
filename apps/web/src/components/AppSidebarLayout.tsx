@@ -44,7 +44,6 @@ import { SidebarBrandWidthProbe } from "./sidebar/SidebarChrome";
 import { isAppModalPage } from "./sidebar/mainAppLocation";
 import type { SidebarRouteReveal } from "./sidebar/routeReveal";
 import { useSidebarStageBackdropVariant } from "./SidebarStageBackdrop";
-import { UsageFooterFrame } from "./usage/UsageFooter";
 import {
   clampThreadSidebarWidth,
   resolveInitialThreadSidebarWidth,
@@ -455,45 +454,43 @@ export function AppSidebarLayout({
 
   return (
     <PanelAnimationSuppressionProvider value={panelAnimationsSuppressed}>
-      <UsageFooterFrame>
-        <SidebarProvider
-          className="h-[calc(100dvh-var(--app-footer-height,0px))]! min-h-0!"
-          data-panel-animations={routePanelAnimationsActive ? "true" : "false"}
-          storageKey="chat_thread_sidebar_open"
-          style={sidebarProviderStyle}
-        >
-          {showSidebar ? (
-            <>
-              <SidebarBrandWidthProbe isElectron={isElectron} onWidthChange={setBrandWidth} />
-              <Sidebar
-                side="left"
-                collapsible="offcanvas"
-                data-app-sidebar=""
-                {...sidebarArea}
-                role="navigation"
-                aria-label="Threads"
-                resizable={{
-                  maxWidth: sidebarMaximumWidth,
-                  minWidth: sidebarMinimumWidth,
-                  shouldAcceptWidth: ({ currentWidth, nextWidth, wrapper }) =>
-                    nextWidth <= currentWidth ||
-                    wrapper.clientWidth - nextWidth >= THREAD_MAIN_CONTENT_MIN_WIDTH,
-                  storageKey: THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
-                  onResize: setSidebarWidth,
-                }}
-                style={windowControlsInsetStyle}
-              >
-                <ThreadSidebar routeReveal={sidebarRouteReveal} />
-                <SidebarRail onDoubleClick={resetSidebarWidth} />
-              </Sidebar>
-            </>
-          ) : null}
-          {children}
-          <BackgroundThreadAnnouncer />
-          <SidebarControl showSidebar={showSidebar} />
-          {isElectron ? <HistorySwipeNavigation /> : null}
-        </SidebarProvider>
-      </UsageFooterFrame>
+      <SidebarProvider
+        className="h-dvh! min-h-0!"
+        data-panel-animations={routePanelAnimationsActive ? "true" : "false"}
+        storageKey="chat_thread_sidebar_open"
+        style={sidebarProviderStyle}
+      >
+        {showSidebar ? (
+          <>
+            <SidebarBrandWidthProbe isElectron={isElectron} onWidthChange={setBrandWidth} />
+            <Sidebar
+              side="left"
+              collapsible="offcanvas"
+              data-app-sidebar=""
+              {...sidebarArea}
+              role="navigation"
+              aria-label="Threads"
+              resizable={{
+                maxWidth: sidebarMaximumWidth,
+                minWidth: sidebarMinimumWidth,
+                shouldAcceptWidth: ({ currentWidth, nextWidth, wrapper }) =>
+                  nextWidth <= currentWidth ||
+                  wrapper.clientWidth - nextWidth >= THREAD_MAIN_CONTENT_MIN_WIDTH,
+                storageKey: THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
+                onResize: setSidebarWidth,
+              }}
+              style={windowControlsInsetStyle}
+            >
+              <ThreadSidebar routeReveal={sidebarRouteReveal} />
+              <SidebarRail onDoubleClick={resetSidebarWidth} />
+            </Sidebar>
+          </>
+        ) : null}
+        {children}
+        <BackgroundThreadAnnouncer />
+        <SidebarControl showSidebar={showSidebar} />
+        {isElectron ? <HistorySwipeNavigation /> : null}
+      </SidebarProvider>
     </PanelAnimationSuppressionProvider>
   );
 }
