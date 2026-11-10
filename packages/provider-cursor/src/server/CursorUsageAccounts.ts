@@ -124,6 +124,7 @@ const make = Effect.gen(function* () {
   );
   yield* Effect.addFinalizer(() => awaitPersisted);
 
+  const refreshLock = yield* Semaphore.make(2);
   const refreshAccount = Effect.fn("CursorUsageAccounts.refreshAccount")(function* (
     credential: CursorCredentialSource,
     credentialKey: string,
@@ -169,7 +170,7 @@ const make = Effect.gen(function* () {
     failures.delete(credentialKey);
     if (merged.changed) cacheDirty = true;
     yield* schedulePersist;
-  });
+  }, refreshLock.withPermit);
 
   const startRefresh = (
     credential: CursorCredentialSource,
@@ -298,65 +299,70 @@ const make = Effect.gen(function* () {
       // account, so every such account is a source. Instances sharing an account count once.
       const instanceSources: ProviderUsageScan[] = [];
       const accounts = new Set<string>();
-      for (const instance of instances) {
-        const source = yield* readCursorSdkCredential(
-          instance.instanceId,
-          instance.environment,
-        ).pipe(
-          Effect.flatMap((credential) =>
-            credential === undefined
-              ? Effect.succeed(null)
-              : exchangeCursorApiKey(credential, instance.environment).pipe(
-                  Effect.flatMap((accessToken) =>
-                    cursorAccountKey(accessToken).pipe(
-                      Effect.flatMap((key) =>
-                        Effect.gen(function* () {
-                          if (key !== null && accounts.has(key)) return null;
-                          const credentialKey = `api-key:${Hex.encode(
-                            yield* digest.digest(
-                              Digest.sha256,
-                              new TextEncoder().encode(
-                                `${credential.backendUrl ?? instance.environment.CURSOR_BACKEND_URL ?? "https://api2.cursor.sh"}:${credential.apiKey}`,
-                              ),
-                            ),
-                          )}`;
-                          const source = yield* accountSource(
-                            { kind: "token", accessToken },
-                            `cursor-instance:${instance.instanceId}`,
-                            windowStartMs,
-                            retentionCutoffMs,
-                            awaitRefresh,
-                            credentialKey,
-                          );
-                          if (
-                            key !== null &&
-                            source !== null &&
-                            (("status" in source && source.status === "ok") ||
-                              ("refreshing" in source && source.refreshing))
-                          ) {
-                            accounts.add(key);
-                          }
-                          return source;
-                        }),
+      yield* Effect.forEach(
+        instances,
+        (instance) =>
+          Effect.gen(function* () {
+            const source = yield* readCursorSdkCredential(
+              instance.instanceId,
+              instance.environment,
+            ).pipe(
+              Effect.flatMap((credential) =>
+                credential === undefined
+                  ? Effect.succeed(null)
+                  : exchangeCursorApiKey(credential, instance.environment).pipe(
+                      Effect.flatMap((accessToken) =>
+                        cursorAccountKey(accessToken).pipe(
+                          Effect.flatMap((key) =>
+                            Effect.gen(function* () {
+                              if (key !== null && accounts.has(key)) return null;
+                              const credentialKey = `api-key:${Hex.encode(
+                                yield* digest.digest(
+                                  Digest.sha256,
+                                  new TextEncoder().encode(
+                                    `${credential.backendUrl ?? instance.environment.CURSOR_BACKEND_URL ?? "https://api2.cursor.sh"}:${credential.apiKey}`,
+                                  ),
+                                ),
+                              )}`;
+                              const source = yield* accountSource(
+                                { kind: "token", accessToken },
+                                `cursor-instance:${instance.instanceId}`,
+                                windowStartMs,
+                                retentionCutoffMs,
+                                awaitRefresh,
+                                credentialKey,
+                              );
+                              if (
+                                key !== null &&
+                                source !== null &&
+                                (("status" in source && source.status === "ok") ||
+                                  ("refreshing" in source && source.refreshing))
+                              ) {
+                                accounts.add(key);
+                              }
+                              return source;
+                            }),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-          ),
-          Effect.provideService(ProviderHost.ProviderHost, host),
-          Effect.provideService(HttpClient.HttpClient, httpClient),
-          Effect.provideService(Digest.Digest, digest),
-          Effect.catchCause(() =>
-            Effect.succeed({
-              dir: `cursor-instance:${instance.instanceId}`,
-              volumeId: "",
-              files: null,
-              message: "Cursor account usage could not be read with this account's sign-in.",
-            } satisfies ProviderUsageScan),
-          ),
-        );
-        if (source !== null) instanceSources.push(source);
-      }
+              ),
+              Effect.provideService(ProviderHost.ProviderHost, host),
+              Effect.provideService(HttpClient.HttpClient, httpClient),
+              Effect.provideService(Digest.Digest, digest),
+              Effect.catchCause(() =>
+                Effect.succeed({
+                  dir: `cursor-instance:${instance.instanceId}`,
+                  volumeId: "",
+                  files: null,
+                  message: "Cursor account usage could not be read with this account's sign-in.",
+                } satisfies ProviderUsageScan),
+              ),
+            );
+            if (source !== null) instanceSources.push(source);
+          }),
+        { concurrency: 2 },
+      );
       const haveInstanceAccount = instanceSources.some((source) => source.hostId === "cursor.com");
       const home = yield* HostProcess.HomeDirectory;
       const cliSources: ProviderUsageScan[] = [];

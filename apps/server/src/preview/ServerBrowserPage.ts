@@ -1018,16 +1018,28 @@ export const evaluate = async (
   input: PreviewAutomationEvaluateInput,
   options: ReadOptions = {},
 ) => {
-  const result = await withReadBudget(options, (read) =>
-    read("Runtime.evaluate", (timeoutMs) =>
-      cdp.send("Runtime.evaluate", {
-        expression: input.expression,
-        awaitPromise: input.awaitPromise ?? true,
-        returnByValue: input.returnByValue ?? true,
-        timeout: timeoutMs,
-      }),
-    ),
-  ).catch((cause: unknown) => {
+  let expired = false;
+  const result = await withReadBudget(options, (read) => {
+    const params = {
+      expression: input.expression,
+      awaitPromise: input.awaitPromise ?? true,
+      returnByValue: input.returnByValue ?? true,
+    };
+    return read("Runtime.evaluate", async (timeoutMs) => {
+      const classic = await cdp.send("Runtime.evaluate", { ...params, timeout: timeoutMs });
+      const failure = classic.exceptionDetails;
+      const unparsed =
+        failure?.exception?.className === "SyntaxError" &&
+        failure.scriptId !== undefined &&
+        failure.stackTrace === undefined;
+      return unparsed && !expired && input.expression.includes("await")
+        ? read("Runtime.evaluate", (remainingMs) =>
+            cdp.send("Runtime.evaluate", { ...params, timeout: remainingMs, replMode: true }),
+          )
+        : classic;
+    });
+  }).catch((cause: unknown) => {
+    expired = true;
     if (isServerBrowserOperationError(cause) && cause.tag === "PreviewAutomationTimeoutError") {
       void cdp.send("Runtime.terminateExecution").catch(constVoid);
     }
