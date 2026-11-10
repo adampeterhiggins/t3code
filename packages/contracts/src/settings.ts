@@ -465,6 +465,33 @@ export type ChatWidth = typeof ChatWidth.Type;
 export const EffortDisplay = Schema.Literals(["label", "bars"]);
 export type EffortDisplay = typeof EffortDisplay.Type;
 
+/** What the usage footer shows: per provider or per account, which ones, and how. */
+const withDefault = <S extends Schema.Top>(schema: S, value: S["Type"]) =>
+  schema.pipe(Schema.withDecodingDefault(Effect.succeed(value)));
+export const UsageFooterDisplay = Schema.Struct({
+  accounts: withDefault(Schema.Literals(["combined", "separate"]), "combined"),
+  value: withDefault(Schema.Literals(["used", "remaining"]), "used"),
+  showReset: withDefault(Schema.Boolean, true),
+  showNames: withDefault(Schema.Boolean, false),
+  hiddenProviders: withDefault(Schema.Array(TrimmedNonEmptyString), []),
+  hiddenAccounts: withDefault(Schema.Array(TrimmedNonEmptyString), []),
+  /** Chosen limit window ids per provider; a provider without an entry shows its busiest. */
+  windows: withDefault(
+    Schema.Record(TrimmedNonEmptyString, Schema.Array(TrimmedNonEmptyString)),
+    {},
+  ),
+});
+export type UsageFooterDisplay = typeof UsageFooterDisplay.Type;
+export const DEFAULT_USAGE_FOOTER_DISPLAY: UsageFooterDisplay = {
+  accounts: "combined",
+  value: "used",
+  showReset: true,
+  showNames: false,
+  hiddenProviders: [],
+  hiddenAccounts: [],
+  windows: {},
+};
+
 export const ToolCallVisibility = Schema.Literals(["showAll", "hideSuccessful", "hideAll", "zen"]);
 export type ToolCallVisibility = typeof ToolCallVisibility.Type;
 
@@ -545,6 +572,9 @@ export const ClientSettingsSchema = Schema.Struct({
   chatWidth: ChatWidth.pipe(Schema.withDecodingDefault(Effect.succeed("comfortable" as const))),
   effortDisplay: EffortDisplay.pipe(Schema.withDecodingDefault(Effect.succeed("label" as const))),
   usageFooterEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  usageFooterDisplay: UsageFooterDisplay.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_USAGE_FOOTER_DISPLAY)),
+  ),
   loadBalancingEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   loadBalancingWeights: LoadBalancingWeights.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   appearanceContrast: AppearanceContrast.pipe(
@@ -2562,6 +2592,7 @@ export const ClientSettingsPatch = Schema.Struct({
   chatWidth: Schema.optionalKey(ChatWidth),
   effortDisplay: Schema.optionalKey(EffortDisplay),
   usageFooterEnabled: Schema.optionalKey(Schema.Boolean),
+  usageFooterDisplay: Schema.optionalKey(UsageFooterDisplay),
   loadBalancingEnabled: Schema.optionalKey(Schema.Boolean),
   loadBalancingWeights: Schema.optionalKey(LoadBalancingWeights),
   appearanceContrast: Schema.optionalKey(AppearanceContrast),

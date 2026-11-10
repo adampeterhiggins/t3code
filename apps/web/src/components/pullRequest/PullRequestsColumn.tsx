@@ -17,6 +17,7 @@ import { workspaceAreaProps } from "../../lib/workspaceFocus";
 import { PullRequestCompactFilterMenu } from "./PullRequestCompactFilterMenu";
 import type { PullRequestFilterOption } from "./PullRequestListFilters";
 import { INVOLVEMENT_TABS, STATE_TABS } from "./pullRequestListOptions";
+import { UsageFooter } from "../usage/UsageFooter";
 
 function ExpandableSearch({
   searchInput,
@@ -264,6 +265,7 @@ export function PullRequestsColumn({
           {listBody}
         </WorkspacePageContainer>
       </div>
+      <UsageFooter />
     </div>
   );
 }

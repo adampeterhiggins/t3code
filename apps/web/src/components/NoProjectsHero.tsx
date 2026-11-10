@@ -8,6 +8,7 @@ import { usePrimaryEnvironmentId } from "../state/environments";
 import { Button } from "./ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "./ui/empty";
 import { SidebarInset } from "./ui/sidebar";
+import { UsageFooter } from "./usage/UsageFooter";
 import { WorkspacePageHeader } from "./WorkspacePageHeader";
 
 export function NoProjectsHero() {
@@ -20,7 +21,7 @@ export function NoProjectsHero() {
     <SidebarInset
       {...contentArea}
       role="main"
-      className="h-[calc(100dvh-var(--app-footer-height,0px))] min-h-0 overflow-hidden overscroll-y-none"
+      className="h-dvh min-h-0 overflow-hidden overscroll-y-none"
     >
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden bg-background">
         {/* The desktop window only moves where CSS opts in, so keep a titlebar strip. */}
@@ -54,6 +55,7 @@ export function NoProjectsHero() {
           </div>
         </Empty>
       </div>
+      <UsageFooter />
     </SidebarInset>
   );
 }

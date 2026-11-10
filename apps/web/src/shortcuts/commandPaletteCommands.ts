@@ -9,6 +9,7 @@ import { overlayModeForCommand } from "../components/CommandPalette.logic";
 import { APPEARANCE_OPTIONS, notifyThemeSaveFailure } from "../components/CommandPaletteThemeItems";
 import { toggleThemeEditorForTheme } from "../components/settings/themeEditorStore";
 import { toastManager } from "../components/ui/toast";
+import { toggleUsageFooter } from "../components/usage/UsageFooter";
 import { getThemeSnapshot, setAppearanceMode } from "../hooks/useTheme";
 import { selectActiveRightPanel, useRightPanelStore } from "../rightPanelStore";
 import { type CommandHandler, type CommandScopeOptions, registerCommands } from "./dispatcher";
@@ -95,6 +96,10 @@ export function installCommandPaletteCommands(
         consume(event);
         dispatchCommandPalette({ _tag: "SetOpen", open: false });
         void router.navigate({ to: "/usage" });
+      },
+      "usage.toggleFooter": (event) => {
+        consume(event);
+        if (!event.repeat) toggleUsageFooter();
       },
       "commandPalette.toggle": toggleOverlay("commandPalette.toggle"),
       "filePicker.toggle": toggleOverlay("filePicker.toggle"),

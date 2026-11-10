@@ -1,9 +1,16 @@
-import { ArrowLeftIcon, ArrowRightIcon, ChartNoAxesColumnIcon, SettingsIcon } from "lucide-react";
+import {
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  ChartNoAxesColumnIcon,
+  PanelBottomCloseIcon,
+  PanelBottomOpenIcon,
+  SettingsIcon,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import { memo } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useAtomValue } from "@effect/atom-react";
-import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
+import { useClientSettings, useEnvironmentIdentificationMode } from "../../hooks/useSettings";
 import { shortcutLabelForCommand } from "../../keybindings";
 import {
   navigateHistory,
@@ -14,6 +21,7 @@ import { primaryServerKeybindingsAtom } from "../../state/server";
 import { cn } from "../../lib/utils";
 import { usePullRequestsSupported } from "../../state/environments";
 import { T3Wordmark } from "../T3Wordmark";
+import { toggleUsageFooter } from "../usage/UsageFooter";
 import {
   resolveEnvironmentIdentificationPillLabel,
   resolveSidebarStageBackdropVariant,
@@ -196,10 +204,12 @@ function SidebarBrandMark({ onBackdrop }: { onBackdrop: boolean }) {
 function SidebarUtilityItem({
   icon,
   label,
+  shortcutLabel,
   onClick,
 }: {
   icon: ReactNode;
   label: string;
+  shortcutLabel?: string | null;
   onClick: () => void;
 }) {
   return (
@@ -212,7 +222,10 @@ function SidebarUtilityItem({
             </SidebarMenuButton>
           }
         />
-        <TooltipPopup side="top">{label}</TooltipPopup>
+        <TooltipPopup side="top">
+          {label}
+          {shortcutLabel ? ` (${shortcutLabel})` : ""}
+        </TooltipPopup>
       </Tooltip>
     </SidebarMenuItem>
   );
@@ -226,6 +239,8 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
     select: (location) => isSidebarUtilityPage(location.pathname),
   });
   const pullRequestsSupported = usePullRequestsSupported();
+  const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const usageFooterEnabled = useClientSettings((settings) => settings.usageFooterEnabled);
   const closeMobileSidebar = () => {
     if (isMobile) {
       setOpenMobile(false);
@@ -244,9 +259,7 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   };
 
   const handleUsageClick = () => {
-    if (isMobile) {
-      setOpenMobile(false);
-    }
+    closeMobileSidebar();
     void navigate({ to: "/usage" });
   };
 
@@ -278,11 +291,21 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
               onClick={handlePullRequestsClick}
             />
           ) : null}
-          <SidebarUtilityItem
-            icon={<ChartNoAxesColumnIcon />}
-            label="Usage"
-            onClick={handleUsageClick}
-          />
+          {/* Usage opens from the footer's panel; mobile widths have no footer. */}
+          {isMobile ? (
+            <SidebarUtilityItem
+              icon={<ChartNoAxesColumnIcon />}
+              label="Usage"
+              onClick={handleUsageClick}
+            />
+          ) : (
+            <SidebarUtilityItem
+              icon={usageFooterEnabled ? <PanelBottomCloseIcon /> : <PanelBottomOpenIcon />}
+              label={usageFooterEnabled ? "Hide usage footer" : "Show usage footer"}
+              shortcutLabel={shortcutLabelForCommand(keybindings, "usage.toggleFooter")}
+              onClick={toggleUsageFooter}
+            />
+          )}
         </>
       )}
       <SidebarThreadUndoNotice />

@@ -21,6 +21,7 @@ import { METRIC_OPTIONS, WINDOW_OPTIONS } from "../usage/usageShortcuts";
 const usageCommandOrder = new Map<KeybindingCommand, number>(
   [
     "usage.open" as const,
+    "usage.toggleFooter" as const,
     ...[...METRIC_OPTIONS, ...WINDOW_OPTIONS].map((option) => option.command),
   ].map((command, index) => [command, index]),
 );
@@ -392,6 +393,7 @@ export function commandLabel(command: KeybindingCommand): string {
   if (usageMetric) return `Usage: ${usageMetric.label}`;
   const usagePeriod = WINDOW_OPTIONS.find((option) => option.command === command);
   if (usagePeriod) return `Usage: Period: ${usagePeriod.label}`;
+  if (command === "usage.toggleFooter") return "Usage: Show or Hide Footer";
   if (command === "view.reopenClosed") return "Reopen Closed Tab";
   if (command === "preview.focusUrl") return "Preview: Focus URL";
   const raw = String(command);

@@ -101,6 +101,7 @@ describe("KeybindingsSettings.logic", () => {
   it("orders Usage bindings and command choices like the page", () => {
     const expected = [
       "usage.open",
+      "usage.toggleFooter",
       "usage.cost",
       "usage.tokens",
       "usage.limits",

@@ -386,6 +386,38 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["status bar footer bottom usage limits quota 5 hour weekly percent used spend"],
   },
   {
+    id: "usage-footer-providers",
+    title: "Usage footer providers",
+    to: "/settings/appearance",
+    searchTerms: [
+      "status bar footer usage limits hide show providers accounts codex claude cursor",
+    ],
+  },
+  {
+    id: "usage-footer-accounts",
+    title: "Usage footer accounts",
+    to: "/settings/appearance",
+    searchTerms: ["status bar footer usage limits multiple accounts separate combined pooled"],
+  },
+  {
+    id: "usage-footer-format",
+    title: "Usage footer format",
+    to: "/settings/appearance",
+    searchTerms: ["status bar footer usage limits percent used left remaining format"],
+  },
+  {
+    id: "usage-footer-reset",
+    title: "Usage footer reset time",
+    to: "/settings/appearance",
+    searchTerms: ["status bar footer usage limits time to reset countdown"],
+  },
+  {
+    id: "usage-footer-names",
+    title: "Usage footer provider names",
+    to: "/settings/appearance",
+    searchTerms: ["status bar footer usage limits provider names labels icons"],
+  },
+  {
     id: "effort-display",
     title: "Effort display",
     to: "/settings/appearance",

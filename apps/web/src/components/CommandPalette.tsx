@@ -82,6 +82,7 @@ import {
   LinkIcon,
   MessageSquareIcon,
   PaletteIcon,
+  PanelBottomIcon,
   RotateCcwIcon,
   SettingsIcon,
   FileTextIcon,
@@ -194,6 +195,7 @@ import { buildThreadRouteParams } from "../threadRoutes";
 import { resolveThreadScheduledTasks } from "../threadScheduledTasks";
 import { formatRelativeTimeLabel } from "../timestampFormat";
 import { useAvailableSettingsSearchItems } from "./settings/useAvailableSettingsSearchItems";
+import { toggleUsageFooter } from "./usage/UsageFooter";
 import {
   applyWslEnvironmentConfiguration,
   parseWslUncPath,
@@ -508,6 +510,7 @@ function OpenCommandPaletteDialog(props: {
   const clientSettings = useClientSettings(selectCommandPaletteClientSettings);
   const legacySidebarEnabled = useClientSettings((settings) => settings.legacySidebarEnabled);
   const sidebarShowTabs = useClientSettings((settings) => settings.sidebarShowTabs);
+  const usageFooterEnabled = useClientSettings((settings) => settings.usageFooterEnabled);
   const createProject = useAtomCommand(projectEnvironment.create, {
     reportFailure: false,
   });
@@ -2009,6 +2012,17 @@ function OpenCommandPaletteDialog(props: {
     shortcutCommand: "usage.open",
     run: async () => {
       await navigate({ to: "/usage" });
+    },
+  });
+  actionItems.push({
+    kind: "action",
+    value: "action:usage-footer",
+    searchTerms: ["usage", "footer", "limits", "status bar", "show", "hide", "toggle"],
+    title: usageFooterEnabled ? "Hide usage footer" : "Show usage footer",
+    icon: <PanelBottomIcon className={ITEM_ICON_CLASS} />,
+    shortcutCommand: "usage.toggleFooter",
+    run: async () => {
+      toggleUsageFooter();
     },
   });
 

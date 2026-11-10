@@ -405,6 +405,7 @@ import { observeResize } from "~/lib/observeResize";
 import { ThreadVisitWatermark } from "./chat/ThreadVisitWatermark";
 import { ChatTerminalDrawers } from "./detachedChat/mainWindowOnly";
 import { ChatRightPanel } from "./detachedChat/mainWindowOnly";
+import { UsageFooter } from "./usage/UsageFooter";
 import { useDraftEnvironmentRouting } from "./chat/useDraftEnvironmentRouting";
 import { branchMismatchBannerItem, extensionStatusBannerItem } from "./chat/ThreadActivityBanners";
 import { ThreadNow } from "./chat/ThreadNow";
@@ -4421,6 +4422,7 @@ export default function ChatView(props: ChatViewProps) {
             onAddTerminalContext={addTerminalContextToDraftStable}
           />
         )}
+        {surface.windowChrome ? <UsageFooter /> : null}
       </div>
 
       {rightPanelPresent && activeThreadRef && !embedded ? (

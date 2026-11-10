@@ -445,7 +445,7 @@ function LinkPage({
   readonly children?: ReactNode;
 }) {
   return (
-    <SidebarInset className="h-[calc(100dvh-var(--app-footer-height,0px))] min-h-0 overflow-hidden overscroll-y-none">
+    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none">
       {isElectron ? <WorkspacePageHeader electron /> : null}
       <Empty className="flex-1">
         <EmptyHeader className="max-w-md">
