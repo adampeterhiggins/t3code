@@ -403,13 +403,24 @@ function FooterItem({
 }) {
   return (
     <span className="flex items-center gap-1.5 whitespace-nowrap">
-      <ProviderIcon driver={item.driver} />
+      {item.accountName ? (
+        <ProviderInstanceIcon
+          driverKind={item.driver}
+          displayName={item.accountName}
+          accentColor={item.accentColor}
+          showBadge
+          size="compact"
+          indicatorBackground="var(--background)"
+          className="size-3.5"
+          iconClassName="text-foreground/80"
+        />
+      ) : (
+        <ProviderIcon driver={item.driver} />
+      )}
       <span className={display.showNames ? "text-foreground" : "sr-only"}>
         {providerLabel(item.driver)}
       </span>
-      {item.accountName ? (
-        <span className="max-w-32 truncate text-muted-foreground">{item.accountName}</span>
-      ) : null}
+      {item.accountName ? <span className="sr-only">{item.accountName}</span> : null}
       {item.windows.length === 0 ? (
         <span className="text-muted-foreground">n/a</span>
       ) : (
