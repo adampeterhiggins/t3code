@@ -13,6 +13,7 @@ import { EllipsisIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useThreadActions } from "../../hooks/useThreadActions";
 import { useQuietThreadShells } from "../../state/entities";
 import { THREAD_GROUP_VIEW_LABELS } from "../ThreadGroupDialog";
+import { collectThreadGroupNames } from "../threadActionMenu.logic";
 import { createSidebarGroupActions } from "../sidebar/groupActions";
 import { BUILT_IN_PAGES } from "../sidebar/SidebarFilterMenu";
 import { ThreadGroupIcon } from "../sidebar/ThreadGroupIcon";
@@ -180,7 +181,8 @@ export function ThreadGroupSettingsSection() {
     setCollapsedPages,
     attemptSetGroup,
   });
-  const names = Object.keys(threadGroups).toSorted((a, b) => a.localeCompare(b));
+  // Groups like Quick messages exist only as a thread's groupName until first configured.
+  const names = collectThreadGroupNames(threads, Object.keys(threadGroups));
 
   return (
     <SettingsSection
@@ -200,7 +202,7 @@ export function ThreadGroupSettingsSection() {
         />
       ) : null}
       {names.map((name) => {
-        const group = threadGroups[name]!;
+        const group = threadGroups[name] ?? {};
         const { showSettled: _showSettled, view: _view, ...rest } = group;
         const withView = group.view === undefined ? rest : { ...rest, view: group.view };
         const withSettled = group.showSettled === false ? { ...rest, showSettled: false } : rest;
