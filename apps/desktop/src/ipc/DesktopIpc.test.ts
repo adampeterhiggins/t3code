@@ -4,14 +4,22 @@ import * as Schema from "effect/Schema";
 import { assert, it } from "@effect/vitest";
 import { vi } from "vite-plus/test";
 
-vi.mock("electron", () => ({}));
+vi.mock("electron", () => ({ BrowserWindow: { getAllWindows: vi.fn() } }));
+
+import * as Electron from "electron";
 
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as DesktopIpc from "./DesktopIpc.ts";
 
-it.effect("answers only the main window's top frame", () =>
+it.effect("answers only app windows' top frames", () =>
   Effect.gen(function* () {
     const mainFrame = {};
+    const panelFrame = {};
+    const panel = {
+      webContents: { id: 3, mainFrame: panelFrame },
+    } as unknown as Electron.BrowserWindow;
+    ElectronWindow.markAuxiliaryWindow(panel);
+    vi.mocked(Electron.BrowserWindow.getAllWindows).mockReturnValue([panel]);
     const invoke = new Map<string, DesktopIpc.DesktopIpcHandleListener>();
     const sync = new Map<string, DesktopIpc.DesktopIpcSyncListener>();
     const ipc = yield* DesktopIpc.DesktopIpc.pipe(
@@ -44,6 +52,8 @@ it.effect("answers only the main window's top frame", () =>
 
     const senders = {
       app: { sender: { id: 1 }, senderFrame: mainFrame },
+      panel: { sender: { id: 3 }, senderFrame: panelFrame },
+      panelSubframe: { sender: { id: 3 }, senderFrame: {} },
       appSubframe: { sender: { id: 1 }, senderFrame: {} },
       previewGuest: { sender: { id: 2 }, senderFrame: {} },
     };
@@ -60,6 +70,8 @@ it.effect("answers only the main window's top frame", () =>
     }
     assert.deepEqual(results, {
       app: ["secret", "secret"],
+      panel: ["secret", "secret"],
+      panelSubframe: ["rejected", undefined],
       appSubframe: ["rejected", undefined],
       previewGuest: ["rejected", undefined],
     });

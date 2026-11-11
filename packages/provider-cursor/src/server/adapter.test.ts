@@ -987,6 +987,7 @@ describe("CursorAdapterV2", () => {
                       })),
                     ),
                     cancel: Deferred.succeed(ended, "cancelled"),
+                    steer: () => Effect.die("unused steer"),
                   };
                 }),
             }),
