@@ -110,6 +110,19 @@ function elsewhereChoices(
       draft: null,
     };
   }
+  if (destination.kind === "new-tab") {
+    return {
+      choices: {
+        send: { label: "Start tab", description: `Start a new tab in ${destination.title}` },
+        save: {
+          label: "Save",
+          description: "Open a new tab with this quote in its composer",
+          contextMenuLabel: "Save to a new tab",
+        },
+      },
+      draft: null,
+    };
+  }
   const title = destination.title || "that thread";
   return {
     choices: {
