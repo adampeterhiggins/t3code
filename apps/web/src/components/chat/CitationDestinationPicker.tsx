@@ -311,7 +311,7 @@ export function CitationDestinationPicker({
     );
   const pickNewTab = (group: CitationDestinationGroup) => {
     const source = group.tabs.find((tab) => tab.id === currentThreadId) ?? group.tabs[0]!;
-    onChange({
+    pick({
       kind: "new-tab",
       threadId: source.id,
       title: group.title,
@@ -351,9 +351,12 @@ export function CitationDestinationPicker({
   const tabRow = (group: CitationDestinationGroup, tab: EnvironmentThreadShell, crumb: boolean) => (
     <CommandItem key={tab.id} value={`tab:${tab.id}`} onClick={() => pickTab(group, tab)}>
       {crumb && group.tabs.length > 1 && group.title !== tab.title ? (
-        <span className="min-w-0 max-w-[40%] shrink truncate text-sm text-secondary-label">
-          {group.title} /
-        </span>
+        <>
+          <span className="min-w-0 max-w-[40%] shrink truncate text-sm text-secondary-label">
+            {group.title}
+          </span>
+          <span className="shrink-0 text-sm text-secondary-label">/</span>
+        </>
       ) : null}
       <SidebarTabSummary
         thread={tab}
