@@ -253,6 +253,19 @@ export function AssistantCitationCommentEditor({
         }
       }}
     >
+      {destinations ? (
+        <div className="-ms-2 mb-1 flex min-w-0">
+          <CitationDestinationPicker
+            environmentId={destinations.environmentId}
+            currentThreadId={destinations.threadId}
+            defaultProjectId={destinations.projectId}
+            defaultModelSelection={destinations.modelSelection}
+            destination={destination}
+            onChange={setDestination}
+            onModelPicked={() => inputRef.current?.focus()}
+          />
+        </div>
+      ) : null}
       {renderInput({
         value: comment,
         readOnly: speech.freezesEditor,
@@ -286,25 +299,12 @@ export function AssistantCitationCommentEditor({
         <div
           className={
             speech.state.phase === "idle"
-              ? "contents"
+              ? "me-auto flex min-w-0"
               : "flex basis-full flex-wrap gap-2 *:min-w-0 *:grow **:data-[slot=voice-input-pill]:w-full"
           }
         >
           <TextFieldSpeechControls speech={speech} />
         </div>
-        {destinations ? (
-          <div className="me-auto flex min-w-0">
-            <CitationDestinationPicker
-              environmentId={destinations.environmentId}
-              currentThreadId={destinations.threadId}
-              defaultProjectId={destinations.projectId}
-              defaultModelSelection={destinations.modelSelection}
-              destination={destination}
-              onChange={setDestination}
-              onModelPicked={() => inputRef.current?.focus()}
-            />
-          </div>
-        ) : null}
         <Button
           variant="outline"
           size="xs"
