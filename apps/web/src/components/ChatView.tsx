@@ -2134,6 +2134,21 @@ export default function ChatView(props: ChatViewProps) {
   const activeProjectRepository = sourceControlClients.repositorySelector(
     activeProject?.repositoryIdentity,
   );
+  // The server derives a thread's branch PR; a draft only has its checkout's git status.
+  const draftBranchPullRequest =
+    !isServerThread &&
+    activeProject &&
+    activeProjectRepository !== null &&
+    activeThread?.branch != null &&
+    gitStatusQuery.data?.refName === activeThread.branch &&
+    gitStatusQuery.data.pr != null
+      ? {
+          projectId: activeProject.id,
+          repository: activeProjectRepository,
+          number: gitStatusQuery.data.pr.number,
+          url: gitStatusQuery.data.pr.url,
+        }
+      : null;
   const {
     linked: linkedThreadPullRequest,
     linkedKey: linkedThreadPullRequestKey,
@@ -2564,7 +2579,10 @@ export default function ChatView(props: ChatViewProps) {
         projectId: activeThread.projectId,
         pullRequests: visiblePullRequests,
         linkedPullRequest: linkedThreadPullRequest,
-        branchPullRequest: activeThreadShell?.branchPullRequest ?? activeThread.branchPullRequest,
+        branchPullRequest:
+          activeThreadShell?.branchPullRequest ??
+          activeThread.branchPullRequest ??
+          draftBranchPullRequest,
       })
     : null;
   const {
@@ -3618,7 +3636,10 @@ export default function ChatView(props: ChatViewProps) {
         projectId: activeThread.projectId,
         pullRequests: visiblePullRequests,
         linkedPullRequest: linkedThreadPullRequest,
-        branchPullRequest: activeThreadShell?.branchPullRequest ?? activeThread.branchPullRequest,
+        branchPullRequest:
+          activeThreadShell?.branchPullRequest ??
+          activeThread.branchPullRequest ??
+          draftBranchPullRequest,
         onBack:
           pullRequestsSurfaceAvailable && visiblePullRequestCount > 1
             ? addPullRequestsSurfaceStable
