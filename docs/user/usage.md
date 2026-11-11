@@ -167,8 +167,9 @@ automatically, when it reports that point.
 On web and desktop, a bar along the bottom of the main view, between the sidebar and any open
 side panel, shows each provider's busiest limit as
 a percentage used and the time until it resets. With several accounts for one provider, it shows
-their combined reading. Click it for every window: **Compact** lists providers and opens one
-provider's accounts beside the list, **Detailed** shows every account at once. Claude's
+their combined reading. Hover an entry to see every window for that provider or account. The
+arrow at the left of the bar opens the full panel: **Compact** lists each account on its own row
+and opens its windows beside the list, **Detailed** shows every account at once. Claude's
 **Extra usage** shows the amount spent against your monthly cap. Show or hide the bar with the
 footer button at the bottom of the sidebar, `mod+alt+u` (`usage.toggleFooter`), the command
 palette, or **Usage footer** in **Settings → Appearance**.

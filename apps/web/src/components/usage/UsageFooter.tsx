@@ -16,6 +16,7 @@ import * as Schema from "effect/Schema";
 import {
   ChartNoAxesColumnIcon,
   ChevronRightIcon,
+  ChevronUpIcon,
   SettingsIcon,
   SlidersHorizontalIcon,
 } from "lucide-react";
@@ -50,6 +51,7 @@ import {
   MenuTrigger,
 } from "../ui/menu";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
+import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
 import { RefreshIcon } from "../ui/refresh-icon";
 import { Separator } from "../ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "../ui/toggle-group";
@@ -190,10 +192,13 @@ function AccountCard({
   account,
   now,
   showProvider,
+  bare = false,
 }: {
   readonly account: LimitAccount;
   readonly now: number;
   readonly showProvider: boolean;
+  /** Drops the card chrome when it is the only thing in a popup. */
+  readonly bare?: boolean;
 }) {
   // A one-account pool gives this account's windows in the same order and labels as Usage → Limits.
   const pool = collectLimitPools([account], now)[0];
@@ -203,7 +208,9 @@ function AccountCard({
   const notice = limitsNotice(account.limits);
   const credits = account.limits.resetCredits;
   return (
-    <div className="flex min-w-0 flex-col gap-3 rounded-lg border bg-card p-3">
+    <div
+      className={cn("flex min-w-0 flex-col gap-3", bare ? null : "rounded-lg border bg-card p-3")}
+    >
       <div className="flex min-w-0 items-center gap-1.5 text-sm font-medium whitespace-nowrap">
         {showProvider ? (
           <>
@@ -231,34 +238,51 @@ function AccountCard({
   );
 }
 
-function ProviderDetail({ pool, now }: { readonly pool: LimitPool; readonly now: number }) {
+function ProviderDetail({
+  driver,
+  accounts,
+  now,
+}: {
+  readonly driver: LimitPool["driver"];
+  readonly accounts: readonly LimitAccount[];
+  readonly now: number;
+}) {
   return (
     <div className="flex w-80 flex-col gap-3">
       <div className="flex items-center gap-2 text-sm font-medium">
-        <ProviderIcon driver={pool.driver} />
-        {providerLabel(pool.driver)}
+        <ProviderIcon driver={driver} />
+        {providerLabel(driver)}
       </div>
-      {pool.accounts.map((account) => (
-        <AccountCard key={account.key} account={account} now={now} showProvider={false} />
+      {accounts.map((account) => (
+        <AccountCard
+          key={account.key}
+          account={account}
+          now={now}
+          showProvider={false}
+          bare={accounts.length === 1}
+        />
       ))}
     </div>
   );
 }
 
-function ProviderRow({
-  pool,
+function AccountRow({
+  account,
+  showAccount,
   now,
   active,
   onSelect,
 }: {
-  readonly pool: LimitPool;
+  readonly account: LimitAccount;
+  /** Set when the provider has several accounts, so each row names its own. */
+  readonly showAccount: boolean;
   readonly now: number;
   readonly active: boolean;
   readonly onSelect: () => void;
 }) {
-  const window = busiestPoolWindow(pool);
-  const plan =
-    pool.accounts.length > 1 ? `${pool.accounts.length} accounts` : pool.accounts[0]?.plan;
+  const own = collectLimitPools([account], now)[0];
+  const window = own ? busiestPoolWindow(own) : null;
+  const name = showAccount ? (accountShortName(account) ?? "Default account") : null;
   return (
     <Button
       variant="ghost"
@@ -268,9 +292,24 @@ function ProviderRow({
       aria-expanded={active}
       onClick={onSelect}
     >
-      <ProviderIcon driver={pool.driver} />
-      <span>{providerLabel(pool.driver)}</span>
-      {plan ? <span className="truncate text-muted-foreground">· {plan}</span> : null}
+      {name ? (
+        <ProviderInstanceIcon
+          driverKind={account.driver}
+          displayName={name}
+          accentColor={account.accentColor}
+          showBadge
+          size="compact"
+          indicatorBackground="var(--popover)"
+          className="size-3.5"
+          iconClassName="text-foreground/80"
+        />
+      ) : (
+        <ProviderIcon driver={account.driver} />
+      )}
+      <span>{providerLabel(account.driver)}</span>
+      {name || account.plan ? (
+        <span className="truncate text-muted-foreground">· {name ?? account.plan}</span>
+      ) : null}
       <span className="ms-auto flex items-center gap-2 text-xs text-muted-foreground tabular-nums">
         {window ? (
           <>
@@ -301,11 +340,11 @@ function UsagePanel({
   readonly onNavigate: (to: "/usage" | "/settings/providers") => void;
 }) {
   const [layout, setLayout] = useLocalStorage(LAYOUT_STORAGE_KEY, "compact", LayoutSchema);
-  const [selected, setSelected] = useState<LimitPool["driver"] | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
   const [panel, setPanel] = useState<HTMLDivElement | null>(null);
   const detailed = layout === "detailed";
-  const selectedPool = detailed ? undefined : pools.find((pool) => pool.driver === selected);
   const accounts = pools.flatMap((pool) => pool.accounts);
+  const selectedAccount = detailed ? undefined : accounts.find((a) => a.key === selected);
   return (
     <div ref={setPanel} className={cn("flex flex-col gap-2", detailed ? "w-96" : "w-80")}>
       <div className="flex items-center gap-2">
@@ -343,15 +382,18 @@ function UsagePanel({
         </div>
       ) : (
         <div className="flex flex-col gap-0.5">
-          {pools.map((pool) => (
-            <ProviderRow
-              key={pool.driver}
-              pool={pool}
-              now={now}
-              active={pool.driver === selectedPool?.driver}
-              onSelect={() => setSelected(pool.driver === selected ? null : pool.driver)}
-            />
-          ))}
+          {pools.flatMap((pool) =>
+            pool.accounts.map((account) => (
+              <AccountRow
+                key={account.key}
+                account={account}
+                showAccount={pool.accounts.length > 1}
+                now={now}
+                active={account.key === selectedAccount?.key}
+                onSelect={() => setSelected(account.key === selected ? null : account.key)}
+              />
+            )),
+          )}
         </div>
       )}
       <Separator />
@@ -373,7 +415,7 @@ function UsagePanel({
         <SettingsIcon />
         Usage providers
       </Button>
-      {selectedPool && panel ? (
+      {selectedAccount && panel ? (
         <Popover open onOpenChange={(open) => (open ? undefined : setSelected(null))}>
           <PopoverPopup
             anchor={panel}
@@ -383,7 +425,11 @@ function UsagePanel({
             initialFocus={false}
           >
             <div className="max-h-[calc(100dvh-4rem)] overflow-y-auto">
-              <ProviderDetail pool={selectedPool} now={now} />
+              <ProviderDetail
+                driver={selectedAccount.driver}
+                accounts={[selectedAccount]}
+                now={now}
+              />
             </div>
           </PopoverPopup>
         </Popover>
@@ -669,21 +715,21 @@ function UsageFooterBar({
           if (next) refresh(true);
         }}
       >
-        <PopoverTrigger render={<Button variant="ghost" size="micro" />}>
-          <span className="flex items-center gap-3 font-normal">
-            {items.length === 0 ? (
-              // Every entry hidden: keep a way back into the panel that shows them again.
-              <span className="flex items-center gap-1.5 text-muted-foreground">
-                <ChartNoAxesColumnIcon className="size-3.5" />
-                Usage
-              </span>
-            ) : (
-              items.map((item) => (
-                <FooterItem key={item.key} item={item} display={display} now={now} />
-              ))
-            )}
-          </span>
-        </PopoverTrigger>
+        {items.length === 0 ? (
+          // Every entry hidden: keep a labelled way back into the panel that shows them again.
+          <PopoverTrigger render={<Button variant="ghost" size="micro" />}>
+            <span className="flex items-center gap-1.5 font-normal text-muted-foreground">
+              <ChartNoAxesColumnIcon className="size-3.5" />
+              Usage
+            </span>
+          </PopoverTrigger>
+        ) : (
+          <PopoverTrigger
+            render={<Button variant="ghost" size="icon-micro" aria-label="Show all usage limits" />}
+          >
+            <ChevronUpIcon />
+          </PopoverTrigger>
+        )}
         <PopoverPopup side="top" align="start" sideOffset={6} initialFocus={false}>
           <UsagePanel
             pools={pools}
@@ -700,6 +746,34 @@ function UsageFooterBar({
           />
         </PopoverPopup>
       </Popover>
+      {items.length > 0 ? (
+        <>
+          <Separator orientation="vertical" className="mx-1 h-3.5" />
+          <span className="flex items-center gap-0.5">
+            {items.map((item) => (
+              <PreviewCard
+                key={item.key}
+                onOpenChange={(next) => (next ? refresh(true) : undefined)}
+              >
+                <PreviewCardTrigger
+                  delay={200}
+                  closeDelay={100}
+                  render={<Button variant="ghost" size="micro" />}
+                >
+                  <span className="font-normal">
+                    <FooterItem item={item} display={display} now={now} />
+                  </span>
+                </PreviewCardTrigger>
+                <PreviewCardPopup side="top" align="start" sideOffset={6}>
+                  <div className="p-3">
+                    <ProviderDetail driver={item.driver} accounts={item.accounts} now={now} />
+                  </div>
+                </PreviewCardPopup>
+              </PreviewCard>
+            ))}
+          </span>
+        </>
+      ) : null}
     </div>
   );
 }
