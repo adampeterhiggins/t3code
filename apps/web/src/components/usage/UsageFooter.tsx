@@ -67,6 +67,7 @@ import {
   type UsageSeverity,
   usageSeverity,
   usageFooterItems,
+  usagePanelAccounts,
 } from "./usageFooter.logic";
 import { readUsagePagePreferences, saveUsagePagePreferences } from "./usagePagePreferences";
 import { useRefreshUsageLimits } from "./useRefreshUsageLimits";
@@ -328,12 +329,14 @@ function AccountRow({
 
 function UsagePanel({
   pools,
+  display,
   now,
   refreshing,
   onRefresh,
   onNavigate,
 }: {
   readonly pools: readonly LimitPool[];
+  readonly display: UsageFooterDisplay;
   readonly now: number;
   readonly refreshing: boolean;
   readonly onRefresh: () => void;
@@ -343,8 +346,10 @@ function UsagePanel({
   const [selected, setSelected] = useState<string | null>(null);
   const [panel, setPanel] = useState<HTMLDivElement | null>(null);
   const detailed = layout === "detailed";
-  const accounts = pools.flatMap((pool) => pool.accounts);
-  const selectedAccount = detailed ? undefined : accounts.find((a) => a.key === selected);
+  const rows = usagePanelAccounts(pools, display);
+  const selectedAccount = detailed
+    ? undefined
+    : rows.find((row) => row.account.key === selected)?.account;
   return (
     <div ref={setPanel} className={cn("flex flex-col gap-2", detailed ? "w-96" : "w-80")}>
       <div className="flex items-center gap-2">
@@ -374,26 +379,26 @@ function UsagePanel({
         <ToggleGroupItem value="detailed">Detailed</ToggleGroupItem>
         <ToggleGroupItem value="compact">Compact</ToggleGroupItem>
       </ToggleGroup>
-      {detailed ? (
+      {rows.length === 0 ? (
+        <p className="px-2 py-4 text-center text-sm text-muted-foreground">All hidden.</p>
+      ) : detailed ? (
         <div className="flex max-h-[min(40rem,calc(100dvh-14rem))] flex-col gap-2 overflow-y-auto">
-          {accounts.map((account) => (
+          {rows.map(({ account }) => (
             <AccountCard key={account.key} account={account} now={now} showProvider />
           ))}
         </div>
       ) : (
         <div className="flex flex-col gap-0.5">
-          {pools.flatMap((pool) =>
-            pool.accounts.map((account) => (
-              <AccountRow
-                key={account.key}
-                account={account}
-                showAccount={pool.accounts.length > 1}
-                now={now}
-                active={account.key === selectedAccount?.key}
-                onSelect={() => setSelected(account.key === selected ? null : account.key)}
-              />
-            )),
-          )}
+          {rows.map(({ account, showAccount }) => (
+            <AccountRow
+              key={account.key}
+              account={account}
+              showAccount={showAccount}
+              now={now}
+              active={account.key === selectedAccount?.key}
+              onSelect={() => setSelected(account.key === selected ? null : account.key)}
+            />
+          ))}
         </div>
       )}
       <Separator />
@@ -623,7 +628,7 @@ function UsageFooterCustomizeMenu({ pools }: { readonly pools: readonly LimitPoo
       </MenuTrigger>
       <MenuPopup align="end">
         <MenuGroup>
-          <MenuGroupLabel>Show in footer</MenuGroupLabel>
+          <MenuGroupLabel>Providers</MenuGroupLabel>
           <UsageFooterProviderItems pools={pools} />
         </MenuGroup>
         <MenuSeparator />
@@ -716,7 +721,7 @@ function UsageFooterBar({
         }}
       >
         {items.length === 0 ? (
-          // Every entry hidden: keep a labelled way back into the panel that shows them again.
+          // Every entry hidden: keep a labelled way into the panel, where the menu shows them again.
           <PopoverTrigger render={<Button variant="ghost" size="micro" />}>
             <span className="flex items-center gap-1.5 font-normal text-muted-foreground">
               <ChartNoAxesColumnIcon className="size-3.5" />
@@ -733,6 +738,7 @@ function UsageFooterBar({
         <PopoverPopup side="top" align="start" sideOffset={6} initialFocus={false}>
           <UsagePanel
             pools={pools}
+            display={display}
             now={now}
             refreshing={refreshing}
             onRefresh={() => refresh(false)}

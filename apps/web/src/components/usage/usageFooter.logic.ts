@@ -92,6 +92,32 @@ export function accountShortName(account: LimitAccount): string | null {
   return account.email?.split("@")[0] ?? null;
 }
 
+export interface UsagePanelAccount {
+  readonly account: LimitAccount;
+  /** The provider has several accounts, so the row names this one even if siblings are hidden. */
+  readonly showAccount: boolean;
+}
+
+/**
+ * The panel's rows: one per account, minus hidden providers and, when each account is its own
+ * footer entry, hidden accounts.
+ */
+export function usagePanelAccounts(
+  pools: readonly LimitPool[],
+  display: UsageFooterDisplay,
+): readonly UsagePanelAccount[] {
+  const rows: UsagePanelAccount[] = [];
+  const separate = display.accounts === "separate";
+  for (const pool of pools) {
+    if (display.hiddenProviders.includes(pool.driver)) continue;
+    for (const account of pool.accounts) {
+      if (separate && display.hiddenAccounts.includes(account.key)) continue;
+      rows.push({ account, showAccount: pool.accounts.length > 1 });
+    }
+  }
+  return rows;
+}
+
 /** The footer's entries: one per provider, or one per account, minus the hidden ones. */
 export function usageFooterItems(
   pools: readonly LimitPool[],

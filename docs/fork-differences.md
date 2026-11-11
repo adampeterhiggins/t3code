@@ -2265,14 +2265,14 @@ guide: [usage.md](./user/usage.md#track-subscription-limits).
 Web and desktop show a bar under the main column, between the sidebar and the right panel, with
 each provider's busiest limit as a
 percentage used and its time to reset. Hovering an entry previews that provider's or account's
-windows; the arrow at the bar's left opens a popover listing every account on its own row,
+windows; the arrow at the bar's left opens a popover listing each shown account on its own row,
 with each account's windows coloured by how close each one is, and Claude's extra-usage spend as an amount of its cap. The
 server keeps that spend's amounts on the window (`spend` on `ServerProviderUsageWindow`) instead
 of only its percentage, and names it **Extra usage** rather than **Monthly spend**. At desktop
 widths the footer toggle replaces the sidebar's Usage button, since the popover opens Usage;
 toggle it from that button, `mod+alt+u` (`usage.toggleFooter`), the command palette, or
 **Usage footer** in **Settings → Appearance**. A sliders menu in the popover, and matching rows under the switch in Settings → Appearance, pick the providers
-shown, one entry per provider or per account (with per-account hiding), percent used or left, which limit windows each provider shows (busiest by default),
+and accounts shown in both the bar and that list, one bar entry per provider or per account, percent used or left, which limit windows each provider shows on the bar (busiest by default),
 and whether reset times and provider names show (`usageFooterDisplay` in client settings).
 
 Code: [`UsageFooter.tsx`](../apps/web/src/components/usage/UsageFooter.tsx) and

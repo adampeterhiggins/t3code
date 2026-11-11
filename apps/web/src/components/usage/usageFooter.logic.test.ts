@@ -13,6 +13,7 @@ import {
   formatSpend,
   nextResetLabel,
   usageFooterItems,
+  usagePanelAccounts,
 } from "./usageFooter.logic";
 
 const NOW = Date.parse("2026-11-05T17:10:00Z");
@@ -142,6 +143,46 @@ describe("usageFooterItems", () => {
   it("reads remaining as the unused share", () => {
     const [item] = usageFooterItems(pools, DEFAULT_USAGE_FOOTER_DISPLAY, NOW);
     expect(footerPercent(item!.windows[0]!, "remaining")).toBe(90);
+  });
+});
+
+describe("usagePanelAccounts", () => {
+  const weekly = (usedPercent: number): ServerProviderUsageWindow[] => [
+    { id: "seven_day", kind: "weekly", label: "Weekly", usedPercent },
+  ];
+  const pools = collectLimitPools(
+    [
+      account("claude", weekly(10)),
+      account("work", weekly(80), "cursor"),
+      account("home", weekly(20), "cursor"),
+    ],
+    NOW,
+  );
+  const shown = (display: Partial<typeof DEFAULT_USAGE_FOOTER_DISPLAY>) =>
+    usagePanelAccounts(pools, { ...DEFAULT_USAGE_FOOTER_DISPLAY, ...display }).map((row) => [
+      row.account.key,
+      row.showAccount,
+    ]);
+
+  it("lists every account, and names one only when its provider has several", () => {
+    expect(shown({})).toEqual([
+      ["claude", false],
+      ["home", true],
+      ["work", true],
+    ]);
+    expect(shown({ accounts: "separate" })).toEqual(shown({}));
+  });
+
+  it("hides a provider, and in separate mode a single account, from the panel", () => {
+    expect(shown({ hiddenProviders: ["claudeAgent"] })).toEqual([
+      ["home", true],
+      ["work", true],
+    ]);
+    expect(shown({ accounts: "separate", hiddenAccounts: ["work"] })).toEqual([
+      ["claude", false],
+      ["home", true],
+    ]);
+    expect(shown({ hiddenAccounts: ["work"] })).toEqual(shown({}));
   });
 });
 
