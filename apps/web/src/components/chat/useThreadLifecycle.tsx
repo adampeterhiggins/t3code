@@ -84,7 +84,9 @@ import { environmentShell } from "../../state/shell";
 import { ThreadStatusLine } from "./ThreadStatusLine";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
-import { readEnvironmentScope } from "../../state/session";
+import { readEnvironmentScope, readPreparedConnection } from "../../state/session";
+import { createThreadTab } from "@t3tools/client-runtime/thread-tabs";
+import { runtime } from "../../lib/runtime";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useOrchestrationCommand } from "../../state/use-orchestration-command";
 import {
@@ -852,6 +854,42 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
     );
     return true;
   };
+  // Joins the group of the thread it was picked under, like the header's New tab.
+  const createCitationTab = async (
+    destination: Extract<CitationDestination, { kind: "new-tab" }>,
+  ): Promise<ScopedThreadRef | null> => {
+    const prepared = readPreparedConnection(environmentId);
+    if (!prepared) {
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Could not create tab",
+          description: "This environment is not connected.",
+        }),
+      );
+      return null;
+    }
+    const tabRef = scopeThreadRef(environmentId, newThreadId());
+    try {
+      await runtime.runPromise(
+        createThreadTab(prepared, destination.threadId, {
+          threadId: tabRef.threadId,
+          modelSelection: destination.modelSelection,
+        }),
+      );
+      await waitForThreadShell(tabRef);
+      return tabRef;
+    } catch (cause) {
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Could not create tab",
+          description: cause instanceof Error ? cause.message : undefined,
+        }),
+      );
+      return null;
+    }
+  };
   // The comment panel's other destinations. The quote travels as the same serialized link a
   // composer citation sends, so the destination shows its chip and can open the source.
   const sendCitationElsewhere = async (
@@ -867,6 +905,24 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
         ? startCitationThread(destination, text)
         : openCitationInNewThread(destination, text);
     }
+    if (destination.kind === "new-tab") {
+      const tab = await createCitationTab(destination);
+      return tab === null
+        ? false
+        : sendCitationToThread(
+            { kind: "thread", threadId: tab.threadId, title: `a new tab in ${destination.title}` },
+            action,
+            text,
+          );
+    }
+    return sendCitationToThread(destination, action, text);
+  };
+  const sendCitationToThread = async (
+    destination: Extract<CitationDestination, { kind: "thread" }>,
+    action: CitationDestinationAction,
+    text: string,
+  ): Promise<boolean> => {
+    if (!activeThread) return false;
     const targetRef = scopeThreadRef(environmentId, destination.threadId);
     const targetTitle = destination.title || "Untitled thread";
     if (action === "save") {
