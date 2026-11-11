@@ -168,17 +168,17 @@ On web and desktop, a bar along the bottom of the main view, between the sidebar
 side panel, shows each provider's busiest limit as
 a percentage used and the time until it resets. With several accounts for one provider, it shows
 their combined reading. Hover an entry to see every window for that provider or account. The
-arrow at the left of the bar opens the full panel: **Compact** lists each account on its own row
-and opens its windows beside the list, **Detailed** shows every account at once. Claude's
+arrow at the left of the bar opens the full panel: **Compact** lists each shown account on its own row
+and opens its windows beside the list, **Detailed** shows those accounts at once. Claude's
 **Extra usage** shows the amount spent against your monthly cap. Show or hide the bar with the
 footer button at the bottom of the sidebar, `mod+alt+u` (`usage.toggleFooter`), the command
 palette, or **Usage footer** in **Settings → Appearance**.
 
-The sliders button at the top of that panel, or the rows under **Usage footer** in **Settings → Appearance**, customize the bar: pick which providers it shows,
+The sliders button at the top of that panel, or the rows under **Usage footer** in **Settings → Appearance**, customize the bar: pick which providers the bar and the panel show,
 show one entry per account instead of one per provider (useful with several Cursor accounts,
-where you can also hide single accounts), show the percent left instead of used, and turn the
+where you can also hide single accounts from both), show the percent left instead of used, and turn the
 reset time and provider names on or off. Under each provider, **Limit** picks which of its limits the bar shows, such as Claude's Session and Weekly; it shows the busiest one unless you choose. If you hide everything, the bar shows **Usage** so you
-can open the panel again.
+can open the panel and turn them back on.
 
 OpenCode Go reports its session, weekly, and monthly allowance when OpenCode runs locally in
 the environment. T3 cannot report limits for external OpenCode servers because their credentials

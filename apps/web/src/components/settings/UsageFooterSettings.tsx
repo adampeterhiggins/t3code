@@ -34,7 +34,7 @@ export function UsageFooterSettingsRows() {
     <>
       <SettingsRow
         {...searchableSetting("usage-footer-providers")}
-        description="Choose which providers, and with one entry per account which accounts, the usage footer shows."
+        description="Choose which providers, and with one entry per account which accounts, the footer and its panel show."
         resetAction={
           hiddenCount > 0 ? (
             <SettingResetButton

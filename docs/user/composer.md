@@ -166,8 +166,9 @@ To use the quote somewhere else, pick a destination on the left of the comment p
 sending. It starts on **This thread**. **New thread** starts a thread with the quote as its first
 message, or **Save** opens one with the quote in its composer. It uses this thread's project and
 model unless you change them on the page **New thread** opens; another project starts at that
-project's root rather than this thread's checkout. Choosing another
-thread sends the quote there, queueing it if that thread is busy and you queue follow-ups. **Save**
+project's root rather than this thread's checkout. The picker lists threads with their tabs
+underneath, like the sidebar; click a thread's tab count to see its tabs and **New tab**, which
+adds a tab to that thread and sends the quote to it. Choosing another thread or tab sends the quote there, queueing it if that thread is busy and you queue follow-ups. **Save**
 adds it to that thread's composer instead, and **Save as draft** keeps it there to send later. You
 stay where you are, and the confirmation has **Open** to go to the destination. Hovering a quote
 that came from another thread shows which thread it came from.

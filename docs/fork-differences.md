@@ -1805,14 +1805,19 @@ behaviour would queue the message, **Send** reads **Add to queue**, as the compo
 does. The button shows whichever the reader used last. Enter does what the button shows, and
 Cmd/Ctrl+Enter does the other one.
 
-The comment panel also has a destination picker (**This thread**, **New thread**, or any other
-thread in the environment), and its split button then acts on that thread. **Send** starts or
-queues a turn there with that thread's own model and modes, **Save** adds the quote to that
-thread's composer, and **Save as draft** stores a message draft there. For a new thread, the
-button reads **Start thread**, and **Save** opens a new thread with the quote in its composer.
+The comment panel also has a destination picker, and its split button then acts on that
+destination. The picker lists the environment's threads with their tabs nested under them, drawn
+like the sidebar's rows: this thread first, open, then the rest. Every thread's tab count opens its
+tabs and a **New tab** row; a one-tab thread is also picked with one click on its row. Searching
+lists matching tabs flat, each after its thread's name. Picking a tab is picking that thread:
+**Send** starts or queues a turn there with its own model and modes, **Save** adds the quote to its
+composer, and **Save as draft** stores a message draft there. **New tab** adds a tab to that thread's
+group, with this thread's model for this thread and the group's model elsewhere (changeable in the
+picker's footer), then acts on it the same way; its button reads **Start tab**. For **New thread**,
+the button reads **Start thread**, and **Save** opens a new thread with the quote in its composer.
 Choosing **New thread** opens a second page of the menu with the environment's projects and the
 composer's model picker, starting on this thread's project and model; a thread in another project
-starts at that project's root. A
+starts at that project's root. Environments that do not serve tabs list plain threads. A
 quote shown outside the thread it came from names its source thread in its preview. See
 [Quote an assistant response](user/composer.md#quote-an-assistant-response).
 
@@ -2265,14 +2270,14 @@ guide: [usage.md](./user/usage.md#track-subscription-limits).
 Web and desktop show a bar under the main column, between the sidebar and the right panel, with
 each provider's busiest limit as a
 percentage used and its time to reset. Hovering an entry previews that provider's or account's
-windows; the arrow at the bar's left opens a popover listing every account on its own row,
+windows; the arrow at the bar's left opens a popover listing each shown account on its own row,
 with each account's windows coloured by how close each one is, and Claude's extra-usage spend as an amount of its cap. The
 server keeps that spend's amounts on the window (`spend` on `ServerProviderUsageWindow`) instead
 of only its percentage, and names it **Extra usage** rather than **Monthly spend**. At desktop
 widths the footer toggle replaces the sidebar's Usage button, since the popover opens Usage;
 toggle it from that button, `mod+alt+u` (`usage.toggleFooter`), the command palette, or
 **Usage footer** in **Settings → Appearance**. A sliders menu in the popover, and matching rows under the switch in Settings → Appearance, pick the providers
-shown, one entry per provider or per account (with per-account hiding), percent used or left, which limit windows each provider shows (busiest by default),
+and accounts shown in both the bar and that list, one bar entry per provider or per account, percent used or left, which limit windows each provider shows on the bar (busiest by default),
 and whether reset times and provider names show (`usageFooterDisplay` in client settings).
 
 Code: [`UsageFooter.tsx`](../apps/web/src/components/usage/UsageFooter.tsx) and
