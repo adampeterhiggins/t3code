@@ -220,8 +220,8 @@ describe("installRelayTelemetryEnabled", () => {
           Layer.mergeAll(DesktopIpc.layerTest(ipcMain), DesktopManagedPolicy.layerTest(policy)),
         ),
       );
-      const event = { returnValue: undefined as unknown };
-      listeners.get(IpcChannels.GET_RELAY_TELEMETRY_ENABLED_CHANNEL)?.(event as never);
+      const event = { sender: { id: 1 }, returnValue: undefined as unknown };
+      listeners.get(IpcChannels.GET_RELAY_TELEMETRY_ENABLED_CHANNEL)?.(event);
       return event.returnValue;
     }).pipe(Effect.scoped);
 
