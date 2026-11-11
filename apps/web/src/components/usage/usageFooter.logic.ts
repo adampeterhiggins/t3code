@@ -66,6 +66,8 @@ export interface UsageFooterItem {
   /** Set when the item is one account of a provider that has several. */
   readonly accountName: string | null;
   readonly accentColor: string | undefined;
+  /** The accounts its hover preview shows. */
+  readonly accounts: readonly LimitAccount[];
   readonly windows: readonly LimitPoolWindow[];
 }
 
@@ -105,6 +107,7 @@ export function usageFooterItems(
         driver: pool.driver,
         accountName: null,
         accentColor: undefined,
+        accounts: pool.accounts,
         windows: footerWindows(pool, display),
       });
       continue;
@@ -117,6 +120,7 @@ export function usageFooterItems(
         driver: pool.driver,
         accountName: pool.accounts.length > 1 ? accountShortName(account) : null,
         accentColor: account.accentColor,
+        accounts: [account],
         windows: own ? footerWindows(own, display) : [],
       });
     }
