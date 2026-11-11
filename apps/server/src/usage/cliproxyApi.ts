@@ -6,6 +6,7 @@ import {
   type UsageLimitSourceAccount,
   type UsageLimitSourceConfig,
 } from "@t3tools/contracts";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Cause from "effect/Cause";
 import * as Digest from "effect/crypto/Digest";
 import * as DateTime from "effect/DateTime";
@@ -15,10 +16,19 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { HttpClient, HttpClientError, HttpClientRequest, HttpClientResponse } from "effect/http";
 
-import { claudeUsageResponseToLimits } from "../provider/claudeUsageLimits.ts";
+import {
+  GROK_USAGE_URL,
+  GrokUsageResponse,
+  grokUsageResponseToLimits,
+} from "@t3tools/provider-grok/server";
 import { codexPlanLabel } from "../provider/CodexProvider.ts";
 import { codexRateLimitsToLimits } from "../provider/codexUsageLimits.ts";
-import { GrokUsageResponse, grokUsageResponseToLimits } from "@t3tools/provider-grok/server";
+import { claudeUsageResponseToLimits } from "../provider/claudeUsageLimits.ts";
+import {
+  antigravityAccountFingerprint,
+  antigravitySummaryWindows,
+  antigravityUserAgent,
+} from "../provider/antigravityUsageLimits.ts";
 import {
   clampPercent,
   makeUnavailableUsageLimits,
@@ -31,89 +41,6 @@ export interface CliproxyHub {
   readonly managementKey: string;
 }
 
-const AuthFile = Schema.Struct({
-  id: Schema.String,
-  auth_index: Schema.String,
-  provider: Schema.String,
-  email: Schema.optional(Schema.String),
-  disabled: Schema.optional(Schema.Boolean),
-  id_token: Schema.optional(
-    Schema.Struct({
-      chatgpt_account_id: Schema.optional(Schema.String),
-      chatgpt_plan_type: Schema.optional(Schema.String),
-      plan_type: Schema.optional(Schema.String),
-    }),
-  ),
-  project_id: Schema.optional(Schema.String),
-  projectId: Schema.optional(Schema.String),
-  metadata: Schema.optional(
-    Schema.Struct({
-      project_id: Schema.optional(Schema.String),
-      projectId: Schema.optional(Schema.String),
-    }),
-  ),
-});
-const AuthFiles = Schema.Struct({ files: Schema.Array(AuthFile) });
-const ApiResponse = Schema.Struct({ status_code: Schema.Number, body: Schema.String });
-const CodexWindow = Schema.Struct({
-  used_percent: Schema.Number,
-  reset_at: Schema.optional(Schema.NullOr(Schema.Number)),
-  limit_window_seconds: Schema.optional(Schema.Number),
-});
-const CodexUsage = Schema.Struct({
-  plan_type: Schema.optional(Schema.String),
-  rate_limit: Schema.NullOr(
-    Schema.Struct({
-      primary_window: Schema.optional(Schema.NullOr(CodexWindow)),
-      secondary_window: Schema.optional(Schema.NullOr(CodexWindow)),
-    }),
-  ),
-});
-const ClaudeWindow = Schema.Struct({
-  utilization: Schema.Number,
-  resets_at: Schema.NullOr(Schema.String),
-});
-const ClaudeUsage = Schema.Struct({
-  five_hour: Schema.optional(Schema.NullOr(ClaudeWindow)),
-  seven_day: Schema.optional(Schema.NullOr(ClaudeWindow)),
-  spend: Schema.optional(Schema.Unknown),
-  extra_usage: Schema.optional(
-    Schema.NullOr(
-      Schema.Struct({
-        is_enabled: Schema.Boolean,
-        monthly_limit: Schema.NullOr(Schema.Number),
-        used_credits: Schema.NullOr(Schema.Number),
-        utilization: Schema.NullOr(Schema.Number),
-      }),
-    ),
-  ),
-  limits: Schema.optional(
-    Schema.Array(
-      Schema.Struct({
-        kind: Schema.String,
-        percent: Schema.optional(Schema.NullOr(Schema.Number)),
-        resets_at: Schema.optional(Schema.NullOr(Schema.String)),
-        scope: Schema.optional(
-          Schema.NullOr(
-            Schema.Struct({
-              model: Schema.optional(Schema.NullOr(Schema.Struct({ display_name: Schema.String }))),
-            }),
-          ),
-        ),
-      }),
-    ),
-  ),
-});
-const CreditList = Schema.Struct({
-  credits: Schema.Array(
-    Schema.Struct({
-      id: Schema.String,
-      status: Schema.String,
-      reset_type: Schema.String,
-      expires_at: Schema.String,
-    }),
-  ),
-});
 const AntigravityBucket = Schema.Struct({
   displayName: Schema.optional(Schema.String),
   display_name: Schema.optional(Schema.String),
@@ -181,6 +108,90 @@ const DevinQuota = Schema.Struct({
   ),
 });
 
+const AuthFile = Schema.Struct({
+  id: Schema.String,
+  auth_index: Schema.String,
+  provider: Schema.String,
+  email: Schema.optional(Schema.String),
+  disabled: Schema.optional(Schema.Boolean),
+  project_id: Schema.optional(Schema.String),
+  projectId: Schema.optional(Schema.String),
+  metadata: Schema.optional(
+    Schema.Struct({
+      project_id: Schema.optional(Schema.String),
+      projectId: Schema.optional(Schema.String),
+    }),
+  ),
+  id_token: Schema.optional(
+    Schema.Struct({
+      chatgpt_account_id: Schema.optional(Schema.String),
+      chatgpt_plan_type: Schema.optional(Schema.String),
+      plan_type: Schema.optional(Schema.String),
+    }),
+  ),
+});
+const AuthFiles = Schema.Struct({ files: Schema.Array(AuthFile) });
+const ApiResponse = Schema.Struct({ status_code: Schema.Number, body: Schema.String });
+const CodexWindow = Schema.Struct({
+  used_percent: Schema.Number,
+  reset_at: Schema.optional(Schema.NullOr(Schema.Number)),
+  limit_window_seconds: Schema.optional(Schema.Number),
+});
+const CodexUsage = Schema.Struct({
+  plan_type: Schema.optional(Schema.String),
+  rate_limit: Schema.NullOr(
+    Schema.Struct({
+      primary_window: Schema.optional(Schema.NullOr(CodexWindow)),
+      secondary_window: Schema.optional(Schema.NullOr(CodexWindow)),
+    }),
+  ),
+});
+const ClaudeWindow = Schema.Struct({
+  utilization: Schema.Number,
+  resets_at: Schema.NullOr(Schema.String),
+});
+const ClaudeUsage = Schema.Struct({
+  five_hour: Schema.optional(Schema.NullOr(ClaudeWindow)),
+  seven_day: Schema.optional(Schema.NullOr(ClaudeWindow)),
+  spend: Schema.optional(Schema.Unknown),
+  extra_usage: Schema.optional(
+    Schema.NullOr(
+      Schema.Struct({
+        is_enabled: Schema.Boolean,
+        monthly_limit: Schema.NullOr(Schema.Number),
+        used_credits: Schema.NullOr(Schema.Number),
+        utilization: Schema.NullOr(Schema.Number),
+      }),
+    ),
+  ),
+  limits: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        kind: Schema.String,
+        percent: Schema.optional(Schema.NullOr(Schema.Number)),
+        resets_at: Schema.optional(Schema.NullOr(Schema.String)),
+        scope: Schema.optional(
+          Schema.NullOr(
+            Schema.Struct({
+              model: Schema.optional(Schema.NullOr(Schema.Struct({ display_name: Schema.String }))),
+            }),
+          ),
+        ),
+      }),
+    ),
+  ),
+});
+const CreditList = Schema.Struct({
+  credits: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      status: Schema.String,
+      reset_type: Schema.String,
+      expires_at: Schema.String,
+    }),
+  ),
+});
+
 const decodeAuthFiles = Schema.decodeUnknownEffect(AuthFiles);
 const encodeJson = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 const decodeApiResponse = Schema.decodeUnknownEffect(ApiResponse);
@@ -192,6 +203,7 @@ const decodeAntigravityQuota = Schema.decodeUnknownEffect(Schema.fromJsonString(
 const decodeCodeAssist = Schema.decodeUnknownEffect(Schema.fromJsonString(CodeAssist));
 const decodeKimiUsage = Schema.decodeUnknownEffect(Schema.fromJsonString(KimiUsage));
 const decodeDevinQuota = Schema.decodeUnknownEffect(Schema.fromJsonString(DevinQuota));
+const decodeJson = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
 const isUsageLimitSourceError = Schema.is(UsageLimitSourceError);
 
 // Extra CAs can fix untrusted chains; expiry/hostname failures report codes only.
@@ -260,99 +272,111 @@ const creditRedeemRequestId = Effect.fn("CliproxyApi.creditRedeemRequestId")(fun
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 });
 
-/**
- * Providers whose subscription status the hub can read. Names follow the
- * auth-file `provider` values CLIProxyAPI writes, including aliases.
- */
-type HubProvider = "codex" | "claude" | "grok" | "antigravity" | "devin" | "kimi";
-
-function hubProvider(provider: string): HubProvider | undefined {
-  switch (provider.trim().toLowerCase().replaceAll("_", "-")) {
-    case "codex":
-      return "codex";
-    case "claude":
-    case "anthropic":
-      return "claude";
-    case "grok":
-    case "xai":
-    case "x-ai":
-      return "grok";
-    case "antigravity":
-    case "anti-gravity":
-    case "gemini":
-      return "antigravity";
-    case "devin":
-    case "cognition":
-      return "devin";
-    case "kimi":
-      return "kimi";
-    default:
-      return undefined;
-  }
+type AuthFile = typeof AuthFile.Type;
+/** Sends one upstream request with the account's token, as GET or as a JSON POST of `data`. */
+type HubCall = (
+  url: string,
+  data?: unknown,
+) => Effect.Effect<string, UsageLimitSourceError | Schema.SchemaError>;
+type HubReading = Omit<UsageLimitSourceAccount, "id" | "driver">;
+interface HubProvider {
+  readonly driver: ProviderDriverKind;
+  readonly header: (
+    account: AuthFile,
+    platform: NodeJS.Platform,
+    architecture: NodeJS.Architecture,
+  ) => Record<string, string>;
+  readonly read: (input: {
+    readonly account: AuthFile;
+    readonly call: HubCall;
+    readonly checkedAt: string;
+  }) => Effect.Effect<HubReading, UsageLimitSourceError | Schema.SchemaError, Digest.Digest>;
 }
 
-function driverFor(provider: HubProvider): ProviderDriverKind {
-  switch (provider) {
-    case "codex":
-      return ProviderDriverKind.make("codex");
-    case "claude":
-      return ProviderDriverKind.make("claudeAgent");
-    case "grok":
-      return ProviderDriverKind.make("grok");
-    case "antigravity":
-      return ProviderDriverKind.make("antigravity");
-    case "devin":
-      return ProviderDriverKind.make("devin");
-    case "kimi":
-      return ProviderDriverKind.make("kimi");
-    default: {
-      const exhaustive: never = provider;
-      return exhaustive;
-    }
-  }
-}
+const listedIdentity = (account: AuthFile) => ({
+  ...(account.email ? { email: account.email } : {}),
+  ...(account.id_token?.chatgpt_account_id?.trim()
+    ? { workspaceId: account.id_token.chatgpt_account_id.trim() }
+    : {}),
+});
 
-const BEARER = "Bearer $TOKEN$";
+const credits = Effect.fn("CliproxyApi.credits")(function* (call: HubCall) {
+  const response = yield* decodeCreditList(yield* call(CREDIT_URL));
+  const now = DateTime.toEpochMillis(yield* DateTime.now);
+  return response.credits
+    .filter(
+      (credit) =>
+        credit.reset_type === "codex_rate_limits" &&
+        credit.status === "available" &&
+        Date.parse(credit.expires_at) > now,
+    )
+    .toSorted((a, b) => Date.parse(a.expires_at) - Date.parse(b.expires_at));
+});
 
-function codexHeaders(account: typeof AuthFile.Type): Record<string, string> {
-  return {
-    Authorization: BEARER,
+const CODEX_HUB: HubProvider = {
+  driver: ProviderDriverKind.make("codex"),
+  header: (account) => ({
+    Authorization: "Bearer $TOKEN$",
     "Content-Type": "application/json",
     "OpenAI-Beta": "codex-1",
     Originator: "Codex Desktop",
     ...(account.id_token?.chatgpt_account_id
       ? { "Chatgpt-Account-Id": account.id_token.chatgpt_account_id }
       : {}),
-  };
-}
+  }),
+  read: Effect.fnUntraced(function* ({ account, call, checkedAt }) {
+    const usage = yield* decodeCodexUsage(yield* call(`${CODEX_BASE}/usage`));
+    const toWindow = (window: typeof CodexWindow.Type | null | undefined) =>
+      window
+        ? {
+            usedPercent: window.used_percent,
+            resetsAt: window.reset_at ?? null,
+            ...(window.limit_window_seconds === undefined
+              ? {}
+              : { windowDurationMins: window.limit_window_seconds / 60 }),
+          }
+        : null;
+    const available = yield* credits(call).pipe(Effect.orElseSucceed(() => undefined));
+    const next = available?.[0];
+    const planType =
+      usage.plan_type ?? account.id_token?.plan_type ?? account.id_token?.chatgpt_plan_type;
+    return {
+      ...listedIdentity(account),
+      plan: codexPlanLabel(planType),
+      usageLimits: {
+        ...codexRateLimitsToLimits({
+          checkedAt,
+          snapshot: {
+            planType: planType ?? null,
+            primary: toWindow(usage.rate_limit?.primary_window),
+            secondary: toWindow(usage.rate_limit?.secondary_window),
+          },
+        }),
+        ...(available
+          ? {
+              resetCredits: {
+                availableCount: available.length,
+                ...(next
+                  ? {
+                      nextCreditId: next.id,
+                      nextExpiresAt: DateTime.formatIso(DateTime.makeUnsafe(next.expires_at)),
+                    }
+                  : {}),
+              },
+            }
+          : {}),
+      },
+    };
+  }),
+};
 
-const CLAUDE_HEADERS = {
-  Authorization: BEARER,
-  "anthropic-beta": "oauth-2025-04-20",
-  // The OAuth usage endpoint can return 429 without a Claude Code user agent.
-  "User-Agent": "claude-code/2.1.273",
-};
-const GROK_USAGE_URL = "https://cli-chat-proxy.grok.com/v1/billing?format=credits";
-const GROK_HEADERS = {
-  Authorization: BEARER,
-  "x-xai-token-auth": "xai-grok-cli",
-  "x-grok-client-version": "0.2.91",
-  accept: "*/*",
-  "user-agent": "grok-pager/0.2.91 grok-shell/0.2.91 (macos; aarch64)",
-};
-// Antigravity traffic is served by the daily host; later hosts are fallbacks.
 const ANTIGRAVITY_HOSTS = [
   "https://daily-cloudcode-pa.googleapis.com",
   "https://daily-cloudcode-pa.sandbox.googleapis.com",
   "https://cloudcode-pa.googleapis.com",
 ] as const;
-const ANTIGRAVITY_HEADERS = {
-  Authorization: BEARER,
-  "Content-Type": "application/json",
-  "User-Agent": "antigravity/cli/1.0.13 (aidev_client; os_type=darwin; arch=arm64)",
-};
 const KIMI_USAGE_URL = "https://api.kimi.com/coding/v1/usages";
-const KIMI_HEADERS = { Authorization: BEARER };
+const KIMI_HEADERS = { Authorization: "Bearer $TOKEN$" };
 const DEVIN_QUOTA_URL =
   "https://server.codeium.com/exa.seat_management_pb.SeatManagementService/GetUserStatus";
 const DEVIN_HEADERS = {
@@ -430,7 +454,7 @@ function usedFromQuota(
   return clampPercent(Math.round((1 - remaining / limit) * 1000) / 10);
 }
 
-function antigravityProjectId(account: typeof AuthFile.Type): string | undefined {
+function antigravityProjectId(account: AuthFile): string | undefined {
   return [
     account.project_id,
     account.projectId,
@@ -590,9 +614,176 @@ function devinAccount(quota: typeof DevinQuota.Type): {
   return { plan, windows };
 }
 
+const GROK_CLI_VERSION = "1.0.77";
+
+// Keyed by the auth-files `provider`; accounts of any other provider are skipped.
+const HUB_PROVIDERS = new Map<string, HubProvider>([
+  ["codex", CODEX_HUB],
+  [
+    "claude",
+    {
+      driver: ProviderDriverKind.make("claudeAgent"),
+      header: () => ({
+        Authorization: "Bearer $TOKEN$",
+        "anthropic-beta": "oauth-2025-04-20",
+        // The OAuth usage endpoint can return 429 without a Claude Code user agent.
+        "User-Agent": "claude-code/2.1.273",
+      }),
+      read: Effect.fnUntraced(function* ({ account, call, checkedAt }) {
+        const usage = yield* decodeClaudeUsage(
+          yield* call("https://api.anthropic.com/api/oauth/usage"),
+        );
+        const model_scoped = (usage.limits ?? []).flatMap((limit) =>
+          limit.kind === "weekly_scoped" && limit.scope?.model && typeof limit.percent === "number"
+            ? [
+                {
+                  display_name: limit.scope.model.display_name,
+                  utilization: limit.percent,
+                  resets_at: limit.resets_at ?? null,
+                },
+              ]
+            : [],
+        );
+        const rateLimits = {
+          five_hour: usage.five_hour ?? null,
+          seven_day: usage.seven_day ?? null,
+          model_scoped,
+          spend: usage.spend,
+          extra_usage: usage.extra_usage ?? null,
+        };
+        return {
+          ...listedIdentity(account),
+          plan: "Claude Subscription",
+          usageLimits: claudeUsageResponseToLimits({
+            checkedAt,
+            response: { rate_limits_available: true, rate_limits: rateLimits },
+          }).limits,
+        };
+      }),
+    },
+  ],
+  [
+    "xai",
+    {
+      driver: ProviderDriverKind.make("grok"),
+      header: () => ({
+        Authorization: "Bearer $TOKEN$",
+        "x-xai-token-auth": "xai-grok-cli",
+        "x-grok-client-version": GROK_CLI_VERSION,
+        "User-Agent": `grok-cli/${GROK_CLI_VERSION}`,
+      }),
+      read: Effect.fnUntraced(function* ({ account, call, checkedAt }) {
+        const usage = yield* decodeGrokUsage(yield* call(GROK_USAGE_URL));
+        return {
+          ...listedIdentity(account),
+          usageLimits: grokUsageResponseToLimits(usage, checkedAt),
+        };
+      }),
+    },
+  ],
+  [
+    "antigravity",
+    {
+      driver: ProviderDriverKind.make("antigravity"),
+      header: (_account, platform, architecture) => ({
+        Authorization: "Bearer $TOKEN$",
+        "Content-Type": "application/json",
+        "User-Agent": antigravityUserAgent(platform, architecture),
+      }),
+      read: Effect.fnUntraced(function* ({ account, call, checkedAt }) {
+        let project = antigravityProjectId(account);
+        if (!project) {
+          const discovered = yield* call(`${ANTIGRAVITY_HOSTS[0]}/v1internal:loadCodeAssist`, {
+            metadata: { ideType: "ANTIGRAVITY" },
+          }).pipe(
+            Effect.flatMap(decodeCodeAssist),
+            Effect.map((value) => codeAssistProject(value.cloudaicompanionProject)),
+            Effect.option,
+          );
+          if (Option.isSome(discovered)) project = discovered.value;
+        }
+        if (!project)
+          return yield* new UsageLimitSourceError({
+            detail: "Antigravity account has no project.",
+          });
+        let windows: ReadonlyArray<ServerProviderUsageWindow> = [];
+        for (const host of ANTIGRAVITY_HOSTS) {
+          const requestedAt = DateTime.toEpochMillis(yield* DateTime.now);
+          const summary = yield* call(`${host}/v1internal:retrieveUserQuotaSummary`, {
+            project,
+          }).pipe(Effect.result);
+          if (summary._tag === "Failure") continue;
+          const parsed = yield* decodeJson(summary.success).pipe(Effect.option);
+          if (Option.isNone(parsed)) continue;
+          windows = yield* antigravitySummaryWindows(parsed.value, requestedAt).pipe(
+            Effect.orElseSucceed(() => []),
+          );
+          if (windows.length === 0) {
+            const legacy = yield* decodeAntigravityQuota(summary.success).pipe(Effect.option);
+            if (Option.isSome(legacy)) windows = antigravityWindows(legacy.value);
+          }
+          if (windows.length > 0) break;
+        }
+        if (windows.length === 0)
+          return yield* new UsageLimitSourceError({
+            detail: "Antigravity returned no quota windows.",
+          });
+        // Local Antigravity reports no e-mail, so the Google account fingerprint is what pools the two.
+        const fingerprint = yield* call("https://www.googleapis.com/oauth2/v2/userinfo").pipe(
+          Effect.flatMap(decodeJson),
+          Effect.flatMap(antigravityAccountFingerprint),
+          Effect.option,
+        );
+        const usageLimits = makeUsageLimits({ checkedAt, windows });
+        return Option.match(fingerprint, {
+          onNone: () => ({ ...listedIdentity(account), usageLimits }),
+          onSome: (credentialFingerprint) => ({
+            usageLimits: { ...usageLimits, credentialFingerprint },
+          }),
+        });
+      }),
+    },
+  ],
+  [
+    "kimi",
+    {
+      driver: ProviderDriverKind.make("kimi"),
+      header: () => KIMI_HEADERS,
+      read: Effect.fnUntraced(function* ({ account, call, checkedAt }) {
+        return {
+          ...listedIdentity(account),
+          usageLimits: makeUsageLimits({
+            checkedAt,
+            windows: kimiWindows(yield* decodeKimiUsage(yield* call(KIMI_USAGE_URL))),
+          }),
+        };
+      }),
+    },
+  ],
+  [
+    "devin",
+    {
+      driver: ProviderDriverKind.make("devin"),
+      header: () => DEVIN_HEADERS,
+      read: Effect.fnUntraced(function* ({ account, call, checkedAt }) {
+        const parsed = devinAccount(
+          yield* decodeDevinQuota(yield* call(DEVIN_QUOTA_URL, DEVIN_QUOTA_BODY)),
+        );
+        return {
+          ...listedIdentity(account),
+          ...(parsed.plan ? { plan: parsed.plan } : {}),
+          usageLimits: makeUsageLimits({ checkedAt, windows: parsed.windows }),
+        };
+      }),
+    },
+  ],
+]);
+
 export const makeCliproxyApi = Effect.gen(function* () {
   const client = yield* HttpClient.HttpClient;
   const digest = yield* Digest.Digest;
+  const platform = yield* HostProcess.Platform;
+  const architecture = yield* HostProcess.Architecture;
 
   const management = Effect.fn("CliproxyApi.management")(function* (
     hub: CliproxyHub,
@@ -631,16 +822,17 @@ export const makeCliproxyApi = Effect.gen(function* () {
 
   const apiCall = Effect.fn("CliproxyApi.apiCall")(function* (
     hub: CliproxyHub,
-    account: typeof AuthFile.Type,
+    account: AuthFile,
+    header: Record<string, string>,
     url: string,
-    options: { readonly header: Record<string, string>; readonly data?: unknown },
+    data?: unknown,
   ) {
     const raw = yield* management(hub, "api-call", {
       auth_index: account.auth_index,
-      method: options.data === undefined ? "GET" : "POST",
+      method: data === undefined ? "GET" : "POST",
       url,
-      header: options.header,
-      ...(options.data === undefined ? {} : { data: yield* encodeJson(options.data) }),
+      header,
+      ...(data === undefined ? {} : { data: yield* encodeJson(data) }),
     });
     const response = yield* decodeApiResponse(raw);
     if (response.status_code < 200 || response.status_code >= 300) {
@@ -651,216 +843,18 @@ export const makeCliproxyApi = Effect.gen(function* () {
     return response.body;
   });
 
-  const credits = Effect.fn("CliproxyApi.credits")(function* (
-    hub: CliproxyHub,
-    account: typeof AuthFile.Type,
-  ) {
-    const body = yield* apiCall(hub, account, CREDIT_URL, { header: codexHeaders(account) });
-    const response = yield* decodeCreditList(body);
-    const now = DateTime.toEpochMillis(yield* DateTime.now);
-    return response.credits
-      .filter(
-        (credit) =>
-          credit.reset_type === "codex_rate_limits" &&
-          credit.status === "available" &&
-          Date.parse(credit.expires_at) > now,
-      )
-      .toSorted((a, b) => Date.parse(a.expires_at) - Date.parse(b.expires_at));
-  });
-
-  const readAntigravityLimits = Effect.fn("CliproxyApi.readAntigravityLimits")(function* (
-    hub: CliproxyHub,
-    account: typeof AuthFile.Type,
-    checkedAt: string,
-  ) {
-    let project = antigravityProjectId(account);
-    if (!project) {
-      const discovered = yield* Effect.gen(function* () {
-        const body = yield* apiCall(
-          hub,
-          account,
-          `${ANTIGRAVITY_HOSTS[0]}/v1internal:loadCodeAssist`,
-          {
-            header: ANTIGRAVITY_HEADERS,
-            data: { metadata: { ideType: "ANTIGRAVITY" } },
-          },
-        );
-        const resolved = codeAssistProject((yield* decodeCodeAssist(body)).cloudaicompanionProject);
-        if (!resolved) {
-          return yield* new UsageLimitSourceError({
-            detail: "Antigravity account has no project.",
-          });
-        }
-        return resolved;
-      }).pipe(Effect.option);
-      if (Option.isSome(discovered)) project = discovered.value;
-    }
-    if (!project) {
-      return yield* new UsageLimitSourceError({ detail: "Antigravity account has no project." });
-    }
-    for (const host of ANTIGRAVITY_HOSTS) {
-      const body = yield* apiCall(hub, account, `${host}/v1internal:retrieveUserQuotaSummary`, {
-        header: ANTIGRAVITY_HEADERS,
-        data: { project },
-      }).pipe(Effect.result);
-      if (body._tag === "Failure") continue;
-      const quota = yield* decodeAntigravityQuota(body.success).pipe(Effect.option);
-      if (Option.isNone(quota)) continue;
-      const windows = antigravityWindows(quota.value);
-      if (windows.length === 0) continue;
-      return makeUsageLimits({ checkedAt, windows });
-    }
-    return yield* new UsageLimitSourceError({
-      detail: "Antigravity returned no quota windows.",
-    });
-  });
-
   const readAccount = Effect.fn("CliproxyApi.readAccount")(function* (
     hub: CliproxyHub,
-    account: typeof AuthFile.Type,
+    account: AuthFile,
     provider: HubProvider,
   ) {
     const checkedAt = DateTime.formatIso(yield* DateTime.now);
-    const base = {
-      id: account.id,
-      driver: driverFor(provider),
-      ...(account.email ? { email: account.email } : {}),
-      ...(account.id_token?.chatgpt_account_id?.trim()
-        ? { workspaceId: account.id_token.chatgpt_account_id.trim() }
-        : {}),
-    };
-    const read = Effect.gen(function* () {
-      switch (provider) {
-        case "claude": {
-          const body = yield* apiCall(hub, account, "https://api.anthropic.com/api/oauth/usage", {
-            header: CLAUDE_HEADERS,
-          });
-          const usage = yield* decodeClaudeUsage(body);
-          const model_scoped = (usage.limits ?? []).flatMap((limit) =>
-            limit.kind === "weekly_scoped" &&
-            limit.scope?.model &&
-            typeof limit.percent === "number"
-              ? [
-                  {
-                    display_name: limit.scope.model.display_name,
-                    utilization: limit.percent,
-                    resets_at: limit.resets_at ?? null,
-                  },
-                ]
-              : [],
-          );
-          const rateLimits = {
-            five_hour: usage.five_hour ?? null,
-            seven_day: usage.seven_day ?? null,
-            model_scoped,
-            spend: usage.spend,
-            extra_usage: usage.extra_usage ?? null,
-          };
-          return {
-            ...base,
-            plan: "Claude Subscription",
-            usageLimits: claudeUsageResponseToLimits({
-              checkedAt,
-              response: {
-                rate_limits_available: true,
-                rate_limits: rateLimits,
-              },
-            }).limits,
-          };
-        }
-        case "grok": {
-          const body = yield* apiCall(hub, account, GROK_USAGE_URL, { header: GROK_HEADERS });
-          return {
-            ...base,
-            usageLimits: grokUsageResponseToLimits(yield* decodeGrokUsage(body), checkedAt),
-          };
-        }
-        case "antigravity":
-          return {
-            ...base,
-            usageLimits: yield* readAntigravityLimits(hub, account, checkedAt),
-          };
-        case "devin": {
-          const body = yield* apiCall(hub, account, DEVIN_QUOTA_URL, {
-            header: DEVIN_HEADERS,
-            data: DEVIN_QUOTA_BODY,
-          });
-          const parsed = devinAccount(yield* decodeDevinQuota(body));
-          return {
-            ...base,
-            ...(parsed.plan ? { plan: parsed.plan } : {}),
-            usageLimits: makeUsageLimits({ checkedAt, windows: parsed.windows }),
-          };
-        }
-        case "kimi": {
-          const body = yield* apiCall(hub, account, KIMI_USAGE_URL, { header: KIMI_HEADERS });
-          return {
-            ...base,
-            usageLimits: makeUsageLimits({
-              checkedAt,
-              windows: kimiWindows(yield* decodeKimiUsage(body)),
-            }),
-          };
-        }
-        case "codex": {
-          const body = yield* apiCall(hub, account, `${CODEX_BASE}/usage`, {
-            header: codexHeaders(account),
-          });
-          const usage = yield* decodeCodexUsage(body);
-          const toWindow = (window: typeof CodexWindow.Type | null | undefined) =>
-            window
-              ? {
-                  usedPercent: window.used_percent,
-                  resetsAt: window.reset_at ?? null,
-                  ...(window.limit_window_seconds === undefined
-                    ? {}
-                    : { windowDurationMins: window.limit_window_seconds / 60 }),
-                }
-              : null;
-          // A credits outage must not hide successfully fetched quota windows.
-          const available = yield* credits(hub, account).pipe(
-            Effect.orElseSucceed(() => undefined),
-          );
-          const next = available?.[0];
-          const planType =
-            usage.plan_type ?? account.id_token?.plan_type ?? account.id_token?.chatgpt_plan_type;
-          return {
-            ...base,
-            plan: codexPlanLabel(planType),
-            usageLimits: {
-              ...codexRateLimitsToLimits({
-                checkedAt,
-                snapshot: {
-                  planType: planType ?? null,
-                  primary: toWindow(usage.rate_limit?.primary_window),
-                  secondary: toWindow(usage.rate_limit?.secondary_window),
-                },
-              }),
-              ...(available
-                ? {
-                    resetCredits: {
-                      availableCount: available.length,
-                      ...(next
-                        ? {
-                            nextCreditId: next.id,
-                            nextExpiresAt: DateTime.formatIso(DateTime.makeUnsafe(next.expires_at)),
-                          }
-                        : {}),
-                    },
-                  }
-                : {}),
-            },
-          };
-        }
-        default: {
-          const exhaustive: never = provider;
-          return exhaustive;
-        }
-      }
-    });
-    return yield* read.pipe(
+    const call: HubCall = (url, data) =>
+      apiCall(hub, account, provider.header(account, platform, architecture), url, data);
+    const reading = yield* provider.read({ account, call, checkedAt }).pipe(
+      Effect.provideService(Digest.Digest, digest),
       Effect.orElseSucceed(() => ({
-        ...base,
+        ...listedIdentity(account),
         usageLimits: makeUnavailableUsageLimits({
           checkedAt,
           reason: "probeFailed",
@@ -868,6 +862,7 @@ export const makeCliproxyApi = Effect.gen(function* () {
         }),
       })),
     );
+    return { id: account.id, driver: provider.driver, ...reading };
   });
 
   const readAccounts = Effect.fn("CliproxyApi.readAccounts")(function* (
@@ -882,9 +877,20 @@ export const makeCliproxyApi = Effect.gen(function* () {
     );
     return yield* Effect.forEach(
       accounts.flatMap((account) => {
-        if (account.disabled) return [];
-        const provider = hubProvider(account.provider);
-        return provider ? [{ account, provider }] : [];
+        const provider = HUB_PROVIDERS.get(
+          (
+            {
+              anthropic: "claude",
+              grok: "xai",
+              "x-ai": "xai",
+              "anti-gravity": "antigravity",
+              gemini: "antigravity",
+              cognition: "devin",
+            } as Record<string, string>
+          )[account.provider.trim().toLowerCase().replaceAll("_", "-")] ??
+            account.provider.trim().toLowerCase().replaceAll("_", "-"),
+        );
+        return provider && !account.disabled ? [{ account, provider }] : [];
       }),
       ({ account, provider }) => readAccount(hub, account, provider),
       { concurrency: 4 },
@@ -903,16 +909,19 @@ export const makeCliproxyApi = Effect.gen(function* () {
           detail: "The Codex hub account is missing or disabled.",
         });
       }
-      const body = yield* apiCall(hub, account, `${CREDIT_URL}/consume`, {
-        header: codexHeaders(account),
-        data: {
+      const body = yield* apiCall(
+        hub,
+        account,
+        CODEX_HUB.header(account, platform, architecture),
+        `${CREDIT_URL}/consume`,
+        {
           redeem_request_id: yield* creditRedeemRequestId(
             account.id_token?.chatgpt_account_id ?? account.id,
             creditId,
           ).pipe(Effect.provideService(Digest.Digest, digest)),
           credit_id: creditId,
         },
-      });
+      );
       const response = yield* decodeConsumeResponse(body);
       const outcome = (
         {

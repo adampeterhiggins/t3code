@@ -1,14 +1,18 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 
+import * as ElectronWindow from "../electron/ElectronWindow.ts";
+
 export interface DesktopIpcInvokeEvent {
   readonly sender: { readonly id: number };
+  readonly senderFrame?: unknown;
 }
 
-export interface DesktopIpcSyncEvent {
+export interface DesktopIpcSyncEvent extends Omit<DesktopIpcInvokeEvent, "sender"> {
   returnValue: unknown;
   /**
    * Present for a real Electron sync event. Missing on direct calls, which the
@@ -16,6 +20,8 @@ export interface DesktopIpcSyncEvent {
    */
   readonly sender?: { readonly id: number };
 }
+
+export type DesktopIpcSenderGuard = (event: DesktopIpcInvokeEvent) => Effect.Effect<boolean>;
 
 export type DesktopIpcHandleListener = (
   event: DesktopIpcInvokeEvent,
@@ -57,6 +63,15 @@ export class DesktopIpcUnregistrationError extends Schema.TaggedError<DesktopIpc
   }
 }
 
+export class DesktopIpcUntrustedSenderError extends Schema.TaggedError<DesktopIpcUntrustedSenderError>()(
+  "DesktopIpcUntrustedSenderError",
+  { channel: Schema.String },
+) {
+  override get message(): string {
+    return `Rejected ${this.channel} from a sender that is not the app window.`;
+  }
+}
+
 export const DesktopIpcError = Schema.Union([
   DesktopIpcRegistrationError,
   DesktopIpcUnregistrationError,
@@ -85,7 +100,11 @@ export class DesktopIpc extends Context.Service<
   }
 >()("@t3tools/desktop/ipc/DesktopIpc") {}
 
-export const make = (ipcMain: DesktopIpcMain): DesktopIpc["Service"] =>
+// ipcMain is shared by every webContents, including preview guests that load arbitrary pages.
+export const make = (
+  ipcMain: DesktopIpcMain,
+  isTrustedSender: DesktopIpcSenderGuard,
+): DesktopIpc["Service"] =>
   DesktopIpc.of({
     handle: Effect.fn("desktop.ipc.registerInvoke")(function* <E, R>({
       channel,
@@ -103,6 +122,9 @@ export const make = (ipcMain: DesktopIpcMain): DesktopIpc["Service"] =>
               runPromise(
                 Effect.gen(function* () {
                   yield* Effect.annotateCurrentSpan({ channel });
+                  if (!(yield* isTrustedSender(event))) {
+                    return yield* new DesktopIpcUntrustedSenderError({ channel });
+                  }
                   return yield* handler(raw, event);
                 }).pipe(Effect.annotateLogs({ channel }), Effect.withSpan("desktop.ipc.invoke")),
               ),
@@ -136,6 +158,14 @@ export const make = (ipcMain: DesktopIpcMain): DesktopIpc["Service"] =>
               event.returnValue = runSync(
                 Effect.gen(function* () {
                   yield* Effect.annotateCurrentSpan({ channel });
+                  // Throwing here would surface as an uncaught main-process exception.
+                  if (
+                    event.sender === undefined ||
+                    !(yield* isTrustedSender({ ...event, sender: event.sender }))
+                  ) {
+                    yield* Effect.logWarning("Rejected sync IPC from an untrusted sender.");
+                    return undefined;
+                  }
                   return yield* handler(event);
                 }).pipe(
                   Effect.annotateLogs({ channel }),
@@ -157,7 +187,28 @@ export const make = (ipcMain: DesktopIpcMain): DesktopIpc["Service"] =>
     }),
   });
 
-export const layer = (ipcMain: DesktopIpcMain) => Layer.succeed(DesktopIpc, make(ipcMain));
+export const layer = (ipcMain: DesktopIpcMain) =>
+  Layer.effect(
+    DesktopIpc,
+    Effect.gen(function* () {
+      const electronWindow = yield* ElectronWindow.ElectronWindow;
+      return make(ipcMain, (event) =>
+        Effect.map(
+          electronWindow.main,
+          (main) =>
+            Option.isSome(main) &&
+            main.value.webContents.id === event.sender.id &&
+            main.value.webContents.mainFrame === event.senderFrame,
+        ),
+      );
+    }),
+  );
+
+export const layerTest = (ipcMain: DesktopIpcMain) =>
+  Layer.succeed(
+    DesktopIpc,
+    make(ipcMain, () => Effect.succeed(true)),
+  );
 
 export interface DesktopIpcMethodRegistration<
   Payload,

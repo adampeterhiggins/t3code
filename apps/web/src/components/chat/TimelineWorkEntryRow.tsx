@@ -61,6 +61,7 @@ import {
   TimelineRowActivityCtx,
   WorkGroupPreviewCtx,
   WorkGroupViewCtx,
+  type TimelineRow,
   type TimelineWorkEntry,
 } from "./timelineRowContext";
 import { ElapsedTimer, MESSAGE_HEADING_LEVEL, TimelineRowTimestamp } from "./TimelineRowParts";
@@ -269,6 +270,7 @@ type WorkEntryRowProps = {
   workspaceRoot: string | undefined;
   displayLabel?: string | undefined;
   onToggleEntry?: ((collapsed: boolean) => void) | undefined;
+  onContentReady?: (() => void) | undefined;
 };
 
 export const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: WorkEntryRowProps) {
@@ -296,6 +298,37 @@ export const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: WorkEn
     </div>
   );
 });
+
+export function ViewedImagesTimelineRow({
+  row,
+}: {
+  row: Extract<TimelineRow, { kind: "viewed-images" }>;
+}) {
+  const { threadRef, workspaceRoot, onImageExpand } = use(TimelineRowCtx);
+  if (!threadRef) return null;
+  return (
+    <div className="flex flex-wrap items-start gap-2 px-0.5">
+      {row.paths.map((path) => {
+        const image = resolveViewedImageAsset(path, {
+          threadId: threadRef.threadId,
+          workspaceRoot,
+        });
+        return image ? (
+          <ChatMarkdownAssetImage
+            key={path}
+            environmentId={threadRef.environmentId}
+            resource={image.resource}
+            alt={image.alt}
+            srcFragment={image.srcFragment}
+            workspaceRoot={workspaceRoot}
+            maxHeightRem={10}
+            onImageExpand={onImageExpand}
+          />
+        ) : null;
+      })}
+    </div>
+  );
+}
 
 function WorkEntryLogRow(props: WorkEntryRowProps) {
   const { workEntry, workspaceRoot, displayLabel } = props;
@@ -326,11 +359,15 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
   );
   const [previewOpen, setPreviewOpen] = useState(false);
   const previewAnchor = useCursorAnchor();
+  const onInitialOutputReady = () => {
+    if (groupView) groupView.onContentReady?.(workEntry.id);
+    else props.onContentReady?.();
+  };
   const toggleExpanded = () => {
     setPreviewOpen(false);
     const next = !expanded;
     if (groupView) {
-      groupView.onToggleEntry(!next);
+      groupView.onToggleEntry(!next, workEntry.id);
       if (next) groupView.state.expandedEntries.add(workEntry.id);
       else groupView.state.expandedEntries.delete(workEntry.id);
     } else {
@@ -535,6 +572,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
 
   const row = (
     <WorkLogRow
+      data-work-entry-id={workEntry.id}
       data-v2-item-type={workEntry.projectedItem?.item.type}
       data-v2-item-visibility={workEntry.projectedItem?.visibility}
       wrapLabel={answerPreview !== null}
@@ -701,6 +739,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
         <WorkLogDetails kind="panel">
           <ToolCallDetails
             {...ctx}
+            onInitialOutputReady={onInitialOutputReady}
             workEntry={workEntry}
             workspaceRoot={workspaceRoot}
             textBody={expandedBody}

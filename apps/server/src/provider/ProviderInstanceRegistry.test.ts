@@ -526,7 +526,7 @@ describe("ProviderInstanceRegistry — multi-instance codex slice", () => {
       const codex = yield* registry.getInstance(codexId);
       expect(codex).toBeDefined();
       yield* codex!.snapshot.refresh;
-      expect(yield* codex!.consumeResetCredit!()).toBe("alreadyRedeemed");
+      expect(yield* codex!.consumeResetCredit!(undefined)).toBe("alreadyRedeemed");
     }).pipe(Effect.provide(layerTest)),
   );
 
@@ -831,7 +831,7 @@ describe("ProviderInstanceRegistry — multi-instance codex slice", () => {
       const before = yield* instance!.snapshot.refresh;
       expect(before.usageLimits?.windows[0]?.usedPercent).toBe(100);
       expect(before.usageLimits?.resetCredits?.nextCreditId).toBe("grant_a");
-      const outcome = yield* instance!.consumeResetCredit!().pipe(Effect.result);
+      const outcome = yield* instance!.consumeResetCredit!(undefined).pipe(Effect.result);
       return { outcome, after: yield* instance!.snapshot.getSnapshot };
     }).pipe(
       // macOS logins live in the Keychain, where resets are never read.

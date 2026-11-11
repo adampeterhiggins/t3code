@@ -10,7 +10,7 @@ import { FolderIcon, MessagesSquareIcon } from "lucide-react";
 
 import { useOpenInPreferredEditor } from "~/editorPreferences";
 import type { IssueContextRecord } from "~/issueContextStore";
-import { primaryServerAvailableEditorsAtom } from "~/state/server";
+import { serverEnvironment } from "~/state/server";
 import { threadEnvironment } from "~/state/threads";
 import { useAtomCommand } from "~/state/use-atom-command";
 import {
@@ -279,7 +279,9 @@ export function useCheckoutContextActions(
   threadRef: ScopedThreadRef | null,
 ): UserMessageContextRenderContext["checkoutActions"] {
   const checkout: CheckoutContextRecord | null = record?.kind === "checkout" ? record : null;
-  const editors = useAtomValue(primaryServerAvailableEditorsAtom);
+  const editors =
+    useAtomValue(serverEnvironment.configValueAtom(checkout?.environmentId ?? null))
+      ?.availableEditors ?? [];
   const openInEditor = useOpenInPreferredEditor(checkout?.environmentId ?? null, editors);
   const linkCheckout = useAtomCommand(threadEnvironment.linkCheckout, { reportFailure: true });
   if (checkout === null) return undefined;

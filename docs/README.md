@@ -76,6 +76,7 @@ same change. The rule is in [AGENTS.md](../AGENTS.md#fork-differences).
 ### Runbooks
 
 - [Development and local builds](./operations/development.md)
+- [Scenarios: real-app proof for a fix](./operations/scenarios.md)
 - [T3 Connect setup](./operations/connect-setup.md)
 - [Release](./operations/release.md)
 - [Observability](./operations/observability.md)

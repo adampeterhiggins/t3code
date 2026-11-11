@@ -207,14 +207,17 @@ describe("legacy local storage migration", () => {
         const electronWindow = yield* ElectronWindow.ElectronWindow;
         yield* electronWindow.setMain(main);
         const listeners = new Map<string, DesktopIpc.DesktopIpcSyncListener>();
-        const ipc = DesktopIpc.make({
-          removeHandler: () => undefined,
-          handle: () => undefined,
-          removeAllListeners: () => undefined,
-          on: (channel, listener) => {
-            listeners.set(channel, listener);
+        const ipc = DesktopIpc.make(
+          {
+            removeHandler: () => undefined,
+            handle: () => undefined,
+            removeAllListeners: () => undefined,
+            on: (channel, listener) => {
+              listeners.set(channel, listener);
+            },
           },
-        });
+          () => Effect.succeed(true),
+        );
 
         yield* Effect.scoped(
           Effect.gen(function* () {
@@ -231,7 +234,7 @@ describe("legacy local storage migration", () => {
 
             const missingSender: DesktopIpc.DesktopIpcSyncEvent = { returnValue: "unset" };
             listener!(missingSender);
-            assert.isNull(missingSender.returnValue);
+            assert.isUndefined(missingSender.returnValue);
             assert.deepEqual(yield* Ref.get(items), Option.some(payload));
 
             yield* expectRejected(

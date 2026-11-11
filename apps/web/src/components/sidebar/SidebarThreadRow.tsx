@@ -18,6 +18,7 @@ import {
   useLinkedThreadPullRequest,
   ThreadSearchPullRequestNumber,
 } from "../ThreadStatusIndicators";
+import { asLaunchingThread } from "@t3tools/client-runtime/state/thread-inbox";
 import { discardComposerDraft } from "../../lib/discardComposerDraft";
 import { useThreadMessageDrafts } from "../../state/messageDrafts";
 import { requestCustomSnooze } from "../CustomSnoozeDialog";
@@ -336,10 +337,17 @@ export function SortableThreadRow(
     isDragging: isDragging && !contextDrag,
   };
   // The sidebar arranges rows from quiet shells, which hold still while a
-  // thread streams; reading the live shells here re-renders only this row.
+  // thread streams; reading the live shell here re-renders only this row.
+  const liveThread = useThreadShell(
+    scopeThreadRef(rowProps.thread.environmentId, rowProps.thread.id),
+  );
+  // A runtime on the arranged copy but not the run-less live shell is the list's launch overlay.
   const thread =
-    useThreadShell(scopeThreadRef(rowProps.thread.environmentId, rowProps.thread.id)) ??
-    rowProps.thread;
+    liveThread === null
+      ? rowProps.thread
+      : rowProps.thread.runtime !== null
+        ? asLaunchingThread(liveThread)
+        : liveThread;
   const displayThread =
     useThreadShell(
       scopeThreadRef(rowProps.displayThread.environmentId, rowProps.displayThread.id),

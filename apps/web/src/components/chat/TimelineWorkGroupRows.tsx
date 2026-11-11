@@ -91,11 +91,14 @@ export const WorkGroupSection = memo(function WorkGroupSection({
   isExpandedToolGroup: boolean;
   displayLabel?: string | undefined;
 }) {
-  const { workspaceRoot, routeThreadKey, onToggleWorkEntry, pendingApprovals } =
-    use(TimelineRowCtx);
+  const {
+    workspaceRoot,
+    routeThreadKey,
+    onToggleWorkEntry,
+    onWorkEntryContentReady,
+    pendingApprovals,
+  } = use(TimelineRowCtx);
   const inPreviewCard = use(WorkGroupPreviewCtx);
-  const onToggleStandaloneEntry = (collapsed: boolean) =>
-    onToggleWorkEntry(disclosureAnchorKey, collapsed);
   const nonEmptyEntries = groupedEntries.filter((entry) => {
     const item = entry.projectedItem?.item;
     return (
@@ -132,7 +135,10 @@ export const WorkGroupSection = memo(function WorkGroupSection({
           workEntry={workEntry}
           workspaceRoot={workspaceRoot}
           displayLabel={displayLabel}
-          onToggleEntry={onToggleStandaloneEntry}
+          onToggleEntry={(collapsed) =>
+            onToggleWorkEntry(disclosureAnchorKey, collapsed, workEntry.id)
+          }
+          onContentReady={() => onWorkEntryContentReady?.(disclosureAnchorKey, workEntry.id)}
         />
       ))}
     </section>
@@ -152,7 +158,11 @@ function ExpandedWorkGroupEntries({
   entries: TimelineWorkEntry[];
   workspaceRoot: string | undefined;
 }) {
-  const { workGroupViewState: viewState, onToggleWorkEntry } = use(TimelineRowCtx);
+  const {
+    workGroupViewState: viewState,
+    onToggleWorkEntry,
+    onWorkEntryContentReady,
+  } = use(TimelineRowCtx);
   const [initialScrollIndex] = useState(() =>
     resolveWorkGroupScrollIndex(entries, viewState.scrollPositions.get(anchorKey)),
   );
@@ -174,7 +184,9 @@ function ExpandedWorkGroupEntries({
 
   const groupView = {
     state: viewState,
-    onToggleEntry: (collapsed: boolean) => onToggleWorkEntry(disclosureAnchorKey, collapsed),
+    onToggleEntry: (collapsed: boolean, entryId: string) =>
+      onToggleWorkEntry(disclosureAnchorKey, collapsed, entryId),
+    onContentReady: (entryId: string) => onWorkEntryContentReady?.(disclosureAnchorKey, entryId),
   };
   const updateScrollFades = () => {
     const element = listRef.current?.getScrollableNode();

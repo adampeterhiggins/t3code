@@ -19,13 +19,15 @@ export const AssistantCitationSegment = Schema.Struct({
   id: TrimmedNonEmptyString.check(Schema.isMaxLength(512)),
 });
 export type AssistantCitationSegment = typeof AssistantCitationSegment.Type;
+// Provider message IDs nest and re-encode their thread and turn IDs, so they outgrow a few hundred characters.
+export const ASSISTANT_CITATION_MAX_ID_LENGTH = 4_096;
 
 /** Positions are UTF-16 offsets, not Markdown offsets. */
 export const AssistantCitation = Schema.Struct({
   version: Schema.Literal(1),
-  environmentId: EnvironmentId.check(Schema.isMaxLength(512)),
-  threadId: ThreadId.check(Schema.isMaxLength(512)),
-  messageId: MessageId.check(Schema.isMaxLength(512)),
+  environmentId: EnvironmentId.check(Schema.isMaxLength(ASSISTANT_CITATION_MAX_ID_LENGTH)),
+  threadId: ThreadId.check(Schema.isMaxLength(ASSISTANT_CITATION_MAX_ID_LENGTH)),
+  messageId: MessageId.check(Schema.isMaxLength(ASSISTANT_CITATION_MAX_ID_LENGTH)),
   text: Schema.String.check(
     Schema.isNonEmpty(),
     Schema.isMaxLength(ASSISTANT_CITATION_MAX_TEXT_LENGTH),

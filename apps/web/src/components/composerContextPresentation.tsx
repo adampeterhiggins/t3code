@@ -11,7 +11,7 @@ import type {
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
 import { videoMimeType } from "@t3tools/shared/video";
 import { MessageCircleIcon, MousePointerClickIcon } from "lucide-react";
-import { createContext, type ReactElement, use } from "react";
+import { createContext, type ReactElement, type ComponentProps, use } from "react";
 import {
   ComposerContextActionsContext,
   type ComposerContextActions,
@@ -21,10 +21,8 @@ import type { ComposerFileAttachment, ComposerImageAttachment } from "~/composer
 import type { IssueContextRecord } from "~/issueContextStore";
 import { composerFileNeedsReattach } from "~/composerDraftStore";
 import { useTheme } from "~/hooks/useTheme";
-import {
-  formatAttachmentUploadProgress,
-  type AttachmentUploadState,
-} from "~/lib/attachmentUploadState";
+import type { AttachmentUploadState } from "~/lib/attachmentUploadState";
+import { useAttachmentUploadProgress } from "~/hooks/useAttachmentUploadProgress";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 import { isDetachedChatWindow } from "./quickMessage/quickMessageWindow";
 import {
@@ -183,10 +181,36 @@ export function composerContextRecordsFromDraft(input: {
   return records;
 }
 
-function uploadStatusSuffix(upload: AttachmentUploadState | undefined): string | null {
-  if (upload?.status === "uploading") return formatAttachmentUploadProgress(upload.progress);
+function useUploadStatusSuffix(
+  key: string,
+  upload: AttachmentUploadState | undefined,
+): string | null {
+  const progress = useAttachmentUploadProgress(key, upload);
   if (upload?.status === "failed") return "upload failed";
-  return null;
+  return progress;
+}
+
+function UploadImageChip({
+  upload,
+  uploadKey,
+  ...props
+}: ComponentProps<typeof ImageChipButton> & {
+  upload: AttachmentUploadState | undefined;
+  uploadKey: string;
+}) {
+  const suffix = useUploadStatusSuffix(uploadKey, upload);
+  return <ImageChipButton {...props} suffix={suffix} />;
+}
+function UploadFileChip({
+  upload,
+  uploadKey,
+  ...props
+}: ComponentProps<typeof FileChip> & {
+  upload: AttachmentUploadState | undefined;
+  uploadKey: string;
+}) {
+  const suffix = useUploadStatusSuffix(uploadKey, upload);
+  return <FileChip {...props} suffix={props.unresolved ? "attach again" : suffix} />;
 }
 
 function UnresolvedContextChip(props: { label: string }) {
@@ -215,11 +239,12 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
         const { record, upload } = entry;
         return {
           trigger: (
-            <ImageChipButton
+            <UploadImageChip
+              upload={upload}
+              uploadKey={record.id}
               name={record.name}
               previewUrl={record.previewUrl}
               size={formatAttachmentSize(record.sizeBytes)}
-              suffix={uploadStatusSuffix(upload)}
               onClick={() => actions.expandImage(record.id)}
             />
           ),
@@ -242,14 +267,15 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
         const isVideo = videoMimeType(record) !== null;
         return {
           trigger: (
-            <FileChip
+            <UploadFileChip
+              upload={upload}
+              uploadKey={record.id}
               name={record.name}
               size={size}
               isVideo={isVideo}
               theme={resolvedTheme}
               error={upload?.status === "failed"}
               unresolved={needsReattach}
-              suffix={needsReattach ? "attach again" : uploadStatusSuffix(upload)}
               accessibleLabel={`${isVideo && !needsReattach ? "Preview video" : "File"} attachment, ${record.name}, ${size}`}
               onOpen={
                 needsReattach

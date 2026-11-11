@@ -38,7 +38,12 @@ import { toolGroupAction, workEntryReadRawPaths } from "./MessagesTimeline.logic
 /** Shared by chat, agent transcripts, and the agent Tools list. Details mount only while open. */
 export type ToolCallContext = Pick<
   ComponentProps<typeof V2ItemInspector>,
-  "onOpenThread" | "onOpenToolDiff" | "onOpenTurnDiff" | "onRollbackCheckpoint" | "onImageExpand"
+  | "onInitialOutputReady"
+  | "onOpenThread"
+  | "onOpenToolDiff"
+  | "onOpenTurnDiff"
+  | "onRollbackCheckpoint"
+  | "onImageExpand"
 > & {
   activeThreadEnvironmentId: ComponentProps<typeof V2ItemInspector>["environmentId"];
   markdownCwd: string | undefined;
@@ -148,6 +153,7 @@ function WorkEntryDetailBody(
   if (workEntry.projectedItem && props.plainOutput === undefined) {
     return (
       <V2ItemInspector
+        onInitialOutputReady={ctx.onInitialOutputReady}
         projectedItem={workEntry.projectedItem}
         environmentId={ctx.activeThreadEnvironmentId}
         cwd={ctx.markdownCwd}
@@ -185,6 +191,7 @@ function WorkEntryDetailBody(
       ) : null}
       {props.plainOutputFetches && workEntry.projectedItem ? (
         <FetchedToolOutput
+          onInitialOutputReady={ctx.onInitialOutputReady}
           projectedItem={workEntry.projectedItem}
           environmentId={ctx.activeThreadEnvironmentId}
           onImageExpand={ctx.onImageExpand}

@@ -24,6 +24,7 @@ import {
   defaultScheduledTaskProjectId,
   matchesScheduledTaskScope,
   scheduleFromDraft,
+  scheduleLabel,
   taskToDraft,
   unbindDraftFromThread,
 } from "./scheduledTasksSettings.logic";
@@ -479,4 +480,13 @@ describe("starting a scheduled task from a composer draft", () => {
   it("passes the note on when the draft held more than text", () => {
     expect(scheduledTaskSeedFromComposer({ ...source, sideContextCount: 1 }).note).not.toBeNull();
   });
+});
+
+it("appends the server zone only to fixed-time schedule labels", () => {
+  expect(scheduleLabel({ type: "fixed_time", timeOfDay: "16:31" }, "Etc/UTC")).toBe(
+    "Daily at 16:31 UTC",
+  );
+  expect(scheduleLabel({ type: "fixed_time", timeOfDay: "09:00" })).toBe("Daily at 09:00");
+  expect(scheduleLabel({ type: "interval", everyMs: 60_000 }, "Etc/UTC")).toBe("Every 1 min");
+  expect(scheduleLabel({ type: "webhook", signature: null }, "Etc/UTC")).toBe("On webhook");
 });
