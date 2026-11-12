@@ -153,10 +153,6 @@ function ReviewCommentHover(props: ContextPreviewHoverProps<ReviewCommentPreview
 }
 
 export const CONTEXT_PRESENTATION_DEFINITIONS: ContextPresentationDefinitions = {
-  response: {
-    capabilities: { expanded: "inline-block", defaultDraftView: "compact" },
-    preview: { details: "none" },
-  },
   image: {
     capabilities: { expanded: "modal", defaultDraftView: "compact" },
     preview: { details: "card", Body: ImagePreview },
@@ -216,6 +212,10 @@ export const CONTEXT_PRESENTATION_DEFINITIONS: ContextPresentationDefinitions = 
   },
   model: { capabilities: COMPACT, preview: { details: "card", Body: ModelPreview } },
   environment: { capabilities: COMPACT, preview: { details: "none" } },
+  response: {
+    capabilities: { expanded: "inline-block", defaultDraftView: "compact" },
+    preview: { details: "none" },
+  },
 };
 
 const KNOWN_KINDS: ReadonlySet<string> = new Set(COMPOSER_CONTEXT_KINDS);

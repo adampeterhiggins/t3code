@@ -336,14 +336,20 @@ function soleCodeBlock(container: Node): Element | null {
   return scan.other ? null : scan.pre;
 }
 
-function tidyMarkdown(markdown: string): string {
+function tidyMarkdown(markdown: string, fenceCode = false): string {
   // Odd parts are code, kept verbatim, so a selection that starts or ends inside
-  // code keeps that code's leading and trailing whitespace.
+  // code keeps that code's leading and trailing whitespace. A quote fences that
+  // code so it still reads as a block once the selection stands alone.
   const parts = markdown.split(CODE_BOUNDARY);
   const last = parts.length - 1;
   return parts
     .map((part, index) => {
-      if (index % 2 === 1) return part;
+      if (index % 2 === 1) {
+        if (!fenceCode) return part;
+        const code = part.replace(/\n$/, "");
+        const fence = codeFenceFor(code);
+        return `${fence}\n${code}\n${fence}`;
+      }
       let prose = part.replace(/[ \t]+(?=\n)/g, "").replace(/\n{3,}/g, "\n\n");
       if (index === 0) prose = prose.trimStart();
       if (index === last) prose = prose.trimEnd();
@@ -367,7 +373,7 @@ export function serializeRenderedMarkdownQuote(
   enclosingCodeBlock: Element | null,
 ): string {
   const codeBlock = enclosingCodeBlock ?? soleCodeBlock(fragment);
-  if (codeBlock === null) return tidyMarkdown(serializeChildren(fragment));
+  if (codeBlock === null) return tidyMarkdown(serializeChildren(fragment), true);
   const code = ((enclosingCodeBlock ? fragment : codeBlock).textContent ?? "").replace(/\n$/, "");
   const fence = codeFenceFor(code);
   return `${fence}${resolveCodeBlockLanguage(codeBlock) ?? ""}\n${code}\n${fence}`;
