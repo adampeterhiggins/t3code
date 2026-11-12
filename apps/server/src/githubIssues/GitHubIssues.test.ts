@@ -66,6 +66,18 @@ const refRepositories: Record<string, unknown> = {
   [SHA.slice(0, 7)]: { ...empty, object: commit(SHA, "Back off retries") },
 };
 
+// What the file query finds at each `<ref>:<path>` expression; a folder is a tree, not a blob.
+const fileObjects: Record<string, unknown> = {
+  "feature/retry:src/retry.ts": {
+    byteSize: 64,
+    isBinary: false,
+    isTruncated: false,
+    text: "export const tries = 3;\nexport const backoff = 2;\nexport const cap = 30;\n",
+  },
+  "feature/retry:src": {},
+  [`${SHA}:logo.png`]: { byteSize: 2048, isBinary: true, isTruncated: false, text: null },
+};
+
 const actionsJob = {
   id: 7,
   run_id: 5,
@@ -114,6 +126,15 @@ const execute: GitHubCli.GitHubCli["Service"]["execute"] = (input) => {
   const restPath = input.args[0] === "api" ? input.args[1]?.replace("repos/acme/app/", "") : null;
   if (restPath && restPath in restResponses) {
     return Effect.succeed(output(JSON.stringify(restResponses[restPath])));
+  }
+  if (input.args.some((arg) => arg.startsWith("f0="))) {
+    const repository = Object.fromEntries(
+      input.args.flatMap((arg) => {
+        const match = /^(f\d+)=(.*)$/su.exec(arg);
+        return match === null ? [] : [[match[1], fileObjects[match[2]!] ?? null]];
+      }),
+    );
+    return Effect.succeed(output(JSON.stringify({ data: { repository } })));
   }
   if (input.args[0] === "api") {
     const ref = input.args.find((arg) => arg.startsWith("ref="))?.slice(4) ?? "";
@@ -277,6 +298,38 @@ layer("GitHubIssues", (it) => {
       assert.include(ref, { refType: "commit", ref: SHA, title: "Back off retries" });
       assert.include(ref.markdown, "Changes: 2 files, +12 −3");
       assert.include(ref.markdown, "Why it changed.");
+    }),
+  );
+
+  it.effect("reads a file link at a ref with slashes, with its linked lines", () =>
+    Effect.gen(function* () {
+      const issues = yield* GitHubIssues.GitHubIssues;
+      const file = yield* issues.getRef({
+        url: "https://github.com/acme/app/blob/feature/retry/src/retry.ts#L2-L3",
+      });
+      assert.include(file, {
+        refType: "file",
+        ref: "feature/retry",
+        title: "src/retry.ts:2-3",
+        sha: null,
+      });
+      assert.include(file.markdown, "Lines: 2–3 of 3");
+      assert.include(
+        file.markdown,
+        "## Lines 2-3\n\n```ts\nexport const backoff = 2;\nexport const cap = 30;\n```",
+      );
+      assert.include(file.markdown, "## File\n\n```ts\nexport const tries = 3;");
+
+      const folder = yield* Effect.flip(
+        issues.getRef({ url: "https://github.com/acme/app/blob/feature/retry/src" }),
+      );
+      assert.strictEqual(folder.reason, "not-found");
+
+      const binary = yield* issues.getRef({
+        url: `https://github.com/acme/app/blob/${SHA}/logo.png`,
+      });
+      assert.include(binary, { ref: SHA, sha: SHA, title: "logo.png" });
+      assert.include(binary.markdown, "Binary file; its contents are not included.");
     }),
   );
 

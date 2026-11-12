@@ -24,9 +24,13 @@ import {
   GitHubActionsJob,
   GitHubActionsRun,
   GitHubActionsRunJobs,
+  GitHubFileResponse,
   GitHubRefResponse,
+  gitHubFileCandidates,
+  gitHubFileQuery,
   toGitHubActionsJobContext,
   toGitHubActionsRunContext,
+  toGitHubFileContext,
   toGitHubRefContext,
 } from "./gitHubRefs.ts";
 
@@ -72,6 +76,7 @@ const decodeSummaries = Schema.decodeUnknownEffect(
 );
 const decodeDetail = Schema.decodeUnknownEffect(Schema.fromJsonString(IssueDetailJson));
 const decodeRefResponse = Schema.decodeUnknownEffect(Schema.fromJsonString(GitHubRefResponse));
+const decodeFileResponse = Schema.decodeUnknownEffect(Schema.fromJsonString(GitHubFileResponse));
 const decodeActionsRun = Schema.decodeUnknownEffect(Schema.fromJsonString(GitHubActionsRun));
 const decodeActionsJob = Schema.decodeUnknownEffect(Schema.fromJsonString(GitHubActionsJob));
 const decodeActionsRunJobs = Schema.decodeUnknownEffect(
@@ -153,8 +158,8 @@ export class GitHubIssues extends Context.Service<
       input: GitHubGetIssueInput,
     ) => Effect.Effect<GitHubIssueSummary, GitHubIssueError>;
     /**
-     * A release, tag, branch, commit, or Actions run or job link, read through the same `gh`
-     * session as issues.
+     * A release, tag, branch, commit, file, or Actions run or job link, read through the same
+     * `gh` session as issues.
      */
     readonly getRef: (
       input: GitHubGetRefInput,
@@ -279,6 +284,36 @@ export const make = Effect.gen(function* () {
       );
     }
     const [owner, name] = link.repository.split("/") as [string, string];
+    if (link.linkType === "blob") {
+      const candidates = gitHubFileCandidates(link);
+      const raw = yield* run(process.cwd(), [
+        "api",
+        "graphql",
+        "-f",
+        `query=${gitHubFileQuery(candidates.length)}`,
+        "-f",
+        `owner=${owner}`,
+        "-f",
+        `name=${name}`,
+        ...candidates.flatMap((candidate, index) => [
+          "-f",
+          `f${index}=${candidate.ref}:${candidate.path}`,
+        ]),
+      ]);
+      const response = yield* decodeFileResponse(raw).pipe(Effect.mapError(decodeError));
+      const repository = response.data.repository;
+      const context =
+        repository == null
+          ? null
+          : toGitHubFileContext(
+              link,
+              input.url,
+              candidates,
+              repository,
+              GITHUB_REF_MARKDOWN_MAX_CHARS,
+            );
+      return context ?? (yield* notFound());
+    }
     const raw = yield* run(process.cwd(), [
       "api",
       "graphql",

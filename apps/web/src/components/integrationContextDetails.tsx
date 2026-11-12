@@ -285,9 +285,13 @@ export function GitHubIssueDetails(props: {
 }
 
 /**
- * An attached GitHub release, tag, branch, commit, or Actions run or job: what the agent received,
- * with a link back to GitHub.
+ * An attached GitHub release, tag, branch, commit, file, or Actions run or job: what the agent
+ * received, with a link back to GitHub.
  */
+function shortGitRef(ref: string): string {
+  return /^[0-9a-f]{40}$/iu.test(ref) ? ref.slice(0, 7) : ref;
+}
+
 export function GitHubRefDetails(props: {
   record: Pick<
     GitHubRefContextRecord,
@@ -302,7 +306,9 @@ export function GitHubRefDetails(props: {
       ? record.ref.slice(0, 7)
       : record.refType === "workflow-run" || record.refType === "workflow-job"
         ? record.title
-        : record.ref;
+        : record.refType === "file"
+          ? `${record.title} @ ${shortGitRef(record.ref)}`
+          : record.ref;
   return (
     <div className="flex flex-col gap-2">
       <IssueDetailsHeader
