@@ -62,6 +62,11 @@ export function createSlackEnvironmentAtoms<R, E>(
       label: "environment-data:slack:get-resource",
       tag: WS_METHODS.slackGetResource,
     }),
+    // An image file link's bytes, read once when it is attached as an image.
+    getFileImage: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:slack:get-file-image",
+      tag: WS_METHODS.slackGetFileImage,
+    }),
     // The same read for a link's hover card.
     resource: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:slack:resource",

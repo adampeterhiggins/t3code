@@ -57,7 +57,8 @@ Without this setting, approval uses the existing local callback. If that page ca
   loads. A message link (**Copy link** on a message) attaches its thread. A channel link, or a
   channel or huddle open in Slack's web app, attaches the channel's 50 newest messages, without
   their thread replies. A canvas attaches its text, a list attaches its items as a table, a file
-  attaches its text when it is a text file (other files are described, not downloaded), and a
+  attaches its text when it is a text file, an image (PNG, JPEG, GIF, or WebP, up to 10 MB)
+  attaches as an image the agent can see, other files are described rather than downloaded, and a
   profile link attaches the person's name, title, status, and time zone.
 - Click the paperclip and choose **Slack message**. Search with Slack's own syntax, like
   `in:#eng from:@priya retry`. Before you type, it lists the threads you posted in most recently,

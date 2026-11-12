@@ -36,7 +36,9 @@ import type {
   PullRequestDetail,
   ScopedThreadRef,
   SlackErrorReason,
+  SlackFileImage,
 } from "@t3tools/contracts";
+import { toKindScopedComposerContextId } from "@t3tools/shared/composerContextReferences";
 import { useAtomValue } from "@effect/atom-react";
 
 import { type ComposerThreadTarget, useComposerDraftStore } from "~/composerDraftStore";
@@ -47,6 +49,7 @@ import { reviewCommentContextReference } from "~/lib/composerContextRecords";
 import { getRenderablePatch } from "~/lib/diffRendering";
 import { resolvePullRequestPreviewTarget } from "~/lib/openPullRequestLink";
 import { ensureLocalApi } from "~/localApi";
+import { randomUUID } from "~/lib/utils";
 import { useRepositoryContextStore } from "~/repositoryContextStore";
 import { useProjects } from "~/state/entities";
 import { githubIssueEnvironment } from "~/state/githubIssues";
@@ -241,6 +244,34 @@ function reportUnreadableGoogleLink(
   });
 }
 
+function slackImageAttachment(
+  image: SlackFileImage,
+  draftTarget: ComposerThreadTarget,
+): ResolvedComposerObjectLink {
+  const file = new File([new Uint8Array(image.bytes)], image.name, { type: image.mimeType });
+  const id = randomUUID();
+  return {
+    reference: {
+      kind: "image",
+      contextId: toKindScopedComposerContextId("image", id),
+      label: image.name,
+    },
+    commit: () => {
+      useComposerDraftStore.getState().addImages(draftTarget, [
+        {
+          type: "image",
+          id,
+          name: image.name,
+          mimeType: image.mimeType,
+          sizeBytes: file.size,
+          previewUrl: URL.createObjectURL(file),
+          file,
+        },
+      ]);
+    },
+  };
+}
+
 export interface ResolvedComposerObjectLink {
   readonly reference: ComposerContextReference;
   /** Stores the payload behind the chip. Call it once the reference is in the prompt. */
@@ -267,6 +298,9 @@ export function useResolveComposerObjectLink(input: {
   const getGoogleFile = useAtomCommand(googleEnvironment.getFile, { reportFailure: false });
   const getSlackThread = useAtomCommand(slackEnvironment.getThread, { reportFailure: false });
   const getSlackResource = useAtomCommand(slackEnvironment.getResource, { reportFailure: false });
+  const getSlackFileImage = useAtomCommand(slackEnvironment.getFileImage, {
+    reportFailure: false,
+  });
   const getDiscordThread = useAtomCommand(discordEnvironment.getThread, { reportFailure: false });
   const getGranolaNote = useAtomCommand(granolaEnvironment.getNote, { reportFailure: false });
   const getPullRequest = useAtomQueryRunner(pullRequestEnvironment.detail, {
@@ -375,6 +409,17 @@ export function useResolveComposerObjectLink(input: {
       }
       case "slack-resource": {
         if (!slackEnabled) return "skipped";
+        // An image attaches as an image, so it previews and the agent sees it.
+        if (link.resourceType === "file") {
+          const image = await getSlackFileImage({ environmentId, input: { id: link.resourceId } });
+          if (image._tag === "Failure") {
+            if (!isAtomCommandInterrupted(image)) {
+              reportUnreadableSlackLink(squashAtomCommandFailure(image));
+            }
+            return "unreadable";
+          }
+          if (image.value !== null) return slackImageAttachment(image.value, draftTarget);
+        }
         const result = await getSlackResource({
           environmentId,
           input: { resourceType: link.resourceType, id: link.resourceId, url: link.url },
