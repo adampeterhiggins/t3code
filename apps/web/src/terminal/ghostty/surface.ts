@@ -1496,7 +1496,9 @@ export class GhosttyTerminalSurface {
     if (event.button === 1 && isMiddleClickPastePlatform()) {
       if (this.options.readOnly) return;
       // Keep pointerdown uncancelled so compatibility mousedown activates the split pane.
-      this.pasteTerminalSelection();
+      if (window.desktopBridge?.getPrimaryPasteEnabled?.() !== false) {
+        this.pasteTerminalSelection();
+      }
       return;
     }
     if (event.button !== 0) return;

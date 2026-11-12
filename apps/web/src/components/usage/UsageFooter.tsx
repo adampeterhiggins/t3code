@@ -1,3 +1,4 @@
+import { CURSOR_USAGE_WINDOWS } from "@t3tools/shared/usageLimits";
 import { useAtomValue } from "@effect/atom-react";
 import type { ServerProviderUsageWindow, UsageFooterDisplay } from "@t3tools/contracts";
 import {
@@ -126,15 +127,15 @@ function UsedPercent({
   );
 }
 
-function poolWindowLabel(driver: LimitPool["driver"], window: LimitPoolWindow): string {
-  return driver === "cursor"
-    ? (cursorUsageWindowDetails(window.id)?.label ?? window.label)
+function poolWindowLabel(pool: LimitPool, window: LimitPoolWindow): string {
+  return pool.driver === "cursor"
+    ? (cursorUsageWindowDetails(window.id, pool)?.label ?? window.label)
     : window.label;
 }
 
 function windowLabel(account: LimitAccount, window: ServerProviderUsageWindow): string {
   return account.driver === "cursor"
-    ? (cursorUsageWindowDetails(window.id)?.label ?? window.label)
+    ? (CURSOR_USAGE_WINDOWS.find((item) => item.id === window.id)?.label ?? window.label)
     : window.label;
 }
 
@@ -476,7 +477,7 @@ function FooterItem({
         <span className="text-muted-foreground">n/a</span>
       ) : (
         item.windows.map((window, index) => {
-          const label = poolWindowLabel(item.driver, window);
+          const label = poolWindowLabel(item, window);
           const reset = display.showReset ? nextResetLabel(window, now) : null;
           return (
             <span key={window.id} className="flex items-center gap-1.5">
@@ -588,7 +589,7 @@ function UsageFooterWindowsSubmenu({ pool }: { readonly pool: LimitPool }) {
         <span className="min-w-0 flex-1 truncate ps-5 text-muted-foreground">
           {shown.length === 0
             ? "Limit: busiest"
-            : `Limits: ${shown.map((window) => poolWindowLabel(pool.driver, window)).join(", ")}`}
+            : `Limits: ${shown.map((window) => poolWindowLabel(pool, window)).join(", ")}`}
         </span>
       </MenuSubTrigger>
       <MenuSubPopup>
@@ -607,7 +608,7 @@ function UsageFooterWindowsSubmenu({ pool }: { readonly pool: LimitPool }) {
             checked={chosen.includes(window.id)}
             onCheckedChange={(checked) => setChosen(toggleKey(chosen, window.id, !checked))}
           >
-            {poolWindowLabel(pool.driver, window)}
+            {poolWindowLabel(pool, window)}
           </MenuCheckboxItem>
         ))}
       </MenuSubPopup>

@@ -14,6 +14,7 @@ import {
   linearIssueReferenceUrl,
 } from "@t3tools/shared/linearIssueReferences";
 import { remarkKeepWindowsProsePaths } from "@t3tools/shared/markdownWindowsPaths";
+import { absoluteFilePathMatches, parseMarkdownFileLink } from "@t3tools/shared/markdownLinks";
 import { isWindowsAbsolutePath } from "@t3tools/shared/path";
 
 const parser = unified().use(remarkParse).use(remarkGfm).use(remarkKeepWindowsProsePaths);
@@ -496,7 +497,8 @@ function transformNativeMarkdown(
       }
     }
   }
-  if (!linkFiles && !breakTables) return markdown;
+  const linkProseFiles = fileLink !== undefined && absoluteFilePathMatches(markdown).length > 0;
+  if (!linkFiles && !linkProseFiles && !breakTables) return markdown;
   const edits: MarkdownEdit[] = [];
   const fileEdits: MarkdownEdit[] = [];
   let rewritesPipe = false;
@@ -509,6 +511,7 @@ function transformNativeMarkdown(
         start !== undefined &&
         end !== undefined &&
         fileLink?.test(node.value) &&
+        parseMarkdownFileLink(node.value) !== null &&
         !/[<>]/.test(node.value)
       ) {
         const edit = {
@@ -519,6 +522,25 @@ function transformNativeMarkdown(
         edits.push(edit);
         fileEdits.push(edit);
         if (node.value.includes("|")) rewritesPipe = true;
+      }
+    } else if (
+      linkProseFiles &&
+      node.type === "text" &&
+      node.position?.start.offset !== undefined
+    ) {
+      const start = node.position.start.offset;
+      const raw = markdown.slice(start, node.position.end.offset);
+      for (const { index, path } of absoluteFilePathMatches(raw)) {
+        // Source offsets stay valid for paths whose own text needs no Markdown decoding.
+        if (raw !== node.value && /[\\&]/.test(path)) continue;
+        const escaped = path.replace(/[\\[\]&]/g, "\\$&");
+        const edit = {
+          start: start + index,
+          end: start + index + path.length,
+          content: `[${escaped}](<${escaped}>)`,
+        };
+        edits.push(edit);
+        fileEdits.push(edit);
       }
     } else if (node.type !== "link" && node.type !== "linkReference" && "children" in node)
       node.children.forEach((child, index) => {

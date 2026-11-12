@@ -35,6 +35,8 @@ const contextChipVariants = cva(
         "doc-spreadsheet": "[--context-chip-accent:var(--context-chip-doc-spreadsheet)]",
         "doc-slides": "[--context-chip-accent:var(--context-chip-doc-slides)]",
         "doc-epub": "[--context-chip-accent:var(--context-chip-doc-epub)]",
+        response: "[--context-chip-accent:oklch(0.62_0.16_259)]",
+        "unread-link": "[--context-chip-accent:oklch(0.62_0.16_259)]",
         citation: "[--context-chip-accent:oklch(0.62_0.16_259)]",
         "thread-tab": "[--context-chip-accent:oklch(0.62_0.134_120)]",
         "linear-issue": "[--context-chip-accent:oklch(0.62_0.16_270)]",

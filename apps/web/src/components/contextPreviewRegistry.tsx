@@ -45,6 +45,7 @@ type LinkedObjectPreviewProps = ComponentProps<typeof LinkedObjectDetails>;
 
 /** What each kind's preview reads. Surfaces map their own records onto these. */
 export interface ContextPreviewPropsByKind {
+  response: Record<string, never>;
   image: ImagePreviewProps;
   file: FilePreviewProps;
   terminal: TerminalPreviewProps;
@@ -152,6 +153,10 @@ function ReviewCommentHover(props: ContextPreviewHoverProps<ReviewCommentPreview
 }
 
 export const CONTEXT_PRESENTATION_DEFINITIONS: ContextPresentationDefinitions = {
+  response: {
+    capabilities: { expanded: "inline-block", defaultDraftView: "compact" },
+    preview: { details: "none" },
+  },
   image: {
     capabilities: { expanded: "modal", defaultDraftView: "compact" },
     preview: { details: "card", Body: ImagePreview },

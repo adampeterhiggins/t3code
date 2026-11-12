@@ -200,7 +200,12 @@ const threadResumeCommand = Command.make("resume", {
             OrchestratorMcpThreadUsageLimitResumeResult,
           );
           if (flags.wait) {
-            return yield* finishRun(tools, { threadId, runId: resumed.runId, json: flags.json });
+            return yield* finishRun(tools, {
+              threadId,
+              runId: resumed.runId,
+              json: flags.json,
+              followWakes: true,
+            });
           }
           yield* flags.json ? printJson(resumed) : Console.log("Resumed.");
         }),
@@ -581,6 +586,7 @@ const threadAnswerCommand = Command.make("answer", {
             threadId,
             runId: RunId.make(waitRunId),
             json: flags.json,
+            followWakes: false,
           });
         }),
         OPERATE_MCP_PATH,

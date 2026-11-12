@@ -12,16 +12,16 @@ import {
 } from "@t3tools/client-runtime/state/composer-dispatch";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
 
-import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
-import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
+import { type EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
+import { type EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { type Dispatch, type SetStateAction, useRef, useState } from "react";
 import {
   type ComposerThreadTarget,
   composerDraftHasUserContent,
   useComposerDraftStore,
 } from "../../composerDraftStore";
-import type { ComposerHandleRef } from "../../composerHandleContext";
-import type { ChatComposerHandle } from "./ChatComposer";
+import { type ComposerHandleRef } from "../../composerHandleContext";
+import { type ChatComposerHandle } from "./ChatComposer";
 import {
   isThreadWokeUnseen,
   branchMismatchKey,
@@ -32,7 +32,7 @@ import {
 } from "../ChatView.logic";
 import { useStableCallback } from "../../hooks/useStableCallback";
 import { useDeadlinePassed, useNowAfter } from "../../hooks/useDeadline";
-import type { usePendingThreadRequests } from "./usePendingThreadRequests";
+import { type usePendingThreadRequests } from "./usePendingThreadRequests";
 import {
   AuthOrchestrationOperateScope,
   AuthSourceControlWriteScope,
@@ -51,10 +51,11 @@ import {
   BACKGROUND_WORK_STOP_RETRY_AFTER_MS,
   type BackgroundWorkStopRequest,
   isBackgroundWorkStopPending,
+  type RunStopPresentation,
 } from "@t3tools/client-runtime/state/thread-execution";
 import { useAcknowledgeThreadWoke, useThreadActions } from "../../hooks/useThreadActions";
 import { settleAndAdvance } from "../../settleAndAdvance";
-import type { ChatShortcutCommands } from "./useChatShortcuts";
+import { type ChatShortcutCommands } from "./useChatShortcuts";
 import { resolveThreadLastVisitedAt } from "../Sidebar.logic";
 import {
   scopedThreadKey,
@@ -76,7 +77,7 @@ import { stackedThreadToast, toastManager } from "../ui/toast";
 import { buildThreadRouteParams } from "../../threadRoutes";
 
 import { useEnvironmentScope } from "~/state/session";
-import { threadEnvironment } from "../../state/threads";
+import { threadEnvironment, environmentThreadDetails } from "../../state/threads";
 import { vcsEnvironment } from "../../state/vcs";
 import { useChildThreadInputs, readThreadShell, waitForThreadShell } from "../../state/entities";
 import { serverEnvironment } from "../../state/server";
@@ -97,11 +98,11 @@ import {
 } from "./ThreadActivityBanners";
 import { useForceStopThread } from "./useForceStopThread";
 import { useAtomValue } from "@effect/atom-react";
-import type { RunStopPresentation } from "@t3tools/client-runtime/state/thread-execution";
+
 import { Atom } from "effect/reactivity";
-import { environmentThreadDetails } from "../../state/threads";
+
 import { openSideChatTab } from "../../lib/sideChatPane";
-import type { useLocalDispatchState } from "./useLocalDispatchState";
+import { type useLocalDispatchState } from "./useLocalDispatchState";
 import {
   copyTextContent,
   dropTextAttachments,
@@ -148,6 +149,8 @@ interface ThreadLifecycleInput {
   readonly serverConfig: EnvironmentServerConfig | null;
   readonly runtimeMode: RuntimeMode;
   readonly isWorking: boolean;
+  /** Also true while the server prepares, starts, or queues a run this client did not send. */
+  readonly runIsLive: boolean;
   readonly pendingBackgroundTasks: Parameters<typeof backgroundWorkNowItem>[0]["tasks"];
   readonly turnItems: Parameters<typeof backgroundWorkNowItem>[0]["turnItems"];
   readonly activePendingApproval: PendingThreadRequests["activePendingApproval"];
@@ -208,6 +211,7 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
     serverConfig,
     runtimeMode,
     isWorking,
+    runIsLive,
     pendingBackgroundTasks,
     turnItems,
     activePendingApproval,
@@ -460,9 +464,7 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
   const handleSwitchCheckoutToThreadStable = useStableCallback(() => {
     void handleSwitchCheckoutToThread();
   });
-  // The interrupt path also accepts a completed run while its provider still
-  // has background work.
-  const activeBackgroundTasks = !isWorking && activeThread ? pendingBackgroundTasks : [];
+  const activeBackgroundTasks = activeThread ? pendingBackgroundTasks : [];
   const [backgroundWorkStops, setBackgroundWorkStops] = useState<
     Record<string, BackgroundWorkStopRequest | undefined>
   >({});
@@ -1030,7 +1032,7 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
         tasks: activeBackgroundTasks,
         turnItems,
         onViewAgents,
-        stopDisabled: !canOperateThread || isStoppingBackgroundWork,
+        stopDisabled: !canOperateThread || runIsLive || isStoppingBackgroundWork,
         stopping: isStoppingBackgroundWork,
         onStop: handleStopBackgroundWorkStable,
         onOpenThread: onOpenRelatedThreadStable,

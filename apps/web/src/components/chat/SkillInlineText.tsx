@@ -1,6 +1,10 @@
 import { collectComposerModelMentions } from "@t3tools/client-runtime/composer-model-mentions";
 import { ModelMentionChip } from "./ModelMentionChip";
-import type { EnvironmentId, ScopedThreadRef, ServerProviderSkill } from "@t3tools/contracts";
+import {
+  type EnvironmentId,
+  type ScopedThreadRef,
+  type ServerProviderSkill,
+} from "@t3tools/contracts";
 import { formatProviderSkillDisplayName, matchInlineSkills } from "@t3tools/shared/inlineSkills";
 import { Children, cloneElement, isValidElement, type ReactNode } from "react";
 
@@ -162,3 +166,5 @@ export function renderSkillInlineMarkdownChildren(
     );
   });
 }
+
+export { SkillChipIcon } from "./SkillChipIcon";

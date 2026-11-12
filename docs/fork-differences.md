@@ -249,20 +249,6 @@ upstream fixes it. Code: `withCursorDefaultParameters` in
 `packages/provider-cursor/src/server/driver.ts`, and `resolveTarget` in
 `apps/server/src/mcp/OrchestratorMcpService.ts`.
 
-## Cursor follow-ups steer the running turn
-
-A follow-up sent into a running Cursor turn is injected into that turn. Delegated task
-completions wake the parent the same way, while the turn is still going. Upstream interrupts
-the turn and starts it again for a follow-up, and holds a delegated completion until the turn
-ends. Queuing a message still waits, and an explicit restart still stops the turn and starts
-a new one. When Cursor does not accept the injection, a finished turn receives the message as
-its next turn.
-
-Code: `steerTurn` in
-[`adapter.ts`](../packages/provider-cursor/src/server/adapter.ts) and
-`Run.steer` in
-[`CursorAgentSdk.ts`](../packages/provider-cursor/src/server/CursorAgentSdk.ts).
-
 ## Follow-ups steer a turn waiting on subagents
 
 With **Follow-up behavior** set to Queue, a follow-up still steers the running turn when the
@@ -779,8 +765,8 @@ Code: `apps/server/src/storageCleanup.ts` and
 
 New worktree branches use upstream's naming (**Settings → Source Control → Worktree branch
 naming**), but the name is generated while the worktree is checked out, so the setup script and
-agent start on the final branch; upstream renames the `t3/<id>` placeholder after the first
-turn has started. The placeholder remains only when naming outlasts checkout by more than a few
+agent start on the final branch. Upstream generates the name after setup; the fork overlaps
+naming with checkout so setup can use the final name. The placeholder remains only when naming outlasts checkout by more than a few
 seconds, and is then renamed in the background as upstream does. A static prefix the model repeats
 in its answer is not doubled. The fork's earlier **Branch prefix** setting (global and per project)
 moves into the static prefix once, the first time the server loads its settings.
@@ -908,10 +894,9 @@ is selected. Open it and choose a project to manage its name, icon, checkouts an
 Code: [`SettingsSidebarNav.tsx`](../apps/web/src/components/settings/SettingsSidebarNav.tsx) and
 [`ProjectsSettings.tsx`](../apps/web/src/components/settings/ProjectsSettings.tsx).
 
-## Diagnostics settings tab
+## Diagnostics from failed turns
 
-Diagnostics has its own entry in the settings sidebar, between Connections and Archive. Upstream
-only reaches it from the View diagnostics button in General. Failed-turn callouts also offer
+Failed-turn callouts offer
 **View diagnostics**, selecting the thread's environment so its process information, recent logs,
 and **Open logs folder** action are reachable from the error. This is web and desktop; mobile's
 Diagnostics screen reports native app startup crashes rather than environment logs.

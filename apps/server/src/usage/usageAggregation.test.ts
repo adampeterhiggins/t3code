@@ -19,6 +19,7 @@ const rates: RateTable = new Map([
         cacheCreationCostPerToken: 2.5e-5,
       },
       ultrafast: null,
+      contextTiers: [],
     },
   ],
 ]);
@@ -85,6 +86,7 @@ describe("UsageAggregator", () => {
               cacheCreationCostPerToken: 3e-5,
               fast: null,
               ultrafast: null,
+              contextTiers: [],
             },
           ],
         ]),

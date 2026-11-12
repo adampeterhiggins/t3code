@@ -4,6 +4,8 @@ import {
   type ReactNode,
   type MouseEventHandler,
   type PointerEventHandler,
+  useEffect,
+  useState,
 } from "react";
 import {
   CheckIcon,
@@ -13,8 +15,10 @@ import {
   Minimize2Icon,
   PlayIcon,
   PlusIcon,
+  CornerUpRightIcon,
+  ListPlusIcon,
 } from "lucide-react";
-import { CornerUpRightIcon, ListPlusIcon } from "lucide-react";
+
 import { useEnvironmentIdentificationMode } from "~/hooks/useSettings";
 import { formatContextWindowTokens } from "~/lib/contextWindow";
 import { cn, isMacPlatform } from "~/lib/utils";
@@ -49,6 +53,7 @@ interface ComposerPrimaryActionsProps {
   pendingAction: PendingActionState | null;
   isRunning: boolean;
   canInterrupt: boolean;
+  runId?: string | null;
   followUpBehavior?: "queue" | "steer";
   canSteer?: boolean;
   alternateShortcutLabel?: string | null;
@@ -72,6 +77,7 @@ interface ComposerPrimaryActionsProps {
   onInterrupt: () => void;
   onImplementPlanInNewThread: () => void;
   compactBeforeSendTokens?: number | null;
+  hideCompactToggle?: boolean;
   keepFullHistory?: boolean;
   onToggleKeepFullHistory?: () => void;
   /** Right-click on a send button. Disabled buttons take no pointer events, so a wrapper hears it. */
@@ -96,6 +102,8 @@ const formatPendingPrimaryActionLabel = (input: {
   return input.questionIndex > 0 ? "Submit answers" : "Submit answer";
 };
 
+const STOP_PENDING_MAX_MS = 10_000;
+
 const messageActionPillClassName =
   "inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-message-action font-medium text-base text-message-action-foreground shadow-xs shadow-message-action/24 outline-none hover:bg-message-action-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 disabled:shadow-none sm:text-sm";
 
@@ -110,6 +118,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   pendingAction,
   isRunning,
   canInterrupt,
+  runId = null,
   followUpBehavior = "steer",
   canSteer = true,
   alternateShortcutLabel = null,
@@ -131,10 +140,31 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   onInterrupt,
   onImplementPlanInNewThread,
   compactBeforeSendTokens = null,
+  hideCompactToggle = false,
   keepFullHistory = false,
   onToggleKeepFullHistory,
   onSendContextMenu,
 }: ComposerPrimaryActionsProps) {
+  const [stopPhase, setStopPhase] = useState<"pending" | "timedOut" | "landed" | null>(null);
+  const [stopRunId, setStopRunId] = useState(runId);
+  if (runId !== null && stopRunId !== runId) {
+    setStopRunId(runId);
+    setStopPhase(null);
+  } else if (canOperateThread) {
+    // Losing permission also clears canInterrupt; it does not acknowledge the stop.
+    if ((stopPhase === "pending" || stopPhase === "timedOut") && !canInterrupt)
+      setStopPhase("landed");
+    else if (stopPhase === "landed" && canInterrupt) setStopPhase(null);
+  }
+  const isStopDisabled = stopPhase === "pending" || stopPhase === "landed";
+  const stopLabel =
+    stopPhase === "landed" ? "Stopped" : stopPhase === "pending" ? "Stopping" : "Stop generation";
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- timer that re-enables Stop if the interrupt never settles
+  useEffect(() => {
+    if (stopPhase !== "pending") return;
+    const timeout = setTimeout(() => setStopPhase("timedOut"), STOP_PENDING_MAX_MS);
+    return () => clearTimeout(timeout);
+  }, [stopPhase]);
   const pointerFocusProps = preserveComposerFocusOnPointerDown
     ? { onPointerDown: preventPointerFocus }
     : undefined;
@@ -163,15 +193,17 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           <button
             type="button"
             className={cn(
-              "flex shrink-0 cursor-pointer items-center justify-center rounded-full bg-destructive/90 text-white shadow-xs shadow-destructive/24 inset-shadow-control-highlight transition-colors duration-150 hover:bg-destructive active:inset-shadow-control-pressed active:shadow-none [&_svg]:pointer-events-none",
+              "flex shrink-0 cursor-pointer items-center justify-center rounded-full bg-destructive/90 text-white shadow-xs shadow-destructive/24 inset-shadow-control-highlight transition-colors duration-150 hover:bg-destructive active:inset-shadow-control-pressed active:shadow-none disabled:cursor-default disabled:opacity-64 disabled:hover:bg-destructive/90 [&_svg]:pointer-events-none",
               insidePendingAction ? "size-8 sm:size-7" : "size-8 sm:h-8 sm:w-8",
             )}
             {...pointerFocusProps}
-            disabled={!canOperateThread}
+            disabled={!canOperateThread || isStopDisabled}
             onClick={() => {
-              if (canOperateThread) onInterrupt();
+              if (!canOperateThread || isStopDisabled) return;
+              setStopPhase("pending");
+              onInterrupt();
             }}
-            aria-label="Stop generation"
+            aria-label={stopLabel}
           />
         }
       >
@@ -179,14 +211,23 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           <rect x="2" y="2" width="8" height="8" rx="1.5" />
         </svg>
       </TooltipTrigger>
-      <TooltipPopup>Interrupt</TooltipPopup>
+      <TooltipPopup>
+        {stopPhase === "pending" ? "Stopping…" : stopPhase === "landed" ? "Stopped" : "Interrupt"}
+      </TooltipPopup>
     </Tooltip>
+  );
+
+  // Keep the clicked target at the right edge even if typing changes the primary action.
+  const withStopButton = (action: ReactNode) => (
+    <>
+      {action}
+      {stopPhase === null ? null : renderStopGenerationButton(false)}
+    </>
   );
 
   if (pendingAction) {
     return (
       <div className={cn("flex items-center justify-end", compact ? "gap-1.5" : "gap-2")}>
-        {canInterrupt ? renderStopGenerationButton(true) : null}
         {pendingAction.questionIndex > 0 ? (
           compact ? (
             <Button
@@ -234,6 +275,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
             questionIndex: pendingAction.questionIndex,
           })}
         </button>
+        {canInterrupt || stopPhase !== null ? renderStopGenerationButton(true) : null}
       </div>
     );
   }
@@ -302,73 +344,11 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
     );
   }
 
-  if (showPlanFollowUpPrompt && (promptHasText || !canResume)) {
-    if (promptHasText) {
-      return (
-        <>
-          {children}
-          <button
-            type="submit"
-            className={cn(messageActionPillClassName, "h-9 sm:h-8", compact ? "px-3" : "px-4")}
-            {...pointerFocusProps}
-            disabled={isSendBusy || isSendDisabled || isEnvironmentUnavailable}
-          >
-            {isSendBusy ? "Sending..." : "Refine"}
-          </button>
-        </>
-      );
-    }
-
-    return (
-      <>
-        {children}
-        <div data-chat-composer-implement-actions="true" className="flex items-center justify-end">
-          <button
-            type="submit"
-            className={cn(messageActionPillClassName, "h-9 rounded-r-none px-4 sm:h-8")}
-            {...pointerFocusProps}
-            disabled={isSendBusy || isSendDisabled || isEnvironmentUnavailable}
-          >
-            {isSendBusy ? "Sending..." : "Implement"}
-          </button>
-          <Menu>
-            <MenuTrigger
-              render={
-                <button
-                  type="button"
-                  className={cn(
-                    messageActionPillClassName,
-                    "h-9 rounded-l-none border-l border-message-action-foreground/20 px-2 sm:h-8",
-                  )}
-                  aria-label="Implementation actions"
-                  onMouseDown={
-                    preserveComposerFocusOnPointerDown
-                      ? (event) => event.preventDefault()
-                      : undefined
-                  }
-                  disabled={isSendBusy || isSendDisabled || isEnvironmentUnavailable}
-                />
-              }
-            >
-              <ChevronDownIcon className="size-3.5" />
-            </MenuTrigger>
-            <MenuPopup align="end" side="top" {...composerFloatingLayerProps}>
-              <MenuItem
-                disabled={isSendBusy || isSendDisabled || isEnvironmentUnavailable}
-                onClick={() => {
-                  if (canOperateThread) onImplementPlanInNewThread();
-                }}
-              >
-                Implement in a new thread
-              </MenuItem>
-            </MenuPopup>
-          </Menu>
-        </div>
-      </>
-    );
-  }
-
-  if (canInterrupt && !hasSendableContent && !isEditingQueuedMessage) {
+  if (
+    (canInterrupt || stopPhase === "pending" || stopPhase === "timedOut") &&
+    !hasSendableContent &&
+    !isEditingQueuedMessage
+  ) {
     return (
       <>
         {children}
@@ -498,16 +478,16 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
       <TooltipPopup>{submitTooltip}</TooltipPopup>
     </Tooltip>
   );
-  if (compactTokens === null) {
-    return (
+  if (compactTokens === null || hideCompactToggle) {
+    return withStopButton(
       <>
         {children}
         {submit}
-      </>
+      </>,
     );
   }
 
-  return (
+  return withStopButton(
     <div data-chat-composer-compact-send="true" className="flex items-center gap-2">
       <Tooltip>
         <TooltipTrigger
@@ -540,6 +520,6 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
       </Tooltip>
       {children}
       {submit}
-    </div>
+    </div>,
   );
 });

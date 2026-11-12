@@ -28,6 +28,7 @@ import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -57,6 +58,7 @@ import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import * as CommandReceiptStore from "./CommandReceiptStore.ts";
+import * as EventSink from "./EventSink.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import type * as Orchestrator from "./Orchestrator.ts";
 import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
@@ -221,6 +223,33 @@ export class ThreadLaunchPullRequestError extends Schema.TaggedError<ThreadLaunc
   }
 }
 
+export class ThreadLaunchBranchConflictError extends Schema.TaggedError<ThreadLaunchBranchConflictError>()(
+  "ThreadLaunchBranchConflictError",
+  {
+    projectId: ProjectId,
+    projectTitle: Schema.String,
+    branch: Schema.String,
+    conflictingBranch: Schema.String,
+  },
+) {
+  override get message(): string {
+    return `Branch "${this.branch}" cannot be created in project "${this.projectTitle}": branch "${this.conflictingBranch}" exists.`;
+  }
+}
+
+export class ThreadLaunchNotRepositoryError extends Schema.TaggedError<ThreadLaunchNotRepositoryError>()(
+  "ThreadLaunchNotRepositoryError",
+  {
+    projectId: ProjectId,
+    projectTitle: Schema.String,
+    workspaceRoot: Schema.String,
+  },
+) {
+  override get message(): string {
+    return `Project "${this.projectTitle}" (${this.workspaceRoot}) is not a Git repository.`;
+  }
+}
+
 export class ThreadLaunchService extends Context.Service<
   ThreadLaunchService,
   {
@@ -232,16 +261,19 @@ export class ThreadLaunchService extends Context.Service<
       | ThreadLaunchPullRequestError
       | ThreadManagement.ThreadManagementProviderInstanceDisabledError
     >;
-    /**
-     * Fails when a new worktree cannot be provisioned as asked: its base ref
-     * gives no commit, or its branch already exists. `launch` accepts such a
-     * launch and reports the failure inside the thread; a caller that needs
-     * it before a thread exists checks first.
-     */
+    /** Check a new worktree's base ref and branch name before creation for early errors; launch otherwise accepts and reports these failures inside the thread. */
     readonly checkNewWorktree: (
-      input: Pick<ThreadLaunchInput, "projectId" | "workspaceStrategy">,
-    ) => Effect.Effect<void, ThreadLaunchBaseRefError | ThreadLaunchBranchExistsError>;
-    /** Dispatches prepared-run.retry and prepares the run's workspace again. */
+      input: Pick<ThreadLaunchInput, "projectId" | "workspaceStrategy"> & {
+        /** Skips the check when this launch was already accepted, so its retry replays. */
+        readonly commandId?: CommandId;
+      },
+    ) => Effect.Effect<
+      void,
+      | ThreadLaunchBaseRefError
+      | ThreadLaunchBranchExistsError
+      | ThreadLaunchBranchConflictError
+      | ThreadLaunchNotRepositoryError
+    >;
     readonly retryPreparation: (
       input: ThreadLaunchPreparationInput,
     ) => Effect.Effect<
@@ -303,6 +335,7 @@ const make = Effect.gen(function* () {
   const receipts = yield* CommandReceiptStore.CommandReceiptStoreV2;
   const ids = yield* IdAllocator.IdAllocatorV2;
   const threads = yield* ThreadManagement.ThreadManagementService;
+  const eventSink = yield* EventSink.EventSinkV2;
   const managedFolders = yield* ManagedProjectFolders.ManagedProjectFolders;
   const contextRepositories = yield* ContextRepositories.ContextRepositories;
   const ensureContextRepositories = (
@@ -313,6 +346,11 @@ const make = Effect.gen(function* () {
       Effect.provideService(WorktreeSetupTracker.WorktreeSetupTracker, setupTracker),
       Effect.provideService(ServerSettings.ServerSettingsService, serverSettings),
     );
+  // A project-folder launch that names no branch records the folder's checkout, as the composer does.
+  const launchBranch = (strategy: ThreadLaunchWorkspaceStrategy, workspaceRoot: string) =>
+    strategy.type === "root" && strategy.branch === undefined
+      ? git.currentBranch(workspaceRoot).pipe(Effect.orElseSucceed(() => null))
+      : Effect.succeed(strategy.branch ?? null);
   const preparationScope = yield* Scope.make("sequential");
   const scheduledLaunches = yield* Ref.make<ReadonlySet<CommandId>>(new Set());
   // Message-less launches still preparing their workspace; a first message waits on them.
@@ -335,6 +373,46 @@ const make = Effect.gen(function* () {
         ...(threadId === undefined ? {} : { threadId }),
         cause,
       });
+
+  const recordBranchRenameFailure = Effect.fn("ThreadLaunchService.recordBranchRenameFailure")(
+    function* (threadId: ThreadId, runId: RunId, branch: string, cause: Cause.Cause<unknown>) {
+      const error = Cause.squash(cause);
+      const now = yield* DateTime.now;
+      yield* eventSink.write({
+        events: [
+          {
+            id: yield* ids.allocate.event({ threadId }),
+            type: "turn-item.updated",
+            threadId,
+            runId,
+            occurredAt: now,
+            payload: {
+              id: ids.derive.runSignalTurnItem({ runId, signal: "branch-rename" }),
+              threadId,
+              runId,
+              nodeId: null,
+              providerThreadId: null,
+              providerTurnId: null,
+              nativeItemRef: null,
+              parentItemId: null,
+              // EventSink allocates the real position, after the run's existing items.
+              ordinal: 0,
+              status: "completed",
+              title: "Branch not renamed",
+              startedAt: now,
+              completedAt: now,
+              updatedAt: now,
+              type: "system_notice",
+              message: `Could not rename the worktree branch, so it stays ${branch}. ${error instanceof Error ? error.message : String(error)}`,
+            },
+          },
+        ],
+      });
+    },
+    Effect.catchCause((cause) =>
+      Effect.logWarning("Could not record the branch rename failure", { cause }),
+    ),
+  );
 
   const readReceipt = (input: ThreadLaunchInput, commandId: CommandId) =>
     receipts
@@ -408,6 +486,7 @@ const make = Effect.gen(function* () {
     readonly worktreePath: string;
     readonly oldBranch: string;
     readonly onRenamed?: (branch: string) => void;
+    readonly runId?: RunId | null;
     readonly generated: Effect.Effect<{ readonly branch: string; readonly exactName: boolean }, E>;
   }) =>
     input.generated.pipe(
@@ -480,7 +559,13 @@ const make = Effect.gen(function* () {
           threadId: input.threadId,
           oldBranch: input.oldBranch,
           cause,
-        }),
+        }).pipe(
+          Effect.andThen(
+            input.runId == null || Cause.hasInterruptsOnly(cause)
+              ? Effect.void
+              : recordBranchRenameFailure(input.threadId, input.runId, input.oldBranch, cause),
+          ),
+        ),
       ),
     );
 
@@ -488,13 +573,29 @@ const make = Effect.gen(function* () {
     "ThreadLaunchService.checkNewWorktree",
   )(function* (input) {
     const strategy = input.workspaceStrategy;
-    if (strategy.type !== "worktree") return;
-    const project = yield* projects.getById(input.projectId).pipe(
-      Effect.map(Option.getOrUndefined),
-      Effect.orElseSucceed(() => undefined),
+    // launch() turns a Scratch worktree request into a root launch.
+    if (strategy.type !== "worktree" || (yield* managedFolders.isScratchProject(input.projectId)))
+      return;
+    if (input.commandId !== undefined) {
+      const receipt = yield* receipts
+        .getByCommandId(input.commandId)
+        .pipe(Effect.orElseSucceed(() => Option.none()));
+      if (Option.isSome(receipt) && receipt.value.status === "accepted") return;
+    }
+    const project = Option.getOrUndefined(
+      yield* projects.getById(input.projectId).pipe(Effect.orElseSucceed(() => Option.none())),
     );
     if (project === undefined) return;
     const cwd = project.workspaceRoot;
+    const repositoryRoot = yield* git
+      .repositoryRoot(cwd)
+      .pipe(Effect.orElseSucceed(() => undefined));
+    if (repositoryRoot === null)
+      return yield* new ThreadLaunchNotRepositoryError({
+        projectId: project.id,
+        projectTitle: project.title,
+        workspaceRoot: cwd,
+      });
     const { baseRef, branch } = strategy;
     // `git worktree add -b` refuses a branch that exists. Checking it out
     // instead would quietly ignore baseRef and startFromOrigin, so the caller
@@ -519,27 +620,42 @@ const make = Effect.gen(function* () {
           worktreePath: existing.worktreePath,
         });
     }
-    // `:/text` is a commit search, which cannot be asked for a commit type.
-    if (baseRef.startsWith(":")) return;
-    const unresolved = yield* Effect.gen(function* () {
-      // `git worktree add` reads `-` as the previous checkout.
-      if (yield* git.hasCommit({ cwd, refName: baseRef === "-" ? "@{-1}" : baseRef })) return false;
-      if (
-        strategy.startFromOrigin === true &&
-        (yield* git.resolveWorktreeBaseRemote({ cwd, refName: baseRef })) !== null
-      )
-        return false;
-      // `git worktree add` also starts from a remote-tracking branch of that
-      // name; any ref carrying it is reason enough to let Git decide.
-      if (yield* git.hasRefNamed({ cwd, refName: baseRef })) return false;
-      return yield* git.hasCommit({ cwd, refName: "HEAD" });
-    }).pipe(Effect.orElseSucceed(() => false));
-    if (unresolved)
+    const baseResolves =
+      // `:/text` is a commit search, which cannot be asked for a commit type.
+      baseRef.startsWith(":") ||
+      (yield* Effect.gen(function* () {
+        // `git worktree add` reads `-` as the previous checkout.
+        if (yield* git.hasCommit({ cwd, refName: baseRef === "-" ? "@{-1}" : baseRef }))
+          return true;
+        if (
+          strategy.startFromOrigin === true &&
+          (yield* git.resolveWorktreeBaseRemote({ cwd, refName: baseRef })) !== null
+        )
+          return true;
+        // git worktree add accepts remote-tracking branches; let Git decide when any matching ref exists.
+        if (yield* git.hasRefNamed({ cwd, refName: baseRef })) return true;
+        return !(yield* git.hasCommit({ cwd, refName: "HEAD" }));
+      }).pipe(Effect.orElseSucceed(() => true)));
+    if (!baseResolves)
       return yield* new ThreadLaunchBaseRefError({
         projectId: project.id,
         projectTitle: project.title,
         workspaceRoot: project.workspaceRoot,
         baseRef,
+      });
+    // Provisioning flattens temporary names that collide, so only explicit names are refused.
+    if (branch === undefined || isTemporaryWorktreeBranch(branch)) return;
+    const conflictingBranch = (yield* git
+      .listLocalBranchNames(cwd)
+      .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []))).find(
+      (existing) => existing.startsWith(`${branch}/`) || branch.startsWith(`${existing}/`),
+    );
+    if (conflictingBranch !== undefined)
+      return yield* new ThreadLaunchBranchConflictError({
+        projectId: project.id,
+        projectTitle: project.title,
+        branch,
+        conflictingBranch,
       });
   });
 
@@ -638,7 +754,7 @@ const make = Effect.gen(function* () {
         const uuid = yield* randomUuidV4;
         branch = buildTemporaryWorktreeBranchName(() => uuid.replaceAll("-", ""));
       } else {
-        branch = requestedBranch ?? null;
+        branch = yield* launchBranch(input.workspaceStrategy, project.workspaceRoot);
       }
       let worktreePath =
         input.workspaceStrategy.type === "existing_worktree"
@@ -656,6 +772,7 @@ const make = Effect.gen(function* () {
         isTemporaryWorktreeBranch(branch) &&
         input.workspaceStrategy.type !== "root"
       ) {
+        const namingBranch = branch;
         branchNameFiber = yield* generateBranchNameFor(
           input.projectId,
           worktreePath ?? project.workspaceRoot,
@@ -667,7 +784,14 @@ const make = Effect.gen(function* () {
               commandId: input.commandId,
               threadId,
               cause,
-            }).pipe(Effect.as(Option.none())),
+            }).pipe(
+              Effect.andThen(
+                runId === null || Cause.hasInterruptsOnly(cause)
+                  ? Effect.void
+                  : recordBranchRenameFailure(threadId, runId, namingBranch, cause),
+              ),
+              Effect.as(Option.none()),
+            ),
           ),
           Effect.forkIn(preparationScope),
         );
@@ -788,7 +912,14 @@ const make = Effect.gen(function* () {
                   threadId,
                   oldBranch: temporaryBranch,
                   cause,
-                }).pipe(Effect.as(temporaryBranch)),
+                }).pipe(
+                  Effect.andThen(
+                    runId === null || Cause.hasInterruptsOnly(cause)
+                      ? Effect.void
+                      : recordBranchRenameFailure(threadId, runId, temporaryBranch, cause),
+                  ),
+                  Effect.as(temporaryBranch),
+                ),
               ),
             );
           const namedBranch = branch;
@@ -823,6 +954,7 @@ const make = Effect.gen(function* () {
           threadId,
           worktreePath,
           oldBranch: branch,
+          runId,
           onRenamed: (renamed) => {
             createdBranch = renamed;
           },
@@ -1234,7 +1366,7 @@ const make = Effect.gen(function* () {
                 },
               )
             : requestedStrategy;
-        const initialBranch = workspaceStrategy.branch ?? null;
+        const initialBranch = yield* launchBranch(workspaceStrategy, project.workspaceRoot);
         const initialWorktreePath =
           workspaceStrategy.type === "existing_worktree" ? workspaceStrategy.worktreePath : null;
         const claimDispatch =

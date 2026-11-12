@@ -36,7 +36,7 @@ export const PULL_REQUEST_CHIP_KINDS = {
   unknown: "pull-request",
 } as const satisfies Record<PullRequestContextDisplayState | "unknown", ContextChipKind>;
 
-function ContextChipShell({
+export function ContextChipShell({
   icon,
   label,
   tooltip,

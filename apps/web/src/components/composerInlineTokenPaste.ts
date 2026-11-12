@@ -1,9 +1,10 @@
-import { ComposerContextId } from "@t3tools/contracts";
-import type {
-  ComposerContextClipboardFragment,
-  ComposerContextRecord,
-  ScopedThreadRef,
+import {
+  ComposerContextId,
+  type ComposerContextClipboardFragment,
+  type ComposerContextRecord,
+  type ScopedThreadRef,
 } from "@t3tools/contracts";
+
 import {
   COMPOSER_CONTEXT_CLIPBOARD_MIME,
   decodeComposerContextFragment,
@@ -21,11 +22,16 @@ import { readThreadShell } from "~/state/entities";
 
 const threadTitle = (ref: ScopedThreadRef) => readThreadShell(ref)?.title;
 
+// Matches ProseMirror's default clipboard parser, which a custom handlePaste bypasses.
+export function readPastedPlainText(clipboardData: Pick<DataTransfer, "getData">): string {
+  return clipboardData.getData("text/plain").replace(/\r\n?/g, "\n");
+}
+
 /** Pasted thread links count as context too, so they become chips like a copied chip does. */
 export function readPastedComposerContext(
   clipboardData: Pick<DataTransfer, "getData">,
 ): ComposerContextClipboardFragment | null {
-  const pastedText = clipboardData.getData("text/plain");
+  const pastedText = readPastedPlainText(clipboardData);
   const decodedFragment =
     decodeComposerContextFragment(clipboardData.getData(COMPOSER_CONTEXT_CLIPBOARD_MIME)) ??
     decodeComposerContextClipboardHtml(clipboardData.getData("text/html"));
@@ -71,7 +77,7 @@ export function importPastedComposerText(
     fragment: ComposerContextClipboardFragment,
   ) => ReadonlyMap<string, string>,
 ): string {
-  const pastedText = clipboardData.getData("text/plain");
+  const pastedText = readPastedPlainText(clipboardData);
   const pastedFileLinks = pastedFilePathsAsComposerFileLinks(pastedText);
   if (pastedFileLinks !== null) return pastedFileLinks;
   const fragment = importContextFragment ? readPastedComposerContext(clipboardData) : null;

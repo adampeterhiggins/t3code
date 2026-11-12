@@ -27,6 +27,9 @@ import {
 } from "../../types";
 import { ThreadChipTrigger } from "../ThreadContextChip";
 import { MessageCircleIcon, MousePointerClickIcon } from "lucide-react";
+
+import { ResponseReplyCard } from "./AssistantCitationChip";
+
 import { buildExpandedImagePreview } from "./ExpandedImagePreview";
 import { WorkspaceEntryIcon } from "./WorkspaceEntryIcon";
 import { TerminalChipTrigger } from "./TerminalContextPreview";
@@ -50,7 +53,7 @@ import { formatComposerContextReference } from "@t3tools/shared/composerContextR
 import { ContextChip, ContextChipLabel } from "../ContextChip";
 import { createContextPresentationRegistry } from "../contextPresentationRegistry";
 import { buttonContextChip, ContextPreviewHover } from "../contextPreviewRegistry";
-import type { ChatMarkdownContextReference } from "../ChatMarkdown";
+import { type ChatMarkdownContextReference } from "../ChatMarkdown";
 import { userMessageFileLabel } from "./TimelineUserMessageRow.logic";
 import { messageSkillByName, messageSkillChip } from "./SkillInlineText";
 import { type ReviewCommentContext } from "../../reviewCommentContext";
@@ -186,6 +189,21 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
           }
         : null,
     ),
+    {
+      kind: "response",
+      canRender: (record) => record.kind === "response",
+      render: (record, context) =>
+        record.kind === "response" ? (
+          <ResponseReplyCard
+            record={record}
+            copyMarkdown={context.copyMarkdown}
+            leading={context.reference.leading ?? false}
+            trailing={context.reference.trailing ?? false}
+          />
+        ) : (
+          <UnavailableUserMessageContextChip {...context} />
+        ),
+    },
     {
       kind: "environment",
       canRender: (record) => record.kind === "environment",

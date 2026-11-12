@@ -1,5 +1,7 @@
 import * as CursorKeychain from "@t3tools/provider-cursor/server/CursorKeychain";
+import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as SqlClient from "effect/sql/SqlClient";
 
 import * as ClaudeAdapterV2 from "../orchestration-v2/Adapters/ClaudeAdapterV2.ts";
 import * as CodexAdapterV2 from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
@@ -16,11 +18,24 @@ export type ProviderOrchestrationAdapterInfrastructure =
   | CursorSdk.CursorSdk
   | IdAllocator.IdAllocatorV2;
 
-/**
- * `providerContinuationRequestsLayer` must be the same layer reference the
- * orchestration runtime provides to its continuation worker so Effect layer
- * memoization yields one shared queue.
- */
+// Subagent threads created before short ids keep their stored id when an adapter resumes them.
+export const layerIdAllocator = Layer.unwrap(
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<{ readonly threadId: string }>`
+      SELECT thread_id AS "threadId" FROM orchestration_v2_projection_threads
+      WHERE thread_id LIKE 'thread:provider:%'
+    `.pipe(
+      Effect.catch((cause) =>
+        Effect.logWarning("orchestration-v2.legacy-subagent-thread-ids-unavailable", {
+          cause,
+        }).pipe(Effect.as([])),
+      ),
+    );
+    return IdAllocator.layerWithLegacySubagentThreads(new Set(rows.map((row) => row.threadId)));
+  }),
+);
+
 // Suspended because this module sits on an import cycle (the Claude adapter
 // reaches provider hydration through subagent worktree setup), so the adapter
 // layers can still be undefined when this module first evaluates.
@@ -30,7 +45,7 @@ export const layer = Layer.suspend(() =>
     CodexAdapterV2.layerAppServerClientFactory,
     CursorAgentSdk.layer.pipe(Layer.provideMerge(CursorSdk.layer)),
     CursorKeychain.layer,
-    IdAllocator.layer,
+    layerIdAllocator,
     ProviderContinuationRequests.layer,
   ),
 );
