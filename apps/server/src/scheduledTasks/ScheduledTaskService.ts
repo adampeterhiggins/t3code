@@ -1277,7 +1277,13 @@ export const layer = Layer.effect(
       now: DateTime.DateTime,
     ) {
       const catchUpAt = missedRunCatchUpAt(task.schedule, dueAt, now);
-      if (catchUpAt === null) return yield* rescheduleMissedRun(task, now);
+      if (catchUpAt === null)
+        return yield* rescheduleMissedRun(
+          task,
+          now,
+          "missed",
+          "Missed a scheduled run because the server was not running at that time.",
+        );
       yield* Effect.logInfo("Catching up missed schedule task run", {
         taskId: task.id,
         missedRunAt: iso(catchUpAt),

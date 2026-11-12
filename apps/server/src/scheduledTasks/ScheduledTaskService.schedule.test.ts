@@ -215,6 +215,7 @@ it.effect("keeps one queued occurrence of a recurring task while its bound threa
         isScratchProject: () => Effect.succeed(false),
       }),
       Layer.mock(ThreadManagementService.ThreadManagementService)({
+        dispatch: () => Effect.void,
         sendToThread: (input) =>
           Ref.modify(thread, (current) => {
             const run = {
