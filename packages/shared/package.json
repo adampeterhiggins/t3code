@@ -7,6 +7,10 @@
       "types": "./src/filterFacets.ts",
       "import": "./src/filterFacets.ts"
     },
+    "./pullRequestAnchor": {
+      "types": "./src/pullRequestAnchor.ts",
+      "import": "./src/pullRequestAnchor.ts"
+    },
     "./changedFileKind": {
       "types": "./src/changedFileKind.ts",
       "import": "./src/changedFileKind.ts"

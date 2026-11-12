@@ -64,9 +64,7 @@ export const toOperationError = (
       detail: timeoutMs === undefined ? undefined : { timeoutMs },
     });
   }
-  if (
-    /while parsing selector|Unknown engine|Unexpected token|strict mode violation/i.test(message)
-  ) {
+  if (/while parsing selector|Unknown engine|Unexpected token/i.test(message)) {
     return new ServerBrowserOperationError({
       tag: "PreviewAutomationInvalidSelectorError",
       message: firstLine,
@@ -1023,7 +1021,7 @@ export const evaluate = async (
     const params = {
       expression: input.expression,
       awaitPromise: input.awaitPromise ?? true,
-      returnByValue: input.returnByValue ?? true,
+      returnByValue: true,
     };
     return read("Runtime.evaluate", async (timeoutMs) => {
       const classic = await cdp.send("Runtime.evaluate", { ...params, timeout: timeoutMs });

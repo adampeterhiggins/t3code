@@ -19,11 +19,11 @@ import {
   type AssistantCitationSourceAnchor,
 } from "~/lib/assistantTextSelection";
 import {
-  assistantCitationHash,
   assistantCitationNavigation,
+  assistantCitationRoute,
 } from "../../lib/assistantCitationNavigation";
 import { cn } from "~/lib/utils";
-import { useThreadShell } from "~/state/entities";
+import { useQuietThreadShell } from "~/state/entities";
 import ChatMarkdown, { type ChatMarkdownContextReference } from "../ChatMarkdown";
 import { ContextChip, ContextChipAction, ContextChipLabel } from "../ContextChip";
 import { ContextChipPopover } from "../contextChipParts";
@@ -132,7 +132,7 @@ export function AssistantCitationChip({
     : undefined;
   const label = assistantCitationLabel(citation);
   const quotedElsewhere = currentThreadId !== undefined && citation.threadId !== currentThreadId;
-  const sourceThread = useThreadShell(
+  const sourceThread = useQuietThreadShell(
     quotedElsewhere ? scopeThreadRef(citation.environmentId, citation.threadId) : null,
   );
   const sourceTitle = quotedElsewhere ? sourceThread?.title || "another thread" : null;
@@ -142,17 +142,14 @@ export function AssistantCitationChip({
     </span>
   ) : null;
   const sourceLinkProps = {
-    to: "/$environmentId/$threadId" as const,
-    params: { environmentId: citation.environmentId, threadId: citation.threadId },
-    hash: assistantCitationHash(citation),
+    ...assistantCitationRoute(citation, sourceThread),
     "data-markdown-copy": serializeAssistantCitation(citation),
-    resetScroll: false,
     onClick: (event: ReactMouseEvent<HTMLAnchorElement>) => {
       if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
         return;
       }
       event.preventDefault();
-      void navigate(assistantCitationNavigation(citation));
+      void navigate(assistantCitationNavigation(citation, sourceThread));
     },
   };
   // Hovering the label previews the quote, as a sent message's chip does; the preview stays

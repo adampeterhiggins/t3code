@@ -4,7 +4,7 @@ import { FolderIcon, PlusIcon, SquareArrowOutUpRightIcon, XIcon } from "lucide-r
 
 import { useOpenInPreferredEditor } from "~/editorPreferences";
 import { useProjects, useThreadShell } from "~/state/entities";
-import { primaryServerAvailableEditorsAtom } from "~/state/server";
+import { serverEnvironment } from "~/state/server";
 import { sourceControlEnvironment } from "~/state/sourceControl";
 import { threadEnvironment } from "~/state/threads";
 import { useAtomCommand } from "~/state/use-atom-command";
@@ -23,7 +23,8 @@ export function ThreadLinkedCheckouts(props: { environmentId: EnvironmentId; thr
   const shell = useThreadShell(threadRef);
   const links = shell?.source.linkedCheckouts ?? [];
   const projects = useProjects();
-  const editors = useAtomValue(primaryServerAvailableEditorsAtom);
+  const editors =
+    useAtomValue(serverEnvironment.configValueAtom(props.environmentId))?.availableEditors ?? [];
   const openInEditor = useOpenInPreferredEditor(props.environmentId, editors);
   const unlink = useAtomCommand(threadEnvironment.unlinkCheckout, { reportFailure: true });
   const paths = links.map((link) => link.path);

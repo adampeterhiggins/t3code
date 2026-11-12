@@ -5,17 +5,18 @@ import {
 import { Suspense, use } from "react";
 
 import { useRenderedAppearance } from "../../hooks/useTheme";
-import type { CommandScriptPreview } from "../../lib/embeddedScripts";
+import type { CommandScriptPreview } from "@t3tools/client-runtime/work-log/embedded-scripts";
 import { RenderErrorBoundary } from "../RenderErrorBoundary";
 import { HighlightedSnippet } from "./HighlightedSnippet";
 import { HighlightedTokens } from "./HighlightedTokens";
 
 const WORD_CLASS_NAME = "inline-block max-w-full [overflow-wrap:anywhere]";
 
-// The shell parser loads with the first highlighted preview, not with the timeline.
-let embeddedScriptsModule: Promise<typeof import("../../lib/embeddedScripts")> | undefined;
+let embeddedScriptsModule:
+  | Promise<typeof import("@t3tools/client-runtime/work-log/embedded-scripts")>
+  | undefined;
 function loadEmbeddedScripts() {
-  embeddedScriptsModule ??= import("../../lib/embeddedScripts");
+  embeddedScriptsModule ??= import("@t3tools/client-runtime/work-log/embedded-scripts");
   return embeddedScriptsModule;
 }
 
@@ -47,7 +48,7 @@ function ShellSyntax({
 }: {
   code: string;
   theme: "light" | "dark";
-  embeddedScripts: typeof import("../../lib/embeddedScripts").embeddedScripts;
+  embeddedScripts: typeof import("@t3tools/client-runtime/work-log/embedded-scripts").embeddedScripts;
 }) {
   const language = commandHighlightLanguage(code);
   const embedded = language === "shellscript" ? embeddedScripts(code) : [];

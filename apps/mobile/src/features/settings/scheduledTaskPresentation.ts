@@ -1,5 +1,7 @@
 import type { ScheduledTask } from "@t3tools/contracts";
 
+import { scheduleTimeZoneLabel } from "@t3tools/client-runtime/scheduled-task-time-zone";
+
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
@@ -68,7 +70,10 @@ export const SCHEDULE_DAYS = [
   { index: 0, label: "Sun" },
 ] as const;
 
-export function describeSchedule(task: Pick<ScheduledTask, "schedule">): string {
+export function describeSchedule(
+  task: Pick<ScheduledTask, "schedule"> & Partial<Pick<ScheduledTask, "nextRunAt">>,
+  timeZone?: string,
+): string {
   if (task.schedule.type === "once") {
     const runAt = new Date(task.schedule.runAt);
     return `Once, ${runAt.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })} at ${runAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
@@ -76,7 +81,8 @@ export function describeSchedule(task: Pick<ScheduledTask, "schedule">): string 
   if (task.schedule.type === "webhook") return "On webhook";
   if (task.schedule.type === "interval") return formatScheduledTaskInterval(task.schedule.everyMs);
   const days = task.schedule.weekdays?.length ? repeatLabel(task.schedule.weekdays) : "Every day";
-  return `${days} at ${formatTime(task.schedule.timeOfDay)}`;
+  const zone = scheduleTimeZoneLabel(timeZone, task.nextRunAt);
+  return `${days} at ${formatTime(task.schedule.timeOfDay)}${zone === undefined ? "" : ` ${zone}`}`;
 }
 
 export function formatTime(value: string): string {

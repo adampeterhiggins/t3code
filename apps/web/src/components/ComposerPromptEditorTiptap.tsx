@@ -28,6 +28,7 @@ import {
   Plugin,
   PluginKey,
   TextSelection,
+  type Transaction,
 } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import { ComposerColorCodesExtension, useComposerColorCodeHover } from "./composerColorCodes";
@@ -582,10 +583,15 @@ function ComposerCitationNodeView({ node, editor, getPos }: NodeViewProps) {
   const onRestoreFocus = () => {
     if (!editor.isEditable) return;
     const pos = nodePos();
-    if (pos === null) return;
-    const current = editor.state.doc.nodeAt(pos);
-    if (!current || current.type.name !== "composer-citation") return;
-    editor.commands.focus(pos + current.nodeSize);
+    const current = pos === null ? null : editor.state.doc.nodeAt(pos);
+    if (pos === null || current?.type.name !== "composer-citation") {
+      editor.view.focus();
+      return;
+    }
+    editor
+      .chain()
+      .focus(pos + current.nodeSize)
+      .run();
   };
 
   return (
@@ -1045,6 +1051,8 @@ function chipSelectionDecorations({ doc, selection }: EditorState): DecorationSe
 
 type TiptapEditor = NonNullable<ReturnType<typeof useEditor>>;
 
+const SILENT_SELECTION_META = "composerSilentSelection";
+
 function replaceSkillChips(
   editor: TiptapEditor,
   replacements: ReturnType<typeof skillChipReplacements>,
@@ -1341,7 +1349,7 @@ function ComposerPromptEditorTiptapInner(
     ),
   };
 
-  const handleEditorChange = (updated: TiptapEditor) => {
+  const handleEditorChange = (updated: TiptapEditor, transaction: Transaction) => {
     const map = serializeEditorDoc(updated.state.doc);
     const contextIds = literalText ? [] : [...map.contextIds];
     const { from, to } = updated.state.selection;
@@ -1368,7 +1376,7 @@ function ComposerPromptEditorTiptapInner(
       previousSnapshot.contextIds.length === contextIds.length &&
       previousSnapshot.contextIds.every((id, index) => id === contextIds[index])
     );
-    if (isApplyingControlledUpdateRef.current) return;
+    if (isApplyingControlledUpdateRef.current || transaction.getMeta(SILENT_SELECTION_META)) return;
     if (!snapshotChanged) {
       if (didComposerSelectionChangeVisibly(previousSelectionRange, nextSelectionRange)) {
         readCallbacks().onVisibleSelectionChange?.();
@@ -1815,10 +1823,10 @@ function ComposerPromptEditorTiptapInner(
             return;
           }
         }
-        handleEditorChange(updated);
+        handleEditorChange(updated, transaction);
       },
-      onSelectionUpdate: ({ editor: updated }) => {
-        handleEditorChange(updated);
+      onSelectionUpdate: ({ editor: updated, transaction }) => {
+        handleEditorChange(updated, transaction);
       },
     },
     [],

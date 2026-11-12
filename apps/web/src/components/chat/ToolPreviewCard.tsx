@@ -15,7 +15,7 @@ import { cn } from "../../lib/utils";
 import { formatShortTimestamp } from "../../timestampFormat";
 import { PullRequestStateGlyph } from "../pullRequest/pullRequestPresentation";
 import { Badge } from "../ui/badge";
-import { scheduleLabel } from "../settings/ScheduledTasksSettings";
+import { scheduleLabel } from "../settings/scheduledTasksSettings.logic";
 import { ContextPreviewBody } from "../contextPreviewRegistry";
 import { PreviewCornerAction } from "./PreviewCornerAction";
 import ChatMarkdown from "../ChatMarkdown";

@@ -15,7 +15,8 @@ import { useEnvironmentQuery } from "~/state/query";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import type { EnvironmentPullRequestEntry } from "../pullRequest/pullRequestList.logic";
 import { PullRequestMarkdown } from "../pullRequest/PullRequestMarkdown";
-import { ScheduledRelativeLabel, scheduleLabel } from "../settings/ScheduledTasksSettings";
+import { ScheduledRelativeLabel } from "../settings/ScheduledTasksSettings";
+import { scheduleLabel } from "../settings/scheduledTasksSettings.logic";
 import {
   PullRequestActorAvatar,
   PullRequestDiffStat,

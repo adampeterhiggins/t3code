@@ -1,7 +1,9 @@
 import {
+  ASSISTANT_CITATION_CONTEXT_LENGTH,
   ASSISTANT_CITATION_MAX_COMMENT_LENGTH,
   ASSISTANT_CITATION_MAX_MARKDOWN_LENGTH,
   ASSISTANT_CITATION_MAX_SEGMENTS,
+  ASSISTANT_CITATION_MAX_ID_LENGTH,
   ASSISTANT_CITATION_MAX_TEXT_LENGTH,
   AssistantCitation,
   type ComposerContextRecord,
@@ -17,14 +19,15 @@ import { composerFileMentionsToLabels } from "./composerInlineTokens.ts";
 
 const CITATION_PROTOCOL = "t3-citation:";
 const CITATION_HREF_PREFIX = `${CITATION_PROTOCOL}//v1/`;
-// Percent encoding needs up to nine characters per UTF-16 code unit; 16k covers selectors.
-// Transcript segments are ids, budgeted at 128 characters each.
+// Percent encoding needs up to nine characters per UTF-16 code unit; 16k covers keys, offsets, and transcript segment metadata.
 const MAX_CITATION_HREF_LENGTH =
   9 *
     (ASSISTANT_CITATION_MAX_TEXT_LENGTH +
       ASSISTANT_CITATION_MAX_MARKDOWN_LENGTH +
+      ASSISTANT_CITATION_MAX_SEGMENTS * 512 +
       ASSISTANT_CITATION_MAX_COMMENT_LENGTH +
-      ASSISTANT_CITATION_MAX_SEGMENTS * 128) +
+      3 * ASSISTANT_CITATION_MAX_ID_LENGTH +
+      2 * ASSISTANT_CITATION_CONTEXT_LENGTH) +
   16_000;
 const CITATION_LINK = new RegExp(
   String.raw`\[Assistant quote\]\((${CITATION_HREF_PREFIX}[^\s)]{1,${MAX_CITATION_HREF_LENGTH - CITATION_HREF_PREFIX.length}})\)`,

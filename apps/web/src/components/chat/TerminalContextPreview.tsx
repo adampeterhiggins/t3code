@@ -1,5 +1,5 @@
 import * as Schema from "effect/Schema";
-import { Check, Copy } from "lucide";
+import { CheckIcon as Check, CopyIcon as Copy } from "lucide-react";
 import { TerminalIcon } from "lucide-react";
 import { useEffect, useRef, useState, type ComponentProps } from "react";
 
@@ -9,7 +9,6 @@ import {
   TYPOGRAPHY_ADVANCED_STORAGE_KEY,
 } from "../../appearanceFonts";
 import { ContextChipButton } from "../contextChipParts";
-import { MorphIcon } from "../MorphIcon";
 import { Button } from "../ui/button";
 import { useClientSettings } from "../../hooks/useSettings";
 import { useCopyToClipboard, writeTextToClipboard } from "../../hooks/useCopyToClipboard";
@@ -162,6 +161,7 @@ function TerminalExcerptPreview({
   const content = HIDE_CURSOR + lines.join("\r\n");
   const trimmedFamily = family.trim();
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Own the mounted terminal surface and its selection listeners.
   useEffect(() => {
     const frame = frameRef.current;
     const scroller = scrollerRef.current;
@@ -233,6 +233,7 @@ function TerminalExcerptPreview({
     };
   }, [content, cols, rows, trimmedFamily, fontSize, lineHeight]);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Keep the terminal canvas theme synchronized with the app theme.
   useEffect(() => {
     surfaceRef.current?.setTheme(readTerminalTheme(theme, resolvedTheme));
   }, [theme, resolvedTheme]);
@@ -258,7 +259,7 @@ function TerminalExcerptPreview({
             copyToClipboard(selection.length > 0 ? selection : text, undefined);
           }}
         >
-          <MorphIcon className="size-3.5" icon={isCopied ? Check : Copy} />
+          {isCopied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
         </Button>
       </div>
       <div

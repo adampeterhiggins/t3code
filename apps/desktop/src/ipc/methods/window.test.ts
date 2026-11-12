@@ -217,11 +217,11 @@ describe("installRelayTelemetryEnabled", () => {
       yield* installRelayTelemetryEnabled().pipe(
         Effect.provideService(HostProcess.Environment, env),
         Effect.provide(
-          Layer.mergeAll(DesktopIpc.layer(ipcMain), DesktopManagedPolicy.layerTest(policy)),
+          Layer.mergeAll(DesktopIpc.layerTest(ipcMain), DesktopManagedPolicy.layerTest(policy)),
         ),
       );
-      const event = { returnValue: undefined as unknown };
-      listeners.get(IpcChannels.GET_RELAY_TELEMETRY_ENABLED_CHANNEL)?.(event as never);
+      const event = { sender: { id: 1 }, returnValue: undefined as unknown };
+      listeners.get(IpcChannels.GET_RELAY_TELEMETRY_ENABLED_CHANNEL)?.(event);
       return event.returnValue;
     }).pipe(Effect.scoped);
 

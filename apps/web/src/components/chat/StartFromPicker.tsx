@@ -75,7 +75,7 @@ import {
 } from "../ui/command";
 import { Kbd, KbdGroup } from "../ui/kbd";
 import { toastManager } from "../ui/toast";
-import { scheduleLabel } from "../settings/ScheduledTasksSettings";
+import { scheduleLabel } from "../settings/scheduledTasksSettings.logic";
 import { GitHubIssueHoverPreview } from "./GitHubIssueHoverPreview";
 import {
   GitHubIssueRow,
