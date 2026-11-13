@@ -1319,12 +1319,16 @@ describe("MessagesTimeline messages", () => {
       await click(group());
       await vi.waitFor(() =>
         expect(
-          screen.container.querySelector('[data-work-entry-id="tool-near-composer"]'),
+          screen.container.querySelector(
+            '[data-work-entry-id="tool-near-composer"][role="button"]',
+          ),
         ).not.toBeNull(),
       );
       if (mode === "grouped-delayed") {
         await click(
-          screen.container.querySelector<HTMLElement>('[data-work-entry-id="tool-near-composer"]')!,
+          screen.container.querySelector<HTMLElement>(
+            '[data-work-entry-id="tool-near-composer"][role="button"]',
+          )!,
         );
         await vi.waitFor(() => expect(screen.text()).toContain("Loading output"));
         await click(group());
@@ -1333,7 +1337,7 @@ describe("MessagesTimeline messages", () => {
     const header = () => {
       if (mode === "grouped-end")
         return screen.container.querySelector<HTMLElement>(
-          '[data-work-entry-id="tool-near-composer"]',
+          '[data-work-entry-id="tool-near-composer"][role="button"]',
         )!;
       if (mode === "grouped-delayed")
         return screen.container.querySelector<HTMLElement>(
@@ -1392,10 +1396,29 @@ describe("MessagesTimeline messages", () => {
       };
       await screen.rerender(timeline());
     }
-    const inputEnd = () =>
-      Array.from(screen.container.querySelectorAll<HTMLElement>("*")).findLast((element) =>
-        element.textContent?.includes("TOOL_INPUT_END"),
+    const inputEnd = () => {
+      const end = Array.from(screen.container.querySelectorAll<HTMLElement>("*")).findLast(
+        (element) => element.textContent?.includes("TOOL_INPUT_END"),
       )!;
+      let container = end;
+      while (container !== viewport) {
+        if (
+          getComputedStyle(container).overflowY === "auto" &&
+          container.scrollHeight > container.clientHeight
+        ) {
+          container.scrollTop = container.scrollHeight;
+          break;
+        }
+        if (!container.parentElement) break;
+        container = container.parentElement;
+      }
+      const text = end.firstChild!;
+      expect(text.nodeType).toBe(Node.TEXT_NODE);
+      const range = document.createRange();
+      range.setStart(text, text.textContent!.lastIndexOf("TOOL_INPUT_END"));
+      range.setEnd(text, text.textContent!.length);
+      return range;
+    };
     await vi.waitFor(() =>
       expect(inputEnd().getBoundingClientRect().bottom).toBeLessThanOrEqual(visibleBottom() + 1),
     );

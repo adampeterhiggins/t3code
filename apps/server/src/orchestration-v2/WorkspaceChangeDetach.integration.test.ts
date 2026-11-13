@@ -42,9 +42,13 @@ const modelSelection = { instanceId, model: "test-model" };
 // A worktree handoff re-points the thread from inside its running turn. The
 // workspace change detaches the single-thread session, which closes the
 // turn's event stream without a terminal event.
-it.effect.each([false, true])(
-  "a workspace change (project move: %s) interrupts the running turn without a provider error",
-  (moveProject) =>
+it.effect.each([
+  { moveProject: false, stopRequested: false },
+  { moveProject: true, stopRequested: false },
+  { moveProject: false, stopRequested: true },
+])(
+  "a workspace change settles the running turn and preserves Stop (%o)",
+  ({ moveProject, stopRequested }) =>
     Effect.scoped(
       Effect.gen(function* () {
         const cwd = yield* checkpointWorkspace("workspace-change-detach");
@@ -211,6 +215,38 @@ it.effect.each([false, true])(
             ],
           });
 
+          if (stopRequested) {
+            yield* sink.write({
+              events: [
+                {
+                  id: EventId.make("stop-request"),
+                  type: "turn-item.updated",
+                  threadId,
+                  runId: first.runId,
+                  occurredAt: now,
+                  payload: {
+                    id: TurnItemId.make("turn-item:stop-request"),
+                    threadId,
+                    runId: first.runId,
+                    nodeId: first.rootNodeId,
+                    providerThreadId: providerTurn.providerThreadId,
+                    providerTurnId: providerTurn.id,
+                    nativeItemRef: null,
+                    parentItemId: null,
+                    ordinal: 101,
+                    status: "completed",
+                    title: "Interrupt requested",
+                    startedAt: now,
+                    completedAt: now,
+                    updatedAt: now,
+                    type: "run_interrupt_request",
+                    message: "Stopped by user",
+                  },
+                },
+              ],
+            });
+          }
+
           const destination = ProjectId.make("project:destination");
           if (moveProject) {
             const command = {
@@ -276,19 +312,30 @@ it.effect.each([false, true])(
           const after = yield* orchestrator.getThreadProjection(threadId);
           assert.deepEqual(
             after.runs.map((run) => `${run.status}${run.queueHeld === true ? ":held" : ""}`),
-            ["interrupted", "running"],
+            [stopRequested ? "interrupted" : "completed", "running"],
           );
           assert.isUndefined(after.turnItems.find((item) => item.type === "error"));
           assert.equal(
             after.turnItems.find((item) => item.id === handoffCallId)?.status,
             "interrupted",
           );
-          assert.include(
-            after.turnItems.flatMap((item) =>
-              item.type === "system_notice" && item.runId === first.runId ? [item.message] : [],
-            ),
-            `Continuing in ${worktreePath}`,
+          assert.isNotNull(after.runs[0]?.checkpointId ?? null);
+          assert.equal(
+            after.nodes.find((node) => node.id === first.rootNodeId)?.status,
+            stopRequested ? "interrupted" : "completed",
           );
+          assert.equal(
+            after.turnItems.some((item) => item.type === "run_interrupt_result"),
+            stopRequested,
+          );
+          if (!stopRequested) {
+            assert.include(
+              after.turnItems.flatMap((item) =>
+                item.type === "system_notice" ? [item.message] : [],
+              ),
+              `Continuing in ${worktreePath}`,
+            );
+          }
           assert.equal(started[1]?.runtimePolicy.cwd, worktreePath);
           assert.equal(
             after.thread.projectId,

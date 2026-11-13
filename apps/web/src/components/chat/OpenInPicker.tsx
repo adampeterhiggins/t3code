@@ -209,7 +209,7 @@ export const OpenInPicker = memo(function OpenInPicker({
         </MenuItem>
       )}
       <>
-        {options.length === 0 && (
+        {options.length === 0 && unavailableReason === null && (
           <MenuItem density={presentation === "menu" ? "touch" : "default"} disabled>
             No installed editors found
           </MenuItem>
@@ -238,7 +238,7 @@ export const OpenInPicker = memo(function OpenInPicker({
             )}
           </MenuItem>
         ))}
-        {remote.mode === "remote-links" && !remoteHintSeen && (
+        {remote.mode === "remote-links" && options.length > 0 && !remoteHintSeen && (
           <MenuItem density={presentation === "menu" ? "touch" : "default"} disabled>
             Opens over SSH. Needs your key on {environmentLabel}
           </MenuItem>

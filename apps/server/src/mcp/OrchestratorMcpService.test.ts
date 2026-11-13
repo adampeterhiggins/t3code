@@ -2622,7 +2622,9 @@ describe("OrchestratorMcpService provider resolution", () => {
             });
           }),
         ).pipe(Layer.provide(layerWatchedThreads));
-        const layerTest = layerOrchestratorService.pipe(
+        const layerTest = OrchestratorMcpService.layer.pipe(
+          Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),
+          Layer.provide(Layer.mock(ThreadLaunchService.ThreadLaunchService)({})),
           Layer.provideMerge(layerWatchedThreads),
           Layer.provide(
             Layer.mergeAll(

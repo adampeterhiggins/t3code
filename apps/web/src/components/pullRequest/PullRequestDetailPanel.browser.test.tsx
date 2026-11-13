@@ -289,7 +289,7 @@ function setup() {
   checkoutState.error = null;
   prepareThread.mockReset().mockResolvedValue({
     _tag: "Success",
-    value: { branch: "feature", worktreePath: "/workspace/pr" },
+    value: { branch: "feature", worktreePath: "/workspace/pr", pullRequest: { url: detail.url } },
   });
   update.mockReset().mockResolvedValue({ _tag: "Success", value: undefined });
 }
@@ -783,7 +783,7 @@ it("keeps discussion counts and Timeline expansion in sync with activity refresh
     const toggle = threadToggle.element();
     if (status) expect(toggle.textContent).toContain(status);
     else expect(toggle.textContent).not.toMatch(/Resolved|Review dismissed/);
-    const visibleBody = (toggle.parentElement as HTMLElement).innerText;
+    const visibleBody = (toggle.parentElement!.parentElement as HTMLElement).innerText;
     expect({
       expanded: toggle.getAttribute("aria-expanded"),
       findingVisible: visibleBody.includes("Discussion finding"),

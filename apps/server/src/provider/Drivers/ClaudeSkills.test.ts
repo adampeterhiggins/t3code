@@ -479,7 +479,7 @@ it.layer(NodeServices.layer)("discoverClaudeSkills", (it) => {
         ["pstack-copy", "pstack", "copied"],
         ["tools", "tools", "synced-tool"],
         ["a_b", undefined, "renamed"],
-        ["PSTACK", "PSTACK", "shouted"],
+        ["pstack-uppercase", "PSTACK", "shouted"],
       ] as const) {
         yield* writeSkill(path.join(bucket, directory, "skills"), skill, "# Synced");
         if (prefix === undefined) continue;
@@ -492,7 +492,7 @@ it.layer(NodeServices.layer)("discoverClaudeSkills", (it) => {
       yield* fs.writeFileString(
         path.join(bucket, "manifest.json"),
         JSON.stringify({
-          plugins: ["pstack", "pstack-copy", "tools", "a:b. ", "PSTACK", "no-id"].map(
+          plugins: ["pstack", "pstack-copy", "tools", "a:b. ", "pstack-uppercase", "no-id"].map(
             (name, index) => (name === "no-id" ? { name } : { pluginId: `plugin_0${index}`, name }),
           ),
         }),

@@ -1,4 +1,3 @@
-import * as ServerBrowserContexts from "./ServerBrowserContexts.ts";
 import * as NodeEvents from "node:events";
 import * as NodeVM from "node:vm";
 // @effect-diagnostics-next-line nodeBuiltinImport:off - Playwright download mocks perform real file operations outside the Effect runtime.
@@ -882,19 +881,6 @@ it.effect(
       Effect.gen(function* () {
         const { broker, tabId } = yield* ready;
         const page = contexts[0]!.page;
-        const encoder = {
-          evaluate: vi
-            .fn()
-            .mockResolvedValueOnce(undefined)
-            .mockResolvedValueOnce(true)
-            .mockResolvedValueOnce({ mimeType: "video/webm", count: 1, bytes: 5 })
-            .mockResolvedValueOnce("ZnJhbWU="),
-          close: vi.fn(async () => {}),
-        };
-        const scratchPage = vi
-          .spyOn(ServerBrowserContexts.ServerBrowserContexts.prototype, "scratchPage")
-          .mockResolvedValue(encoder as unknown as Page);
-        yield* Effect.addFinalizer(() => Effect.sync(() => scratchPage.mockRestore()));
         const recording = yield* broker.invoke({
           scope,
           tabId,

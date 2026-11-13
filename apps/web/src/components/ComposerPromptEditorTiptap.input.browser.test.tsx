@@ -163,9 +163,9 @@ it.each([
 });
 
 it.each([
-  { mark: "bold", key: "b", marker: "**" },
-  { mark: "italic", key: "i", marker: "*" },
-])("toggles $mark with Mod+$key at a collapsed cursor", async ({ mark, key, marker }) => {
+  { mark: "bold", key: "b", marker: "", behavior: "keeps bold off" },
+  { mark: "italic", key: "i", marker: "*", behavior: "toggles italic" },
+])("$behavior with Mod+$key at a collapsed cursor", async ({ mark, key, marker }) => {
   await using screen = await mountEditor("ship it");
   const { editor } = screen;
   const mod = isMacPlatform(navigator.platform) ? "Meta" : "Control";
@@ -182,7 +182,7 @@ it.each([
   await vi.waitFor(() =>
     expect(serializeEditorDoc(editor.state.doc).value).toBe(`ship it ${marker}now${marker} done`),
   );
-  expect(textWithMark(editor, mark)).toEqual(["now"]);
+  expect(textWithMark(editor, mark)).toEqual(marker ? ["now"] : []);
 });
 
 it.each([

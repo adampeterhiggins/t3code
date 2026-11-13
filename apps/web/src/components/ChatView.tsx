@@ -1452,7 +1452,7 @@ export default function ChatView(props: ChatViewProps) {
       activeThreadModelInstanceId,
       activeProjectDefaultModelSelection?.instanceId,
     ],
-    lockedProvider,
+    lockedProvider: modelPickerLockedProvider,
     lockedInstanceId: activeRuntime?.providerInstanceId ?? activeThreadModelInstanceId,
   });
   const selectedProvider = selectedProviderEntry?.driverKind ?? requestedDriverKind;

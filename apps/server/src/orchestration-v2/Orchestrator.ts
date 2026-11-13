@@ -83,8 +83,8 @@ import {
 import * as KeyedLock from "@t3tools/shared/KeyedLock";
 import { modelSelectionsEqual } from "@t3tools/shared/model";
 import { modelChangeSourceSelection, modelChangeTurnItem } from "@t3tools/shared/modelChangeMarker";
-import { WORKSPACE_CHANGED_NOTICE_TITLE } from "@t3tools/shared/workspaceChangeNotice";
 import { modelSwitchSince } from "./modelSwitch.ts";
+import { WORKSPACE_CHANGED_NOTICE_TITLE } from "@t3tools/shared/workspaceChangeNotice";
 import { recordThreadOpen } from "@t3tools/shared/paletteSearch";
 import {
   backgroundWorkHoldsCompletion,
@@ -5204,12 +5204,21 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                 .map((session) => session.id)
             : (providerSwitchPlan?.releaseProviderSessionIds ?? []),
     );
-    // Handoff detaches the provider without a terminal event. Settle this run as
-    // interrupted first so stream closure cannot fail it or block the continuation,
-    // and its in-flight handoff tool call no longer appears as background work.
+    // Detach interrupts a pooled session's turn, and the run completes when it reports the
+    // interrupt. A released single-thread session ends its stream without a terminal, so the
+    // handoff completes that run, and its in-flight handoff tool call, here.
+    const releasedSessionIds = new Set(
+      (providerContext?.providerSessions ?? [])
+        .filter(
+          (session) =>
+            detachSessionIds.has(session.id) &&
+            !session.capabilities.sessions.supportsMultipleProviderThreadsPerSession,
+        )
+        .map((session) => session.id),
+    );
     if (
       (command.type === "thread.metadata.update" || command.type === "thread.project.move") &&
-      detachSessionIds.size > 0
+      releasedSessionIds.size > 0
     ) {
       const projection = yield* loadProjectionForCommand(
         command,
@@ -5246,7 +5255,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         );
         if (
           providerThread?.providerSessionId == null ||
-          !detachSessionIds.has(providerThread.providerSessionId) ||
+          !releasedSessionIds.has(providerThread.providerSessionId) ||
           providerTurn === undefined
         ) {
           continue;
@@ -5258,10 +5267,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           events,
           effects,
           now,
-          notice: {
-            title: WORKSPACE_CHANGED_NOTICE_TITLE,
-            message: `Continuing in ${command.type === "thread.project.move" ? (command.worktreePath ?? moveProject!.workspaceRoot) : (command.worktreePath ?? "the project checkout")}`,
-          },
+          workspaceDestination:
+            command.type === "thread.project.move"
+              ? (command.worktreePath ?? moveProject!.workspaceRoot)
+              : (command.worktreePath ?? "the project checkout"),
         });
         yield* settleBackgroundWork({
           command,
@@ -12164,13 +12173,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
   const runInterruptReason = Effect.fnUntraced(function* (
     command: Extract<
       OrchestrationV2ServerCommand,
-      {
-        readonly type:
-          | "run.interrupt"
-          | "thread.background-work.settle"
-          | "thread.project.move"
-          | "thread.metadata.update";
-      }
+      { readonly type: "run.interrupt" | "thread.background-work.settle" }
     >,
     events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
     runId: RunId,
@@ -12220,8 +12223,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     readonly events: Ref.Ref<Array<OrchestrationV2DomainEvent>>;
     readonly effects: Ref.Ref<Array<PendingOrchestrationEffectV2>>;
     readonly now: DateTime.Utc;
-    /** Shown in place of "Run interrupted" when T3 itself ended the run. */
-    readonly notice?: { readonly title: string; readonly message: string };
+    readonly workspaceDestination?: string;
   }) {
     const attempt = input.projection.attempts.find(
       (candidate) => candidate.id === input.providerTurn.runAttemptId,
@@ -12237,6 +12239,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       attempt.status === "pending"
     )
       return;
+    // A workspace handoff stops the turn that asked for it, so its run completes.
+    const workspaceChanged =
+      input.command.type === "thread.project.move" ||
+      input.command.type === "thread.metadata.update";
+    const handedOff =
+      workspaceChanged && !(yield* stopReachedRun(input.command, run.threadId, run.id));
     const emitEvent = emit(input.events, input.command);
     const base = {
       threadId: input.command.threadId,
@@ -12263,7 +12271,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         type: "run-attempt.updated",
         payload: {
           ...attempt,
-          status: "interrupted",
+          status: handedOff ? "completed" : "interrupted",
           completedAt: input.now,
         },
       });
@@ -12344,45 +12352,49 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         },
       });
     }
-    if (providerThread !== undefined) {
+    if (providerThread !== undefined && !handedOff) {
       yield* emitEvent({
         ...base,
         type: "turn-item.updated",
-        payload:
-          input.notice === undefined
-            ? RunExecutionService.makeInterruptResultTurnItem({
-                idAllocator,
-                run,
-                rootNode,
-                providerThread,
-                reason:
-                  (input.command.type === "thread.background-work.settle"
-                    ? input.command.reason
-                    : undefined) ??
-                  (yield* runInterruptReason(input.command, input.events, run.id)),
-                completedAt: input.now,
-              })
-            : {
-                id: idAllocator.derive.runSignalTurnItem({
-                  runId: run.id,
-                  signal: "detach-notice",
-                }),
-                threadId: run.threadId,
-                runId: run.id,
-                nodeId: rootNode.id,
-                providerThreadId: providerThread.id,
-                providerTurnId: rootNode.providerTurnId,
-                nativeItemRef: null,
-                parentItemId: null,
-                ordinal: run.ordinal * 100 + 98,
-                status: "completed",
-                title: input.notice.title,
-                startedAt: input.now,
-                completedAt: input.now,
-                updatedAt: input.now,
-                type: "system_notice",
-                message: input.notice.message,
-              },
+        payload: RunExecutionService.makeInterruptResultTurnItem({
+          idAllocator,
+          run,
+          rootNode,
+          providerThread,
+          reason:
+            (input.command.type === "thread.background-work.settle"
+              ? input.command.reason
+              : undefined) ??
+            (input.command.type === "thread.project.move" ||
+            input.command.type === "thread.metadata.update"
+              ? RunExecutionService.USER_STOP_REASON
+              : yield* runInterruptReason(input.command, input.events, run.id)),
+          completedAt: input.now,
+        }),
+      });
+    }
+    if (handedOff && providerThread !== undefined) {
+      yield* emitEvent({
+        ...base,
+        type: "turn-item.updated",
+        payload: {
+          id: idAllocator.derive.runSignalTurnItem({ runId: run.id, signal: "detach-notice" }),
+          threadId: run.threadId,
+          runId: run.id,
+          nodeId: rootNode.id,
+          providerThreadId: providerThread.id,
+          providerTurnId: rootNode.providerTurnId,
+          nativeItemRef: null,
+          parentItemId: null,
+          ordinal: run.ordinal * 100 + 98,
+          status: "completed",
+          title: WORKSPACE_CHANGED_NOTICE_TITLE,
+          startedAt: input.now,
+          completedAt: input.now,
+          updatedAt: input.now,
+          type: "system_notice",
+          message: `Continuing in ${input.workspaceDestination ?? "the project checkout"}`,
+        },
       });
     }
     const { delegatedCompletion: _delegatedCompletion, ...runWithoutDelegatedCompletion } = run;
@@ -12391,8 +12403,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       type: "run.updated",
       payload: {
         ...runWithoutDelegatedCompletion,
-        status: "interrupted",
-        completedAt: input.now,
+        status: handedOff ? "waiting" : "interrupted",
+        completedAt: handedOff ? null : input.now,
       },
     });
     const scopeId = rootNode.checkpointScopeId;
