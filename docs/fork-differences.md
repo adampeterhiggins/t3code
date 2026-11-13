@@ -1120,7 +1120,8 @@ links attach as a `slack-resource` chip through `slack.getResource`
 ([`SlackApi`](../apps/server/src/slack/SlackApi.ts)): canvases through `canvases.getContent`,
 lists as a markdown table (column names come only from `slackLists.items.info`, so the first row
 is read twice), text files downloaded up to 256 KB, and profiles from `users.info`. A file link
-that names a canvas or list reads as one. These need `files:read`, `canvases:read`, and
+that names a canvas or list reads as one. A file link to an image the providers accept is fetched
+first through `slack.getFileImage` and becomes an ordinary image attachment instead of a chip. These need `files:read`, `canvases:read`, and
 `lists:read`; Slack refuses sign-in when the app lacks a requested scope, so older apps must add
 them before reconnecting.
 
@@ -1567,7 +1568,9 @@ shows the decoded prompt, and the agent receives the link with the prompt and an
 request it names. A github.com release (`/releases/tag/<tag>`), branch or tag (`/tree/<ref>`), or
 commit (`/commit/<sha>`) link becomes a chip labelled `repo@<ref>` (`repo@<sha7>` for a commit),
 with an icon for its kind; hovering it shows, and the agent receives, the release notes or the
-commit message. A `/tree/` link to a folder is not a ref and stays a link. The text goes in as
+commit message. A file link (`/blob/<ref>/<path>`, optionally `#L6` or `#L6-L9`) becomes a chip
+labelled `repo: <file>:<lines>`; the agent receives the linked lines and the whole file at that
+ref, read through `gh`. A `/tree/` link to a folder is not a ref and stays a link. The text goes in as
 usual, but while its object loads the editor draws each link as a dashed chip labelled from the URL
 alone (`owner/repo#162`, `ENG-123`), which sweeps twice and then rests
 ([`composerLoadingLinks.tsx`](../apps/web/src/components/composerLoadingLinks.tsx)); deleting into
@@ -1587,7 +1590,8 @@ A bare link of one of those kinds that is still a link when the message renders,
 web, desktop, or mobile, shows its short name instead of the URL: `owner/repo#162` for a pull
 request or GitHub issue (with `L4-L14` appended for a link to lines), `ENG-123` for a Linear issue,
 `owner/repo` for a repository, `owner/repo@<ref>` for a release, branch, tag, or commit (a
-`/tree/` link whose ref has a slash keeps its URL, since it may be a folder), and
+`/tree/` link whose ref has a slash keeps its URL, since it may be a folder), `owner/repo: <file>`
+for a file (with `:6-9` appended for linked lines), and
 `owner/repo run <id>` or `owner/repo job <id>` for a GitHub Actions run or job. It still opens,
 previews, and copies as the full URL. Link text the writer chose is left alone. A bare Slack link
 is not one of these: it names the message only when Slack is on and connected (see
@@ -1616,7 +1620,7 @@ User guide: [composer.md](./user/composer.md#formatting).
 
 On web and desktop, hovering a link in any message (an agent's reply included, whatever its link
 text) to something a chip could hold shows the card that chip would show. That covers Linear and
-GitHub issues, GitHub releases, branches, tags, commits, and Actions runs and jobs, repositories, Notion pages, Granola
+GitHub issues, GitHub releases, branches, tags, commits, files, and Actions runs and jobs, repositories, Notion pages, Granola
 notes, Slack and Discord messages, and T3 Code prompt links. The link is read when it is hovered,
 through the same read and record a pasted copy of it would become, so an agent's link and your
 chip for the same thing look alike. A link whose integration is turned off, or that can't be read,

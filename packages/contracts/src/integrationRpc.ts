@@ -72,6 +72,8 @@ import {
   SlackCompleteLoginInput,
   SlackConnectionState,
   SlackError,
+  SlackFileImage,
+  SlackGetFileImageInput,
   SlackGetResourceInput,
   SlackGetThreadInput,
   SlackLinkPreview,
@@ -182,6 +184,7 @@ export const INTEGRATION_WS_METHODS = {
   slackGetThread: "slack.getThread",
   slackGetLinkPreview: "slack.getLinkPreview",
   slackGetResource: "slack.getResource",
+  slackGetFileImage: "slack.getFileImage",
   slackSubscribeThreadLinks: "slack.subscribeThreadLinks",
   slackLinkThread: "slack.linkThread",
   slackUnlinkThread: "slack.unlinkThread",
@@ -532,6 +535,13 @@ const WsSlackGetResourceRpc = Rpc.make(INTEGRATION_WS_METHODS.slackGetResource, 
   error: SlackRpcError,
 });
 
+// Null when the file is not an image the agent can take, so the link reads as a file instead.
+const WsSlackGetFileImageRpc = Rpc.make(INTEGRATION_WS_METHODS.slackGetFileImage, {
+  payload: SlackGetFileImageInput,
+  success: Schema.NullOr(SlackFileImage),
+  error: SlackRpcError,
+});
+
 const WsSlackGetLinkPreviewRpc = Rpc.make(INTEGRATION_WS_METHODS.slackGetLinkPreview, {
   payload: SlackLinkPreviewInput,
   success: SlackLinkPreview,
@@ -751,6 +761,7 @@ export const IntegrationRpcGroup = RpcGroup.make(
   WsSlackGetThreadRpc,
   WsSlackGetLinkPreviewRpc,
   WsSlackGetResourceRpc,
+  WsSlackGetFileImageRpc,
   WsSlackSubscribeThreadLinksRpc,
   WsSlackLinkThreadRpc,
   WsSlackUnlinkThreadRpc,

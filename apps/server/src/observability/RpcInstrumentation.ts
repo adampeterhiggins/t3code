@@ -72,6 +72,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.slackGetThread]: "slack",
   [WS_METHODS.slackGetLinkPreview]: "slack",
   [WS_METHODS.slackGetResource]: "slack",
+  [WS_METHODS.slackGetFileImage]: "slack",
   [WS_METHODS.slackSubscribeThreadLinks]: "slack",
   [WS_METHODS.slackLinkThread]: "slack",
   [WS_METHODS.slackUnlinkThread]: "slack",

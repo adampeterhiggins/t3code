@@ -1,11 +1,18 @@
 import { parseGitHubRefUrl, type GitHubRefLink, type GitHubRefType } from "@t3tools/contracts";
-import { CirclePlayIcon, GitBranchIcon, GitCommitHorizontalIcon, TagIcon } from "lucide-react";
+import {
+  CirclePlayIcon,
+  FileCodeIcon,
+  GitBranchIcon,
+  GitCommitHorizontalIcon,
+  TagIcon,
+} from "lucide-react";
 
 const GITHUB_REF_TYPE_LABELS: Record<GitHubRefType, string> = {
   release: "Release",
   tag: "Tag",
   branch: "Branch",
   commit: "Commit",
+  file: "File",
   "workflow-run": "Workflow run",
   "workflow-job": "Workflow job",
 };
@@ -35,6 +42,8 @@ export function GitHubRefIcon({
       return <GitBranchIcon className={className} />;
     case "commit":
       return <GitCommitHorizontalIcon className={className} />;
+    case "file":
+      return <FileCodeIcon className={className} />;
     case "workflow-run":
     case "workflow-job":
       return <CirclePlayIcon className={className} />;
@@ -56,6 +65,8 @@ export function gitHubRefTypeFromLink(link: GitHubRefLink): GitHubRefType | null
   switch (link.linkType) {
     case "tree":
       return link.ref.includes("/") ? null : "branch";
+    case "blob":
+      return "file";
     case "run":
       return "workflow-run";
     case "job":

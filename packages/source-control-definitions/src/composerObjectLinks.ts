@@ -6,6 +6,7 @@ import {
   parseNotionPageId,
   parseGoogleFileLink,
   parseGitHubIssueUrl,
+  formatGitHubLineRange,
   parseGitHubRefUrl,
 } from "@t3tools/contracts";
 import { builtInSourceControlDefinitions } from "./registry.ts";
@@ -21,7 +22,7 @@ import {
 /**
  * A link in composer text to something the composer can attach as a chip instead: a Linear
  * issue, project, document, or initiative, a GitHub issue, a pull request, a GitHub repository
- * root, a GitHub release, tag, branch, commit, or Actions run or job, a Slack channel or message, a Discord message, a Notion page, a
+ * root, a GitHub release, tag, branch, commit, file, or Actions run or job, a Slack channel or message, a Discord message, a Notion page, a
  * Granola note, or a T3 Code prompt link.
  */
 export type ComposerObjectLink =
@@ -320,7 +321,7 @@ export function parseComposerObjectLink(url: string): ComposerObjectLink | null 
   if (parseGitHubIssueUrl(url) !== null) return { kind: "github-issue", url };
   const ref = parseGitHubRefUrl(url);
   if (ref !== null) return { kind: "github-ref", url, ...ref };
-  // Only a repository root: a link to a file or a tree is about that file, not a clone.
+  // Only a repository root: a link to a folder is about that folder, not a clone.
   if (parsed.hostname.toLowerCase() === "github.com" && segments.length === 2) {
     const nameWithOwner = `${segments[0]}/${segments[1]!.replace(/\.git$/iu, "")}`;
     return {
@@ -379,6 +380,11 @@ export function objectLinkLabel(url: string): string | null {
     case "github-ref":
       // A `tree` link with a slash may be a folder, which is not a ref; it keeps its URL.
       if (link.linkType === "tree" && link.ref.includes("/")) return null;
+      if (link.linkType === "blob") {
+        const fileName = link.ref.split("/").at(-1) ?? link.ref;
+        const lines = link.lines === undefined ? "" : `:${formatGitHubLineRange(link.lines)}`;
+        return `${link.repository}: ${fileName}${lines}`;
+      }
       if (link.linkType === "run" || link.linkType === "job") {
         return `${link.repository} ${link.linkType} ${link.ref}`;
       }
@@ -427,7 +433,7 @@ const OBJECT_LINK_NOUNS: Record<ComposerObjectLink["kind"], string> = {
   "discord-message": "Discord message",
   "github-issue": "GitHub issue",
   "pull-request": "pull request",
-  "github-ref": "GitHub release, branch, tag, commit, or Actions run",
+  "github-ref": "GitHub release, branch, tag, commit, file, or Actions run",
   "prompt-link": "T3 Code prompt link",
   repository: "repository",
 };

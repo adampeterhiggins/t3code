@@ -54,6 +54,7 @@ const GITHUB_REF_TYPE_LABELS = {
   tag: "Tag",
   branch: "Branch",
   commit: "Commit",
+  file: "File",
   "workflow-run": "Workflow run",
   "workflow-job": "Workflow job",
 } as const;
@@ -517,7 +518,7 @@ export function ComposerContextSheet(props: {
                   <Text className="text-sm text-foreground-muted">
                     {record.refType === "workflow-run" || record.refType === "workflow-job"
                       ? record.repository
-                      : `${record.repository}@${record.refType === "commit" ? record.ref.slice(0, 7) : record.ref}`}{" "}
+                      : `${record.repository}@${record.refType === "commit" || /^[0-9a-f]{40}$/i.test(record.ref) ? record.ref.slice(0, 7) : record.ref}`}{" "}
                     · {GITHUB_REF_TYPE_LABELS[record.refType]}
                   </Text>
                 </View>

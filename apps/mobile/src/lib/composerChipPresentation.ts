@@ -118,13 +118,15 @@ const PULL_REQUEST_CHIP_PRESENTATIONS = {
 
 /**
  * A release uses the tag it publishes; both native surfaces share the same glyph assets. An
- * Actions run or job reuses the terminal glyph rather than shipping a new native asset.
+ * Actions run or job reuses the terminal glyph rather than shipping a new native asset, and a
+ * file uses the generic file glyph a null icon falls back to.
  */
 const GITHUB_REF_CHIP_ICONS = {
   release: "tag",
   tag: "tag",
   branch: "git-branch",
   commit: "git-commit-horizontal",
+  file: null,
   "workflow-run": "terminal",
   "workflow-job": "terminal",
 } as const;

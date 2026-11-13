@@ -210,6 +210,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.slackGetThread]: AuthOrchestrationReadScope,
   [WS_METHODS.slackGetLinkPreview]: AuthOrchestrationReadScope,
   [WS_METHODS.slackGetResource]: AuthOrchestrationReadScope,
+  [WS_METHODS.slackGetFileImage]: AuthOrchestrationReadScope,
   [WS_METHODS.slackSubscribeThreadLinks]: AuthOrchestrationReadScope,
   [WS_METHODS.slackLinkThread]: AuthOrchestrationOperateScope,
   [WS_METHODS.slackUnlinkThread]: AuthOrchestrationOperateScope,

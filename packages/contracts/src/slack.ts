@@ -229,6 +229,18 @@ export const SlackResourceContext = Schema.Struct({
 });
 export type SlackResourceContext = typeof SlackResourceContext.Type;
 
+/** `slack.getFileImage` payload: a file link that may name an image. */
+export const SlackGetFileImageInput = Schema.Struct({ id: SlackId });
+export type SlackGetFileImageInput = typeof SlackGetFileImageInput.Type;
+
+/** An image a Slack file link names, downloaded so the composer can attach it as an image. */
+export const SlackFileImage = Schema.Struct({
+  name: TrimmedNonEmptyString.check(Schema.isMaxLength(255)),
+  mimeType: TrimmedNonEmptyString,
+  bytes: Schema.Uint8Array,
+});
+export type SlackFileImage = typeof SlackFileImage.Type;
+
 /** `slack.getLinkPreview` payload: the message a bare permalink in a chat message names. */
 export const SlackLinkPreviewInput = Schema.Struct({
   channelId: SlackId,

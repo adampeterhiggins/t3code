@@ -1,7 +1,11 @@
 import {
+  isProviderSendTurnSupportedImageMimeType,
+  PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
   SLACK_RESOURCE_MARKDOWN_MAX_CHARS,
   SLACK_THREAD_MARKDOWN_MAX_CHARS,
   SlackError,
+  type SlackFileImage,
+  type SlackGetFileImageInput,
   type SlackGetResourceInput,
   type SlackGetThreadInput,
   SlackLinkPreview,
@@ -44,7 +48,7 @@ import {
   renderSlackProfile,
   type SlackListColumn,
 } from "./slackResourceMarkdown.ts";
-import { slackApiRequest, slackDownloadText } from "./slackWebApi.ts";
+import { slackApiRequest, slackDownloadBytes, slackDownloadText } from "./slackWebApi.ts";
 
 const PREVIEW_MAX_CHARS = 300;
 /** Slack's page maximum: enough of the account's posts to see past one busy conversation. */
@@ -341,6 +345,10 @@ export class SlackApi extends Context.Service<
     readonly getResource: (
       input: SlackGetResourceInput,
     ) => Effect.Effect<SlackResourceContext, SlackError>;
+    /** The image a file link names, or null when it is not an image the agent can take. */
+    readonly getFileImage: (
+      input: SlackGetFileImageInput,
+    ) => Effect.Effect<SlackFileImage | null, SlackError>;
     /** Who and where a bare link points, read once and kept. Needs a connected account. */
     readonly getLinkPreview: (
       input: SlackLinkPreviewInput,
@@ -800,12 +808,32 @@ export const make = Effect.gen(function* () {
     } satisfies SlackResourceContext;
   });
 
+  const getFileImage = Effect.fn("slack.get_file_image")(function* (input: SlackGetFileImageInput) {
+    const file = yield* fileInfo(input.id);
+    const mimeType = file.mimetype ?? "";
+    if (
+      file.url_private_download === undefined ||
+      !isProviderSendTurnSupportedImageMimeType(mimeType) ||
+      (file.size ?? Number.POSITIVE_INFINITY) > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES
+    ) {
+      return null;
+    }
+    const token = yield* auth.accessToken;
+    const bytes = yield* slackDownloadBytes(token, file.url_private_download, mimeType).pipe(
+      Effect.provide(services),
+    );
+    if (bytes === null || bytes.byteLength > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) return null;
+    const name = (file.name?.trim() || file.title?.trim() || file.id).slice(0, 255);
+    return { name, mimeType, bytes } satisfies SlackFileImage;
+  });
+
   return SlackApi.of({
     searchMessages,
     suggestions,
     searchMentions,
     getThread,
     getResource,
+    getFileImage,
     getLinkPreview,
   });
 });
