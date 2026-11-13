@@ -16,6 +16,9 @@ const mocks = vi.hoisted(() => ({
   notionEnabled: true,
   granolaEnabled: true,
   getSlackThread: vi.fn(),
+  getSlackFileImage: vi.fn(),
+  getSlackResource: vi.fn(),
+  addImages: vi.fn(),
   getNotionPage: vi.fn(),
   getGranolaNote: vi.fn(),
   getPullRequest: vi.fn(),
@@ -44,7 +47,13 @@ vi.mock("~/hooks/useSettings", () => ({
 vi.mock("@effect/atom-react", () => ({ useAtomValue: () => null }));
 vi.mock("~/state/entities", () => ({ useProjects: () => [] }));
 vi.mock("~/state/server", () => ({ serverEnvironment: { configValueAtom: () => null } }));
-vi.mock("~/state/slack", () => ({ slackEnvironment: { getThread: "slack" } }));
+vi.mock("~/state/slack", () => ({
+  slackEnvironment: {
+    getThread: "slack",
+    getFileImage: "slack-file-image",
+    getResource: "slack-resource",
+  },
+}));
 vi.mock("~/state/discord", () => ({ discordEnvironment: { getThread: "discord" } }));
 vi.mock("~/state/linear", () => ({ linearEnvironment: { getIssue: "linear" } }));
 vi.mock("~/state/githubIssues", () => ({ githubIssueEnvironment: { getIssue: "github" } }));
@@ -58,11 +67,15 @@ vi.mock("~/state/use-atom-command", () => ({
   useAtomCommand: (command: string) =>
     command === "slack"
       ? mocks.getSlackThread
-      : command === "notion"
-        ? mocks.getNotionPage
-        : command === "granola"
-          ? mocks.getGranolaNote
-          : vi.fn(),
+      : command === "slack-file-image"
+        ? mocks.getSlackFileImage
+        : command === "slack-resource"
+          ? mocks.getSlackResource
+          : command === "notion"
+            ? mocks.getNotionPage
+            : command === "granola"
+              ? mocks.getGranolaNote
+              : vi.fn(),
 }));
 vi.mock("~/state/use-atom-query-runner", () => ({
   useAtomQueryRunner: (family: string, options?: { readonly refresh?: boolean }) =>
@@ -80,7 +93,10 @@ vi.mock("~/issueContextStore", () => ({
 vi.mock("~/repositoryContextStore", () => ({
   useRepositoryContextStore: { getState: () => ({ upsert: mocks.upsert }) },
 }));
-vi.mock("~/composerDraftStore", () => ({ useComposerDraftStore: {} }));
+vi.mock("~/composerDraftStore", () => ({
+  useComposerDraftStore: { getState: () => ({ addImages: mocks.addImages }) },
+}));
+vi.mock("~/lib/utils", () => ({ randomUUID: () => "id" }));
 vi.mock("~/lib/openPullRequestLink", () => ({
   resolvePullRequestPreviewTarget: () => mocks.pullRequestTarget,
 }));
@@ -194,7 +210,7 @@ describe("Slack link attachments", () => {
 
   it("reports a Slack thread it tried and could not read", async () => {
     const { Probe, resolveLink } = setup();
-    await using screen = await render(<Probe />);
+    await using _screen = await render(<Probe />);
     mocks.getSlackThread.mockResolvedValue({
       _tag: "Failure",
       cause: Cause.fail(new Error("nope")),
@@ -202,6 +218,39 @@ describe("Slack link attachments", () => {
 
     expect(await resolveLink(link)).toBe("unreadable");
     expect(mocks.upsert).not.toHaveBeenCalled();
+  });
+
+  it("attaches a Slack image file as an image, and any other file as a file chip", async () => {
+    const { Probe, resolveLink } = setup();
+    await using _screen = await render(<Probe />);
+    const fileLink = parseComposerObjectLink(
+      "https://acme.slack.com/files/U06F5V4996F/F0CH21MFYF5/image.png",
+    )!;
+    mocks.getSlackFileImage.mockResolvedValue({
+      _tag: "Success",
+      value: { name: "image.png", mimeType: "image/png", bytes: new Uint8Array([1, 2, 3]) },
+    });
+    const image = resolvedChip(await resolveLink(fileLink));
+    expect(image?.reference).toEqual({ kind: "image", contextId: "image_id", label: "image.png" });
+    image!.commit();
+    expect(mocks.addImages).toHaveBeenCalledWith(threadRef, [
+      expect.objectContaining({ id: "id", name: "image.png", mimeType: "image/png", sizeBytes: 3 }),
+    ]);
+    expect(mocks.getSlackResource).not.toHaveBeenCalled();
+
+    mocks.getSlackFileImage.mockResolvedValue({ _tag: "Success", value: null });
+    mocks.getSlackResource.mockResolvedValue({
+      _tag: "Success",
+      value: {
+        teamId: "T1",
+        resourceType: "file",
+        id: "F0CH21MFYF5",
+        title: "spec.pdf",
+        url: fileLink.url,
+        markdown: "# Slack file: spec.pdf",
+      },
+    });
+    expect(resolvedChip(await resolveLink(fileLink))?.reference.kind).toBe("slack-resource");
   });
 
   it("continues resolving other links when Slack is disabled", async () => {
@@ -219,7 +268,7 @@ describe("Slack link attachments", () => {
 describe("Notion link attachments", () => {
   it("attaches a pasted app.notion.com page link", async () => {
     const { Probe, resolveLink } = setup();
-    await using screen = await render(<Probe />);
+    await using _screen = await render(<Probe />);
     const attached = resolvedChip(await resolveLink(notionLink));
     expect(attached?.reference.kind).toBe("notion-page");
     expect(mocks.getNotionPage).toHaveBeenCalledWith({
@@ -243,7 +292,7 @@ describe("Notion link attachments", () => {
 describe("Granola link attachments", () => {
   it("attaches a pasted Granola note link", async () => {
     const { Probe, resolveLink } = setup();
-    await using screen = await render(<Probe />);
+    await using _screen = await render(<Probe />);
     const attached = resolvedChip(await resolveLink(granolaLink));
     expect(attached?.reference).toEqual({
       kind: "granola-note",
@@ -320,7 +369,7 @@ describe("pull request comment links", () => {
     const { Probe, resolveLink } = setup();
     mocks.pullRequestTarget = target;
     mocks.getPullRequest.mockResolvedValue({ _tag: "Success", value: pullRequest });
-    await using screen = await render(<Probe />);
+    await using _screen = await render(<Probe />);
     mocks.getPullRequestActivity.mockResolvedValue(activity(false));
     mocks.getFreshPullRequestActivity.mockResolvedValue(activity(true));
 
@@ -337,7 +386,7 @@ describe("pull request comment links", () => {
     const { Probe, resolveLink } = setup();
     mocks.pullRequestTarget = target;
     mocks.getPullRequest.mockResolvedValue({ _tag: "Success", value: pullRequest });
-    await using screen = await render(<Probe />);
+    await using _screen = await render(<Probe />);
     mocks.getPullRequestActivity.mockResolvedValue(activity(false));
     mocks.getFreshPullRequestActivity.mockResolvedValue(activity(false));
 

@@ -1123,7 +1123,8 @@ links attach as a `slack-resource` chip through `slack.getResource`
 ([`SlackApi`](../apps/server/src/slack/SlackApi.ts)): canvases through `canvases.getContent`,
 lists as a markdown table (column names come only from `slackLists.items.info`, so the first row
 is read twice), text files downloaded up to 256 KB, and profiles from `users.info`. A file link
-that names a canvas or list reads as one. These need `files:read`, `canvases:read`, and
+that names a canvas or list reads as one. A file link to an image the providers accept is fetched
+first through `slack.getFileImage` and becomes an ordinary image attachment instead of a chip. These need `files:read`, `canvases:read`, and
 `lists:read`; Slack refuses sign-in when the app lacks a requested scope, so older apps must add
 them before reconnecting.
 

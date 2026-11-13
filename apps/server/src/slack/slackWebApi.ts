@@ -102,10 +102,7 @@ export const slackApiRequest = Effect.fn("slack.web_api")(function* <S extends S
 });
 
 /** Downloads a private file's text (`url_private_download`), which needs the same user token. */
-export const slackDownloadText = Effect.fn("slack.download_text")(function* (
-  accessToken: string,
-  url: string,
-) {
+const slackDownload = Effect.fnUntraced(function* (accessToken: string, url: string) {
   const httpClient = yield* HttpClient.HttpClient;
   const response = yield* HttpClientRequest.get(url).pipe(
     HttpClientRequest.bearerToken(accessToken),
@@ -116,7 +113,31 @@ export const slackDownloadText = Effect.fn("slack.download_text")(function* (
   if (response.status < 200 || response.status >= 300) {
     return yield* apiError(`Slack returned HTTP ${response.status} for the file.`);
   }
+  return response;
+});
+
+export const slackDownloadText = Effect.fn("slack.download_text")(function* (
+  accessToken: string,
+  url: string,
+) {
+  const response = yield* slackDownload(accessToken, url);
   return yield* response.text.pipe(
     Effect.mapError((cause) => apiError("Slack returned an unreadable file.", cause)),
   );
+});
+
+/** A file's bytes, or null when Slack answers with something other than `mimeType`. */
+export const slackDownloadBytes = Effect.fn("slack.download_bytes")(function* (
+  accessToken: string,
+  url: string,
+  mimeType: string,
+) {
+  const response = yield* slackDownload(accessToken, url);
+  // Slack answers a download it will not serve with its sign-in page, as HTTP 200.
+  const contentType = response.headers["content-type"]?.split(";", 1)[0]?.trim().toLowerCase();
+  if (contentType !== mimeType.toLowerCase()) return null;
+  const buffer = yield* response.arrayBuffer.pipe(
+    Effect.mapError((cause) => apiError("Slack returned an unreadable file.", cause)),
+  );
+  return new Uint8Array(buffer);
 });

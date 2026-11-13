@@ -45,10 +45,12 @@ function makeHarness(replies: Record<string, unknown> = {}) {
   const reply = (request: HttpClientRequest.HttpClientRequest, body: unknown) =>
     HttpClientResponse.fromWeb(
       request,
-      new Response(typeof body === "string" ? body : JSON.stringify(body), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
+      body instanceof Response
+        ? body
+        : new Response(typeof body === "string" ? body : JSON.stringify(body), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
     );
   const client = HttpClient.make((request) =>
     Effect.sync(() => {
@@ -617,6 +619,57 @@ it.effect("describes a binary file without downloading it", () => {
     assert.isFalse(harness.calls.some((call) => call.method === "notes.txt"));
     assert.include(context.markdown, "_Contents not downloaded._");
   }).pipe(Effect.provide(harness.layer));
+});
+
+it.effect("downloads an image file's bytes, but not Slack's sign-in page", () => {
+  const pngInfo = {
+    ok: true,
+    file: {
+      id: "F0IMG",
+      name: "chart.png",
+      mimetype: "image/png",
+      size: 3,
+      url_private_download: "https://files.slack.com/files-pri/T1-F0IMG/download/chart.png",
+    },
+  };
+  const image = makeHarness({
+    "files.info": pngInfo,
+    "chart.png": new Response(new Uint8Array([1, 2, 3]), {
+      headers: { "content-type": "image/png" },
+    }),
+  });
+  const signIn = makeHarness({
+    "files.info": pngInfo,
+    "chart.png": new Response("<html>Sign in</html>", {
+      headers: { "content-type": "text/html; charset=utf-8" },
+    }),
+  });
+  const pdf = makeHarness({
+    "files.info": {
+      ok: true,
+      file: {
+        id: "F0PDF",
+        name: "spec.pdf",
+        mimetype: "application/pdf",
+        url_private_download: FILE_URL,
+      },
+    },
+  });
+  return Effect.gen(function* () {
+    const read = (harness: ReturnType<typeof makeHarness>, id: string) =>
+      Effect.flatMap(SlackApi.SlackApi, (api) => api.getFileImage({ id })).pipe(
+        Effect.provide(harness.layer),
+      );
+    const downloaded = yield* read(image, "F0IMG");
+    assert.deepStrictEqual(downloaded, {
+      name: "chart.png",
+      mimeType: "image/png",
+      bytes: new Uint8Array([1, 2, 3]),
+    });
+    assert.isNull(yield* read(signIn, "F0IMG"));
+    assert.isNull(yield* read(pdf, "F0PDF"));
+    assert.isFalse(pdf.calls.some((call) => call.method === "notes.txt"));
+  });
 });
 
 it.effect("reads a file link that names a canvas as that canvas", () => {
