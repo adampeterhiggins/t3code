@@ -33,14 +33,14 @@ import {
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import { ComposerColorCodesExtension, useComposerColorCodeHover } from "./composerColorCodes";
 
-import type {
-  AssistantCitation,
-  ComposerContextClipboardFragment,
-  EnvironmentId,
-  ModelSelection,
-  ProjectId,
-  ServerProviderSkill,
-  ThreadId,
+import {
+  type AssistantCitation,
+  type ComposerContextClipboardFragment,
+  type EnvironmentId,
+  type ModelSelection,
+  type ProjectId,
+  type ServerProviderSkill,
+  type ThreadId,
 } from "@t3tools/contracts";
 import {
   serializeAssistantCitation,
@@ -106,6 +106,7 @@ import {
   serializeSelection,
   skillChipReplacements,
   splitOrLiftListItem,
+  surroundSelectionWithMark,
   stepCaretAcrossStyledEdge,
   type IsKnownModel,
   type SkillMeta,
@@ -126,10 +127,13 @@ import {
 } from "~/composer-undo-grouping";
 import { collectInlineContextIds } from "~/lib/composerContextReferences";
 import { resolveDiffThemeName } from "~/lib/diffRendering";
+import { isRichTextFormattingShortcut } from "~/keybindings";
 import { cn, isMacPlatform } from "~/lib/utils";
+import { hasCommandForKeyDown } from "~/shortcuts/dispatcher";
+
 import { AssistantCitationChip } from "./chat/AssistantCitationChip";
-import type { CitationCommentInputProps } from "./chat/AssistantCitationCommentEditor";
-import type { ComposerTextTarget } from "./chat/composerTextTarget";
+import { type CitationCommentInputProps } from "./chat/AssistantCitationCommentEditor";
+import { type ComposerTextTarget } from "./chat/composerTextTarget";
 import { ModelMentionChip, modelMentionKey, modelMentionKeysAtom } from "./chat/ModelMentionChip";
 import {
   type ComposerMentionDropHost,
@@ -141,7 +145,10 @@ import {
   makeWorkspaceFileDropHandlers,
   type WorkspaceFileDropHost,
 } from "./chat/workspaceFileDrop";
-import type { CitationDestination, CitationDestinationAction } from "./chat/citationDestination";
+import {
+  type CitationDestination,
+  type CitationDestinationAction,
+} from "./chat/citationDestination";
 import { getTimelinePageScrollKey } from "./chat/pageScrollController";
 import {
   ComposerContextRecordChip,
@@ -150,11 +157,11 @@ import {
   type ComposerDraftContextRecords,
 } from "./composerContextPresentation";
 import { skillPreviewDescription } from "./contextPreviews";
-import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
+import { type AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
 import { ComposerCodeBlockNodeView } from "./chat/ComposerCodeBlockNodeView";
 import { resolveAssistantCitationCommentDismissal } from "./chat/assistantCitationCommentDismissal";
 import { composerCodeBlockHighlight } from "./composerCodeBlockHighlight";
-import { importPastedComposerText } from "./composerInlineTokenPaste";
+import { importPastedComposerText, readPastedPlainText } from "./composerInlineTokenPaste";
 import { ComposerLoadingLinksExtension, setComposerLoadingLinks } from "./composerLoadingLinks";
 import { didComposerSelectionChangeVisibly } from "./composerSelection";
 import {
@@ -1449,6 +1456,19 @@ function ComposerPromptEditorTiptapInner(
       editable: !disabled,
       editorProps: {
         attributes: editorAttributes,
+        handleDOMEvents: {
+          // Composer commands keep precedence; otherwise true skips the editor's keymaps without
+          // preventDefault, so a bound app command still runs.
+          keydown: (_view, event) => {
+            if (!isRichTextFormattingShortcut(event)) return false;
+            if (readCallbacks().onCommandKeyDown?.(event.key, event)) {
+              event.preventDefault();
+              event.stopPropagation();
+              return true;
+            }
+            return hasCommandForKeyDown(event);
+          },
+        },
         handleKeyDown: (view, event) => {
           // In a right-to-left line the start is on the right.
           const backArrow = caretLineDirection(view.state) === "rtl" ? "ArrowRight" : "ArrowLeft";
@@ -1709,6 +1729,11 @@ function ComposerPromptEditorTiptapInner(
           const startMd = flatToMarkdown(map, pmToFlat(map, from));
           const endMd = flatToMarkdown(map, pmToFlat(map, to));
           if (selectionTouchesMentionBoundary(map.value, startMd, endMd)) return false;
+          const markTr = surroundSelectionWithMark(view.state, from, to, text);
+          if (markTr) {
+            view.dispatch(markTr);
+            return true;
+          }
           const tr = view.state.tr.insertText(closer, to).insertText(text, from);
           tr.setSelection(TextSelection.create(tr.doc, from + text.length, to + text.length));
           view.dispatch(tr);
@@ -1717,7 +1742,7 @@ function ComposerPromptEditorTiptapInner(
         handlePaste: (view, event) => {
           const clipboardData = event.clipboardData;
           if (!clipboardData || clipboardData.files.length > 0) return false;
-          const pastedText = clipboardData.getData("text/plain");
+          const pastedText = readPastedPlainText(clipboardData);
           if (!pastedText) return false;
           event.preventDefault();
           // Paste verbatim inside fences; markdown parsing would split blocks and create unsupported chips.

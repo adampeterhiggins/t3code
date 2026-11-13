@@ -1,4 +1,5 @@
 /* oxlint-disable react/no-array-index-key -- Read-only preview rows can repeat identical text and have no local state. */
+import { pullRequestCommentPreview } from "./pullRequestMarkdown.logic";
 import { parsePullRequestAnchor } from "@t3tools/shared/pullRequestAnchor";
 import { holdLinkedNodeInView } from "./holdLinkedNodeInView";
 import { useAtomValue } from "@effect/atom-react";
@@ -352,7 +353,7 @@ function CollapsedComment({
               className="mt-2 block w-full truncate text-left text-xs text-muted-foreground hover:text-foreground"
               onClick={() => statusTriggerRef.current?.focus({ preventScroll: true })}
             >
-              {commentPreview(body)}
+              {pullRequestCommentPreview(body)}
             </CollapsibleTrigger>
           ) : null}
         </div>

@@ -45,6 +45,7 @@ type LinkedObjectPreviewProps = ComponentProps<typeof LinkedObjectDetails>;
 
 /** What each kind's preview reads. Surfaces map their own records onto these. */
 export interface ContextPreviewPropsByKind {
+  response: Record<string, never>;
   image: ImagePreviewProps;
   file: FilePreviewProps;
   terminal: TerminalPreviewProps;
@@ -211,6 +212,10 @@ export const CONTEXT_PRESENTATION_DEFINITIONS: ContextPresentationDefinitions = 
   },
   model: { capabilities: COMPACT, preview: { details: "card", Body: ModelPreview } },
   environment: { capabilities: COMPACT, preview: { details: "none" } },
+  response: {
+    capabilities: { expanded: "inline-block", defaultDraftView: "compact" },
+    preview: { details: "none" },
+  },
 };
 
 const KNOWN_KINDS: ReadonlySet<string> = new Set(COMPOSER_CONTEXT_KINDS);

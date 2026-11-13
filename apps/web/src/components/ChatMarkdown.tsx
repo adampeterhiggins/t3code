@@ -1,4 +1,4 @@
-import type { MessageSkill } from "./chat/SkillInlineText";
+import { type MessageSkill, renderSkillInlineMarkdownChildren } from "./chat/SkillInlineText";
 import { clientHostEnvironmentAtom } from "../state/clientHostEnvironment";
 import { buildFileLinkParentSuffixByPath, fileLinkLabel } from "@t3tools/shared/fileLinks";
 import {
@@ -7,6 +7,7 @@ import {
   extractInlineCodeSpans,
   extractMarkdownLinkHrefs,
   inlineCodeFilePathCandidate,
+  isMarkdownFileLinkLabel,
 } from "@t3tools/shared/markdownLinks";
 import { taskListMarkerOffset } from "@t3tools/shared/markdownTaskList";
 import { isHostPath, resolveWorkspaceFilePath } from "@t3tools/shared/path";
@@ -15,6 +16,17 @@ import {
   AuthFilesystemReadScope,
   AuthOrchestrationOperateScope,
   SOURCE_CONTROL_MEDIA_ASSET,
+  AssetWorkspaceAssetNotFoundError,
+  AuthPreviewOperateScope,
+  DEFAULT_SERVER_SETTINGS,
+  EDITORS,
+  resolveFileOpenTarget,
+  type EditorId,
+  type EnvironmentId,
+  type ServerConfig,
+  type ScopedThreadRef,
+  type ServerProviderSkill,
+  type ThreadPullRequestKey,
 } from "@t3tools/contracts";
 import {
   CHAT_MARKDOWN_REMARK_PLUGINS,
@@ -44,19 +56,7 @@ import {
   TriangleAlertIcon,
   type LucideIcon,
 } from "lucide-react";
-import {
-  AssetWorkspaceAssetNotFoundError,
-  AuthPreviewOperateScope,
-  DEFAULT_SERVER_SETTINGS,
-  EDITORS,
-  resolveFileOpenTarget,
-  type EditorId,
-  type EnvironmentId,
-  type ServerConfig,
-  type ScopedThreadRef,
-  type ServerProviderSkill,
-  type ThreadPullRequestKey,
-} from "@t3tools/contracts";
+
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -91,19 +91,21 @@ import React, {
   useState,
   type ReactNode,
 } from "react";
-import type {
-  Components,
-  ExtraProps as ReactMarkdownExtraProps,
-  Options as ReactMarkdownOptions,
+import {
+  type Components,
+  type ExtraProps as ReactMarkdownExtraProps,
+  type Options as ReactMarkdownOptions,
+  defaultUrlTransform,
 } from "react-markdown";
 import { createIncrementalMarkdownPlugin } from "../markdown-incremental";
-import type { Pluggable, PluggableList } from "unified";
-import { defaultUrlTransform } from "react-markdown";
+import { type Pluggable, type PluggableList } from "unified";
+
 import { parseAssistantCitationHref } from "@t3tools/shared/assistantCitations";
 import { parseComposerContextHref } from "@t3tools/shared/composerContextReferences";
 import { parseThreadLinkHref } from "@t3tools/shared/threadLinks";
 import { AssistantCitationChip } from "./chat/AssistantCitationChip";
 import { ColorCodeChip } from "./chat/ColorCodeChip";
+
 import { MarkdownThreadLink } from "./chat/MarkdownThreadLink";
 import { mathKind } from "@t3tools/shared/markdownMath";
 import remarkMath from "remark-math";
@@ -111,7 +113,7 @@ import {
   artifactTemplateFromHastProperties,
   renderCodexInlineDirectivesAsMarkdown,
 } from "@t3tools/shared/codexMarkdownDirectives";
-import { renderSkillInlineMarkdownChildren } from "./chat/SkillInlineText";
+
 import { MarkdownMath } from "./chat/MarkdownMath";
 import {
   resolveMarkdownMediaPreview,
@@ -142,7 +144,7 @@ import { openInEditorMenuLabel } from "../editorLabels";
 import { resolveDiffThemeName } from "../lib/diffRendering";
 import { RenderErrorBoundary } from "./RenderErrorBoundary";
 import { useRenderedAppearance } from "../hooks/useTheme";
-import { useClientSettings } from "../hooks/useSettings";
+import { useClientSettings, useEnvironmentSettings } from "../hooks/useSettings";
 import { chatMarkdownClipboardPayload } from "../markdown-clipboard";
 import {
   isLocalEditorFileHref,
@@ -156,7 +158,7 @@ import {
   markdownFileEditorTarget,
   resolveMarkdownFileHostPath,
 } from "../markdownFileHostPath";
-import { isMarkdownFileLinkLabel } from "@t3tools/shared/markdownLinks";
+
 import { isElectron } from "../env";
 import { readLocalApi } from "../localApi";
 import { appAtomRegistry } from "../rpc/atomRegistry";
@@ -197,9 +199,12 @@ import {
   WORKSPACE_BASENAME_LOOKUP_LIMIT,
   workspaceLinkLookupQuery,
 } from "@t3tools/client-runtime/workspace-basename-lookup";
-import { resolvePullRequestPreviewTarget } from "~/lib/openPullRequestLink";
+import {
+  resolvePullRequestPreviewTarget,
+  useOpenChangeRequestLink,
+} from "~/lib/openPullRequestLink";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
-import { useOpenChangeRequestLink } from "~/lib/openPullRequestLink";
+
 import { useOpenLink } from "../browser/useOpenLink";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
 import { isPreviewAvailableFor } from "../browser/previewRuntime";
@@ -238,7 +243,7 @@ import {
   objectLinkLabel,
   parseComposerObjectLink,
 } from "@t3tools/source-control-definitions/composerObjectLinks";
-import { useEnvironmentSettings } from "../hooks/useSettings";
+
 import { useEnvironmentQuery } from "../state/query";
 import { slackEnvironment } from "../state/slack";
 import { discordEnvironment } from "../state/discord";
@@ -301,6 +306,9 @@ export interface ChatMarkdownContextReference {
   kind: string;
   contextId: string;
   label: string;
+  /** Whether it starts or ends its block, for a reference that renders as a block. */
+  leading?: boolean;
+  trailing?: boolean;
 }
 
 const EMPTY_MARKDOWN_SKILLS: ReadonlyArray<ServerProviderSkill> = [];
@@ -1061,6 +1069,15 @@ const ChatMarkdownRendererContext = React.createContext<
 // Isolate streamed source text from the renderer context; only offset-based renderers need it.
 const ChatMarkdownTextContext = React.createContext("");
 
+// A quote card is a block. These say nothing else shares its paragraph or list item on that side.
+const LIST_MARKER = String.raw`(?:[-*+]|\d+[.)])[ \t]+`;
+const CITATION_LEADS_BLOCK = new RegExp(
+  String.raw`(?:(?:^|\n[ \t]*\n)[ \t>]*(?:${LIST_MARKER})?|\n[ \t>]*${LIST_MARKER})$`,
+);
+const CITATION_ENDS_BLOCK = new RegExp(
+  String.raw`^[ \t]*(?:$|\n[ \t]*(?:\n|$)|\n[ \t>]*${LIST_MARKER})`,
+);
+
 function markdownHeadingRenderer(level: 1 | 2 | 3 | 4 | 5 | 6) {
   const Tag = `h${level}` as const;
   return function MarkdownHeading({
@@ -1381,6 +1398,10 @@ const CHAT_MARKDOWN_COMPONENTS = {
     } = use(ChatMarkdownRendererContext);
     const text = use(ChatMarkdownTextContext);
     const citation = href ? parseAssistantCitationHref(href) : null;
+    const before = node?.position?.start.offset;
+    const after = node?.position?.end.offset;
+    const leading = before !== undefined && CITATION_LEADS_BLOCK.test(text.slice(0, before));
+    const trailing = after !== undefined && CITATION_ENDS_BLOCK.test(text.slice(after));
     if (citation) {
       return (
         <AssistantCitationChip
@@ -1404,7 +1425,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
     if (contextReference) {
       const label = hastPlainTextDeep(node) || contextReference.contextId;
       return renderContextReference ? (
-        renderContextReference({ ...contextReference, label })
+        renderContextReference({ ...contextReference, label, leading, trailing })
       ) : (
         <span>{label}</span>
       );

@@ -205,6 +205,7 @@ async function render() {
     stop = startThreadNotifications(registry, {
       state: { matches: [{ params: state.active }] },
       navigate: state.navigate,
+      subscribe: () => () => {},
     } as unknown as AnyRouter);
   for (const listener of settingsListeners) listener();
 }

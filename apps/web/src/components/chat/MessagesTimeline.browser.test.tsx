@@ -46,7 +46,10 @@ import {
   type PendingApproval,
   deriveTimelineEntriesFromVisibleTurnItems,
 } from "../../session-logic";
-import { remarkThoughtPreview } from "./TimelineWorkEntryRow.logic";
+import type { Root } from "mdast";
+import { ViewedImagesTimelineRow } from "./TimelineWorkEntryRow";
+import { remarkThoughtPreview, THOUGHT_PREVIEW_MAX_LENGTH } from "./TimelineWorkEntryRow.logic";
+import { TimelineRowCtx } from "./timelineRowContext";
 import { parseMarkdownWithMath } from "@t3tools/shared/markdownMath";
 import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
 import { collectThreadFindRanges } from "./threadFindHighlights";
@@ -77,14 +80,14 @@ vi.mock(import("~/state/query"), async (original) => ({
   })) as never,
 }));
 
-const audioAsset = vi.hoisted(() => ({ url: "" }));
+const stubbedAsset = vi.hoisted(() => ({ url: "" }));
 vi.mock(import("~/assets/assetUrls"), async (original) => {
   const actual = await original();
   return {
     ...actual,
     useAssetUrlState: ((...args: Parameters<typeof actual.useAssetUrlState>) =>
-      audioAsset.url
-        ? { _tag: "Success", url: audioAsset.url }
+      stubbedAsset.url
+        ? { _tag: "Success", url: stubbedAsset.url }
         : actual.useAssetUrlState(...args)) as typeof actual.useAssetUrlState,
   };
 });
@@ -834,6 +837,25 @@ describe("MessagesTimeline messages", () => {
     expect(maxNestedCommits).toBeLessThan(20);
   });
 
+  it("folds a user message only when the fold hides at least as much as it shows", async () => {
+    setup();
+    const lines = (count: number) =>
+      Array.from({ length: count }, (_, index) => `Line ${index}`).join("\n");
+    await using screen = await renderTimeline([
+      message(lines(12), {}, "medium"),
+      message(lines(60), {}, "long"),
+    ]);
+    await vi.waitFor(() => expect(screen.buttons("Show full message")).toHaveLength(1));
+    const [medium, long] = [
+      ...screen.container.querySelectorAll<HTMLElement>("[data-user-message-body]"),
+    ];
+    expect(medium!.dataset.userMessageCollapsible).toBe("false");
+    expect(medium!.textContent).toContain("Line 11");
+    const foldedHeight = long!.offsetHeight;
+    await click(screen.button("Show full message"));
+    expect(long!.offsetHeight).toBeGreaterThanOrEqual(foldedHeight * 2);
+  });
+
   it("keeps the first and last message headings reachable from either end", async () => {
     setup();
     const props = baseProps();
@@ -1297,12 +1319,16 @@ describe("MessagesTimeline messages", () => {
       await click(group());
       await vi.waitFor(() =>
         expect(
-          screen.container.querySelector('[data-work-entry-id="tool-near-composer"]'),
+          screen.container.querySelector(
+            '[data-work-entry-id="tool-near-composer"][role="button"]',
+          ),
         ).not.toBeNull(),
       );
       if (mode === "grouped-delayed") {
         await click(
-          screen.container.querySelector<HTMLElement>('[data-work-entry-id="tool-near-composer"]')!,
+          screen.container.querySelector<HTMLElement>(
+            '[data-work-entry-id="tool-near-composer"][role="button"]',
+          )!,
         );
         await vi.waitFor(() => expect(screen.text()).toContain("Loading output"));
         await click(group());
@@ -1311,7 +1337,7 @@ describe("MessagesTimeline messages", () => {
     const header = () => {
       if (mode === "grouped-end")
         return screen.container.querySelector<HTMLElement>(
-          '[data-work-entry-id="tool-near-composer"]',
+          '[data-work-entry-id="tool-near-composer"][role="button"]',
         )!;
       if (mode === "grouped-delayed")
         return screen.container.querySelector<HTMLElement>(
@@ -1370,10 +1396,29 @@ describe("MessagesTimeline messages", () => {
       };
       await screen.rerender(timeline());
     }
-    const inputEnd = () =>
-      Array.from(screen.container.querySelectorAll<HTMLElement>("*")).findLast((element) =>
-        element.textContent?.includes("TOOL_INPUT_END"),
+    const inputEnd = () => {
+      const end = Array.from(screen.container.querySelectorAll<HTMLElement>("*")).findLast(
+        (element) => element.textContent?.includes("TOOL_INPUT_END"),
       )!;
+      let container = end;
+      while (container !== viewport) {
+        if (
+          getComputedStyle(container).overflowY === "auto" &&
+          container.scrollHeight > container.clientHeight
+        ) {
+          container.scrollTop = container.scrollHeight;
+          break;
+        }
+        if (!container.parentElement) break;
+        container = container.parentElement;
+      }
+      const text = end.firstChild!;
+      expect(text.nodeType).toBe(Node.TEXT_NODE);
+      const range = document.createRange();
+      range.setStart(text, text.textContent!.lastIndexOf("TOOL_INPUT_END"));
+      range.setEnd(text, text.textContent!.length);
+      return range;
+    };
     await vi.waitFor(() =>
       expect(inputEnd().getBoundingClientRect().bottom).toBeLessThanOrEqual(visibleBottom() + 1),
     );
@@ -1627,7 +1672,7 @@ describe("MessagesTimeline automation prompts", () => {
       ],
       {
         supportsConversationRollback: true,
-        threadStartCheckpointReady: true,
+        threadStartCheckpointAvailable: true,
         turnDiffSummaries: [
           {
             runId,
@@ -1655,7 +1700,22 @@ describe("MessagesTimeline agent messages", () => {
     setup();
     const onOpenThread = vi.fn();
     await using screen = await renderTimeline(
-      [message(AGENT_MESSAGE, { createdBy: "agent", senderThreadId: SENDER_THREAD_ID })],
+      [
+        message(AGENT_MESSAGE, { createdBy: "agent", senderThreadId: SENDER_THREAD_ID }),
+        // Sent from a linked environment this client does not reach.
+        message(
+          "Linked review finished",
+          {
+            createdBy: "agent",
+            linkedSender: {
+              environmentId: EnvironmentId.make("environment-linked"),
+              threadId: SENDER_THREAD_ID,
+              title: "Release lead",
+            },
+          },
+          "message-linked",
+        ),
+      ],
       { onOpenThread },
     );
     const row = screen.button(/^Agent/);
@@ -1667,10 +1727,14 @@ describe("MessagesTimeline agent messages", () => {
     await click(row);
     expect(screen.text()).toContain("The migration drops the index before backfilling it.");
     await click(screen.button("Open thread"));
-    expect(onOpenThread).toHaveBeenCalledWith(SENDER_THREAD_ID);
+    expect(onOpenThread).toHaveBeenCalledWith(SENDER_THREAD_ID, ENVIRONMENT_ID);
 
     await click(screen.button(/^Agent/));
     expect(screen.text()).not.toContain("drops the index");
+
+    // The linked sender shows the title it sent, and its thread cannot be opened from here.
+    await click(screen.button(/^Release lead/));
+    expect(screen.buttons("Open thread")).toHaveLength(0);
   });
 
   it("leaves messages sent by T3 Code as full bubbles", async () => {
@@ -1850,9 +1914,9 @@ describe("MessagesTimeline attachments", () => {
     );
     const src =
       "data:audio/wav;base64,UklGRiUAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQEAAACA";
-    audioAsset.url = src;
+    stubbedAsset.url = src;
     onTestFinished(() => {
-      audioAsset.url = "";
+      stubbedAsset.url = "";
     });
     const props = baseProps();
     await using screen = await renderTimeline(
@@ -1919,6 +1983,44 @@ describe("MessagesTimeline attachments", () => {
       void props.listRef.current!.scrollToIndex({ index: 20, animated: false });
     });
     await vi.waitFor(() => expect(one!.isConnected).toBe(false));
+  });
+
+  it("opens a viewed image as a gallery of the images beside it", async () => {
+    stubbedAsset.url =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+    onTestFinished(() => {
+      stubbedAsset.url = "";
+    });
+    const onImageExpand = vi.fn<ComponentProps<typeof MessagesTimeline>["onImageExpand"]>();
+    await using screen = await renderElement(
+      <TimelineRowCtx
+        value={
+          {
+            threadRef: { environmentId: ENVIRONMENT_ID, threadId: ThreadId.make("thread-1") },
+            workspaceRoot: "/repo",
+            onImageExpand,
+          } as never
+        }
+      >
+        <ViewedImagesTimelineRow
+          row={{
+            kind: "viewed-images",
+            id: "viewed",
+            createdAt: CREATED_AT,
+            paths: ["/repo/first.png", "/repo/second.png", "/repo/third.png"],
+          }}
+        />
+      </TimelineRowCtx>,
+    );
+    await screen.getByRole("button", { name: "Preview second.png" }).click();
+    expect(onImageExpand).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        index: 1,
+        images: ["first.png", "second.png", "third.png"].map((name) =>
+          expect.objectContaining({ name }),
+        ),
+      }),
+    );
   });
 });
 
@@ -2115,6 +2217,44 @@ describe("compact reasoning math", () => {
     expect(tree.children.map((node) => [node.type, "value" in node ? node.value : null])).toEqual(
       expected,
     );
+  });
+
+  it("stops reading the tree once the preview is full", () => {
+    const beyondCap = (): string => {
+      throw new Error("read beyond cap");
+    };
+    const head = "x".repeat(THOUGHT_PREVIEW_MAX_LENGTH - 2);
+    const tree: Root = {
+      type: "root",
+      children: [
+        {
+          type: "paragraph",
+          children: [
+            { type: "text", value: head },
+            { type: "strong", children: [{ type: "text", value: "yz beyond" }] },
+            {
+              type: "inlineMath",
+              get value() {
+                return beyondCap();
+              },
+            },
+          ],
+        },
+        {
+          type: "paragraph",
+          children: [
+            {
+              type: "text",
+              get value() {
+                return beyondCap();
+              },
+            },
+          ],
+        },
+      ],
+    };
+    remarkThoughtPreview("Reasoning")(tree);
+    expect(tree.children).toEqual([{ type: "text", value: `${head}yz` }]);
   });
 });
 

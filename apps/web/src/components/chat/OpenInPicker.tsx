@@ -36,7 +36,7 @@ import {
   MenuTrigger,
 } from "../ui/menu";
 import { announce } from "~/lib/announce";
-import type { Icon } from "../Icons";
+import { type Icon } from "../Icons";
 import { resolveEditorIconOptions, resolveCustomEditorIcon } from "../editorIcons";
 import { cn } from "~/lib/utils";
 import { shellEnvironment } from "~/state/shell";
@@ -194,15 +194,22 @@ export const OpenInPicker = memo(function OpenInPicker({
   const backgroundThread = use(BackgroundThreadContext);
   const primaryLabel = isPanel ? `Open in ${primaryOption?.label ?? "editor"}` : "Open";
 
+  const unavailableReason =
+    remote.mode === "remote-unavailable"
+      ? `No SSH route to ${environmentLabel}`
+      : remote.mode === "remote-links" && options.length === 0
+        ? `Open from a computer to edit on ${environmentLabel}`
+        : null;
+
   const editorItems = (
     <>
-      {remote.mode === "remote-unavailable" && (
+      {unavailableReason !== null && (
         <MenuItem density={presentation === "menu" ? "touch" : "default"} disabled>
-          No SSH route to {environmentLabel}
+          {unavailableReason}
         </MenuItem>
       )}
       <>
-        {options.length === 0 && (
+        {options.length === 0 && unavailableReason === null && (
           <MenuItem density={presentation === "menu" ? "touch" : "default"} disabled>
             No installed editors found
           </MenuItem>
@@ -231,7 +238,7 @@ export const OpenInPicker = memo(function OpenInPicker({
             )}
           </MenuItem>
         ))}
-        {remote.mode === "remote-links" && !remoteHintSeen && (
+        {remote.mode === "remote-links" && options.length > 0 && !remoteHintSeen && (
           <MenuItem density={presentation === "menu" ? "touch" : "default"} disabled>
             Opens over SSH. Needs your key on {environmentLabel}
           </MenuItem>

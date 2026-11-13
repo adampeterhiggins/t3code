@@ -1,5 +1,6 @@
 import {
   CommandId,
+  GitCommandError,
   type GitManagerServiceError,
   ProjectId,
   type ThreadId,
@@ -67,6 +68,14 @@ export class ScratchProjectError extends Schema.TaggedError<ScratchProjectError>
 
 export type ScratchError = ScratchUnavailableError | ScratchFolderError | ScratchProjectError;
 
+// The spawner checks cwd before spawning, so NotFound from spawn itself means a missing executable.
+const isMissingExecutable = (cause: unknown) =>
+  PlatformError.isPlatformError(cause) &&
+  cause.reason._tag === "NotFound" &&
+  cause.reason.method === "spawn";
+
+const isGitCommandError = Schema.is(GitCommandError);
+
 export class NamedProjectFolderError extends Schema.TaggedError<NamedProjectFolderError>()(
   "NamedProjectFolderError",
   {
@@ -75,7 +84,9 @@ export class NamedProjectFolderError extends Schema.TaggedError<NamedProjectFold
   },
 ) {
   override get message(): string {
-    return "Failed to create the project folder.";
+    return isGitCommandError(this.cause) && isMissingExecutable(this.cause.cause)
+      ? "Git isn't installed on this machine. Install Git to create a project."
+      : "Failed to create the project folder.";
   }
 }
 
@@ -262,7 +273,29 @@ const make = Effect.gen(function* () {
     Duration.infinity,
   );
   const scratchProbe = probe.pipe(Effect.onInterrupt(() => invalidate));
-  const scratchRoot = scratchProbe.pipe(Effect.map(Result.getSuccess));
+  // A symlinked scratch folder lets the No project live at either the link or its target.
+  const scratchProjectRoot = Effect.fn("ManagedProjectFolders.scratchProjectRoot")(function* (
+    root: string,
+  ) {
+    const linked = yield* fileSystem.readLink(root).pipe(Effect.option);
+    const targets = [
+      ...(Option.isSome(linked) ? [path.resolve(path.dirname(root), linked.value)] : []),
+      yield* fileSystem.realPath(root).pipe(Effect.orElseSucceed(() => root)),
+    ];
+    for (const target of targets) {
+      if (target === root) continue;
+      const project = yield* projects.getByWorkspaceRoot(target).pipe(Effect.option);
+      if (Option.isSome(project) && Option.isSome(project.value)) return target;
+    }
+    return root;
+  });
+  const scratchRoot = scratchProbe.pipe(
+    Effect.flatMap((probed) =>
+      Result.isSuccess(probed)
+        ? scratchProjectRoot(probed.success).pipe(Effect.asSome)
+        : Effect.succeedNone,
+    ),
+  );
 
   const makeScratchFolder = (folder: string) =>
     fileSystem
@@ -271,8 +304,9 @@ const make = Effect.gen(function* () {
 
   const ensureScratchProject: ManagedProjectFolders["Service"]["ensureScratchProject"] = Effect.gen(
     function* () {
-      const workspaceRoot = yield* scratchProbe.pipe(Effect.flatMap(Effect.fromResult));
-      yield* makeScratchFolder(workspaceRoot);
+      const probedRoot = yield* scratchProbe.pipe(Effect.flatMap(Effect.fromResult));
+      yield* makeScratchFolder(probedRoot);
+      const workspaceRoot = yield* scratchProjectRoot(probedRoot);
       const id = yield* random
         .uuidV4()
         .pipe(Effect.mapError((cause) => new ScratchProjectError({ workspaceRoot, cause })));

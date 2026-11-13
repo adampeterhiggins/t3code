@@ -10,18 +10,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 
-import { expandHomePath } from "./pathExpansion.ts";
-
-// Variables whose values are filesystem paths that users write with a
-// leading `~`; spawned children do not shell-expand env values.
-const HOME_EXPANDED_VARIABLE_NAMES = new Set([
-  "CODEX_HOME",
-  "CLAUDE_CONFIG_DIR",
-  "CURSOR_CONFIG_DIR",
-  "GROK_HOME",
-  "XDG_CONFIG_HOME",
-  "XDG_DATA_HOME",
-]);
+import { expandHomePath, expandHomeVariable } from "./pathExpansion.ts";
 
 export const mergeProviderInstanceEnvironment = Effect.fn(function* (
   environment: ProviderInstanceEnvironment | undefined,
@@ -46,9 +35,7 @@ export const mergeProviderInstanceEnvironment = Effect.fn(function* (
         if (inherited.toUpperCase() === name) delete next[inherited];
       }
     }
-    next[name] = HOME_EXPANDED_VARIABLE_NAMES.has(name)
-      ? expandHomePath(variable.value, home)
-      : variable.value;
+    next[name] = expandHomeVariable(name, variable.value, home);
   }
   return next;
 });

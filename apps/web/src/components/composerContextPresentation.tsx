@@ -233,6 +233,7 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
   ComposerContextRenderContext
 >({
   handlers: {
+    response: { chip: () => null },
     image: {
       chip: (entry, { actions }) => {
         if (entry.kind !== "image") return null;

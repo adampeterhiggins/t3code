@@ -319,8 +319,13 @@ export function shouldOfferResumeCompaction(input: {
   );
 }
 
-/** ACP providers may omit usage until the first turn; keep the catalog limit visible. */
-export function shouldCompactBeforeSend(input: {
+/**
+ * The tokens a plain send into an idle thread compacts first, as web's composer does under
+ * "When you return", or null when it sends as is. Web reads the same state for its "Compact and
+ * send" button. A send that hands off to another conversation starts that one fresh, so only the
+ * resumed one counts.
+ */
+export function compactBeforeSendTokens(input: {
   readonly projection: Pick<
     ThreadStructure,
     | "thread"
@@ -341,7 +346,7 @@ export function shouldCompactBeforeSend(input: {
   readonly text: string;
   readonly threadIdle: boolean;
   readonly now: string;
-}): boolean {
+}): number | null {
   const { projection } = input;
   const provider = input.providers.find((entry) => entry.instanceId === input.selection.instanceId);
   if (
@@ -372,7 +377,7 @@ export function shouldCompactBeforeSend(input: {
         .map((request) => ({ kind: "user-input.resolved", payload: { answers: request.answers } })),
     )
   ) {
-    return false;
+    return null;
   }
   const activeProviderThreadId = projection.thread.activeProviderThreadId;
   const providerThread = projection.providerThreads.find(
@@ -388,8 +393,7 @@ export function shouldCompactBeforeSend(input: {
     liveUsage,
     providerThread,
   );
-  return (
-    contextWindow !== null &&
+  return contextWindow !== null &&
     shouldOfferResumeCompaction({
       provider: provider.driver,
       usedTokens: contextWindow.usedTokens,
@@ -397,5 +401,6 @@ export function shouldCompactBeforeSend(input: {
       promptCacheTtlMs: liveUsage?.promptCacheTtlMs,
       now: input.now,
     })
-  );
+    ? contextWindow.usedTokens
+    : null;
 }

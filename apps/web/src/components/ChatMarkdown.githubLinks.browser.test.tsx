@@ -30,7 +30,10 @@ vi.mock(import("../state/server"), async (original) => {
   const actual = await original();
   const { Atom } = await import("effect/reactivity");
   const config = Atom.make({
-    environment: { capabilities: { pullRequests: true, threadPullRequests: true } },
+    environment: {
+      platform: { os: "linux" },
+      capabilities: { pullRequests: true, threadPullRequests: true },
+    },
     availableEditors: [],
   });
   return {

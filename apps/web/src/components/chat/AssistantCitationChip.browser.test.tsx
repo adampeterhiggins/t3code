@@ -10,7 +10,7 @@ import { useImperativeHandle, useRef, useState, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
-import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
+import { type AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
 import "~/index.css";
 import { act, render } from "../../../test/render";
 
@@ -40,9 +40,9 @@ vi.mock(import("@tanstack/react-router"), async (importOriginal) => ({
 }));
 
 import { AssistantCitationChip } from "./AssistantCitationChip";
-import type {
-  AssistantCitationDestinations,
-  CitationCommentInputProps,
+import {
+  type AssistantCitationDestinations,
+  type CitationCommentInputProps,
 } from "./AssistantCitationCommentEditor";
 
 const citation = {
