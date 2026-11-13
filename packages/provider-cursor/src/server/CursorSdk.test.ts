@@ -1,16 +1,42 @@
 // @effect-diagnostics nodeBuiltinImport:off globalTimers:off -- The probe is a plain Node child; this deadline kills it if it hangs.
 import * as NodeChildProcess from "node:child_process";
 import { assert, describe, expect, it } from "@effect/vitest";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import type { CursorConfigureOptions } from "@cursor/sdk";
+import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Logger from "effect/Logger";
+import * as Path from "effect/Path";
 import { vi } from "vite-plus/test";
 import * as CursorSdk from "./CursorSdk.ts";
 
+const sdkDefaults = vi.hoisted(() => ({ useHttp1ForAgent: undefined as boolean | undefined }));
+
+// Holds the SDK's process-wide default the way it does: only keys present change, null clears.
 vi.mock("./sdk.ts", () => ({
-  loadCursorSdk: () => ({ Agent: {}, createAgentPlatform: {} }),
-  loadCursorSqlite: () => ({ SqliteLocalAgentStore: {} }),
+  loadCursorSdk: () => ({
+    Cursor: {
+      configure: ({ local }: CursorConfigureOptions) => {
+        if (local !== undefined && "useHttp1ForAgent" in local) {
+          sdkDefaults.useHttp1ForAgent = local.useHttp1ForAgent ?? undefined;
+        }
+      },
+    },
+  }),
+  loadCursorSqlite: () => ({}),
 }));
 
+const withHost = (environment: NodeJS.ProcessEnv, home: string) =>
+  Effect.provide(
+    Layer.mergeAll(
+      NodeServices.layer,
+      Layer.succeed(HostProcess.Environment, environment),
+      Layer.succeed(HostProcess.HomeDirectory, home),
+    ),
+  );
 const cursorSdkUrl = new URL("./CursorSdk.ts", import.meta.url).href;
 const sdkUrl = new URL("./sdk.ts", import.meta.url).href;
 
@@ -40,7 +66,7 @@ const dir = mkdtempSync(join(tmpdir(), "cursor-sdk-stub-"));
 const stub = join(dir, "stub.cjs");
 writeFileSync(
   stub,
-  "module.exports = { Agent: {}, AuthenticationError: class {}, createAgentPlatform: () => ({}), Cursor: {}, CursorSdkError: class {}, InMemoryCredentialStore: class {} };",
+  "module.exports = { Agent: {}, AuthenticationError: class {}, createAgentPlatform: () => ({}), Cursor: { configure() {} }, CursorSdkError: class {}, InMemoryCredentialStore: class {} };",
 );
 registerHooks({
   resolve(specifier, context, next) {
@@ -61,8 +87,9 @@ const Effect = await import("effect/Effect");
 const Layer = await import("effect/Layer");
 const Exit = await import("effect/Exit");
 const Scope = await import("effect/Scope");
+const NodeServices = await import("@effect/platform-node/NodeServices");
 const scope = Scope.makeUnsafe();
-await Effect.runPromise(Layer.buildWithScope(layer, scope));
+await Effect.runPromise(Layer.buildWithScope(layer, scope).pipe(Effect.provide(NodeServices.layer)));
 const missingCwd = join(tmpdir(), "t3-missing-cwd-" + process.pid);
 
 if (mode === "sdk-model-requests") {
@@ -262,7 +289,7 @@ const rejectThroughGuard = (reason: unknown) =>
       for (const listener of others) process.on("unhandledRejection", listener);
     }
     return exit.mock.calls;
-  }).pipe(Effect.scoped);
+  }).pipe(Effect.scoped, withHost({}, "/nonexistent-home"));
 
 describe("CursorSdk unhandled rejection guard", () => {
   it.effect("keeps the server running when the SDK writes to a closed stream", () =>
@@ -303,5 +330,78 @@ describe("CursorSdk unhandled rejection guard", () => {
       });
       assert.deepStrictEqual(yield* rejectThroughGuard(reason), [[1]]);
     }),
+  );
+});
+
+const http1 = JSON.stringify({ network: { useHttp1ForAgent: true } });
+
+describe("CursorSdk agent transport", () => {
+  it.effect.each([
+    {
+      name: "when set in CURSOR_CONFIG_DIR over XDG_CONFIG_HOME",
+      env: { CURSOR_CONFIG_DIR: "config", XDG_CONFIG_HOME: "xdg" },
+      file: "config/cli-config.json",
+      text: http1,
+      expected: true,
+    },
+    {
+      name: "when set in XDG_CONFIG_HOME",
+      env: { XDG_CONFIG_HOME: "xdg" },
+      file: "xdg/cursor/cli-config.json",
+      text: http1,
+      expected: true,
+    },
+    {
+      name: "when set in the home directory",
+      env: {},
+      file: "home/.cursor/cli-config.json",
+      text: http1,
+      expected: true,
+    },
+    {
+      name: "when it is off",
+      env: {},
+      file: "home/.cursor/cli-config.json",
+      text: JSON.stringify({ network: { useHttp1ForAgent: false } }),
+      expected: undefined,
+    },
+    {
+      name: "when the file is damaged",
+      env: {},
+      file: "home/.cursor/cli-config.json",
+      text: "{",
+      expected: undefined,
+      warns: true,
+    },
+    { name: "when there is no file", env: {}, file: undefined, text: "", expected: undefined },
+  ])("follows the Cursor CLI's HTTP/1.1 setting $name", ({ env, file, text, expected, warns }) =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-cursor-cli-config-" });
+      if (file !== undefined) {
+        yield* fileSystem.makeDirectory(path.dirname(path.join(root, file)), { recursive: true });
+        yield* fileSystem.writeFileString(path.join(root, file), text);
+      }
+      const environment = Object.fromEntries(
+        Object.entries(env).map(([key, directory]) => [key, path.join(root, directory)]),
+      );
+      const warnings: Array<unknown> = [];
+      const captureWarnings = Logger.make(({ logLevel, message }) => {
+        if (logLevel === "Warn") warnings.push(message);
+      });
+      yield* Effect.gen(function* () {
+        const sdk = Context.get(yield* Layer.build(CursorSdk.layer), CursorSdk.CursorSdk);
+        assert.isUndefined(sdkDefaults.useHttp1ForAgent);
+        sdk.load();
+        assert.strictEqual(sdkDefaults.useHttp1ForAgent, expected);
+      }).pipe(
+        Effect.scoped,
+        withHost(environment, path.join(root, "home")),
+        Effect.provide(Logger.layer([captureWarnings], { mergeWithExisting: false })),
+      );
+      assert.isUndefined(sdkDefaults.useHttp1ForAgent);
+      assert.lengthOf(warnings, warns ? 1 : 0);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 });

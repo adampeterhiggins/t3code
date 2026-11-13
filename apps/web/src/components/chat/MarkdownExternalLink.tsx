@@ -9,7 +9,8 @@ import { GitHubRefIcon } from "../gitHubRefPresentation";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { sourceControlIcon } from "../../sourceControlPresentation";
 
-const MARKDOWN_LINK_FAVICON_CLASS_NAME = "block size-full shrink-0 select-none";
+// Inline-level and selectable: triple-click selection stops at block-level and select-none boxes.
+const MARKDOWN_LINK_FAVICON_CLASS_NAME = "inline-block size-[14px] [vertical-align:-0.125em]";
 
 function sourceControlHostIcon(host: string): ReactNode {
   const definition = sourceControlClients.findByPublicDomain(host);

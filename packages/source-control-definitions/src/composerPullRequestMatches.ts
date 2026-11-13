@@ -1,4 +1,9 @@
-import type { ProjectId, PullRequestRef, ThreadPullRequestLink } from "@t3tools/contracts";
+import type {
+  ProjectId,
+  PullRequestRef,
+  ThreadPullRequestKey,
+  ThreadPullRequestLink,
+} from "@t3tools/contracts";
 import { builtInSourceControlDefinitions } from "./registry.ts";
 
 const parseChangeRequestUrl = (url: string) =>
@@ -6,10 +11,11 @@ const parseChangeRequestUrl = (url: string) =>
 import { normalizeGitRemoteUrl } from "@t3tools/shared/git";
 import { visibleThreadPullRequests } from "@t3tools/shared/threadPullRequests";
 
-export interface ComposerPullRequestMatch {
-  readonly number: number;
+export interface ComposerPullRequestMatch extends Pick<
+  ThreadPullRequestKey,
+  "repository" | "number"
+> {
   readonly projectId: string;
-  readonly repository: string;
   readonly updatedAt: string;
   readonly host?: string;
   readonly url?: string;
@@ -51,6 +57,7 @@ export function filterComposerPullRequestMatches<
   readonly repositories?: ReadonlyArray<Pick<PullRequestRef, "projectId" | "repository" | "host">>;
   readonly query: string;
   readonly limit: number;
+  readonly keyOf?: (entry: NoInfer<Entry | Linked>) => string;
 }): ReadonlyArray<Entry | Linked> {
   const repository = input.repository.trim().toLowerCase();
   const hostOf = (entry: ComposerPullRequestMatch) => {
@@ -58,8 +65,10 @@ export function filterComposerPullRequestMatches<
     const link = parseChangeRequestUrl(entry.url ?? "");
     return link?.authority ?? link?.host;
   };
-  const keyOf = (entry: ComposerPullRequestMatch) =>
-    `${hostOf(entry) ?? ""}:${entry.repository.trim().toLowerCase()}#${entry.number}`;
+  const keyOf =
+    input.keyOf ??
+    ((entry: ComposerPullRequestMatch) =>
+      `${hostOf(entry) ?? ""}:${entry.repository.trim().toLowerCase()}#${entry.number}`);
   const linked = (input.linked ?? []).filter((entry) => String(entry.number).includes(input.query));
   const linkedKeys = new Set(linked.map(keyOf));
   const matchingEntries = input.entries.filter(
@@ -82,14 +91,15 @@ export function filterComposerPullRequestMatches<
     }
   }
   const isExactMatch = (entry: ComposerPullRequestMatch) => String(entry.number) === input.query;
-  const isLinked = (entry: ComposerPullRequestMatch) => linkedKeys.has(keyOf(entry));
+  const isLinked = (entry: Entry | Linked) => linkedKeys.has(keyOf(entry));
+  const updatedAtMs = (entry: ComposerPullRequestMatch) => Date.parse(entry.updatedAt) || 0;
   // Hermes has no ES2023 array methods, so sort a fresh array.
   return [...uniqueEntries.values()]
     .sort(
       (left, right) =>
         Number(isExactMatch(right)) - Number(isExactMatch(left)) ||
         Number(isLinked(right)) - Number(isLinked(left)) ||
-        right.updatedAt.localeCompare(left.updatedAt),
+        updatedAtMs(right) - updatedAtMs(left),
     )
     .slice(0, input.limit);
 }
@@ -143,9 +153,12 @@ export function withLinkedComposerPullRequestsFirst<
   readonly linked: ReadonlyArray<Linked>;
   readonly query: string;
   readonly limit: number;
+  readonly keyOf?: (entry: NoInfer<Entry | Linked>) => string;
 }): ReadonlyArray<Entry | Linked> {
-  const keyOf = (entry: ComposerPullRequestMatch) =>
-    `${entry.host?.toLowerCase() ?? parseChangeRequestUrl(entry.url ?? "")?.authority ?? ""}:${entry.repository.trim().toLowerCase()}#${entry.number}`;
+  const keyOf =
+    input.keyOf ??
+    ((entry: ComposerPullRequestMatch) =>
+      `${entry.host?.toLowerCase() ?? parseChangeRequestUrl(entry.url ?? "")?.authority ?? parseChangeRequestUrl(entry.url ?? "")?.host ?? ""}:${entry.repository.trim().toLowerCase()}#${entry.number}`);
   const matchesByKey = new Map(input.matches.map((entry) => [keyOf(entry), entry]));
   const words = input.query.toLowerCase().split(/\s+/u).filter(Boolean);
   const linked = input.linked.flatMap((entry): Array<Entry | Linked> => {

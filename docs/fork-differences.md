@@ -977,16 +977,13 @@ Web applies these as remark plugins in `ChatMarkdown`; mobile rewrites message m
 [`referenceLinks.ts`](../apps/mobile/src/state/referenceLinks.ts). The orchestration
 instructions also ask agents to link anything T3 Code can preview by its full URL.
 
-## A fork's repository follows gh's default
+## Remote delegation follows gh's default repository
 
-Upstream names a project's repository after its `upstream` remote whenever it has one. The fork
-uses the remote `gh repo set-default` marked instead (`remote.<name>.gh-resolved base`), and
-falls back to upstream's order when nothing is marked
-([`RepositoryIdentityResolver.ts`](../apps/server/src/project/RepositoryIdentityResolver.ts)). After
-`gh repo set-default origin`, the pull request list, the `#` menu, `#123` links, and branch pull
-request discovery all use the fork. Delegating to another machine matches projects by repository
-group, so the same fork matches whichever remote each machine's gh prefers
-([`RemoteDelegation.ts`](../apps/server/src/peer/RemoteDelegation.ts)).
+Upstream and the fork both honor `gh repo set-default` for a project's repository.
+The fork also uses that choice when matching a project on another machine by repository
+group, so the same fork matches whichever remote each machine's gh prefers.
+
+Code: [`RemoteDelegation.ts`](../apps/server/src/peer/RemoteDelegation.ts).
 
 ## Colour codes in chat
 

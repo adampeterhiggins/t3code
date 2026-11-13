@@ -1,5 +1,9 @@
 import { createComposerPullRequestLookupAtomFamily } from "@t3tools/client-runtime/state/pull-requests";
 import {
+  threadPullRequestKeyOf,
+  legacyThreadPullRequestKey,
+} from "@t3tools/client-runtime/thread-pull-requests";
+import {
   composerPullRequestRepositories,
   composerPullRequestsFromLinks,
   filterComposerPullRequestMatches,
@@ -181,9 +185,12 @@ export function useComposerPullRequestSearch(input: {
   const exact = useAtomValue(exactLookup(JSON.stringify(targets)));
   const entries = (() => {
     if (!open) return [];
-    const exactEntries = exact.entries.filter((entry) => entry.number === rawNumber);
+    const exactEntries = exact.entries
+      .filter((entry) => entry.number === rawNumber)
+      .map((entry) => ({ ...entry, host: legacyThreadPullRequestKey(entry).host }));
     if (numeric) {
       return filterComposerPullRequestMatches({
+        keyOf: threadPullRequestKeyOf,
         entries: [...exactEntries, ...(base.data?.entries ?? [])],
         linked: composerPullRequestsFromLinks(
           input.threadPullRequests ?? input.pullRequests ?? [],
@@ -208,9 +215,13 @@ export function useComposerPullRequestSearch(input: {
           `${entry.title} ${entry.headBranch} ${entry.baseBranch}`.toLowerCase().includes(word),
         ),
     );
-    const unique = new Map<number, (typeof found)[number]>();
-    for (const entry of found) if (!unique.has(entry.number)) unique.set(entry.number, entry);
+    const unique = new Map<string, (typeof found)[number]>();
+    for (const entry of found) {
+      const key = threadPullRequestKeyOf(entry);
+      if (!unique.has(key)) unique.set(key, entry);
+    }
     return withLinkedComposerPullRequestsFirst({
+      keyOf: threadPullRequestKeyOf,
       matches: [...unique.values()].sort((left, right) =>
         right.updatedAt.localeCompare(left.updatedAt),
       ),

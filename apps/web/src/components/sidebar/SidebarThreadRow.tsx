@@ -456,7 +456,7 @@ type SidebarThreadRowProps = {
   onStartRename: (threadRef: ScopedThreadRef, title: string) => void;
   onNameTabGroup: ((threadRef: ScopedThreadRef) => void) | undefined;
   onRenameTitleChange: (title: string) => void;
-  onCommitRename: (threadRef: ScopedThreadRef, title: string, originalTitle: string) => void;
+  onCommitRename: (threadRef: ScopedThreadRef, title: string) => void;
   onCancelRename: () => void;
   isRenaming: boolean;
   renamingTitle: string;

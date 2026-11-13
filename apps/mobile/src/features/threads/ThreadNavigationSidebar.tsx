@@ -28,8 +28,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppText as Text } from "../../components/ui/AppText";
 import { Button } from "../../components/ui/Button";
 import { scopedProjectKey, scopedThreadKey } from "../../lib/scopedEntities";
-import { useProjects, useNavigationThreadShells } from "../../state/entities";
+import { useProjects } from "../../state/entities";
 import { useHiddenTabThreads } from "./useHiddenTabThreads";
+import { steadyNavigationThreadShellsAtom } from "../../state/threads";
 import { useThreadSearch } from "../../state/queries";
 import { useThreadListPages } from "./use-thread-list-pages";
 import { scopeProjectRefsByOrganisations } from "../home/thread-list-organisations";
@@ -129,7 +130,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
   const insets = useSafeAreaInsets();
   const { fabClearance, fabSize } = useAndroidControlSizing();
   const projects = useProjects();
-  const allThreads = useNavigationThreadShells();
+  const allThreads = useAtomValue(steadyNavigationThreadShellsAtom);
   const { hiddenTabThreads, groupNames: tabGroupNames } = useHiddenTabThreads(allThreads);
   const threads = (() =>
     allThreads
