@@ -81,6 +81,20 @@ describe("parseComposerObjectLink", () => {
     expect(
       parseComposerObjectLink("https://github.com/acme/api/actions/runs/42188779869/attempts/2"),
     ).toMatchObject({ kind: "github-ref", linkType: "run", ref: "42188779869" });
+    expect(
+      parseComposerObjectLink(
+        "https://github.com/focaldata/cin-iac-application/blob/9f182a902a824d274a07d4f527baf9391ba150c8/workloads/cin-tusd/base/application/kustomization.yaml#L6",
+      ),
+    ).toMatchObject({
+      kind: "github-ref",
+      linkType: "blob",
+      ref: "9f182a902a824d274a07d4f527baf9391ba150c8/workloads/cin-tusd/base/application/kustomization.yaml",
+      lines: { start: 6, end: 6 },
+    });
+    expect(
+      parseComposerObjectLink("https://github.com/acme/api/blob/main/src/a.ts#L9C2-L4C1"),
+    ).toMatchObject({ linkType: "blob", ref: "main/src/a.ts", lines: { start: 4, end: 9 } });
+    expect(parseComposerObjectLink("https://github.com/acme/api/blob/main")).toBeNull();
     // Release lists, commit lists, workflow pages, and enterprise hosts stay links.
     expect(parseComposerObjectLink("https://github.com/acme/api/releases")).toBeNull();
     expect(
@@ -218,7 +232,6 @@ describe("parseComposerObjectLink", () => {
   });
 
   it("leaves ordinary links alone", () => {
-    expect(parseComposerObjectLink("https://github.com/acme/api/blob/main/README.md")).toBeNull();
     expect(parseComposerObjectLink("https://github.com/acme")).toBeNull();
     expect(parseComposerObjectLink("https://sentry.io/organizations/acme/issues/123")).toBeNull();
     expect(parseComposerObjectLink("https://example.com/acme/api")).toBeNull();
@@ -270,8 +283,16 @@ describe("objectLinkLabel", () => {
     expect(objectLinkLabel("https://github.com/acme/api/tree/main/src")).toBeNull();
   });
 
+  it("names a GitHub file link by its file name and linked lines", () => {
+    expect(objectLinkLabel("https://github.com/acme/api/blob/main/docs/README.md")).toBe(
+      "acme/api: README.md",
+    );
+    expect(objectLinkLabel("https://github.com/acme/api/blob/main/src/a.ts#L4-L9")).toBe(
+      "acme/api: a.ts:4-9",
+    );
+  });
+
   it("has no label for ordinary links", () => {
-    expect(objectLinkLabel("https://github.com/acme/api/blob/main/README.md")).toBeNull();
     expect(objectLinkLabel("https://example.com/acme/api")).toBeNull();
   });
 

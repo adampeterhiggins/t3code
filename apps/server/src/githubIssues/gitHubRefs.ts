@@ -1,4 +1,9 @@
-import type { GitHubRefContext, GitHubRefLink, GitHubRefType } from "@t3tools/contracts";
+import {
+  formatGitHubLineRange,
+  type GitHubRefContext,
+  type GitHubRefLink,
+  type GitHubRefType,
+} from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 
 import { truncate } from "../issueMarkdown.ts";
@@ -193,6 +198,135 @@ export function toGitHubRefContext(
       maxChars,
     ),
   };
+}
+
+// A blob link's ref may hold slashes, so a deep path could otherwise ask for dozens of splits.
+const MAX_FILE_REF_SEGMENTS = 8;
+const FULL_COMMIT_SHA = /^[0-9a-f]{40}$/iu;
+
+/** One way to read a blob link's `<ref>/<path>`: a git ref and the file path under it. */
+export interface GitHubFileCandidate {
+  readonly ref: string;
+  readonly path: string;
+}
+
+/** Every split of a blob link into a git ref and a path, the shortest ref first. */
+export function gitHubFileCandidates(link: GitHubRefLink): GitHubFileCandidate[] {
+  const segments = link.ref.split("/");
+  const count = Math.min(segments.length - 1, MAX_FILE_REF_SEGMENTS);
+  return Array.from({ length: count }, (_, index) => ({
+    ref: segments.slice(0, index + 1).join("/"),
+    path: segments.slice(index + 1).join("/"),
+  }));
+}
+
+/**
+ * Asks for each candidate as `object(expression: "<ref>:<path>")` under aliases `f0`, `f1`, …:
+ * a missing file or a folder answers null or no blob fields, never a 404.
+ */
+export function gitHubFileQuery(candidateCount: number): string {
+  const indexes = Array.from({ length: candidateCount }, (_, index) => index);
+  return `
+fragment FileBlob on Blob { byteSize isBinary isTruncated text }
+query($owner: String!, $name: String!${indexes.map((index) => `, $f${index}: String!`).join("")}) {
+  repository(owner: $owner, name: $name) {
+${indexes.map((index) => `    f${index}: object(expression: $f${index}) { ...FileBlob }`).join("\n")}
+  }
+}`;
+}
+
+const BlobJson = Schema.Struct({
+  byteSize: Schema.Int,
+  isBinary: Schema.NullishOr(Schema.Boolean),
+  isTruncated: Schema.Boolean,
+  text: Schema.NullishOr(Schema.String),
+});
+type BlobJson = typeof BlobJson.Type;
+const decodeBlob = Schema.decodeUnknownOption(BlobJson);
+
+export const GitHubFileResponse = Schema.Struct({
+  data: Schema.Struct({
+    repository: Schema.NullishOr(Schema.Record(Schema.String, Schema.Unknown)),
+  }),
+});
+
+/** A fence longer than any backtick run in the text, so the file cannot close it early. */
+function fenced(text: string, language: string): string {
+  const longestRun = Math.max(0, ...(text.match(/`+/gu) ?? []).map((run) => run.length));
+  const fence = "`".repeat(Math.max(3, longestRun + 1));
+  return `${fence}${language}\n${text}\n${fence}`;
+}
+
+function fileLanguage(path: string): string {
+  const name = path.split("/").at(-1) ?? "";
+  const extension = name.includes(".") ? (name.split(".").at(-1)?.toLowerCase() ?? "") : "";
+  return /^[a-z0-9+-]{1,16}$/u.test(extension) ? extension : "";
+}
+
+function fileContext(
+  link: GitHubRefLink,
+  url: string,
+  candidate: GitHubFileCandidate,
+  blob: BlobJson,
+  maxChars: number,
+): GitHubRefContext {
+  const { lines } = link;
+  const range = lines === undefined ? "" : formatGitHubLineRange(lines);
+  const title = range === "" ? candidate.path : `${candidate.path}:${range}`;
+  const text = blob.isBinary || blob.text == null ? null : blob.text;
+  const fileLines = text?.replace(/\n$/u, "").split("\n") ?? [];
+  const language = fileLanguage(candidate.path);
+  const facts = [
+    `Ref: ${candidate.ref}`,
+    `Path: ${candidate.path}`,
+    ...(lines === undefined || text === null
+      ? []
+      : [`Lines: ${lines.start}–${lines.end} of ${fileLines.length}`]),
+    `Size: ${blob.byteSize} bytes`,
+  ];
+  const selected =
+    lines === undefined || text === null ? [] : fileLines.slice(lines.start - 1, lines.end);
+  const body =
+    text === null
+      ? "Binary file; its contents are not included."
+      : [
+          ...(selected.length === 0
+            ? []
+            : [
+                `## ${selected.length === 1 ? "Line" : "Lines"} ${range}`,
+                fenced(selected.join("\n"), language),
+                "## File",
+              ]),
+          fenced(text.replace(/\n$/u, ""), language),
+          ...(blob.isTruncated ? ["GitHub returned only the start of this file."] : []),
+        ].join("\n\n");
+  return {
+    repository: link.repository,
+    refType: "file",
+    ref: candidate.ref,
+    title,
+    url,
+    sha: FULL_COMMIT_SHA.test(candidate.ref) ? candidate.ref.toLowerCase() : null,
+    authorLogin: null,
+    date: null,
+    isPrerelease: false,
+    markdown: render(`# ${link.repository} file ${title}`, url, facts, body, maxChars),
+  };
+}
+
+/** The first candidate the repository holds a file at, or null when none is a file. */
+export function toGitHubFileContext(
+  link: GitHubRefLink,
+  url: string,
+  candidates: ReadonlyArray<GitHubFileCandidate>,
+  repository: Readonly<Record<string, unknown>>,
+  maxChars: number,
+): GitHubRefContext | null {
+  for (const [index, candidate] of candidates.entries()) {
+    const blob = decodeBlob(repository[`f${index}`]);
+    if (blob._tag === "Some") return fileContext(link, url, candidate, blob.value, maxChars);
+  }
+  return null;
 }
 
 const StepJson = Schema.Struct({

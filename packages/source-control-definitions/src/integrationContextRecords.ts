@@ -95,18 +95,22 @@ export function gitHubIssueContextRecord(issue: GitHubIssueContext): GitHubIssue
 
 /**
  * `repo@v1.2.0`, `repo@main`, or `repo@abc1234`: the label a ref's chip shows. An Actions run or
- * job has no ref name worth reading, so it shows its workflow: `repo: ci / test`.
+ * job has no ref name worth reading, so it shows its workflow: `repo: ci / test`. A file shows its
+ * name and linked lines: `repo: retry.ts:6-9`.
  */
 function gitHubRefLabel(ref: GitHubRefContext): string {
   const name = ref.repository.split("/").at(-1) ?? ref.repository;
   if (ref.refType === "workflow-run" || ref.refType === "workflow-job") {
     return `${name}: ${ref.title}`;
   }
+  if (ref.refType === "file") return `${name}: ${ref.title.split("/").at(-1) ?? ref.title}`;
   return `${name}@${ref.refType === "commit" ? ref.ref.slice(0, 7) : ref.ref}`;
 }
 
 export function gitHubRefContextRecord(ref: GitHubRefContext): GitHubRefContextRecord {
-  const id = `${ref.repository}_${ref.refType}_${ref.ref}`.toLowerCase();
+  // A file's ref is the commit or branch it was read at; its title tells the files apart.
+  const name = ref.refType === "file" ? `${ref.ref}_${ref.title}` : ref.ref;
+  const id = `${ref.repository}_${ref.refType}_${name}`.toLowerCase();
   return {
     version: 1,
     kind: "github-ref",
