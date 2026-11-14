@@ -357,13 +357,16 @@ describe("pull request detail decoding", () => {
           startedAt: null,
           completedAt: null,
           detailsUrl: null,
-          checkSuite: { workflowRun: null },
+          title: null,
+          summary: null,
+          annotations: null,
+          checkSuite: { app: null, workflowRun: null },
           ...fields,
         };
   const inWorkflow = ({ workflowName, ...fields }: Record<string, unknown>) =>
     check({
       ...fields,
-      checkSuite: { workflowRun: { workflow: { name: workflowName } } },
+      checkSuite: { app: null, workflowRun: { workflow: { name: workflowName } } },
     });
 
   const coreJson = (
@@ -574,6 +577,51 @@ describe("pull request detail decoding", () => {
     });
     expect(detailOf([], { mergeQueueRemovals: { nodes: [] } }).mergeQueueRemoval).toBeUndefined();
     expect(detailOf([]).mergeQueueRemoval).toBeUndefined();
+  });
+
+  it("carries a check run's app, timing, output and annotations for its preview", () => {
+    const [run, status] = detailOf([
+      check({
+        name: "codecov/patch",
+        status: "COMPLETED",
+        conclusion: "FAILURE",
+        startedAt: "2026-08-11T16:06:20Z",
+        completedAt: "2026-08-11T16:08:25Z",
+        title: "62% of diff hit",
+        summary: `${"word ".repeat(200)}tail`,
+        annotations: {
+          nodes: [
+            {
+              annotationLevel: "WARNING",
+              message: "Added line not covered",
+              path: "src/app.ts",
+              location: { start: { line: 12 } },
+            },
+          ],
+        },
+        checkSuite: { app: { name: "Codecov" }, workflowRun: null },
+      }),
+      check({ __typename: "StatusContext", context: "ci/legacy", description: "Waiting" }),
+    ]).checks;
+
+    expect(run).toMatchObject({
+      name: "codecov/patch",
+      description: "62% of diff hit",
+      app: "Codecov",
+      startedAt: "2026-08-11T16:06:20Z",
+      completedAt: "2026-08-11T16:08:25Z",
+      annotations: [
+        { level: "warning", message: "Added line not covered", path: "src/app.ts", line: 12 },
+      ],
+    });
+    expect(run?.summary?.length).toBeLessThanOrEqual(601);
+    expect(run?.summary?.endsWith("word…")).toBe(true);
+    expect(status).toEqual({
+      name: "ci/legacy",
+      status: "pending",
+      description: "Waiting",
+      url: null,
+    });
   });
 
   it("shows a re-running check once, as the run that is happening now", () => {

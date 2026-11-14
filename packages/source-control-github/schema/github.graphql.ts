@@ -18,6 +18,16 @@ export const GitObjectID = Schema.String
 export const GitRefname = Schema.String
 
 /**
+ * Represents an annotation's information level.
+ *
+ * - `FAILURE`: An annotation indicating an inescapable error.
+ * - `NOTICE`: An annotation indicating some information.
+ * - `WARNING`: An annotation indicating an ignorable error.
+ */
+export const CheckAnnotationLevel = Schema.Literals(["FAILURE", "NOTICE", "WARNING"])
+export type CheckAnnotationLevel = typeof CheckAnnotationLevel.Type
+
+/**
  * The possible states for a check suite or run conclusion.
  *
  * - `ACTION_REQUIRED`: The check suite or run requires action.
