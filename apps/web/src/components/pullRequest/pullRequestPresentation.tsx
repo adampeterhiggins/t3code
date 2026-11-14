@@ -2,6 +2,7 @@ import { Spinner } from "~/components/ui/spinner";
 import type {
   PullRequestActor,
   PullRequestCheck,
+  PullRequestCheckAnnotation,
   PullRequestCheckStatus,
   PullRequestChecksState,
   PullRequestLabel,
@@ -17,7 +18,9 @@ import {
   CircleDotIcon,
   CircleSlashIcon,
   CircleXIcon,
+  InfoIcon,
   OctagonXIcon,
+  TriangleAlertIcon,
   UserCheckIcon,
   UserRoundIcon,
   UserRoundXIcon,
@@ -35,8 +38,14 @@ import { cn } from "~/lib/utils";
 
 import { Badge } from "../ui/badge";
 import { InlineButton } from "../ui/button";
+import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { pullRequestCheckHoverDetail } from "./pullRequestCheckHover.logic";
+import {
+  plainCheckSummary,
+  pullRequestCheckHoverDetail,
+  pullRequestCheckSource,
+  pullRequestCheckTiming,
+} from "./pullRequestCheckHover.logic";
 import type { PullRequestReviewOutcome } from "./pullRequestDetail.logic";
 import { pullRequestLabelColor } from "./pullRequestList.logic";
 import { usePullRequestLinkClick } from "./PullRequestMarkdownContext";
@@ -262,30 +271,101 @@ export function PullRequestCheckStatusIcon({ status }: { status: PullRequestChec
   );
 }
 
+const ANNOTATION_PRESENTATION = {
+  failure: { Icon: CircleXIcon, toneClassName: "text-destructive" },
+  warning: { Icon: TriangleAlertIcon, toneClassName: "text-amber-600 dark:text-amber-400/90" },
+  notice: { Icon: InfoIcon, toneClassName: "text-muted-foreground" },
+} as const satisfies Record<PullRequestCheckAnnotation["level"], unknown>;
+
 export function PullRequestCheckHover({
   check,
   trigger,
   children,
 }: {
-  check: Pick<PullRequestCheck, "name" | "description">;
+  check: PullRequestCheck;
   trigger: ReactElement;
   children: ReactNode;
 }) {
-  const detail = pullRequestCheckHoverDetail(check);
   return (
-    <Tooltip>
-      <TooltipTrigger render={trigger}>{children}</TooltipTrigger>
-      <TooltipPopup side="top" align="start" className="text-left">
-        {detail === null ? (
-          check.name
-        ) : (
-          <span className="flex min-w-0 flex-col gap-0.5">
-            <span>{check.name}</span>
-            <span className="text-muted-foreground">{detail}</span>
-          </span>
-        )}
-      </TooltipPopup>
-    </Tooltip>
+    <PreviewCard>
+      <PreviewCardTrigger render={trigger} delay={300} closeDelay={120}>
+        {children}
+      </PreviewCardTrigger>
+      <PreviewCardPopup className="w-88 max-w-[calc(100vw-2rem)]">
+        <PullRequestCheckPreview check={check} />
+      </PreviewCardPopup>
+    </PreviewCard>
+  );
+}
+
+function PullRequestCheckPreview({ check }: { check: PullRequestCheck }) {
+  const detail = pullRequestCheckHoverDetail(check);
+  const source = pullRequestCheckSource(check);
+  // The card mounts on open, so its timing reads the clock once rather than ticking.
+  const [openedAt] = useState(() => Date.now());
+  const timing = pullRequestCheckTiming(check, openedAt);
+  const summary = check.summary ? plainCheckSummary(check.summary) : "";
+  const annotations = check.annotations ?? [];
+  return (
+    <div className="flex min-w-0 flex-col gap-2 p-3 text-xs">
+      <div className="flex min-w-0 items-start gap-2">
+        <span className="mt-0.5 flex">
+          <PullRequestCheckStatusIcon status={check.status} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="font-medium leading-5 wrap-anywhere">{check.name}</div>
+          <div className="text-muted-foreground">
+            {[pullRequestCheckStatusLabel(check), timing].filter(Boolean).join(" · ")}
+          </div>
+        </div>
+        {check.required ? (
+          <Badge size="sm" variant="outline">
+            Required
+          </Badge>
+        ) : null}
+      </div>
+      {source ? <div className="truncate text-muted-foreground">{source}</div> : null}
+      {detail || summary ? (
+        <div className="flex min-w-0 flex-col gap-1 border-t pt-2">
+          {detail ? <div className="leading-snug wrap-anywhere">{detail}</div> : null}
+          {summary ? (
+            <p className="line-clamp-8 whitespace-pre-line leading-snug text-muted-foreground wrap-anywhere">
+              {summary}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      {annotations.length > 0 ? (
+        <ul className="flex min-w-0 flex-col gap-1.5 border-t pt-2">
+          {annotations.map((annotation) => {
+            const presentation = ANNOTATION_PRESENTATION[annotation.level];
+            return (
+              <li
+                key={`${annotation.path}:${annotation.line}:${annotation.message}`}
+                className="flex min-w-0 items-start gap-1.5"
+              >
+                <presentation.Icon
+                  aria-hidden
+                  className={cn("mt-0.5 size-3 shrink-0", presentation.toneClassName)}
+                />
+                <div className="min-w-0 flex-1">
+                  {annotation.path ? (
+                    <div className="truncate font-mono text-2xs text-muted-foreground">
+                      {annotation.line === null
+                        ? annotation.path
+                        : `${annotation.path}:${annotation.line}`}
+                    </div>
+                  ) : null}
+                  <div className="line-clamp-3 leading-snug wrap-anywhere">
+                    {annotation.message}
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </div>
   );
 }
 
