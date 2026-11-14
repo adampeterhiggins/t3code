@@ -49,9 +49,6 @@ function projectFailure(error: Project.ProjectServiceError) {
   return new OrchestratorMcpFailure({ code: "invalid_request", message });
 }
 
-/**
- * Without this check a launch could point an agent at any directory on the machine.
- */
 export const assertProjectWorktree = Effect.fn("mcp.assertProjectWorktree")(function* (
   workspaceRoot: string,
   worktreePath: string,
@@ -92,8 +89,8 @@ function newWorktreeRemedy(
       : `To run there, use {type:"existing_worktree",worktreePath:"${error.worktreePath}"}; to start from a pull request, use {type:"pull_request",reference:"<PR URL or number>"}.`;
   return `Pass a branch, tag, or commit that exists there${
     strategy.startFromOrigin === true
-      ? "; the project has no origin remote to fetch it from."
-      : ", or set startFromOrigin:true if it exists only on origin."
+      ? "; no remote of the project has it either."
+      : ", or set startFromOrigin:true if it exists only on a remote."
   }`;
 }
 /** A fixed-length id, so a long key fits in the scratch folder name derived from it. */

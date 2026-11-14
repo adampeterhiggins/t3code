@@ -138,6 +138,22 @@ describe("deriveAgentTranscriptRows", () => {
       childThreadId: ThreadId.make("helper-thread"),
     });
     expect(rows[4]).toMatchObject({ role: "assistant", text: "Sessions expire in session.ts." });
+    expect(
+      deriveAgentTranscriptRows(
+        [
+          {
+            kind: "sent-message",
+            id: "sent",
+            createdAt: DateTime.formatIso(timestamp),
+            runId: null,
+            text: "Sent from the child",
+          },
+        ],
+        { prompt, workspaceRoot: root },
+      ),
+    ).toMatchObject([
+      { kind: "message", role: "assistant", text: "Sent from the child", streaming: false },
+    ]);
   });
 
   it("keeps unchanged rows while an answer streams", () => {

@@ -69,7 +69,6 @@ import {
 } from "@t3tools/client-runtime/environment";
 import { createModelSelection } from "@t3tools/shared/model";
 import { type SetStateAction, useLayoutEffect, useRef, type Dispatch } from "react";
-import { flushSync } from "react-dom";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import {
   applyDetachedSendMilestone,
@@ -462,25 +461,17 @@ export function useComposerSend(input: ComposerSendInput) {
     ) {
       return;
     }
-    let resolveDockStarted: (() => void) | undefined;
-    const dockStarted = new Promise<void>((resolve) => {
-      resolveDockStarted = resolve;
-    });
-    const dockTransition = runMobileComposerTransition(
+    const docking = runMobileComposerTransition(
       () => {
-        flushSync(() => {
-          captureDraftHeroComposerRect();
-          setDockedDraftHeroThreadKey(activeThreadKey);
-        });
-        resolveDockStarted?.();
+        captureDraftHeroComposerRect();
+        setDockedDraftHeroThreadKey(activeThreadKey);
       },
       {
         active: panelAnimationsActive,
         durationMs: panelAnimationDurationMs,
       },
     );
-    void dockTransition.catch(() => resolveDockStarted?.());
-    await dockStarted;
+    if (docking) await docking;
   };
   // An empty send from a new thread's draft: creates the thread and schedules its worktree
   // checkout and setup script, then opens the thread with an empty composer. The setup card

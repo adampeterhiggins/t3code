@@ -602,7 +602,7 @@ export function ThemeLibrary({
   const openThemeEditor = useThemeEditorStore((store) => store.openThemeEditor);
   const environmentThemes = useEnvironmentThemeDefinitions();
   const primaryEnvironmentId = useAtomValue(primaryEnvironmentIdAtom);
-  const publishedThemes = useAtomValue(themeServerEnvironmentThemesAtom);
+  const publishedThemes = useAtomValue(themeServerEnvironmentThemesAtom) ?? [];
   const canShareThemes = useAtomValue(
     serverEnvironment.publishEnvironmentTheme.permissionAtom(primaryEnvironmentId),
   );

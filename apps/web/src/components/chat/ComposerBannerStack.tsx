@@ -210,9 +210,16 @@ function NoticeCard({
           className={descriptionBelow ? "flex-col items-stretch gap-0" : "whitespace-nowrap"}
         >
           {descriptionDetails && item.description ? (
-            <span className="min-w-0 truncate font-medium leading-7 sm:leading-6">
+            <NoticeText
+              detailsLabel={
+                typeof item.title === "string"
+                  ? `Show full title: ${item.title}`
+                  : "Show title details"
+              }
+              className="min-w-0 truncate font-medium leading-7 sm:leading-6"
+            >
               {item.title}
-            </span>
+            </NoticeText>
           ) : (
             <NoticeText
               detailsLabel="Show title details"

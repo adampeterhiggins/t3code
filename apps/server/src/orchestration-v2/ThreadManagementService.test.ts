@@ -278,6 +278,10 @@ it("derives thread management messages from structural error attributes", () => 
     `Message ${messageId} was accepted on thread ${threadId} without a durable run projection.`,
   );
 });
+import {
+  ThreadWorktreeRestore,
+  WorktreeRecreateError,
+} from "../workspace/restoreMissingWorktree.ts";
 
 it("stamps authoritative provenance on commands that create threads or messages", () => {
   const command: OrchestrationV2Command = {
@@ -640,6 +644,7 @@ it.effect("preserves failed legacy materialization when reading checkpoint conte
     cause: new Error("checkpoint import failed"),
   });
   const layerTest = ThreadManagementService.layerWithLegacyImporter.pipe(
+    Layer.provide(Layer.mock(ThreadWorktreeRestore)({})),
     Layer.provide(Layer.mock(ProviderSessionManager.ProviderSessionManagerV2)({})),
     Layer.provide(
       Layer.mergeAll(
@@ -793,6 +798,100 @@ it.effect("waitForThread reads the run again only when the run updates", () =>
     expect(reads).toBe(2);
   }),
 );
+it.effect.each([
+  { label: "fails a send that starts a turn", running: false },
+  { label: "still steers a running turn", running: true },
+])("sendToThread with a missing worktree that cannot be recreated $label", ({ running }) => {
+  const projectId = ProjectId.make("project:thread-management:worktree-gone");
+  const threadId = ThreadId.make("thread:thread-management:worktree-gone");
+  const dispatched: Array<string> = [];
+  const layerTest = ThreadManagementService.layerWithLegacyImporter.pipe(
+    Layer.provide(
+      Layer.succeed(ThreadWorktreeRestore, {
+        restore: () =>
+          Effect.fail(
+            new WorktreeRecreateError({
+              worktreePath: "/worktrees/gone",
+              branch: "t3/gone",
+              cause: new Error("branch_checked_out_in_worktree"),
+            }),
+          ),
+      }),
+    ),
+    Layer.provide(
+      Layer.mock(LegacyV1ThreadImporter.LegacyV1ThreadImporter)({
+        ensureTranscript: () => Effect.succeed({ importedThreadCount: 0, importedMessageCount: 0 }),
+      }),
+    ),
+    Layer.provide(Layer.mock(ProviderSessionManager.ProviderSessionManagerV2)({})),
+    Layer.provide(
+      Layer.mock(Orchestrator.OrchestratorV2)({
+        getThreadRecords: () =>
+          Effect.succeed({
+            thread: {
+              id: threadId,
+              projectId,
+              deletedAt: null,
+              archivedAt: null,
+              worktreePath: "/worktrees/gone",
+              branch: "t3/gone",
+              modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "test" },
+            },
+            runs: running
+              ? [
+                  {
+                    id: RunId.make("run:thread-management:worktree-gone"),
+                    status: "running",
+                    activeAttemptId: "attempt:thread-management:worktree-gone",
+                  },
+                ]
+              : [],
+            providerTurns: running
+              ? [
+                  {
+                    runAttemptId: "attempt:thread-management:worktree-gone",
+                    status: "running",
+                  },
+                ]
+              : [],
+            messages: [],
+            turnItems: [],
+          } as unknown as OrchestrationV2ThreadProjection),
+        dispatch: (command) =>
+          Effect.sync(() => {
+            dispatched.push(command.type);
+            return { sequence: 1, storedEvents: [] } as never;
+          }),
+      }),
+    ),
+    Layer.provide(ServerSettings.layerTest()),
+    Layer.provideMerge(layerReceiptsTest),
+  );
+
+  return Effect.gen(function* () {
+    const threads = yield* ThreadManagementService.ThreadManagementService;
+    const error = yield* Effect.flip(
+      threads.sendToThread({
+        projectId,
+        threadId,
+        commandId: CommandId.make("command:thread-management:worktree-gone"),
+        messageId: MessageId.make("message:thread-management:worktree-gone"),
+        text: "Reply with ok.",
+        attachments: [],
+        mode: "auto",
+        createdBy: "agent",
+        creationSource: "mcp",
+      }),
+    );
+    // The mock records no message, so a dispatched send ends in the projection read.
+    expect(error._tag).toBe(
+      running
+        ? "ThreadManagementDurableRunProjectionError"
+        : "ThreadManagementWorktreeRestoreError",
+    );
+    expect(dispatched).toEqual(running ? ["message.dispatch"] : []);
+  }).pipe(Effect.provide(layerTest));
+});
 
 it.effect("waitForThread follows a restart continuation instead of the cut run", () =>
   Effect.gen(function* () {

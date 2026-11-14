@@ -32,6 +32,8 @@ import {
 } from "../../session-logic";
 import ChatMarkdown from "../ChatMarkdown";
 import { ChatMarkdownAssetImage } from "./ChatMarkdownMedia";
+import type { ExpandedImagePreview } from "./ExpandedImagePreview";
+import { workGroupImageGallery } from "./markdownImageGallery";
 import { ChevronRightIcon, CircleAlertIcon, CornerDownRightIcon } from "lucide-react";
 import { InlineButton } from "../ui/button";
 import { useAssetUrls } from "../../assets/assetUrls";
@@ -490,6 +492,13 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
           workspaceRoot,
         })
       : null;
+  const groupViewedImages = groupView?.viewedImages;
+  // Images in this entry's expanded body page through the group's viewed images, like its strip.
+  const expandImage =
+    viewedImage && groupViewedImages
+      ? (preview: ExpandedImagePreview) =>
+          onImageExpand(workGroupImageGallery(groupViewedImages, viewedImagePath, preview))
+      : onImageExpand;
   const canExpand =
     previewText.trim().length > 0 ||
     (workEntry.itemType === "dynamic_tool" && workEntry.toolData !== undefined) ||
@@ -725,7 +734,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
             srcFragment={viewedImage.srcFragment}
             workspaceRoot={workspaceRoot}
             maxHeightRem={16}
-            onImageExpand={onImageExpand}
+            onImageExpand={expandImage}
           />
         </WorkLogDetails>
       ) : null}
@@ -749,6 +758,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
             textBody={expandedBody}
             previewText={previewText}
             icon={null}
+            onImageExpand={expandImage}
           />
         </WorkLogDetails>
       ) : null}

@@ -142,6 +142,7 @@ describe("theme files", () => {
       appearance: "dark",
       colors: { canvas: "#1a1b26", accent: "#7aa2f7" },
       variants: { light: { canvas: "#eff1f5" } },
+      css: ".theme-detail { color: red; }",
     });
     // The server stores the file as JSON and decodes it again before streaming it out.
     const codec = Schema.fromJsonString(EnvironmentThemeFile);
@@ -160,6 +161,7 @@ describe("theme files", () => {
     ).toBe("outdated");
 
     const [received] = publishedThemeDefinitions(published);
+    expect(received?.css).toBe(theme.css);
     expect(received?.colors).toEqual(theme.colors);
     expect(received?.variants).toEqual(theme.variants);
 
@@ -323,8 +325,10 @@ describe("theme files", () => {
       variants: {
         dark: { canvas: "#101827", text: "#eef5ff" },
       },
+      css: "[data-chat-header] { border-bottom: 1px solid red; }",
     });
 
+    expect(JSON.parse(serializeThemeFile(theme)).css).toBe(theme.css);
     expect(getThemeModes(theme)).toEqual(["light", "dark"]);
     expect(getThemeColorsForMode(theme, "dark")).toMatchObject({
       canvas: canonical("#101827"),
