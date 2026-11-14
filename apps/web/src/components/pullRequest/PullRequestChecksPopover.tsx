@@ -16,10 +16,10 @@ import { useEnvironmentQuery } from "~/state/query";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Button } from "../ui/button";
 import { ScrollArea } from "../ui/scroll-area";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
 import { groupPullRequestChecks } from "./pullRequestDetail.logic";
 import {
+  PullRequestCheckHover,
   PullRequestCheckStatusIcon,
   pullRequestCheckStatusLabel,
   pullRequestChecksStatePresentation,
@@ -86,10 +86,12 @@ function ChecksBody({
                 className="col-span-full grid grid-cols-subgrid items-center text-xs"
               >
                 <PullRequestCheckStatusIcon status={check.status} />
-                <Tooltip>
-                  <TooltipTrigger render={<span className="min-w-0 truncate">{check.name}</span>} />
-                  <TooltipPopup side="top">{check.description ?? check.name}</TooltipPopup>
-                </Tooltip>
+                <PullRequestCheckHover
+                  check={check}
+                  trigger={<span className="min-w-0 max-w-full justify-self-start truncate" />}
+                >
+                  {check.name}
+                </PullRequestCheckHover>
                 <span className="justify-self-end whitespace-nowrap text-muted-foreground">
                   {pullRequestCheckStatusLabel(check)}
                 </span>

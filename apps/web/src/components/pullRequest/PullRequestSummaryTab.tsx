@@ -62,6 +62,7 @@ import { toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   PullRequestActorLabel,
+  PullRequestCheckHover,
   PullRequestCheckStatusIcon,
   pullRequestCheckStatusLabel,
   PullRequestLabelChip,
@@ -1323,21 +1324,27 @@ export function PullRequestSummaryTab({
                 key={`${index}:${check.name}:${check.url ?? ""}`}
                 className="group flex items-center gap-2 rounded-md pr-1 hover:bg-accent/60"
               >
-                <button
-                  type="button"
-                  disabled={!check.url}
-                  onClick={() => check.url && openCheck(check.url)}
-                  className={cn(
-                    "flex min-w-0 flex-1 items-start gap-2 rounded-md px-2 py-2 text-left text-xs leading-5 [&>svg]:mt-0.5",
-                    check.url ? "cursor-pointer" : "cursor-default",
-                  )}
+                <PullRequestCheckHover
+                  check={check}
+                  trigger={<span className="flex min-w-0 flex-1" />}
                 >
-                  <PullRequestCheckStatusIcon status={check.status} />
-                  <span className="min-w-0 flex-1 wrap-anywhere">{check.name}</span>
-                  <span className="shrink-0 text-muted-foreground">
-                    {pullRequestCheckStatusLabel(check)}
-                  </span>
-                </button>
+                  <button
+                    type="button"
+                    disabled={!check.url}
+                    onClick={() => check.url && openCheck(check.url)}
+                    className={cn(
+                      // A disabled button does not emit hover, so the wrapper receives it.
+                      "flex min-w-0 flex-1 items-start gap-2 rounded-md px-2 py-2 text-left text-xs leading-5 [&>svg]:mt-0.5 disabled:pointer-events-none",
+                      check.url ? "cursor-pointer" : "cursor-default",
+                    )}
+                  >
+                    <PullRequestCheckStatusIcon status={check.status} />
+                    <span className="min-w-0 flex-1 wrap-anywhere">{check.name}</span>
+                    <span className="shrink-0 text-muted-foreground">
+                      {pullRequestCheckStatusLabel(check)}
+                    </span>
+                  </button>
+                </PullRequestCheckHover>
                 {onFixFinding && failing ? (
                   <Button
                     size="xs"

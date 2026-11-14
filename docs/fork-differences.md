@@ -737,6 +737,20 @@ Code: `AgentActionButton` in
 [`pullRequestDetail.logic.ts`](../apps/web/src/components/pullRequest/pullRequestDetail.logic.ts),
 and [`composerSubmitRequestStore.ts`](../apps/web/src/composerSubmitRequestStore.ts).
 
+## Pull request check hover previews
+
+Hovering a check in the pull request checks popover, or a check row on the Summary tab, opens a
+preview of that check: its full name, status, whether it is required, how long it took or has been
+running, the app and workflow that ran it, its output title and summary, and its first few
+annotations with their file and line. In the popover the preview is anchored to the name, which
+truncates to the column. Only GitHub reports the timing, output and annotations; other hosts show
+the name, status and description.
+
+Code: [`PullRequestCheckHover`](../apps/web/src/components/pullRequest/pullRequestPresentation.tsx),
+[`pullRequestCheckHover.logic.ts`](../apps/web/src/components/pullRequest/pullRequestCheckHover.logic.ts),
+and the check run read in
+[`pullRequestReads.graphql`](../packages/source-control-github/src/server/pullRequestReads.graphql).
+
 ## Cite pull request descriptions and comments
 
 Selecting text in a pull request's description or comments, on the Summary or Timeline tab, shows

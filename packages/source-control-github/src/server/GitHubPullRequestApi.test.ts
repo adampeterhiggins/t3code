@@ -553,7 +553,10 @@ const checkRun = (fields: Record<string, unknown>) => ({
   startedAt: null,
   completedAt: null,
   detailsUrl: null,
-  checkSuite: { workflowRun: null },
+  title: null,
+  summary: null,
+  annotations: null,
+  checkSuite: { app: null, workflowRun: null },
   ...fields,
 });
 
@@ -3591,13 +3594,19 @@ layer("GitHubPullRequestApi.layer", (it) => {
                                 name: "build",
                                 status: "COMPLETED",
                                 conclusion: "SUCCESS",
-                                checkSuite: { workflowRun: { workflow: { name: "linux" } } },
+                                checkSuite: {
+                                  app: null,
+                                  workflowRun: { workflow: { name: "linux" } },
+                                },
                               }),
                               checkRun({
                                 name: "build",
                                 status: "COMPLETED",
                                 conclusion: "FAILURE",
-                                checkSuite: { workflowRun: { workflow: { name: "windows" } } },
+                                checkSuite: {
+                                  app: null,
+                                  workflowRun: { workflow: { name: "windows" } },
+                                },
                               }),
                             ],
                             pageInfo: { hasNextPage: false, endCursor: null },

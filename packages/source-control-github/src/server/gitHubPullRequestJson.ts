@@ -10,6 +10,7 @@ import type {
   PullRequestReferenceCandidate,
   PullRequestPreview,
   PullRequestCheck,
+  PullRequestCheckAnnotation,
   PullRequestCheckStatus,
   PullRequestChecksState,
   PullRequestComment,
@@ -144,6 +145,11 @@ interface CheckFields {
   readonly completedAt?: string | null | undefined;
   /** Branch protection requires this check; asked for on github.com only. */
   readonly isRequired?: boolean | null | undefined;
+  /** The run's output title; GitHub's GraphQL read only. */
+  readonly title?: string | null | undefined;
+  readonly summary?: string | null | undefined;
+  readonly appName?: string | null | undefined;
+  readonly annotations?: ReadonlyArray<PullRequestCheckAnnotation> | undefined;
 }
 
 interface PageInfoFields {
@@ -609,6 +615,22 @@ function realTimestamp(value: string | null | undefined): string | null {
   return at === null || at === UNSET_TIMESTAMP ? null : at;
 }
 
+// Reports such as coverage tables run to many kilobytes per check, and every check rides each read.
+const CHECK_SUMMARY_LIMIT = 600;
+
+function truncateCheckSummary(summary: string): string {
+  if (summary.length <= CHECK_SUMMARY_LIMIT) return summary;
+  const cut = summary.slice(0, CHECK_SUMMARY_LIMIT);
+  const lastBreak = Math.max(cut.lastIndexOf("\n"), cut.lastIndexOf(" "));
+  return `${(lastBreak > CHECK_SUMMARY_LIMIT / 2 ? cut.slice(0, lastBreak) : cut).trimEnd()}…`;
+}
+
+const ANNOTATION_LEVEL_BY_GITHUB = {
+  FAILURE: "failure",
+  WARNING: "warning",
+  NOTICE: "notice",
+} as const satisfies Record<string, PullRequestCheckAnnotation["level"]>;
+
 function isNamelessCheck(raw: CheckFields): boolean {
   return trimmed(raw.name) === null && trimmed(raw.context) === null;
 }
@@ -623,14 +645,26 @@ function toCheckEntries(raw: ReadonlyArray<CheckFields> | null | undefined): Rea
     const name = trimmed(check.name) ?? trimmed(check.context);
     if (name === null) return [];
     const status = toCheckStatus(check);
+    const summary = trimmed(check.summary);
+    const details = {
+      app: trimmed(check.appName),
+      workflow: trimmed(check.workflowName),
+      startedAt: realTimestamp(check.startedAt),
+      completedAt: realTimestamp(check.completedAt),
+      summary: summary === null ? null : truncateCheckSummary(summary),
+    };
     return [
       {
         check: {
           name,
           status,
-          description: trimmed(check.description),
+          description: trimmed(check.description) ?? trimmed(check.title),
           url: trimmed(check.detailsUrl) ?? trimmed(check.targetUrl),
           ...(typeof check.isRequired === "boolean" ? { required: check.isRequired } : {}),
+          ...Object.fromEntries(Object.entries(details).filter(([, value]) => value !== null)),
+          ...(check.annotations && check.annotations.length > 0
+            ? { annotations: check.annotations }
+            : {}),
         },
         workflowName: trimmed(check.workflowName),
         at:
@@ -1242,7 +1276,17 @@ export type GitHubCheckContext = CheckFields;
 function toCheckContexts(nodes: ReadonlyArray<CheckContext>): ReadonlyArray<GitHubCheckContext> {
   return nodes.map((check) =>
     check.__typename === "CheckRun"
-      ? { ...check, workflowName: check.checkSuite.workflowRun?.workflow.name ?? null }
+      ? {
+          ...check,
+          workflowName: check.checkSuite.workflowRun?.workflow.name ?? null,
+          appName: check.checkSuite.app?.name ?? null,
+          annotations: nodesOf(check.annotations).map((annotation): PullRequestCheckAnnotation => ({
+            level: ANNOTATION_LEVEL_BY_GITHUB[annotation.annotationLevel ?? "NOTICE"],
+            message: annotation.message,
+            path: trimmed(annotation.path),
+            line: annotation.location.start.line,
+          })),
+        }
       : check,
   );
 }
