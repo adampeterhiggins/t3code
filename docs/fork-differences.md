@@ -737,6 +737,16 @@ Code: `AgentActionButton` in
 [`pullRequestDetail.logic.ts`](../apps/web/src/components/pullRequest/pullRequestDetail.logic.ts),
 and [`composerSubmitRequestStore.ts`](../apps/web/src/composerSubmitRequestStore.ts).
 
+## Pull request check hover previews
+
+Hovering a check in the pull request checks popover, or a check row on the Summary tab, shows
+its full name. A description that says something other than the name is shown under it. In the
+popover the preview is anchored to the name, which truncates to the column, so a long name such
+as `Python Tests / Coverage (base)` can be read without the preview covering a neighbouring check.
+
+Code: [`PullRequestCheckHover`](../apps/web/src/components/pullRequest/pullRequestPresentation.tsx)
+and [`pullRequestCheckHover.logic.ts`](../apps/web/src/components/pullRequest/pullRequestCheckHover.logic.ts).
+
 ## Cite pull request descriptions and comments
 
 Selecting text in a pull request's description or comments, on the Summary or Timeline tab, shows
