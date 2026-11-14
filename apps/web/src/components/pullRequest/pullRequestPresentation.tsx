@@ -22,13 +22,21 @@ import {
   UserRoundIcon,
   UserRoundXIcon,
 } from "lucide-react";
-import { Children, type CSSProperties, isValidElement, type ReactNode, useState } from "react";
+import {
+  Children,
+  type CSSProperties,
+  isValidElement,
+  type ReactElement,
+  type ReactNode,
+  useState,
+} from "react";
 
 import { cn } from "~/lib/utils";
 
 import { Badge } from "../ui/badge";
 import { InlineButton } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { pullRequestCheckHoverDetail } from "./pullRequestCheckHover.logic";
 import type { PullRequestReviewOutcome } from "./pullRequestDetail.logic";
 import { pullRequestLabelColor } from "./pullRequestList.logic";
 import { usePullRequestLinkClick } from "./PullRequestMarkdownContext";
@@ -251,6 +259,33 @@ export function PullRequestCheckStatusIcon({ status }: { status: PullRequestChec
       aria-hidden
       className={cn("size-3.5 shrink-0", presentation.toneClassName)}
     />
+  );
+}
+
+export function PullRequestCheckHover({
+  check,
+  trigger,
+  children,
+}: {
+  check: Pick<PullRequestCheck, "name" | "description">;
+  trigger: ReactElement;
+  children: ReactNode;
+}) {
+  const detail = pullRequestCheckHoverDetail(check);
+  return (
+    <Tooltip>
+      <TooltipTrigger render={trigger}>{children}</TooltipTrigger>
+      <TooltipPopup side="top" align="start" className="text-left">
+        {detail === null ? (
+          check.name
+        ) : (
+          <span className="flex min-w-0 flex-col gap-0.5">
+            <span>{check.name}</span>
+            <span className="text-muted-foreground">{detail}</span>
+          </span>
+        )}
+      </TooltipPopup>
+    </Tooltip>
   );
 }
 
