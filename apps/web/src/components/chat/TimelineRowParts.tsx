@@ -1,4 +1,5 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { TimelineRowCtx } from "./timelineRowContext";
+import { use, useEffect, useRef, type ReactNode } from "react";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
@@ -59,18 +60,20 @@ export function ActivityShimmerOverlay({ children }: { children: ReactNode }) {
 /** Counts up from `since` once a second by writing its own text, so the owner never re-renders. */
 export function ElapsedTimer({ since }: { since: string }) {
   const textRef = useRef<HTMLSpanElement>(null);
-  const initialText = formatWorkingTimerNow(since);
+  const { activeThreadEnvironmentId } = use(TimelineRowCtx);
+  const initialText = formatWorkingTimerNow(since, activeThreadEnvironmentId);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- updates the timer DOM text once a second without rerendering its timeline row
   useEffect(() => {
     const updateText = () => {
       if (textRef.current) {
-        textRef.current.textContent = formatWorkingTimerNow(since);
+        textRef.current.textContent = formatWorkingTimerNow(since, activeThreadEnvironmentId);
       }
     };
     updateText();
     const id = setInterval(updateText, 1000);
     return () => clearInterval(id);
-  }, [since]);
+  }, [since, activeThreadEnvironmentId]);
 
   return (
     <span ref={textRef} className="tabular-nums">

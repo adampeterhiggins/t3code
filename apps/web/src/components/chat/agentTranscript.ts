@@ -163,6 +163,15 @@ function entryRow(
         streaming: message.streaming,
       };
     }
+    case "sent-message":
+      return {
+        kind: "message",
+        id: entry.id,
+        createdAt: entry.createdAt,
+        role: "assistant",
+        text: entry.text,
+        streaming: false,
+      };
     case "proposed-plan":
       return {
         kind: "message",
