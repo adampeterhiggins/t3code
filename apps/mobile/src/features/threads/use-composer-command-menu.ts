@@ -6,6 +6,7 @@ import { useEnvironmentServerConfig } from "../../state/entities";
 import { useDebouncedValue } from "../../state/queries";
 import * as Option from "effect/Option";
 import { useEnvironmentThread } from "../../state/threads";
+import { threadPullRequestKeyOf } from "@t3tools/client-runtime/thread-pull-requests";
 import * as Dialog from "../../components/ui/Dialog";
 import type {
   ComposerContextRecord,
@@ -523,7 +524,7 @@ export function useComposerCommandMenu({
     if (trigger.kind === "pull-request") {
       return [
         ...pullRequestSearch.entries.map((entry): ComposerCommandItem => ({
-          id: `pr:${entry.url}`,
+          id: `pr:${entry.projectId}:${threadPullRequestKeyOf(entry)}`,
           type: "pull-request",
           pullRequest: {
             number: entry.number,

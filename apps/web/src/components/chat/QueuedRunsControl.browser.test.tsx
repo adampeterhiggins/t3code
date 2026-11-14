@@ -1,5 +1,9 @@
 import { EnvironmentId, MessageId, ThreadId } from "@t3tools/contracts";
 import { serializeAssistantCitation } from "@t3tools/shared/assistantCitations";
+import {
+  formatComposerContextReference,
+  toComposerContextId,
+} from "@t3tools/shared/composerContextReferences";
 import * as DateTime from "effect/DateTime";
 import type { ComponentProps } from "react";
 import { expect, it, vi } from "vite-plus/test";
@@ -91,6 +95,11 @@ it("renders queued markdown and quotes like a sent message and preserves the cit
     suffix: "",
   });
   const quoteAndText = `${quote}\n\nWhy **per worktree**?\n\n` + "```\nprod/main.tf\n```\n";
+  const inlineImage = formatComposerContextReference({
+    kind: "image",
+    contextId: toComposerContextId("header"),
+    label: "header.png",
+  });
   state.projection = { projection: { messages: [] } };
   state.workflow = {
     activeRun: { id: "run:active" },
@@ -106,6 +115,11 @@ it("renders queued markdown and quotes like a sent message and preserves the cit
         text: quoteAndText,
         attachments: [],
       },
+      {
+        run: { id: "run:inline-image", userMessageId: "message:inline-image" },
+        text: `Make the header look like ${inlineImage} and keep the logo.`,
+        attachments: [{ type: "image", id: "attachment:header", name: "header.png" }],
+      },
     ],
   };
   const onEditQueuedRun = vi.fn();
@@ -117,6 +131,11 @@ it("renders queued markdown and quotes like a sent message and preserves the cit
     .toHaveProperty("tagName", "STRONG");
   await expect.element(page.getByText("prod/main.tf", { exact: true })).toBeVisible();
   expect(page.getByText("```").elements()).toHaveLength(0);
+  await expect
+    .element(
+      page.getByText("Make the header look like header.png and keep the logo.", { exact: true }),
+    )
+    .toBeVisible();
 
   await page.getByRole("button", { name: "Edit queued message", exact: true }).nth(1).click();
   expect(onEditQueuedRun).toHaveBeenCalledExactlyOnceWith(

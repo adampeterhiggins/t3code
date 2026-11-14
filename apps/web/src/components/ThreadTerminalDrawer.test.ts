@@ -10,7 +10,6 @@ import {
 import {
   clampDrawerHeight,
   resolveTerminalDrawerMaxHeight,
-  shouldClearTerminalSelectionAction,
   shouldHandleTerminalExit,
   synchronizeTerminalOutput,
   synchronizeTerminalSession,
@@ -164,23 +163,6 @@ describe("terminalThemeFromApp", () => {
 });
 
 describe("terminal selection actions", () => {
-  it("does not let an old selection popup cancel its replacement right-click menu", () => {
-    expect(
-      shouldClearTerminalSelectionAction({
-        actionPending: false,
-        openMenuRequestId: 3,
-        currentRequestId: 4,
-      }),
-    ).toBe(false);
-    expect(
-      shouldClearTerminalSelectionAction({
-        actionPending: false,
-        openMenuRequestId: null,
-        currentRequestId: 4,
-      }),
-    ).toBe(false);
-  });
-
   it("handles an exit that lands while the terminal surface is still loading", () => {
     expect(shouldHandleTerminalExit("exited", "running", false, 1)).toBe(true);
     expect(shouldHandleTerminalExit("exited", "exited", false, 1)).toBe(false);

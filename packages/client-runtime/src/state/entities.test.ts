@@ -118,6 +118,7 @@ describe("V2 client presentation", () => {
         runs: [],
       }),
     ).toBeNull();
+    expect(isThreadWorking(shell)).toBe(false);
   });
 
   it.each([

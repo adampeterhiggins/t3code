@@ -199,7 +199,6 @@ export function AssistantCitationCommentEditor({
       citation.start,
       citation.end,
     ]),
-    draftText: comment,
     readDraft: () => ({
       text: comment,
       selection: inputRef.current?.readSelection?.() ?? {

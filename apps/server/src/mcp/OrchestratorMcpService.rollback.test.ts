@@ -114,7 +114,8 @@ const harness = (input: {
         Layer.mergeAll(
           Layer.mergeAll(NodeServices.layer, NodeCrypto.layer),
           Layer.mock(ThreadManagementService.ThreadManagementService)({
-            getTimelinePage: () => Effect.succeed({ items: [], totalItems: 0, hasMore: false }),
+            getTimelinePage: () =>
+              Effect.succeed({ items: [], totalItems: 0, hasMore: false, hasEarlier: false }),
             getThreadRecords: (threadId) => Effect.succeed(byId(threadId)) as never,
             getProjectThreadRecords: ({ threadId }) => Effect.succeed(byId(threadId)) as never,
             getThreadShell: (threadId) =>
