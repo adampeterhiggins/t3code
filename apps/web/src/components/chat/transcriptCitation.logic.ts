@@ -176,7 +176,11 @@ export function citationRowIndex(
   citation: { readonly messageId: string; readonly segments?: AssistantCitation["segments"] },
 ): number {
   if (!citation.segments) {
-    return rows.findIndex((row) => row.kind === "message" && row.message.id === citation.messageId);
+    return rows.findIndex(
+      (row) =>
+        (row.kind === "message" && row.message.id === citation.messageId) ||
+        (row.kind === "sent-message" && row.id === citation.messageId),
+    );
   }
   for (const segment of citation.segments) {
     const index = transcriptItemRowIndex(rows, segment.id);

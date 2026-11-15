@@ -12,6 +12,7 @@ import {
   visibleThreadPullRequests,
   type PullRequestListLine,
 } from "@t3tools/client-runtime/thread-pull-requests";
+import { canStartThreadPullRequestWatch } from "@t3tools/client-runtime/thread-pull-request-compatibility";
 import {
   ArrowUpRightIcon,
   EyeIcon,
@@ -124,6 +125,7 @@ function LinkRowImpl({
   onUnlink,
   onWatch,
   canPause,
+  canStartWatch,
 }: {
   line: PullRequestListLine;
   threadRef: ScopedThreadRef;
@@ -134,6 +136,7 @@ function LinkRowImpl({
   onWatch: ((link: ThreadPullRequestLink, action: WatchAction) => void) | null;
   /** The environment can pause a watch, and shows its status line (fork servers). */
   canPause: boolean;
+  canStartWatch: boolean;
 }) {
   const openPrLink = useOpenPrLink(threadRef);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -366,7 +369,7 @@ function LinkRowImpl({
               <ArrowUpRightIcon className="size-3.5" />
               Open
             </MenuItem>
-            {onWatch !== null && open && !watching ? (
+            {onWatch !== null && open && !watching && canStartWatch ? (
               <MenuItem onClick={() => onWatch(link, "watch")}>
                 <EyeIcon className="size-3.5" />
                 {canPause ? "Watch and follow up" : "Watch for changes"}
@@ -447,6 +450,7 @@ function EnabledThreadPullRequestsPanel({ threadRef }: { threadRef: ScopedThread
   const supportsWatch = capabilities?.threadPullRequestWatch === true;
   const supportsWatchPause = capabilities?.threadPullRequestWatchPause === true;
   const lines = (() => pullRequestListLines(links))();
+  const canStartWatch = thread !== null && canStartThreadPullRequestWatch(thread);
   const handleUnlink = (link: ThreadPullRequestLink) => {
     void unlink({
       environmentId: threadRef.environmentId,
@@ -525,6 +529,7 @@ function EnabledThreadPullRequestsPanel({ threadRef }: { threadRef: ScopedThread
                 onUnlink={handleUnlink}
                 onWatch={supportsWatch ? handleWatch : null}
                 canPause={supportsWatchPause}
+                canStartWatch={canStartWatch}
               />
               {supportsWatchPause ? <WatchStatusLine line={line} /> : null}
             </>

@@ -41,7 +41,13 @@ export function ThreadChipTrigger({
     <ContextChip
       kind="thread"
       {...(unreadable ? { state: "invalid" as const } : {})}
-      render={<Link to="/$environmentId/$threadId" params={{ environmentId, threadId }} />}
+      render={
+        <Link
+          to="/$environmentId/$threadId"
+          params={{ environmentId, threadId }}
+          draggable={false}
+        />
+      }
       aria-label={`Thread, ${title}`}
       data-markdown-copy={copyMarkdown}
       className="no-underline"

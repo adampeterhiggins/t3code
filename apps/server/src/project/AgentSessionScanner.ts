@@ -381,7 +381,7 @@ function foldClaudeFields(fields: ClaudeFields, record: DecodedTranscriptRecord)
 // Codex records setup context as user text ahead of the real request. Skip
 // these leading blocks when deriving a title; imported messages keep them.
 const CODEX_TITLE_PREAMBLE =
-  /^(?:\s*(?:<(recommended_plugins|environment_context|user_instructions|INSTRUCTIONS|in-app-browser-context)(?:\s[^>]*)?>[\s\S]*?<\/\1>|# AGENTS\.md instructions\b[^\n]*|## My request for Codex:))+/;
+  /^(?:\s*(?:<(recommended_plugins|environment_context|user_instructions|INSTRUCTIONS|in-app-browser-context|external_codex_apps_open_page)(?:\s[^>]*)?>[\s\S]*?<\/\1>|# AGENTS\.md instructions\b[^\n]*|## My request for Codex:))+/;
 
 // Codex appends an entry per rename; like Codex, the newest nonempty name wins.
 function parseCodexThreadNames(contents: string): ReadonlyMap<string, string> {
@@ -459,7 +459,8 @@ export function parseAgentSessionTranscript(
     input.source === "claudeAgent"
       ? records.reduce(foldClaudeFields, emptyClaudeFields)
       : emptyClaudeFields;
-  return parseAgentSessionRecords(input, records, claudeFields, 0);
+  const thread = parseAgentSessionRecords(input, records, claudeFields, 0);
+  return thread === "empty" ? null : thread;
 }
 
 function parseAgentSessionRecords(
@@ -467,7 +468,7 @@ function parseAgentSessionRecords(
   records: ReadonlyArray<DecodedTranscriptRecord>,
   claudeFields: ClaudeFields,
   droppedMessageCount: number,
-): AgentSessionThread | null {
+): AgentSessionThread | "empty" | null {
   const fallbackTimestamp = DateTime.formatIso(DateTime.makeUnsafe(input.lastActiveAtMs));
   // Claude filenames are session IDs. Codex rollout filenames include extra
   // timestamp text, so only transcript metadata can provide a resumable ID.
@@ -660,6 +661,7 @@ function parseAgentSessionRecords(
     });
   }
 
+  if (messages.length === 0 && droppedMessageCount === 0) return "empty";
   const visibleMessages = messages.map(
     ({ codexResponseUser: _codexResponseUser, ...message }) => message,
   );
@@ -815,10 +817,7 @@ type TranscriptIdentity = Pick<
 
 const fileIdKey = (inode: TranscriptIdentity["inode"]) => (inode === null ? null : String(inode));
 
-export function sameTranscriptIdentity(
-  left: TranscriptIdentity,
-  right: TranscriptIdentity,
-): boolean {
+function sameTranscriptIdentity(left: TranscriptIdentity, right: TranscriptIdentity): boolean {
   // Unsafe legacy numbers may already have lost file ID precision.
   if (
     (typeof left.inode === "number" && !Number.isSafeInteger(left.inode)) ||
@@ -2023,6 +2022,15 @@ export const make = Effect.gen(function* () {
       }
       return directoryProjects.get(resolved)?.key === rootIdentity;
     });
+    const ownsSessionDirectory = Effect.fn("AgentSessionScanner.ownsSessionDirectory")(function* (
+      resolved: string,
+    ) {
+      if (yield* isOwnedByRoot(resolved)) return true;
+      return (
+        !nestedProjectIdentities.has(yield* directoryIdentity(resolved)) &&
+        (yield* belongsToRoot(resolved))
+      );
+    });
     const worktreesByDirectory = new Map<string, { path: string; branch: string | null } | null>();
     const rootWorktree = Effect.fn("AgentSessionScanner.rootWorktree")(function* (
       resolved: string,
@@ -2053,9 +2061,8 @@ export const make = Effect.gen(function* () {
     for (const candidate of candidates) {
       const expanded = expandHomePath(candidate.cwd.trim(), homeDir);
       if (!path.isAbsolute(expanded)) continue;
-      if (!(yield* isOwnedByRoot(expanded))) continue;
       const resolved = path.resolve(expanded);
-      if (!(yield* belongsToRoot(resolved))) continue;
+      if (!(yield* ownsSessionDirectory(resolved))) continue;
 
       for (const transcript of candidate.transcripts) {
         if (!isWantedTranscript(candidate, transcript.filePath)) continue;
@@ -2189,8 +2196,7 @@ export const make = Effect.gen(function* () {
           );
           if (
             !path.isAbsolute(expandedCwd) ||
-            !(yield* isOwnedByRoot(expandedCwd)) ||
-            !(yield* belongsToRoot(path.resolve(expandedCwd)))
+            !(yield* ownsSessionDirectory(path.resolve(expandedCwd)))
           ) {
             return Option.some<AgentSessionRecentThread>({ _tag: "Skipped" });
           }
@@ -2222,6 +2228,15 @@ export const make = Effect.gen(function* () {
             snapshot.claudeFields,
             snapshot.droppedMessageCount,
           );
+          if (parsedThread === "empty") {
+            // null means an unreadable history base, which may hold the conversation.
+            if (candidate.source === "codex" && inheritedRecords === null) {
+              return Option.some<AgentSessionRecentThread>({ _tag: "Skipped" });
+            }
+            // Never recorded as imported, so charging them would starve real sessions every run.
+            transcriptsRemaining += 1;
+            return Option.none<AgentSessionRecentThread>();
+          }
           if (
             parsedThread === null ||
             (wanted !== undefined && parsedThread.providerSessionId !== wanted.providerSessionId)

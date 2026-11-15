@@ -54,7 +54,9 @@ export function useComposerDraftActions(
     composerDraftTargetKeyRef: RefObject<string>;
     attachmentTargetKey: string;
     isComposerApprovalState: boolean;
-    activePendingProgress: ChatComposerProps["activePendingProgress"];
+    activePendingProgress: ReturnType<
+      typeof import("./usePendingThreadRequests").usePendingUserInputDraft
+    >["activePendingProgress"];
     isRevertingCheckpointRef: RefObject<boolean>;
     isEditingQueuedMessage: boolean;
     importContextRecords: ReturnType<typeof useComposerContextImport>["importContextRecords"];

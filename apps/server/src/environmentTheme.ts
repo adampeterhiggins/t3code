@@ -11,6 +11,7 @@ import {
   EnvironmentThemePublishError,
   type EnvironmentThemePublishInput,
   environmentThemeFileHasColors,
+  THEME_CSS_MAX_LENGTH,
 } from "@t3tools/contracts";
 import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
 import { fromJsonStringPretty } from "@t3tools/shared/schemaJson";
@@ -48,9 +49,12 @@ const isEnvironmentThemeId = Schema.is(EnvironmentThemeId);
 const THEME_FILE_SUFFIX = ".json";
 
 const MAX_THEME_FILES = 32;
-/** Shared with publishing so it cannot accept files the watcher skips. */
-export const MAX_THEME_FILE_BYTES = 32 * 1024;
-const MAX_THEME_TOTAL_BYTES = 192 * 1024;
+/**
+ * Shared with publishing so it cannot accept files the watcher skips. Fits the longest CSS in any
+ * JSON encoding, at up to 6 bytes per character for a `\uXXXX` escape, plus the colors.
+ */
+export const MAX_THEME_FILE_BYTES = 6 * THEME_CSS_MAX_LENGTH + 16 * 1024;
+const MAX_THEME_TOTAL_BYTES = 6 * MAX_THEME_FILE_BYTES;
 
 interface PublishedThemes {
   readonly seq: number;

@@ -19,6 +19,8 @@ import {
   composerFileNeedsReattach,
 } from "../../composerDraftStore";
 import { type ComposerPromptEditorHandle } from "../ComposerPromptEditorTiptap";
+import type { PendingUserInputProgress } from "../../pendingUserInput";
+import type { ComposerAttachmentInsertion } from "../composerAttachmentInsertion";
 import { type PendingUserInput } from "../../session-logic";
 import {
   changeQuestionAttachmentPreparation,
@@ -62,7 +64,7 @@ import {
  */
 export function useComposerAttachmentIntake(input: {
   readonly activeThreadId: ChatComposerProps["activeThreadId"];
-  readonly activePendingProgress: ChatComposerProps["activePendingProgress"];
+  readonly activePendingProgress: PendingUserInputProgress | null;
   readonly activePendingIsResponding: boolean;
   readonly pendingUserInputs: ReadonlyArray<PendingUserInput>;
   readonly supportsQuestionAttachments: boolean;
@@ -86,6 +88,7 @@ export function useComposerAttachmentIntake(input: {
     references: ReadonlyArray<ComposerContextReference>,
     selection?: { start: number; end: number },
     target?: ComposerTextTarget,
+    pendingInsertion?: ComposerAttachmentInsertion,
   ) => boolean;
 }) {
   const {
@@ -271,6 +274,9 @@ export function useComposerAttachmentIntake(input: {
     const compressed: { id: string; file: File }[] = [];
     // Keyed by image so a failure whose tile was removed (even mid-compression) is not reported.
     const compressionErrors = new Map<string, string>();
+    const pendingInsertion = imageAttachmentsGetChips
+      ? composerEditorRef.current?.captureAttachmentInsertion()
+      : undefined;
     for (const { id, file } of preparingImages) {
       // Removed from the strip while an earlier image was compressing.
       if (!isPreparingComposerImage(attachmentTargetKey, id)) continue;
@@ -293,6 +299,7 @@ export function useComposerAttachmentIntake(input: {
       rememberComposerImageSource(file, result.file);
       compressed.push({ id, file: result.file });
     }
+    pendingInsertion?.dispose();
     const questionDiscarded =
       questionAttachmentTarget !== null &&
       !useQuestionAttachmentPreparation.getState().counts[questionAttachmentTarget];
@@ -334,6 +341,7 @@ export function useComposerAttachmentIntake(input: {
           storedImages.map(imageContextReference),
           undefined,
           options?.target,
+          pendingInsertion,
         ) || insertedAny;
     }
     // Only failures are reported here. Success must not pass `null`: by

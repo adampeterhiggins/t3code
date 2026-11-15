@@ -90,6 +90,7 @@ import * as HtmlHandlers from "./toolkits/html/handlers.ts";
 import { MessageToolkit } from "./toolkits/message/tools.ts";
 import * as MessageHandlers from "./toolkits/message/handlers.ts";
 import { HtmlPreviewTool, HtmlPreviewToolkit, HtmlRenderToolkit } from "./toolkits/html/tools.ts";
+import { MCP_HTTP_PATH } from "../httpCors.ts";
 import { requestUrl } from "../requestUrl.ts";
 
 const mcpResourceMetadataUrl = (request: HttpServerRequest.HttpServerRequest) =>
@@ -280,7 +281,10 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
   });
   // Untraced: a span here would wrap the tool call; the HTTP server span already covers it.
   return Effect.fnUntraced(function* (httpEffect) {
-    const admitted = yield* authenticateRequest(yield* HttpServerRequest.HttpServerRequest);
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    // The transport allows no browser Origin; refuse it before credentials, as the MCP spec requires.
+    if (request.headers.origin !== undefined) return HttpServerResponse.empty({ status: 403 });
+    const admitted = yield* authenticateRequest(request);
     if (HttpServerResponse.isHttpServerResponse(admitted)) return admitted;
     return yield* httpEffect.pipe(
       Effect.provideService(McpInvocationContext.McpInvocationContext, admitted),
@@ -531,7 +535,9 @@ const previewSnapshotFailure = Effect.fn("previewSnapshotFailure")(function <E>(
       : "PreviewSnapshotError";
   // Preview errors contain server-authored recovery guidance, never page output.
   const message =
-    isPreviewAutomationError(firstFailure) || isPreviewScreenshotSaveError(firstFailure)
+    isPreviewAutomationError(firstFailure) ||
+    isPreviewScreenshotSaveError(firstFailure) ||
+    isOrchestratorMcpFailure(firstFailure)
       ? firstFailure.message
       : parameterValidationMessage(firstFailure);
   const result = new McpSchema.CallToolResult({
@@ -596,42 +602,37 @@ const registerPreviewSnapshot = Effect.fn("McpHttpServer.registerPreviewSnapshot
               const snapshot = encodedResult as SnapshotMetadata & {
                 readonly url: string;
                 readonly screenshot?: {
-                  readonly mimeType: "image/png";
-                  readonly data: string;
+                  readonly mimeType?: "image/png";
+                  readonly data?: string;
                   readonly width: number;
                   readonly height: number;
                 };
                 readonly fullScreenshot?: { readonly data: string };
               };
               const { screenshot, fullScreenshot, ...page } = snapshot;
-              const png =
-                screenshot === undefined
-                  ? undefined
-                  : new Uint8Array(Buffer.from(screenshot.data, "base64"));
-              const screenshotPath =
-                png === undefined
-                  ? undefined
-                  : yield* artifacts
-                      .saveScreenshot(
-                        snapshot.url,
-                        payload?.save === true && fullScreenshot
-                          ? new Uint8Array(Buffer.from(fullScreenshot.data, "base64"))
-                          : png,
-                      )
-                      .pipe(
-                        // A thumbnail failure must not prevent the agent from reading the page.
-                        Effect.catch((error) =>
-                          payload?.save === true
-                            ? Effect.fail(error)
-                            : Effect.logWarning("Could not save snapshot thumbnail", error).pipe(
-                                Effect.as(undefined),
-                              ),
-                        ),
-                      );
-              // Images stay out of tool history unless asked for: providers replay them on every
-              // later request, and some reject inline images outright.
               const includeImage = payload?.includeImage === true;
-              if (payload?.save === true && screenshotPath !== undefined && !includeImage) {
+              const needsPixels = payload?.save === true || includeImage;
+              if (needsPixels && (screenshot?.mimeType !== "image/png" || !screenshot.data)) {
+                return yield* new OrchestratorMcpFailure({
+                  code: "invalid_request",
+                  message: "Preview snapshot did not contain requested PNG pixels.",
+                });
+              }
+              const png =
+                needsPixels && screenshot?.data
+                  ? new Uint8Array(Buffer.from(screenshot.data, "base64"))
+                  : undefined;
+              const screenshotPath =
+                payload?.save === true && png
+                  ? yield* artifacts.saveScreenshot(
+                      snapshot.url,
+                      fullScreenshot
+                        ? new Uint8Array(Buffer.from(fullScreenshot.data, "base64"))
+                        : png,
+                    )
+                  : undefined;
+              // Providers replay images on later requests, and some reject them; include images only when requested.
+              if (screenshotPath !== undefined && !includeImage) {
                 const saved = {
                   url: cutText(snapshot.url, MAX_SNAPSHOT_IDENTIFIER_CHARS),
                   screenshotPath,
@@ -648,7 +649,7 @@ const registerPreviewSnapshot = Effect.fn("McpHttpServer.registerPreviewSnapshot
                   ? {}
                   : {
                       screenshot: {
-                        mimeType: screenshot.mimeType,
+                        mimeType: "image/png" as const,
                         width: screenshot.width,
                         height: screenshot.height,
                       },
@@ -678,8 +679,8 @@ const registerPreviewSnapshot = Effect.fn("McpHttpServer.registerPreviewSnapshot
                           text: `Snapshot text was bounded. Omitted: ${bounded.omitted.join("; ")}.`,
                         },
                       ]),
-                  ...(includeImage && screenshot !== undefined && png !== undefined
-                    ? [{ type: "image" as const, data: png, mimeType: screenshot.mimeType }]
+                  ...(includeImage && png
+                    ? [{ type: "image" as const, data: png, mimeType: "image/png" as const }]
                     : []),
                 ],
               });
@@ -1296,7 +1297,7 @@ export const layerMcpTransport = <RA, RE, RR>(registrations: Layer.Layer<RA, RE,
   McpServer.layerHttp({
     name: "T3 Code",
     version: packageJson.version,
-    path: "/mcp",
+    path: MCP_HTTP_PATH,
     // The first protocol is the fallback for clients that offer an unknown version.
     protocols: [McpProtocol.v2025_06_18, McpProtocol.v2026_07_28],
     allowSessionTermination: true,
