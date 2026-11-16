@@ -466,9 +466,6 @@ export const OrchestratorMcpThreadUsageLimit = Schema.Struct({
     "The thread stopped on a provider usage limit. Call t3_thread_usage_limit_resume to continue now, or leave it to resume at resetAt if the user enabled auto-resume.",
 });
 export type OrchestratorMcpThreadUsageLimit = typeof OrchestratorMcpThreadUsageLimit.Type;
-// Codex hides `minimum` and `maximum` from the model, so a value above the maximum clamps on
-// decode instead of failing the call; pagination returns the rest. Values below 1 still fail:
-// 0 asks for nothing, and answering it with one item would be a different request.
 export const OrchestratorMcpThreadReadInput = Schema.Struct({
   environmentId: OrchestratorMcpEnvironmentTarget,
   threadId: ThreadId,

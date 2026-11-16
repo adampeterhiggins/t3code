@@ -269,14 +269,9 @@ export function backgroundWorkNowItem(input: {
             View
           </Button>
         ) : null}
-        <Button
-          size="xs"
-          variant="ghost"
-          disabled={input.stopDisabled}
-          onClick={() => void input.onStop()}
-        >
+        <InlineButton disabled={input.stopDisabled} onClick={() => void input.onStop()}>
           {input.stopping ? "Stopping..." : "Stop"}
-        </Button>
+        </InlineButton>
       </>
     ),
   };

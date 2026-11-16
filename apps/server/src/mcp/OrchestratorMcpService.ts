@@ -3621,8 +3621,7 @@ const make = Effect.gen(function* () {
         yield* assertNotSelf(scope.thread?.threadId, input.threadId);
         const { parent, limits, target } = yield* loadScopedThread(scope, input.threadId, ["runs"]);
         yield* assertLiveCallerForOtherThread(scope, parent, target);
-        yield* resolveRuntimeMode(limits.runtimeMode, target.thread.runtimeMode);
-        yield* resolveInteractionMode(limits.interactionMode, target.thread.interactionMode);
+        yield* assertTargetWithinLimits(limits, target.thread);
 
         const mode = input.mode ?? "auto";
         const key = yield* requestKey(input.clientRequestId);

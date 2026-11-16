@@ -56,8 +56,8 @@ import { resolvePreviewViewport } from "@t3tools/shared/previewViewport";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
-import * as NodeUtil from "node:util";
 import * as Clock from "effect/Clock";
+import * as NodeUtil from "node:util";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -2846,12 +2846,17 @@ const make = Effect.gen(function* () {
           ...tab,
           renderScale: tab.desktop ? "display" : RENDER_SCALE,
           fullScreenshot: snapshotInput?.fullScreenshot,
+          includeImage: snapshotInput?.includeImage,
+          signal,
+          timeoutMs: remainingTimeoutMs(),
         } as const;
-        const snapshot = await withScreencastsPaused(tab, async () =>
-          snapshotInput?.pixelsRequired === false
+        const captureSnapshot = async () =>
+          snapshotInput?.includeImage !== false && snapshotInput?.pixelsRequired === false
             ? ServerBrowserPage.snapshotMetadata(rendering)
-            : ServerBrowserPage.snapshot(rendering),
-        );
+            : ServerBrowserPage.snapshot(rendering);
+        const snapshot = await (snapshotInput?.includeImage === false
+          ? captureSnapshot()
+          : withScreencastsPaused(tab, captureSnapshot));
         const loadError = loadErrorOf(tab);
         return loadError ? { ...snapshot, url: loadError.url, loadError } : snapshot;
       }

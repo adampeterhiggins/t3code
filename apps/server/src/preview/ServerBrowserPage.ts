@@ -388,12 +388,12 @@ interface SnapshotStages {
   readonly timedOut: Set<SnapshotStage>;
 }
 
-const snapshotTimedOut = (stages?: SnapshotStages) =>
+const snapshotTimedOut = (stages?: SnapshotStages, timeoutMs = SNAPSHOT_TIMEOUT_MS) =>
   new ServerBrowserOperationError({
     tag: "PreviewAutomationTimeoutError",
-    message: `Snapshot capture timed out after ${SNAPSHOT_TIMEOUT_MS}ms. Try the snapshot again.`,
+    message: `Snapshot capture timed out after ${timeoutMs}ms. Try the snapshot again.`,
     detail: {
-      timeoutMs: SNAPSHOT_TIMEOUT_MS,
+      timeoutMs,
       pendingStages: stages ? [...new Set([...stages.timedOut, ...stages.running.keys()])] : [],
     },
   });
@@ -804,7 +804,11 @@ const capture = async (
   };
   const { renderScale, viewport } = await track("metrics", () => renderingOf(input));
   // A late metrics reply must not begin a capture after viewers have resumed.
-  if (Date.now() >= deadline) throw snapshotTimedOut();
+  if (Date.now() >= deadline)
+    throw snapshotTimedOut(
+      stages,
+      Math.max(1, Math.min(input.timeoutMs ?? SNAPSHOT_TIMEOUT_MS, SNAPSHOT_TIMEOUT_MS)),
+    );
   const scale = Math.min(1, MAX_SCREENSHOT_WIDTH / (viewport.width * renderScale));
   const state = refsFor(input.page);
   invalidateRefs(input.page);
@@ -825,31 +829,33 @@ const capture = async (
         >,
     ),
     // A cheap real frame still sizes the screenshot; computing it from metrics drifted from the PNG.
-    track("screenshot", () =>
-      metadataOnly
-        ? captureViewportWithinBudget(
-            input.page,
-            input.cdp,
-            { format: "jpeg", quality: 10, scale: 1 },
-            (stage, operation) => track("screenshot", operation),
-          ).then((data) => ({
-            data,
-            full: undefined,
-          }))
-        : captureViewportWithinBudget(
-            input.page,
-            input.cdp,
-            { format: "png", scale: 1 },
-            (stage, operation) => track("screenshot", operation),
-          ).then(async (full) =>
-            scale < 1
-              ? {
-                  data: await shrinkPng(input.cdp, full, scale),
-                  full: input.fullScreenshot ? full : undefined,
-                }
-              : { data: full, full: undefined },
-          ),
-    ),
+    input.includeImage === false
+      ? undefined
+      : track("screenshot", () =>
+          metadataOnly
+            ? captureViewportWithinBudget(
+                input.page,
+                input.cdp,
+                { format: "jpeg", quality: 10, scale: 1 },
+                (stage, operation) => track("screenshot", operation),
+              ).then((data) => ({
+                data,
+                full: undefined,
+              }))
+            : captureViewportWithinBudget(
+                input.page,
+                input.cdp,
+                { format: "png", scale: 1 },
+                (stage, operation) => track("screenshot", operation),
+              ).then(async (full) =>
+                scale < 1
+                  ? {
+                      data: await shrinkPng(input.cdp, full, scale),
+                      full: input.fullScreenshot ? full : undefined,
+                    }
+                  : { data: full, full: undefined },
+              ),
+        ),
   ]);
   void pageAndScreenshot.catch(constVoid);
   // Leaves time for the second read; a frame that never loads holds the tree until then.
@@ -905,10 +911,13 @@ const capture = async (
     networkEntries: [...input.networkEntries],
     actionTimeline: [...input.actionTimeline],
     // Reports the size the PNG path would have shrunk to.
-    screenshot: metadataOnly
-      ? scaledSize(jpegSize(data!), scale)
-      : { mimeType: "image/png" as const, data: data!, ...pngSize(data!) },
-    ...(full !== undefined ? { fullScreenshot: { data: full, ...pngSize(full) } } : {}),
+    ...(data === undefined
+      ? {}
+      : {
+          screenshot: metadataOnly
+            ? scaledSize(jpegSize(data), scale)
+            : { mimeType: "image/png" as const, data, ...pngSize(data) },
+        }),
   };
 };
 
@@ -945,7 +954,7 @@ const runSnapshot = (input: SnapshotInput, metadataOnly: boolean) =>
             cause.tag === "PreviewAutomationTimeoutError" &&
             cause.message.startsWith("Browser read timed out"))
         )
-          throw snapshotTimedOut(stages);
+          throw snapshotTimedOut(stages, timeoutMs);
         throw cause;
       });
   });

@@ -5347,7 +5347,7 @@ describe("timeline end and minimap geometry", () => {
     expect(currentIndex(41, 45)).toBe(4);
     expect(currentIndex(0, 0)).toBe(0);
     expect(currentIndex(null, null)).toBeNull();
-    expect(isTimelineMinimapTurnVisible(20, 21, null, null)).toBe(false);
+    expect(isTimelineMinimapTurnVisible(20, undefined, null, null)).toBe(false);
   });
 
   it("treats the follow re-arm band above the content bottom as the live edge", () => {

@@ -221,13 +221,13 @@ it.each(["same", "other-environment"] as const)(
     await using _screen = await render(
       <Harness
         input={{
+          routeThreadRef: { environmentId, threadId: first.threadId },
           environmentId,
           linkedEnvironments: new Map([[otherEnvironmentId, "Other machine"]]),
           activeThread: undefined,
           activeThreadId: null,
           composerDraftTarget: target,
           attachmentDraftTarget: target,
-          routeThreadRef: { environmentId, threadId: ThreadId.make("thread:test") },
           attachmentTargetKey: target,
           attachmentTargetKeyRef: { current: target },
           questionAttachmentTarget: null,

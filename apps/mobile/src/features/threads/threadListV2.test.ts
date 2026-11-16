@@ -2296,33 +2296,54 @@ describe("Working section beta", () => {
 });
 
 describe("threadListV2RowAccessibilityLabel", () => {
-  it("reads the plain title when nothing is waiting", () => {
+  it("reads the tab group and time when nothing is waiting", () => {
     expect(
       threadListV2RowAccessibilityLabel({
         title: "Fix login",
+        variant: "card",
+        woke: false,
+        statusLabel: undefined,
+        timeLabel: "5m",
+        snoozeWakeLabel: undefined,
+        providerNameLabel: null,
+        regeneratingTitle: false,
         tabGroupName: "Auth",
         hasQueuedMessages: false,
         draftCount: 0,
       }),
-    ).toBe("Fix login");
+    ).toBe("Auth, 5m");
   });
 
   it("announces queued messages and drafts together", () => {
     expect(
       threadListV2RowAccessibilityLabel({
         title: "Fix login",
+        variant: "card",
+        woke: false,
+        statusLabel: undefined,
+        timeLabel: "5m",
+        snoozeWakeLabel: undefined,
+        providerNameLabel: null,
+        regeneratingTitle: false,
         tabGroupName: null,
         hasQueuedMessages: true,
         draftCount: 2,
       }),
-    ).toBe("Fix login, messages queued to send, 2 drafts");
+    ).toBe("Fix login, 5m, messages queued to send, 2 drafts");
     expect(
       threadListV2RowAccessibilityLabel({
         title: "Fix login",
+        variant: "card",
+        woke: false,
+        statusLabel: undefined,
+        timeLabel: "5m",
+        snoozeWakeLabel: undefined,
+        providerNameLabel: null,
+        regeneratingTitle: false,
         hasQueuedMessages: false,
         draftCount: 1,
       }),
-    ).toBe("Fix login, 1 draft");
+    ).toBe("Fix login, 5m, 1 draft");
   });
 });
 

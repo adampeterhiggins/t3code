@@ -77,7 +77,7 @@ describe("orchestrator MCP tool guidance", () => {
     const update = decode({ scheduledTaskId: "task-1", enabled: false });
     assert.equal(update.scheduledTaskId, "task-1");
     assert.isFalse(update.enabled);
-    assert.include(ScheduleTaskTool.description ?? "", "`schedule` is an object, not text");
+    assert.include(ScheduleTaskTool.description ?? "", "object `schedule`");
     assert.include(ScheduleTaskTool.description ?? "", "next run time");
   });
 

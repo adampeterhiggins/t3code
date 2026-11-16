@@ -168,7 +168,6 @@ describe("link round trips", () => {
       "t3code://threads/env-1/thread-1?prompt=hi",
     );
   });
-
   it("maps links in browsers without URL.canParse, such as Safari before 17", () => {
     const canParse = URL.canParse;
     Reflect.deleteProperty(URL, "canParse");

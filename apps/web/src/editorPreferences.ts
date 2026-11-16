@@ -82,7 +82,8 @@ function resolveAndPersistPreferredEditor(availableEditors: readonly EditorId[])
     console.warn("Could not read the preferred editor.", error);
   }
   if (stored && availableEditorIds.has(stored)) return stored;
-  const editor = EDITORS.find((editor) => availableEditorIds.has(editor.id))?.id ?? null;
+  const editor =
+    EDITORS.find((editor) => availableEditorIds.has(editor.id))?.id ?? availableEditors[0] ?? null;
   if (editor) {
     try {
       setLocalStorageItem(LAST_EDITOR_KEY, editor, EditorId);

@@ -161,6 +161,9 @@ export function useComposerStash(input: {
   const clearComposerDraftPromptAndImages = useComposerDraftStore(
     (store) => store.clearComposerPromptAndImages,
   );
+  const setComposerDraftEnvironmentContexts = useComposerDraftStore(
+    (store) => store.setEnvironmentContexts,
+  );
   const setComposerDraftThreadContexts = useComposerDraftStore((store) => store.setThreadContexts);
 
   const [isStashMenuOpen, setIsStashMenuOpen] = useState(false);
@@ -514,6 +517,7 @@ export function useComposerStash(input: {
       ...(replyTo ? [replyTo] : []),
       ...composerThreadContexts,
       ...composerSnapshotRecords.filter((record) => referencedIds.has(record.contextId)),
+      ...(getComposerDraft(composerDraftTarget)?.environmentContexts ?? []),
       ...readTerminalContexts().map(terminalContextRecord),
       ...composerReviewComments.map(reviewCommentContextRecord),
       ...composerPreviewAnnotations.map((annotation) =>
@@ -628,6 +632,7 @@ export function useComposerStash(input: {
       clearComposerDraftTerminalContexts(stashTarget);
       setComposerDraftThreadContexts(stashTarget, []);
       clearComposerSnapshotRecords(routeThreadRef.threadId);
+      setComposerDraftEnvironmentContexts(stashTarget, []);
       setComposerDraftReplyTo(stashTarget, null);
       for (const comment of composerReviewComments) {
         removeComposerDraftReviewComment(stashTarget, comment.id);

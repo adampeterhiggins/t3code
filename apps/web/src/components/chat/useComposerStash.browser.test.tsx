@@ -49,6 +49,10 @@ it("keeps the draft when stashing while a pasted image is still compressing", as
   const environmentId = EnvironmentId.make("stash-env");
   const promptRef = { current: "Describe this screenshot" };
   const input = {
+    unfocusedSplitPane: false,
+    canSaveMessageDraft: false,
+    saveMessageDraftStable: async () => false,
+    composerSnapshotRecords: [],
     environmentId,
     composerDraftTarget: target,
     promptRef,
@@ -73,10 +77,6 @@ it("keeps the draft when stashing while a pasted image is still compressing", as
     setComposerTrigger: vi.fn(),
     importContextRecords: () => new Map(),
     expandMobileComposer: vi.fn(),
-    unfocusedSplitPane: false,
-    canSaveMessageDraft: false,
-    saveMessageDraftStable: async () => false,
-    composerSnapshotRecords: [],
   } satisfies StashInput;
   await using _screen = await render(<Harness input={input} />);
 

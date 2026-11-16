@@ -1653,8 +1653,17 @@ it.effect("recovery closes a secret card's form but leaves a link card open", ()
     runtimeRequests: [],
     providerSessions: [],
     providerThreads: [],
-    providerTurns: [],
-    runs: [{ id: runId, status: "running", providerInstanceId: ProviderInstanceId.make("codex") }],
+    providerTurns: [
+      { runAttemptId: RunAttemptId.make("attempt_secret_recovery"), status: "running" },
+    ],
+    runs: [
+      {
+        id: runId,
+        status: "running",
+        activeAttemptId: RunAttemptId.make("attempt_secret_recovery"),
+        providerInstanceId: ProviderInstanceId.make("codex"),
+      },
+    ],
     attempts: [],
     nodes: [],
     subagents: [],
@@ -1691,6 +1700,7 @@ it.effect("recovery closes a secret card's form but leaves a link card open", ()
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
           getRecoveryThreadIds: () => Effect.succeed([threadId]),
           getRuntimeRecoveryProjection: () => Effect.succeed(projection),
+          getThreadRecords: () => Effect.succeed(projection),
         }),
         Layer.mock(EventSink.EventSinkV2)({
           commitCommand: (input) => {

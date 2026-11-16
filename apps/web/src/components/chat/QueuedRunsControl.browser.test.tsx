@@ -186,7 +186,7 @@ it("renders queued markdown and quotes like a sent message and preserves the cit
     prefix: "",
     suffix: "",
   });
-  const quoteAndText = `${quote}\n\nWhy **per worktree**?\n\n` + "```\nprod/main.tf\n```\n";
+  const quoteAndText = `${quote}\n\nWhy **per worktree**?\n\n\`\`\`\nprod/main.tf\n\`\`\`\n`;
   const inlineImage = formatComposerContextReference({
     kind: "image",
     contextId: toComposerContextId("header"),

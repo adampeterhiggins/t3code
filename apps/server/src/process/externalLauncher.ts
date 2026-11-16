@@ -572,10 +572,13 @@ const resolveEditorLaunch = Effect.fn("resolveEditorLaunch")(function* (
     if (!editor) return yield* new ExternalLauncherUnknownEditorError({ editor: input.editor });
     const args = [
       ...editor.args,
-      Option.match(parseTargetPathAndPosition(input.cwd), {
-        onNone: () => input.cwd,
-        onSome: (target) => target.path,
-      }),
+      Option.match(
+        input.position === undefined ? parseTargetPathAndPosition(input.cwd) : Option.none(),
+        {
+          onNone: () => input.cwd,
+          onSome: (target) => target.path,
+        },
+      ),
     ];
     if (editor.runInShell === true && platform !== "win32") {
       const shell = yield* readUserShell;
@@ -641,10 +644,13 @@ const resolveEditorLaunch = Effect.fn("resolveEditorLaunch")(function* (
   }
 
   const revealTarget = expandHomePath(
-    Option.match(parseTargetPathAndPosition(input.cwd), {
-      onNone: () => input.cwd,
-      onSome: (parsed) => parsed.path,
-    }),
+    Option.match(
+      input.position === undefined ? parseTargetPathAndPosition(input.cwd) : Option.none(),
+      {
+        onNone: () => input.cwd,
+        onSome: (parsed) => parsed.path,
+      },
+    ),
     yield* HostProcess.HomeDirectory,
   );
   if (input.reveal === true) {

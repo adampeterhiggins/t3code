@@ -178,6 +178,11 @@ const makeLaptopWith = (
       ),
       Layer.provideMerge(layerThreads),
       Layer.provide(
+        Layer.mock(McpContextLinks.McpContextLinks)({
+          attach: ({ text }) => Effect.succeed({ text, context: undefined }),
+        }),
+      ),
+      Layer.provide(
         Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
       ),
       Layer.provide(Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({})),

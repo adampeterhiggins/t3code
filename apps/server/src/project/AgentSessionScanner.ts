@@ -2088,6 +2088,15 @@ export const make = Effect.gen(function* () {
       }
       return directoryProjects.get(resolved)?.key === rootIdentity;
     });
+    const ownsSessionDirectory = Effect.fn("AgentSessionScanner.ownsSessionDirectory")(function* (
+      resolved: string,
+    ) {
+      if (yield* isOwnedByRoot(resolved)) return true;
+      return (
+        !nestedProjectIdentities.has(yield* directoryIdentity(resolved)) &&
+        (yield* belongsToRoot(resolved))
+      );
+    });
     const worktreesByDirectory = new Map<string, { path: string; branch: string | null } | null>();
     const rootWorktree = Effect.fn("AgentSessionScanner.rootWorktree")(function* (
       resolved: string,
@@ -2118,9 +2127,8 @@ export const make = Effect.gen(function* () {
     for (const candidate of candidates) {
       const expanded = expandHomePath(candidate.cwd.trim(), homeDir);
       if (!path.isAbsolute(expanded)) continue;
-      if (!(yield* isOwnedByRoot(expanded))) continue;
       const resolved = path.resolve(expanded);
-      if (!(yield* belongsToRoot(resolved))) continue;
+      if (!(yield* ownsSessionDirectory(resolved))) continue;
 
       for (const transcript of candidate.transcripts) {
         if (!isWantedTranscript(candidate, transcript.filePath)) continue;
@@ -2254,8 +2262,7 @@ export const make = Effect.gen(function* () {
           );
           if (
             !path.isAbsolute(expandedCwd) ||
-            !(yield* isOwnedByRoot(expandedCwd)) ||
-            !(yield* belongsToRoot(path.resolve(expandedCwd)))
+            !(yield* ownsSessionDirectory(path.resolve(expandedCwd)))
           ) {
             return Option.some<AgentSessionRecentThread>({ _tag: "Skipped" });
           }

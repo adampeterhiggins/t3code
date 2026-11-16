@@ -127,6 +127,7 @@ vi.mock("../../state/atom-registry", async () => {
     },
   };
 });
+
 vi.mock("../../state/projects", () => ({
   environmentProjects: { projectAtom: (ref: { projectId: string }) => `project:${ref.projectId}` },
 }));

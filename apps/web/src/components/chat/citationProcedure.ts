@@ -156,7 +156,7 @@ export function citedThreadSnapshot(input: {
     message:
       item === undefined
         ? null
-        : input.segments || item.type !== "user_message"
+        : input.segments || item.type === "assistant_message" || item.type === "dynamic_tool"
           ? "assistant"
           : "other",
     hasMoreHistory: input.history.hasMoreHistory,

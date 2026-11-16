@@ -1339,6 +1339,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       }
     })();
   };
+  const readOpensPullRequestsInRightPanel = useStableCallback(() => routeThreadRef !== null);
   const handleThreadClick = (
     event: ReactMouseEvent,
     threadRef: ScopedThreadRef,
@@ -3479,7 +3480,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                 (tab) => sidebarThreadKey(tab) === highlightedRouteThreadKey,
                               ) === true
                             }
-                            openPullRequestsInRightPanel={routeThreadRef !== null}
+                            readOpensPullRequestsInRightPanel={readOpensPullRequestsInRightPanel}
                             jumpLabel={
                               showJumpHints ? (jumpLabelByKey.get(threadKey) ?? null) : null
                             }

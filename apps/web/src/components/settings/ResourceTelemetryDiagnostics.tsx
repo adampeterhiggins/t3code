@@ -56,6 +56,7 @@ import {
   formatProcessName,
   formatCpuTime,
   formatSamplingStatus,
+  processIdentityKey,
   resourceHistoryBarHeight,
   resourceHistoryCpuScaleMax,
   shouldShowResourceMonitorRetry,
@@ -78,10 +79,6 @@ function formatDurationMicros(value: number): string {
   if (value < 1_000) return `${Math.round(value)} µs`;
   if (value < 1_000_000) return `${(value / 1_000).toFixed(2).replace(/\.0+$/, "")} ms`;
   return `${(value / 1_000_000).toFixed(2).replace(/\.0+$/, "")} s`;
-}
-
-function processIdentityKey(process: Pick<ResourceTelemetryProcess, "identity">): string {
-  return `${process.identity.pid}:${process.identity.startTimeMs}`;
 }
 
 function processSummaryIdentityKey(process: ResourceTelemetryProcessSummary): string {

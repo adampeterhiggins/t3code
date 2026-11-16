@@ -4913,7 +4913,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             limitRecovery: thread.limitRecovery
               ? { ...thread.limitRecovery, autoResume: false, snooze: false }
               : thread.limitRecovery,
-            pullRequests: thread.pullRequests?.map((link) => withPullRequestWatch(link, undefined)),
             unsettledAt: null,
             pinnedAt: null,
             pinOrderKey: null,
@@ -5327,7 +5326,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                       failedChecks: [],
                       passed: false,
                       passedChecks: [],
-                      awaitingBaseline: existing.endedWatch?.awaitingBaseline ?? "all",
+                      awaitingBaseline: existing.endedWatch
+                        ? existing.endedWatch.awaitingBaseline
+                        : "all",
                       ...(existing.endedWatch?.checksPending === true && { checksPending: true }),
                       remarksThrough: startedAt,
                       remarkIds: [],

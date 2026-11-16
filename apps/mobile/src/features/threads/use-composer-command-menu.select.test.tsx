@@ -3,13 +3,23 @@ import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vite-plus/test";
 
 vi.mock("react-native", () => ({ Alert: { alert: vi.fn() } }));
+vi.mock("../../state/google", () => ({ googleEnvironment: { getFile: Symbol("getGoogleFile") } }));
+vi.mock("../../state/entities", () => ({ useEnvironmentServerConfig: () => null }));
+vi.mock("../../state/query", () => ({
+  useEnvironmentQuery: () => ({ data: null, error: null, isPending: false }),
+}));
+vi.mock("../../state/threads", () => ({
+  useEnvironmentThread: () => ({ data: { _tag: "None" } }),
+}));
 vi.mock("../../state/queries", () => ({
   useComposerPathSearch: () => ({ entries: [], isPending: false }),
   useComposerPullRequestSearch: () => ({ entries: [], isPending: false, error: null }),
   useThreadSearch: () => undefined,
+  useDebouncedValue: (value: string) => value,
 }));
 vi.mock("../../state/use-composer-drafts", () => ({
   getComposerDraftSnapshot: vi.fn(),
+  useComposerDraft: () => ({ text: "", attachments: [] }),
   setComposerDraftContext: vi.fn(),
   useComposerDraftSelection: () => null,
 }));

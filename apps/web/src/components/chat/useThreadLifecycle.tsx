@@ -101,7 +101,6 @@ import { useAtomValue } from "@effect/atom-react";
 
 import { Atom } from "effect/reactivity";
 
-import { resolveThreadOpenRoute } from "../../lib/sideChatPane";
 import { type useLocalDispatchState } from "./useLocalDispatchState";
 import {
   copyTextContent,
@@ -110,6 +109,7 @@ import {
   referencedDraftContent,
   referencedForkMessageContext,
 } from "./forkComposerContexts";
+import { resolveThreadOpenRoute } from "../../lib/sideChatPane";
 const RELATED_THREAD_SHELL_WAIT_MS = 1_000;
 const NO_RUN_STOP_ATOM = Atom.make<RunStopPresentation | null>(null).pipe(
   Atom.withLabel("web-thread-run-stop:empty"),

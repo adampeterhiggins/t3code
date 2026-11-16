@@ -227,7 +227,7 @@ const shouldRetainMissingProviderModels = (provider: ServerProvider): boolean =>
   const isCodex = provider.driver === ProviderDriverKind.make("codex");
   const isDevin = provider.driver === ProviderDriverKind.make("devin");
   const isOpenCode = provider.driver === ProviderDriverKind.make("opencode");
-  if (!isAntigravity && !isCodex && !isOpenCode) {
+  if (!isAntigravity && !isCodex && !isOpenCode && !isDevin) {
     // Any other driver must report ready only after a completed model listing, or opt out above:
     // a ready list is authoritative, and warning/error probes keep the old models.
     return !(provider.installed && provider.status === "ready");
@@ -245,11 +245,18 @@ const shouldRetainMissingProviderModels = (provider: ServerProvider): boolean =>
     isAntigravity && provider.status === "warning" && provider.auth.status === "unknown";
   const isPendingInitialProbe =
     provider.enabled && !provider.installed && provider.status === "warning";
-  // A cold OpenCode server can finish its probe as a warning before it lists any models.
-  const isIncompleteInstalledProbe =
+  const didInstalledProviderProbeFail =
     provider.installed &&
     (provider.status === "error" || ((isCodex || isOpenCode) && provider.status === "warning"));
-  return isPendingAntigravityAuthentication || isPendingInitialProbe || isIncompleteInstalledProbe;
+  // Devin reports a failed `models list` as a warning on an installed CLI —
+  // keep the last good catalog until discovery succeeds again.
+  const isDevinDiscoveryDegraded = isDevin && provider.installed && provider.status === "warning";
+  return (
+    isPendingAntigravityAuthentication ||
+    isPendingInitialProbe ||
+    didInstalledProviderProbeFail ||
+    isDevinDiscoveryDegraded
+  );
 };
 
 const shouldRetainMissingOpenCodeMetadata = (provider: ServerProvider): boolean =>

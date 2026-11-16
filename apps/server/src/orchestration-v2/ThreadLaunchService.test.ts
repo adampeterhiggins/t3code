@@ -1157,7 +1157,6 @@ it.effect("renames a temporary branch with a configured prefix when generation s
   });
   return Effect.gen(function* () {
     const launches = yield* ThreadLaunch.ThreadLaunchService;
-    const threads = yield* ThreadManagement.ThreadManagementService;
     const launched = yield* launches.launch(
       launchInput({
         command: "prefix-rename",
@@ -1166,11 +1165,7 @@ it.effect("renames a temporary branch with a configured prefix when generation s
         workspace: { type: "worktree", baseRef: "main" },
       }),
     );
-    yield* threads.streamStoredEventsFrom({ threadId: launched.threadId }).pipe(
-      Stream.filter((stored) => stored.commandId === "prefix-rename:branch-rename"),
-      Stream.runHead,
-    );
-    const projection = yield* threads.getThreadProjection(launched.threadId);
+    const projection = yield* preparationSettled(launched.threadId);
     assert.equal(projection.thread.branch, "my-prefix/fix-parser");
     assert.match(
       harness.renameBranch.mock.calls[0]?.[0]?.oldBranch ?? "",
@@ -3361,7 +3356,7 @@ it.effect.each([0, 1])("releases an async setup before its completion with exit 
   }),
 );
 
-it.effect("shows an async setup as done while the agent still waits for its branch name", () =>
+it.effect("shows an async setup as done while branch naming continues in the background", () =>
   Effect.gen(function* () {
     const branchNameStarted = yield* Deferred.make<void>();
     const allowBranchName = yield* Deferred.make<void>();
@@ -3395,6 +3390,7 @@ it.effect("shows an async setup as done while the agent still waits for its bran
         }),
       );
       yield* Deferred.await(branchNameStarted);
+      yield* TestClock.adjust("10 seconds");
       const snapshot = yield* tracker.stream(launched.threadId).pipe(
         Stream.filter(
           (current) =>
@@ -3411,7 +3407,8 @@ it.effect("shows an async setup as done while the agent still waits for its bran
       const setupStage = stages.find((stage) => stage.id === "setup-script");
       assert.equal(setupStage?.status, "done");
       assert.isNotNull(setupStage?.endedAt ?? null);
-      assert.notEqual(stages.find((stage) => stage.id === "agent")?.status, "done");
+      assert.equal(stages.find((stage) => stage.id === "agent")?.status, "done");
+      assert.isFalse(yield* Deferred.isDone(allowBranchName));
       yield* Deferred.succeed(allowBranchName, undefined);
     }).pipe(Effect.provide(harness.layer));
   }),
@@ -3522,7 +3519,7 @@ it.effect("prepares a message-less launch, then names its branch from the first 
       yield* Deferred.await(setupStarted);
       assert.deepEqual(
         (yield* tracker.get(launched.threadId))?.stages.map((stage) => stage.id),
-        ["fetch", "checkout", "setup-script"],
+        ["fetch", "checkout", "submodules", "setup-script"],
       );
       const temporaryBranch = (yield* threads.getThreadProjection(launched.threadId)).thread.branch;
       assert.isNotNull(temporaryBranch);
@@ -3794,7 +3791,10 @@ describe("delegated tasks with a workspace of their own", () => {
       assert.equal(child.thread.lineage.relationshipToParent, "subagent");
       assert.equal(child.runs[0]?.status, "starting");
       assert.equal(child.checkpointScopes[0]?.cwd, "/repo-worktrees/feature");
-      assert.equal(harness.createWorktree.mock.calls[0]?.[0]?.baseRefName, "main");
+      assert.equal(
+        harness.createWorktree.mock.calls[0]?.[0]?.baseRefName,
+        "refs/remotes/origin/main",
+      );
       assert.deepEqual(
         harness.runSetup.mock.calls.map(([input]) => [input.threadId, input.worktreePath]),
         [[result.childThreadId, "/repo-worktrees/feature"]],

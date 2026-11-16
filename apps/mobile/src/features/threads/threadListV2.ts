@@ -322,14 +322,14 @@ export function threadListV2RowAccessibilityLabel(input: {
   readonly title: string;
   readonly tabGroupName?: string | null;
   readonly draftCount?: number;
-  readonly variant?: "card" | "slim";
-  readonly woke?: boolean;
-  readonly statusLabel?: string | undefined;
-  readonly timeLabel?: string;
-  readonly snoozeWakeLabel?: string | undefined;
-  readonly providerNameLabel?: string | null;
+  readonly variant: "card" | "slim";
+  readonly woke: boolean;
+  readonly statusLabel: string | undefined;
+  readonly timeLabel: string;
+  readonly snoozeWakeLabel: string | undefined;
+  readonly providerNameLabel: string | null;
   readonly hasQueuedMessages: boolean;
-  readonly regeneratingTitle?: boolean;
+  readonly regeneratingTitle: boolean;
 }): string {
   // Mirrors the row's meta line: a card shows Woke, else its status, else the time.
   const meta =
@@ -339,18 +339,14 @@ export function threadListV2RowAccessibilityLabel(input: {
         ? "Woke"
         : (input.statusLabel ?? input.timeLabel);
   return [
-    input.hasQueuedMessages || (input.draftCount ?? 0) > 0
-      ? (input.tabGroupName ?? input.title)
-      : input.title,
+    input.tabGroupName ?? input.title,
     meta,
     input.providerNameLabel,
     input.hasQueuedMessages ? "messages queued to send" : null,
     input.regeneratingTitle ? "regenerating title" : null,
-    (input.draftCount ?? 0) > 0
-      ? `${input.draftCount} draft${input.draftCount === 1 ? "" : "s"}`
-      : null,
+    input.draftCount ? `${input.draftCount} draft${input.draftCount === 1 ? "" : "s"}` : null,
   ]
-    .filter((part) => part != null)
+    .filter((part) => part !== null)
     .join(", ");
 }
 

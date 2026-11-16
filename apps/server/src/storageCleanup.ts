@@ -1858,9 +1858,6 @@ const make = Effect.gen(function* () {
               projectRoot: project.workspaceRoot,
               worktreePath,
             });
-            // Clean only untracked files. Ordinary worktrees retain Git's final tracked-edit check.
-            if (settings.worktreeKeepWhen === "tracked-changes")
-              yield* cleanupGit(worktreePath, ["clean", "-ffdx"], "git clean");
             const submodules = yield* submoduleRemoval(worktreePath, settings);
             if (submodules.reason !== null) return keep(submodules.reason);
             if (submodules.force) {

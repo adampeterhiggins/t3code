@@ -884,7 +884,7 @@ const make = Effect.gen(function* () {
         reused === undefined &&
         initialMessage !== undefined &&
         branch !== null &&
-        isTemporaryWorktreeBranch(branch) &&
+        (generatedTemporaryBranch || isTemporaryWorktreeBranch(branch)) &&
         input.workspaceStrategy.type !== "root"
       ) {
         const namingBranch = branch;
@@ -954,7 +954,7 @@ const make = Effect.gen(function* () {
         }
         if (shouldFetch) yield* setupTracker.stageStatus(threadId, "fetch", "done");
         // `:/text` bases are commit searches, not refs; `hasCommit` treats the appended
-        // `^{commit}` as part of the pattern (same guard as checkWorktreeBase).
+        // `^{commit}` as part of the pattern (same guard as checkNewWorktree).
         const recordedBaseResolves =
           fetchedBase ||
           startRef.startsWith(":") ||
@@ -1176,7 +1176,7 @@ const make = Effect.gen(function* () {
           generated: Fiber.join(lateBranchName).pipe(
             Effect.flatMap(
               Option.match({
-                onNone: () => Effect.fail(new Cause.NoSuchElementError()),
+                onNone: () => Effect.interrupt,
                 onSome: Effect.succeed,
               }),
             ),

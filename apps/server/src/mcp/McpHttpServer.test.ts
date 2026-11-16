@@ -457,121 +457,156 @@ it.effect("tells the agent how to recover when no preview host can run the snaps
 );
 
 it.effect.each([
-  { mode: "default", input: {}, images: false },
-  { mode: "explicit image", input: { includeImage: true }, images: true },
-  { mode: "text only", input: { includeImage: false }, images: false },
-])("returns fresh $mode snapshots on repeated MCP calls", ({ input, images }) =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const server = yield* McpServer.McpServer;
-      const broker = yield* PreviewAutomationBroker.PreviewAutomationBroker;
-      const connected = yield* Deferred.make<void>();
-      const png =
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=";
-      const page = {
-        url: "http://example.test/",
-        loading: false,
-        visibleText: "Save your changes",
-        interactiveElements: [
-          {
-            tag: "button",
-            role: "button",
-            name: "Save",
-            selector: "#save",
-            x: 0,
-            y: 0,
-            width: 20,
-            height: 10,
-          },
-        ],
-        accessibilityTree: { role: "document", name: "Example" },
-        consoleEntries: [],
-        networkEntries: [],
-        actionTimeline: [],
-      };
-      const screenshot = { mimeType: "image/png", width: 1, height: 1 };
-      let requests = 0;
-      const events = yield* broker.connect({ clientId: "mcp-image-option-client", environmentId });
-      yield* Stream.runForEach(events, (event) => {
-        if (event.type === "connected") return Deferred.succeed(connected, undefined);
-        requests += 1;
-        expect(event.request).toMatchObject({
-          operation: "snapshot",
-          tabId: alternateTabId,
-          threadId,
-        });
-        expect(event.request.input).toEqual(
-          images && requests !== 7 ? {} : { pixelsRequired: false },
-        );
-        return broker.respond({
+  { mode: "default", input: {}, images: false, capture: true, legacyHost: false },
+  {
+    mode: "explicit image",
+    input: { includeImage: true },
+    images: true,
+    capture: true,
+    legacyHost: false,
+  },
+  {
+    mode: "text only",
+    input: { includeImage: false },
+    images: false,
+    capture: false,
+    legacyHost: false,
+  },
+  {
+    mode: "text only from an older host",
+    input: { includeImage: false },
+    images: false,
+    capture: false,
+    legacyHost: true,
+  },
+])(
+  "returns fresh $mode snapshots on repeated MCP calls",
+  ({ input, images, capture, legacyHost }) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const server = yield* McpServer.McpServer;
+        const broker = yield* PreviewAutomationBroker.PreviewAutomationBroker;
+        const connected = yield* Deferred.make<void>();
+        const png =
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=";
+        const page = {
+          url: "http://example.test/",
+          loading: false,
+          visibleText: "Save your changes",
+          interactiveElements: [
+            {
+              tag: "button",
+              role: "button",
+              name: "Save",
+              selector: "#save",
+              x: 0,
+              y: 0,
+              width: 20,
+              height: 10,
+            },
+          ],
+          accessibilityTree: { role: "document", name: "Example" },
+          consoleEntries: [],
+          networkEntries: [],
+          actionTimeline: [],
+        };
+        const screenshot = { mimeType: "image/png", width: 1, height: 1 };
+        let requests = 0;
+        const events = yield* broker.connect({
           clientId: "mcp-image-option-client",
-          connectionId: event.connectionId,
-          requestId: event.request.requestId,
-          ok: true,
-          result: {
-            ...page,
-            title: `Snapshot ${requests}`,
-            screenshot:
-              images || requests === 7 ? { ...screenshot, data: png } : { width: 1, height: 1 },
-          },
+          environmentId,
         });
-      }).pipe(Effect.forkScoped);
-      yield* Deferred.await(connected);
+        yield* Stream.runForEach(events, (event) => {
+          if (event.type === "connected") return Deferred.succeed(connected, undefined);
+          requests += 1;
+          expect(event.request).toMatchObject({
+            operation: "snapshot",
+            tabId: alternateTabId,
+            threadId,
+          });
+          // The default snapshot still captures so it can report screenshot dimensions.
+          const captured = requests > 6 || capture;
+          expect(event.request.input).toEqual(
+            images && requests !== 7 ? {} : { pixelsRequired: false },
+          );
+          return broker.respond({
+            clientId: "mcp-image-option-client",
+            connectionId: event.connectionId,
+            requestId: event.request.requestId,
+            ok: true,
+            result: {
+              ...page,
+              title: `Snapshot ${requests}`,
+              // Older hosts ignore the capture preference and still return a full PNG.
+              ...(captured || legacyHost ? { screenshot: { ...screenshot, data: png } } : {}),
+            },
+          });
+        }).pipe(Effect.forkScoped);
+        yield* Deferred.await(connected);
 
-      for (const call of [1, 2, 3, 4, 5, 6]) {
-        const snapshot = yield* server
+        for (const call of [1, 2, 3, 4, 5, 6]) {
+          const snapshot = yield* server
+            .callTool({
+              name: "preview_snapshot",
+              arguments: { ...input, tabId: alternateTabId },
+            })
+            .pipe(
+              Effect.provideService(McpInvocationContext.McpInvocationContext, invocation),
+              Effect.provideService(McpSchema.McpServerClient, client),
+            );
+          const metadata = {
+            ...page,
+            title: `Snapshot ${call}`,
+            ...(capture || legacyHost ? { screenshot } : {}),
+          };
+          const { accessibilityTree: _tree, ...boundedMetadata } = metadata;
+          expect(snapshot.isError).toBe(false);
+          expect(snapshot.structuredContent).toEqual({
+            ...boundedMetadata,
+            omitted: ["accessibilityTree (use interactiveElements locators or preview_evaluate)"],
+          });
+          const [identity, text, ...rest] = snapshot.content;
+          expect(identity?.type === "text" ? decodeJsonText(identity.text) : null).toEqual({
+            url: page.url,
+          });
+          expect(text?.type === "text" ? decodeJsonText(text.text) : null).toEqual(boundedMetadata);
+          expect(rest).toEqual([
+            {
+              type: "text",
+              text: "Snapshot text was bounded. Omitted: accessibilityTree (use interactiveElements locators or preview_evaluate).",
+            },
+            ...(images
+              ? [
+                  {
+                    type: "image",
+                    mimeType: "image/png",
+                    data: new Uint8Array(Buffer.from(png, "base64")),
+                  },
+                ]
+              : []),
+          ]);
+        }
+
+        // Output selection belongs to this call, not the MCP session's history.
+        const nextDefault = yield* server
           .callTool({
             name: "preview_snapshot",
-            arguments: { ...input, tabId: alternateTabId },
+            arguments: { tabId: alternateTabId },
           })
           .pipe(
             Effect.provideService(McpInvocationContext.McpInvocationContext, invocation),
             Effect.provideService(McpSchema.McpServerClient, client),
           );
-        const metadata = { ...page, title: `Snapshot ${call}`, screenshot };
-        const { accessibilityTree: _tree, ...boundedMetadata } = metadata;
-        expect(snapshot.isError).toBe(false);
-        expect(snapshot.structuredContent).toEqual({
-          ...boundedMetadata,
-          omitted: ["accessibilityTree (use interactiveElements locators or preview_evaluate)"],
-        });
-        const [identity, text, ...rest] = snapshot.content;
-        expect(identity?.type === "text" ? decodeJsonText(identity.text) : null).toEqual({
-          url: page.url,
-        });
-        expect(text?.type === "text" ? decodeJsonText(text.text) : null).toEqual(boundedMetadata);
-        expect(rest).toEqual([
-          {
-            type: "text",
-            text: "Snapshot text was bounded. Omitted: accessibilityTree (use interactiveElements locators or preview_evaluate).",
-          },
-          ...(images
-            ? [
-                {
-                  type: "image",
-                  mimeType: "image/png",
-                  data: new Uint8Array(Buffer.from(png, "base64")),
-                },
-              ]
-            : []),
+        expect(nextDefault.content.map((content) => content.type)).toEqual([
+          "text",
+          "text",
+          "text",
         ]);
-      }
-
-      const nextDefault = yield* server
-        .callTool({
-          name: "preview_snapshot",
-          arguments: { tabId: alternateTabId },
-        })
-        .pipe(
-          Effect.provideService(McpInvocationContext.McpInvocationContext, invocation),
-          Effect.provideService(McpSchema.McpServerClient, client),
-        );
-      expect(nextDefault.content.map((content) => content.type)).toEqual(["text", "text", "text"]);
-      expect(nextDefault.structuredContent).toMatchObject({ title: "Snapshot 7", screenshot });
-      expect(nextDefault.structuredContent).not.toHaveProperty("accessibilityTree");
-      expect(requests).toBe(7);
-    }),
-  ).pipe(Effect.provide(layerTest)),
+        expect(nextDefault.structuredContent).toMatchObject({ title: "Snapshot 7", screenshot });
+        expect(nextDefault.structuredContent).not.toHaveProperty("accessibilityTree");
+        expect(requests).toBe(7);
+      }),
+    ).pipe(Effect.provide(layerTest)),
 );
 
 it.effect("saves the uncapped screenshot while the agent sees the capped one", () =>
@@ -723,16 +758,12 @@ it.effect("saves captured snapshot PNGs without replaying image data by default"
       expect(text?.type === "text" ? text.text : "").toContain(screenshotPath);
 
       const automatic = yield* callSnapshot({});
-      const automaticPage = automatic.structuredContent as { readonly screenshotPath: string };
       expect(automatic.content.every((content) => content.type === "text")).toBe(true);
       expect(automatic.structuredContent).toMatchObject({
         visibleText: "Example",
         title: "Example",
       });
-      expect(automaticPage.screenshotPath).not.toBe(screenshotPath);
-      expect(Buffer.from(yield* fileSystem.readFile(automaticPage.screenshotPath)).toString()).toBe(
-        "png",
-      );
+      expect(automatic.structuredContent).not.toHaveProperty("screenshotPath");
 
       const pathOnly = yield* callSnapshot({ save: true });
       const saved = pathOnly.structuredContent as { readonly screenshotPath: string };
@@ -742,7 +773,11 @@ it.effect("saves captured snapshot PNGs without replaying image data by default"
       expect(others).toEqual([]);
       expect(only?.type === "text" ? decodeJsonText(only.text) : null).toEqual(saved);
       // Both saved variants request a full capture even when the caller hides the image.
-      expect(inputs).toEqual([{ fullScreenshot: true }, {}, { fullScreenshot: true }]);
+      expect(inputs).toEqual([
+        { fullScreenshot: true },
+        { pixelsRequired: false },
+        { fullScreenshot: true },
+      ]);
     }),
   ).pipe(Effect.provide(layerTest)),
 );
@@ -761,7 +796,7 @@ it.effect("treats null snapshot options like omitted ones", () =>
       const nulls = yield* callSnapshot({ tabId: null, includeImage: null, save: null });
 
       expect(withoutScreenshotPath(nulls)).toEqual(withoutScreenshotPath(omitted));
-      expect(inputs).toEqual([{}, {}]);
+      expect(inputs).toEqual([{ pixelsRequired: false }, { pixelsRequired: false }]);
     }),
   ).pipe(Effect.provide(layerTest)),
 );

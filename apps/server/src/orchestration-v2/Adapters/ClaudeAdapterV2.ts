@@ -14139,12 +14139,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               });
               if (!attached) {
                 yield* Ref.update(activeTurn, (current) => (current === context ? null : current));
+                const exitCause = live?.exitCause ?? querySession?.exitCause;
                 return yield* new ProviderAdapter.ProviderAdapterProtocolError({
                   driver: CLAUDE_PROVIDER,
                   detail: CLAUDE_QUERY_ENDED_BEFORE_TURN_DETAIL,
-                  ...(querySession?.exitCause === undefined
-                    ? {}
-                    : { cause: querySession?.exitCause }),
+                  ...(exitCause === undefined ? {} : { cause: exitCause }),
                 });
               }
               if (
@@ -14248,7 +14247,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               });
               return yield* new ProviderAdapter.ProviderAdapterProtocolError({
                 driver: CLAUDE_PROVIDER,
-                detail: "Claude provider query ended before the turn could start.",
+                detail: CLAUDE_QUERY_ENDED_BEFORE_TURN_DETAIL,
+                ...(querySession.exitCause === undefined ? {} : { cause: querySession.exitCause }),
               });
             }
             const offerUserMessage =

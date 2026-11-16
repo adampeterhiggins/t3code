@@ -16,6 +16,14 @@ import type { ReviewInlineComment } from "./reviewCommentSelection";
 import { buildReviewParsedDiff, type ReviewParsedDiff } from "./reviewModel";
 
 vi.mock("diff", { spy: true });
+vi.mock("../../state/preferences", async () => ({
+  mobilePreferencesAtom: (await import("effect/reactivity")).Atom.make(
+    (await import("effect/reactivity")).AsyncResult.success({ environmentThemes: [] }),
+  ),
+}));
+vi.mock("../../state/server", async () => ({
+  publishedEnvironmentThemesAtom: (await import("effect/reactivity")).Atom.make([]),
+}));
 
 function makeComment(text: string): ReviewInlineComment {
   return {

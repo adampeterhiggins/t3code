@@ -92,9 +92,9 @@ export function withCreationProvenance(
       const {
         startedBy,
         scheduledTaskId: _scheduledTaskId,
+        initialMessage: _initialMessage,
         linkOrigin: _linkOrigin,
         delegatedFrom: _delegatedFrom,
-        initialMessage: _initialMessage,
         ...rest
       } = command;
       return {

@@ -1066,7 +1066,6 @@ function ThreadRouteContent(
       (selectedThreadCreation?.message.creation?.workspaceMode === "worktree" &&
         selectedThreadCreation.outcome == null),
     sending: composer.selectedThreadQueueCount > 0,
-    turnStarted: setupTurnStartedAt !== null,
     runs: selectedThreadDetail?.runs ?? [],
     followUpSent:
       composer.selectedThreadFeed.filter(

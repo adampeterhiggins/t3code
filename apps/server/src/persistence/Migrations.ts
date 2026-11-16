@@ -297,6 +297,11 @@ const forgetForkMigration55 = Effect.fn("forgetForkMigration55")(function* () {
     SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'effect_sql_migrations'
   `;
   if (tables.length === 0) return;
+  const legacy = yield* sql`
+    SELECT 1 FROM effect_sql_migrations
+    WHERE migration_id = 55 AND name = 'ProjectionThreadsCreatedBy'
+  `;
+  if (legacy.length === 0) return;
   yield* sql`
     DELETE FROM effect_sql_migrations
     WHERE migration_id = 55 AND name = 'ProjectionThreadsCreatedBy'

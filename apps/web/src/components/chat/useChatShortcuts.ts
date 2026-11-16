@@ -94,8 +94,12 @@ export function useChatShortcuts(input: ChatShortcutsInput) {
     const command = resolveChatShortcutCommand(event, keybindings, input.scriptKeybindings, {
       context: shortcutContext,
     });
-    if (!command || !detachedChatShortcutRuns(command)) return;
-    if (!command || (inSideChatPane && !SIDE_CHAT_PANE_COMMANDS.has(command))) return;
+    if (
+      !command ||
+      !detachedChatShortcutRuns(command) ||
+      (inSideChatPane && !SIDE_CHAT_PANE_COMMANDS.has(command))
+    )
+      return;
     const run =
       input.commands[command] ??
       composerShortcutCommands(input.composerRef, input.branchToolbarRef)[command] ??

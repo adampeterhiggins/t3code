@@ -572,6 +572,7 @@ export type PreviewAutomationSnapshot = typeof PreviewAutomationSnapshot.Type;
 
 // pixelsRequired is false when the caller discards the screenshot; hosts that ignore it still return a PNG.
 export const PreviewAutomationSnapshotInput = Schema.Struct({
+  includeImage: Schema.optional(Schema.Boolean),
   fullScreenshot: Schema.optional(Schema.Boolean),
   pixelsRequired: Schema.optional(Schema.Boolean),
 });

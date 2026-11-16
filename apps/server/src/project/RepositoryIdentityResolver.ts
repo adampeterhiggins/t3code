@@ -272,7 +272,7 @@ const resolveRepositoryIdentityFromCacheKey = Effect.fn(
   cacheKey: RepositoryIdentityCacheKey,
 ): Effect.fn.Return<RepositoryIdentity | null, never, ProcessRunner.ProcessRunner> {
   const processRunner = yield* ProcessRunner.ProcessRunner;
-  const env = explicitBareRepositoryEnv(process.env, yield* HostProcess.Platform);
+  const env = gitEnv(yield* HostProcess.Platform);
   const runGit = (args: ReadonlyArray<string>) =>
     processRunner
       .run({

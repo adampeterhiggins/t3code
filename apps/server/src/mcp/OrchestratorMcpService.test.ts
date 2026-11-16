@@ -1737,6 +1737,8 @@ describe("OrchestratorMcpService provider resolution", () => {
           hasReceipt: () => Effect.succeed(false),
           assertProviderInstanceEnabled: () => Effect.void,
           isProviderInstanceEnabledForProject: () => Effect.succeed(true),
+          getProjectThreadRecords: () => Effect.succeed(childProjection),
+          getThreadShell: (threadId) => Effect.succeed(liveThreadShell(threadId)),
           getThreadRecords: (threadId) =>
             Effect.succeed(
               threadId === parentThreadId ? parentProjection([task]) : childProjection,
@@ -1794,7 +1796,7 @@ describe("OrchestratorMcpService provider resolution", () => {
           completionWake: "always",
         });
 
-        yield* service.waitForThread(scope, { threadId: parentThreadId, ...budget });
+        yield* service.waitForThread(scope, { threadId: childThreadId, ...budget });
         assert.deepEqual(yield* Ref.get(threadWaitBudgets), [scenario.budgetMs]);
       }).pipe(Effect.provide(layerOrchestratorService.pipe(Layer.provide(dependencies))));
     }),
@@ -1915,6 +1917,8 @@ describe("OrchestratorMcpService provider resolution", () => {
           NodeServices.layer,
           NodeCrypto.layer,
           Layer.mock(ThreadManagementService.ThreadManagementService)({
+            getThreadShell: (threadId) => Effect.succeed(liveThreadShell(threadId)),
+            getProjectThreadRecords: () => Effect.succeed(parentProjection([])),
             getThreadRecords: () => Effect.succeed(parentProjection([])),
           }),
           ServerSettings.layerTest({
@@ -3883,7 +3887,7 @@ describe("OrchestratorMcpService provider resolution", () => {
         );
         assert.deepEqual(
           listed.tasks.map((summary) => summary.webhookUrl),
-          [undefined, "https://t3.example/hooks/secret"],
+          [undefined, undefined],
         );
       }),
     );
@@ -4920,6 +4924,8 @@ describe("OrchestratorMcpService provider resolution", () => {
           NodeServices.layer,
           NodeCrypto.layer,
           Layer.mock(ThreadManagementService.ThreadManagementService)({
+            getThreadShell: (threadId) => Effect.succeed(liveThreadShell(threadId)),
+            getProjectThreadRecords: () => Effect.succeed(parentProjection([])),
             getThreadRecords: () => Effect.succeed(parentProjection([])),
             interruptThread: (input) =>
               Effect.fail(
@@ -4943,10 +4949,17 @@ describe("OrchestratorMcpService provider resolution", () => {
         const error = yield* Effect.gen(function* () {
           const service = yield* OrchestratorMcpService.OrchestratorMcpService;
           return yield* service
-            .interruptThread(scope, {
-              threadId: parentThreadId,
-              clientRequestId: "interrupt-dispatch-cause",
-            })
+            .interruptThread(
+              {
+                ...scope,
+                thread: undefined,
+                client: { sessionId: "interrupt", label: "test", access: "full-access" },
+              },
+              {
+                threadId: parentThreadId,
+                clientRequestId: "interrupt-dispatch-cause",
+              },
+            )
             .pipe(Effect.flip);
         }).pipe(Effect.provide(layerOrchestratorService.pipe(Layer.provide(layerDependencies))));
         assert.equal(error.code, "orchestration_error");

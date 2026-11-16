@@ -311,7 +311,6 @@ import {
   resolveThreadOpenRoute,
   type SideChatParentPanel,
 } from "~/lib/sideChatPane";
-
 import {
   useClientSettings,
   useClientSettingsHydrated,

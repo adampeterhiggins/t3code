@@ -4118,6 +4118,14 @@ describe("UsageService", () => {
               ),
             },
             onCursorRequest: (request) => {
+              if (request.url.endsWith("/GetTeams")) return Response.json({ teams: [] });
+              if (request.url.endsWith("/GetMe")) {
+                const token = request.headers.authorization?.replace("Bearer ", "") ?? "";
+                const subject = JSON.parse(
+                  Buffer.from(token.split(".")[1] ?? "", "base64url").toString(),
+                ).sub as string;
+                return Response.json({ userId: subject.endsWith("user_shared") ? 1 : 2 });
+              }
               if (request.url.includes("/aiserver.v1.DashboardService/GetFilteredUsageEvents")) {
                 const token = request.headers.authorization?.replace("Bearer ", "") ?? "";
                 const subject = JSON.parse(

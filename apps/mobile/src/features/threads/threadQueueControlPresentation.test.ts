@@ -76,6 +76,7 @@ describe("threadQueueControlPresentation", () => {
 
     expect(controls.displayText).toBe("Use the cache in README.md and api.ts");
   });
+
   it("shows context chips by their labels", () => {
     const environment = formatComposerContextReference({
       kind: "environment",

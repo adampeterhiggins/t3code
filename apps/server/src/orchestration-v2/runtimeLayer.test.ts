@@ -6759,7 +6759,9 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         ),
       );
 
-      // A settled thread is still watched: the wake brings it back with a follow-up.
+      yield* reactor.sweep;
+      yield* TestClock.adjust("10 minutes");
+      // A later head brings the settled thread back with a follow-up.
       yield* reactor.sweep;
       const woken = yield* orchestrator.getThreadShell(threadId);
       assert.isNull(woken?.settledAt ?? null);
@@ -12205,7 +12207,8 @@ it.layer(layerTest)("usage-limit recovery", (it) => {
       assert.equal(after.runs[1]?.status, "starting");
       const continuation = after.messages.find((message) => message.runId === after.runs[1]?.id);
       assert.equal(continuation?.role, "user");
-      assert.equal(continuation?.text, "Continue where you left off.");
+      assert.equal(continuation?.text, "");
+      assert.equal(continuation?.notification?.summary, "Resumed thread");
       // The stop is no longer the latest run, so a second click changes nothing.
       assert.equal((yield* resumeNow("second"))._tag, "Failure");
       assert.lengthOf((yield* orchestrator.getThreadProjection(threadId)).runs, 2);

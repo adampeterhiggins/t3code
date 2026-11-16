@@ -140,10 +140,10 @@ describe("composer link conversion", () => {
   it("replaces a link at its current position and keeps the caret after text typed during loading", async () => {
     const test = setup();
     test.editor.current = {
+      captureAttachmentInsertion: () => undefined,
       focus: vi.fn(),
       focusAt: vi.fn(),
       focusAtEnd: vi.fn(),
-      captureAttachmentInsertion: () => undefined,
       readSelectionRange: () => ({ start: 0, end: 0 }),
       requestCitationComment: vi.fn(),
       readSnapshot: () => ({

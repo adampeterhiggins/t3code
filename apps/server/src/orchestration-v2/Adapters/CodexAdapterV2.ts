@@ -4503,7 +4503,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             const { ordinal, startedAt } = yield* resolveItemPosition(input.context, input.item.id);
             const patterns = [...new Set(webSearchPatterns(input.item))];
             const results = webSearchResults(input.item);
-            const status = input.status;
+            const { status } = input;
             const node: OrchestrationV2ExecutionNode = {
               id: nodeId,
               threadId: input.context.projectionThreadId,

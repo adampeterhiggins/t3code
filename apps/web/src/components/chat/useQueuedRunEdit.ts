@@ -1,4 +1,3 @@
-import { composerDraftContentChanged } from "./composerSend.logic";
 import {
   collectInlineContextIds,
   removeInlineContextReference,
@@ -61,15 +60,16 @@ import {
 } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { stackedThreadToast, toastManager } from "../ui/toast";
-import { type ChatComposerHandle } from "./ChatComposer";
-import { type MessageDraftContent } from "./useMessageDraftActions";
-import { uploadComposerAttachments } from "./composerAttachmentUploads";
+import type { ChatComposerHandle } from "./ChatComposer";
+import { composerDraftContentChanged } from "./composerSend.logic";
 import {
   discardQueuedEditDraft,
   prepareQueuedEditAttachments,
   recoverQueuedMessageEdit,
 } from "./queuedMessageEdit";
-import { type EditQueuedRunRequest } from "./QueuedRunsControl";
+import type { EditQueuedRunRequest } from "./QueuedRunsControl";
+import { type MessageDraftContent } from "./useMessageDraftActions";
+import { uploadComposerAttachments } from "./composerAttachmentUploads";
 
 interface EditingQueuedRun {
   readonly threadId: ThreadId;

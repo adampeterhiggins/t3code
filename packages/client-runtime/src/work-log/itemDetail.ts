@@ -156,8 +156,8 @@ function prettyJsonText(text: string): string {
   const trimmed = text.trim();
   if (!/^[[{]/.test(trimmed)) return text;
   const parsed = parseJson(trimmed);
-  if (parsed !== undefined && hasLossyJsonNumber(trimmed)) return text;
   const whole = withoutTransportKeys(parsed);
+  if (parsed !== undefined && hasLossyJsonNumber(trimmed)) return text;
   if (parsed !== undefined && whole === undefined) return "";
   if (isRecord(whole)) {
     const values = Object.values(whole);
