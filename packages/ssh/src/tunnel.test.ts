@@ -356,18 +356,7 @@ describe("ssh tunnel scripts", () => {
       NodeChildProcess.execFileSync("sh", ["-c", `sha256sum ${archive} > SHA256SUMS`], {
         cwd: release,
       });
-      for (const tool of [
-        "sh",
-        "mkdir",
-        "mktemp",
-        "cat",
-        "rm",
-        "grep",
-        "cut",
-        "sha256sum",
-        "tar",
-        "mv",
-      ]) {
+      for (const tool of ["sh", "mkdir", "mktemp", "cat", "rm", "grep", "cut", "sha256sum", "mv"]) {
         NodeFS.symlinkSync(
           NodeChildProcess.execFileSync("sh", ["-c", `command -v ${tool}`], {
             encoding: "utf8",
@@ -375,6 +364,7 @@ describe("ssh tunnel scripts", () => {
           NodePath.join(bin, tool),
         );
       }
+      NodeFS.writeFileSync(NodePath.join(bin, "tar"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
       NodeFS.writeFileSync(
         NodePath.join(bin, "uname"),
         '#!/bin/sh\ncase "$1" in -s) echo Linux ;; -m) echo x86_64 ;; esac\n',
@@ -1517,6 +1507,33 @@ describe("SSH launch during desktop update", () => {
       assert.isAtMost(result.now, 61_000);
       assert.isTrue(result.markerExists, "an expired marker is ignored, not deleted");
       assert.equal(result.events.filter((event) => event.startsWith("start ")).length, 1);
+    }),
+  );
+
+  it.effect.each([false, true])(
+    "waits for a boot service between two servers (archive: %s)",
+    (archive) =>
+      Effect.gen(function* () {
+        const script = yield* archive
+          ? captureLauncherFor({ archiveVersion: "1.2.3" })
+          : captureLauncher;
+        const result = runLauncher(script, { archive, serviceServing: true, readyAt: 5_000 });
+        assert.deepEqual(result.output, { remotePort: 4888, serverKind: "external" });
+        assert.equal(result.now, 5_000);
+        assert.isFalse(result.events.some((event) => event.startsWith("start ")));
+      }),
+  );
+
+  it.effect("fails without starting a second server when the home's owner never answers", () =>
+    Effect.gen(function* () {
+      const result = runLauncher(yield* captureLauncher, {
+        serviceServing: true,
+        allowFailure: true,
+      });
+      assert.equal(result.status, 1);
+      assert.include(result.stderr, "no second server was started");
+      assert.equal(result.now, 60_000);
+      assert.isFalse(result.events.some((event) => event.startsWith("start ")));
     }),
   );
 

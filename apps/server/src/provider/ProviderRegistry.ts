@@ -221,6 +221,7 @@ const shouldRetainMissingProviderModels = (provider: ServerProvider): boolean =>
   const isAntigravity = provider.driver === ProviderDriverKind.make("antigravity");
   const isCodex = provider.driver === ProviderDriverKind.make("codex");
   const isDevin = provider.driver === ProviderDriverKind.make("devin");
+  const isOpenCode = provider.driver === ProviderDriverKind.make("opencode");
   if (
     !isAntigravity &&
     !isCodex &&
@@ -246,7 +247,7 @@ const shouldRetainMissingProviderModels = (provider: ServerProvider): boolean =>
     provider.enabled && !provider.installed && provider.status === "warning";
   const didInstalledProviderProbeFail =
     provider.installed &&
-    (provider.status === "error" || (isCodex && provider.status === "warning"));
+    (provider.status === "error" || ((isCodex || isOpenCode) && provider.status === "warning"));
   // Devin reports a failed `models list` as a warning on an installed CLI —
   // keep the last good catalog until discovery succeeds again.
   const isDevinDiscoveryDegraded = isDevin && provider.installed && provider.status === "warning";

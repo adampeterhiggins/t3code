@@ -1007,7 +1007,7 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
   const editPreview =
     expanded && shownItem.type === "file_change" ? fileChangePreviewText(shownItem) : null;
   const fullDetail =
-    expanded && !reasoning && !call
+    expanded && !reasoning && !call && !row.workEntry.questionAnswer
       ? (editPreview ??
         (fetchedItem && !isRead
           ? formatItemFullDetail(row.projectedItem, fetchedItem)

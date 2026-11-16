@@ -77,6 +77,7 @@ describe("orchestrator MCP contracts", () => {
         runId: "run-child-1",
         status: "running",
         timedOut: true,
+        usageLimit: null,
         next,
       }).next,
     ).toBe(next);

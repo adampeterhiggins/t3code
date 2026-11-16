@@ -720,7 +720,7 @@ const threadExportCommand = Command.make("export", {
     Effect.gen(function* () {
       const threadId = yield* decodeThreadId(flags.thread);
       yield* withThreadTools(
-        flags,
+        { ...flags, json: false },
         Effect.fn("cli.thread.export")(function* (tools) {
           const { thread, items } = yield* readTimeline(
             tools,

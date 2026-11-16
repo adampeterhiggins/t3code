@@ -9,6 +9,7 @@ import {
   awaitAttachmentUploads,
   getUploadedAttachments,
   readAttachmentUpload,
+  refreshExpiredAttachmentUploads,
   retryAttachmentUpload,
   startAttachmentUpload,
 } from "../../lib/attachmentUploadQueue";
@@ -54,6 +55,7 @@ export async function uploadComposerAttachments(input: {
     upload({ environmentId, image: attachment, draftTarget });
   }
   await awaitAttachmentUploads(attachments.map((attachment) => attachment.id));
+  await refreshExpiredAttachmentUploads({ environmentId, images: attachments, draftTarget });
   validate();
   const uploaded = getUploadedAttachments({ environmentId, images: attachments });
   if (uploaded === null) throw new Error(input.failedUploadMessage);

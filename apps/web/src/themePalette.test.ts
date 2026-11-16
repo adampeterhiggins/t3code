@@ -5,15 +5,17 @@ import * as Schema from "effect/Schema";
 import { BUILT_IN_THEMES } from "@t3tools/shared/themePalettes";
 
 import { CONTEXT_CHIP_ACCENTS, contextChipColorVariable } from "./lib/contextChipAccents";
+import { appAtomRegistry } from "./rpc/atomRegistry";
 
 import {
   applyThemePalette,
+  canonicalThemePreference,
   contextChipVariables,
   environmentThemeFileFromDefinition,
   environmentThemeShareState,
   followSharedThemeEdit,
+  getThemeDefinition,
   getThemeColorsForMode,
-  publishedThemeDefinitions,
   getThemeModes,
   getCustomThemes,
   getStandardThemeColors,
@@ -21,6 +23,8 @@ import {
   invalidateCustomThemes,
   installCustomTheme,
   parseThemeFile,
+  parseThemeHalves,
+  publishedThemeDefinitions,
   removeCustomTheme,
   replaceCustomThemeCollection,
   resolveDesktopTheme,
@@ -758,7 +762,7 @@ describe("context chip colors", () => {
 });
 
 describe("stored theme preferences", () => {
-  it("lets a configured half unlock an appearance the base theme lacks", () => {
+  it("lets built-in and published halves unlock an appearance the base theme lacks", () => {
     const lightOnly = parseThemeFile({
       version: THEME_FILE_VERSION,
       id: "paper",
@@ -766,6 +770,17 @@ describe("stored theme preferences", () => {
       appearance: "light",
       colors: { canvas: "#f8fbff" },
     });
+    const [publishedTheme] = publishedThemeDefinitions([
+      {
+        id: "constructor",
+        name: "Constructor",
+        appearance: "dark",
+        canvas: "#1a1b26",
+        accent: "#7aa2f7",
+      },
+    ]);
+    expect(publishedTheme).toBeDefined();
+    using _environmentThemes = vi.spyOn(appAtomRegistry, "get").mockReturnValue([publishedTheme]);
     vi.stubGlobal("window", {
       localStorage: {
         getItem: (key: string) =>
@@ -779,6 +794,12 @@ describe("stored theme preferences", () => {
       expect(resolveThemeAppearance("paper", true, true, undefined, halves)).toBe("dark");
       expect(resolveThemeAppearance("paper", false, false, "dark", halves)).toBe("dark");
       expect(resolveDesktopTheme("paper", true, undefined, halves)).toBe("system");
+
+      expect(getThemeDefinition("constructor")).toEqual(publishedTheme);
+      expect(canonicalThemePreference("constructor")).toBe("constructor");
+      const publishedHalves = parseThemeHalves(JSON.stringify({ dark: "constructor" }));
+      expect(publishedHalves).toEqual({ dark: "constructor" });
+      expect(resolveThemeAppearance("paper", true, true, undefined, publishedHalves)).toBe("dark");
     } finally {
       vi.unstubAllGlobals();
       invalidateCustomThemes();

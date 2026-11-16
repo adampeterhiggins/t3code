@@ -124,8 +124,16 @@ describe("bounded server browser reads", () => {
         browser.snapshot({ timeoutMs: 100, signal: abort.controller.signal }),
       ).rejects.toMatchObject({
         tag: "PreviewAutomationTimeoutError",
-        message: expect.stringContaining(stage),
-        detail: { stage, timeoutMs: 100 },
+        detail: {
+          pendingStages: expect.arrayContaining([
+            stage === "snapshot metadata"
+              ? "page state"
+              : stage === "Page.captureScreenshot"
+                ? "screenshot"
+                : stage,
+          ]),
+          timeoutMs: 100,
+        },
       });
       await vi.advanceTimersByTimeAsync(100);
       await failed;
@@ -210,7 +218,7 @@ describe("bounded server browser reads", () => {
       .mockReturnValueOnce(screenshot.promise)
       .mockReturnValueOnce(new Promise<never>(() => {}));
     const failed = expect(browser.snapshot({ timeoutMs: 100 })).rejects.toMatchObject({
-      detail: { stage: "shrink screenshot", timeoutMs: 100 },
+      detail: { pendingStages: expect.arrayContaining(["screenshot"]), timeoutMs: 100 },
     });
     await vi.advanceTimersByTimeAsync(80);
     screenshot.resolve({ data: png });
@@ -370,7 +378,14 @@ describe("bounded server browser reads", () => {
       operation === "capture"
         ? ServerBrowserPage.captureViewport(browser.page, browser.cdp, { format: "png", scale: 1 })
         : ServerBrowserPage.evaluate(browser.cdp, { expression: "42" }),
-    ).rejects.toMatchObject({ detail: { timeoutMs } });
+    ).rejects.toMatchObject(
+      operation === "capture"
+        ? {
+            tag: "PreviewAutomationExecutionError",
+            message: expect.stringContaining("not producing screenshot frames"),
+          }
+        : { detail: { timeoutMs } },
+    );
     await vi.advanceTimersByTimeAsync(timeoutMs);
     await failed;
     expect(vi.getTimerCount()).toBe(0);

@@ -483,6 +483,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
 
   const handleSelectDriver = (driverKind: ProviderDriverKind | "favorites") => {
     setSelectedDriverKind(driverKind);
+    if (window.matchMedia("(pointer: coarse)").matches) return;
     window.requestAnimationFrame(() => {
       focusSearchInput();
     });

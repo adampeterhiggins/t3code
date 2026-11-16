@@ -36,7 +36,7 @@ import {
   timelineTurnFoldRunIdsByEntryId,
   liveAnswerPreview,
   deriveMessagesTimelineRowsWithState,
-  isTimelineMinimapRowVisible,
+  isTimelineMinimapTurnVisible,
   resolveAssistantMessageCopyState,
   resolveTimelineIsAtEnd,
   resolveTimelineMinimapCurrentIndex,
@@ -5303,7 +5303,9 @@ describe("timeline end and minimap geometry", () => {
     expect(range).toEqual({ start: 10, end: 11 });
     const rowIndices = [0, 9, 10, 11, 12, 20];
     expect(
-      rowIndices.filter((index) => isTimelineMinimapRowVisible(index, range.start, range.end)),
+      rowIndices.filter((index) =>
+        isTimelineMinimapTurnVisible(index, index + 1, range.start, range.end),
+      ),
     ).toEqual([10, 11]);
     expect(
       resolveTimelineMinimapCurrentIndex({
@@ -5345,7 +5347,7 @@ describe("timeline end and minimap geometry", () => {
     expect(currentIndex(41, 45)).toBe(4);
     expect(currentIndex(0, 0)).toBe(0);
     expect(currentIndex(null, null)).toBeNull();
-    expect(isTimelineMinimapRowVisible(20, null, null)).toBe(false);
+    expect(isTimelineMinimapTurnVisible(20, undefined, null, null)).toBe(false);
   });
 
   it("treats the follow re-arm band above the content bottom as the live edge", () => {
@@ -5423,5 +5425,16 @@ describe("timeline end and minimap geometry", () => {
         ),
       ).toBe(expected);
     }
+  });
+});
+
+describe("isTimelineMinimapTurnVisible", () => {
+  it("keeps a turn lit while only its reply is on screen", () => {
+    // Turn rows 10..499, viewport inside the reply.
+    expect(isTimelineMinimapTurnVisible(10, 500, 200, 210)).toBe(true);
+    expect(isTimelineMinimapTurnVisible(500, undefined, 600, 610)).toBe(true);
+    expect(isTimelineMinimapTurnVisible(500, undefined, 200, 210)).toBe(false);
+    expect(isTimelineMinimapTurnVisible(10, 500, 500, 510)).toBe(false);
+    expect(isTimelineMinimapTurnVisible(10, 500, null, null)).toBe(false);
   });
 });

@@ -11,7 +11,7 @@ export function useWorktreeSetup(input: {
   preparing: boolean;
   /** A message is on its way; the server may show its repository clones as a setup. */
   sending: boolean;
-  turnStarted: boolean;
+  runs: Parameters<typeof resolveVisibleWorktreeSetup>[0]["runs"];
   followUpSent: boolean;
 }) {
   const key = JSON.stringify([input.environmentId, input.threadId]);
@@ -37,7 +37,7 @@ export function useWorktreeSetup(input: {
     visible: resolveVisibleWorktreeSetup({
       live: snapshot,
       recorded: null,
-      turnStarted: input.turnStarted,
+      runs: input.runs,
       followUpSent: input.followUpSent,
     }),
   };

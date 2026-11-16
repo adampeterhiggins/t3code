@@ -4,6 +4,7 @@ import {
   collectToolFilePaths,
   summarizeToolActivityInput,
 } from "@t3tools/shared/toolActivity";
+import { commandItemOutput } from "@t3tools/shared/commandOutput";
 import { MCP_APP_OUTPUT_KEY } from "@t3tools/shared/mcpApp";
 import {
   mcpToolResultOutput,
@@ -131,6 +132,21 @@ export function isJsonToolText(text: string): boolean {
   return documents.length > 1 && documents.every((document) => parseJson(document) !== undefined);
 }
 
+// Strings match whole so numbers inside them are skipped. Scan only parsed JSON: every string closes.
+const JSON_STRING_OR_NUMBER = /"(?:[^"\\]|\\.)*"|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g;
+
+/** JSON.parse rounds integers beyond 2^53 and overflows to Infinity, so reformatting would change the value. */
+function hasLossyJsonNumber(json: string): boolean {
+  for (const [token] of json.matchAll(JSON_STRING_OR_NUMBER)) {
+    if (token.startsWith('"')) continue;
+    const value = Number(token);
+    if (!Number.isFinite(value) || (Number.isInteger(value) && !Number.isSafeInteger(value))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * MCP tools often return JSON as minified text, one document per line. Indent each.
  * A document that is a single text field (a file's content, a page's markdown)
@@ -141,6 +157,7 @@ function prettyJsonText(text: string): string {
   if (!/^[[{]/.test(trimmed)) return text;
   const parsed = parseJson(trimmed);
   const whole = withoutTransportKeys(parsed);
+  if (parsed !== undefined && hasLossyJsonNumber(trimmed)) return text;
   if (parsed !== undefined && whole === undefined) return "";
   if (isRecord(whole)) {
     const values = Object.values(whole);
@@ -160,7 +177,9 @@ function prettyJsonText(text: string): string {
   if (whole !== undefined) return JSON.stringify(whole, null, 2);
   const lines = trimmed.split("\n").filter((line) => line.trim());
   const documents = lines.map((line) => parseJson(line.trim()));
-  if (documents.some((document) => document === undefined)) return text;
+  if (documents.some((document) => document === undefined) || hasLossyJsonNumber(trimmed)) {
+    return text;
+  }
   return documents.map((document) => JSON.stringify(document, null, 2)).join("\n\n");
 }
 
@@ -388,23 +407,6 @@ export function turnItemReadFile(item: OrchestrationV2TurnItem): ReadFileOutput 
   };
 }
 
-/** Older Claude bash rows stored the raw `{ stdout, stderr, interrupted, ... }` result. */
-function commandOutputText(output: string): string {
-  if (!output.trimStart().startsWith('{"stdout"')) return output;
-  const parsed = parseJson(output.trim());
-  if (
-    !isRecord(parsed) ||
-    typeof parsed.stdout !== "string" ||
-    typeof parsed.stderr !== "string" ||
-    typeof parsed.interrupted !== "boolean"
-  ) {
-    return output;
-  }
-  return [parsed.stdout, parsed.stderr]
-    .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
-    .join("\n");
-}
-
 // App calls store the provider result beside the app reference; its images get no preview.
 function dynamicToolOutputText(
   item: Extract<OrchestrationV2TurnItem, { readonly type: "dynamic_tool" }>,
@@ -419,8 +421,10 @@ function dynamicToolOutputText(
 
 export function turnItemOutputText(item: OrchestrationV2TurnItem): string | null {
   switch (item.type) {
-    case "command_execution":
-      return item.output?.trim() ? commandOutputText(item.output) || null : null;
+    case "command_execution": {
+      const output = commandItemOutput(item);
+      return output?.trim() ? output : null;
+    }
     case "dynamic_tool":
       return item.outputOmitted === true
         ? null

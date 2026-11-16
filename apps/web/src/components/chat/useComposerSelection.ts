@@ -1,6 +1,6 @@
-import type { ProviderInteractionMode } from "@t3tools/contracts";
 import { getProviderModelCapabilities } from "../../providerModels";
 import { preserveCompatibleOptions } from "../ChatView.modelOptions";
+import type { ProviderInteractionMode } from "@t3tools/contracts";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { useApplyThreadModelPick } from "./useApplyThreadModelPick";
 import {
@@ -17,6 +17,7 @@ import {
   type ComposerThreadTarget,
   type DraftSessionState,
   type DraftThreadEnvMode,
+  isSameModel,
   useComposerDraftStore,
 } from "../../composerDraftStore";
 import { useStableCallback } from "../../hooks/useStableCallback";
@@ -246,18 +247,29 @@ export function useComposerSelection(input: ComposerSelectionInput) {
     // reasoning-effort choice survives switching within a model family.
     const rememberedOptions =
       useComposerDraftStore.getState().stickyOptionsByModelByProvider[instanceId]?.[resolvedModel];
-    const preservedOptions =
+    const threadSelection = activeThread.modelSelection;
+    // This pick replaces the stored options, so the thread's own model carries them over.
+    const pickOptions =
       rememberedOptions !== undefined && rememberedOptions.length > 0
-        ? [...rememberedOptions]
-        : preserveCompatibleOptions(
-            activeThread.modelSelection?.options,
-            entry ? getProviderModelCapabilities(entry.models, resolvedModel, entry.driver) : null,
-          );
-    const nextModelSelection: ModelSelection = {
-      instanceId,
-      model: resolvedModel,
-      ...(preservedOptions ? { options: preservedOptions } : {}),
-    };
+        ? rememberedOptions
+        : threadSelection.instanceId === instanceId &&
+            entry !== undefined &&
+            isSameModel(
+              { providers: providerStatuses, selectedProvider: entry.driver, settings },
+              threadSelection,
+              { instanceId, model: resolvedModel },
+            )
+          ? threadSelection.options
+          : preserveCompatibleOptions(
+              threadSelection.options,
+              entry
+                ? getProviderModelCapabilities(entry.models, resolvedModel, entry.driver)
+                : null,
+            );
+    const nextModelSelection: ModelSelection =
+      pickOptions !== undefined && pickOptions.length > 0
+        ? { instanceId, model: resolvedModel, options: [...pickOptions] }
+        : { instanceId, model: resolvedModel };
     const modelChangeBlockReason = getStartedThreadModelChangeBlockReason({
       hasStartedSession: activeRuntime !== null,
       supportsProviderSwitchingViaHandoff,
