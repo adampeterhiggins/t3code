@@ -159,15 +159,14 @@ CLI login, and one account counts once. Code:
 account scan in [`CursorUsageAccounts.ts`](../packages/provider-cursor/src/server/CursorUsageAccounts.ts). User guide:
 [usage.md](./user/usage.md).
 
-Cursor turns also record their token usage. Upstream's Cursor adapter ignores the usage the SDK
-returns with each finished run, so Cursor provider turns carry none. The fork records reported
+Like upstream, Cursor turns record their token usage and context fill. The fork additionally records reported
 usage while a run is working, updating totals at each model turn's end, and replaces those partial
 totals with the finished run's cumulative usage. Interrupted or failed runs retain the partial
 counts already reported. The fork maps it onto the
 turn's `turnTokenUsage` (cache reads and writes counted inside input, as for Claude), which feeds
 turn analytics and the live usage of delegated tasks run on Cursor
 ([`turnTokenUsage.ts`](../packages/provider-cursor/src/server/turnTokenUsage.ts)). It is a sum
-over the run's model calls, not context occupancy, so Cursor threads still have no context meter.
+over the run's model calls; upstream's checkpoint context meter reports context occupancy separately.
 The usage page keeps reading Cursor's account history, so nothing is counted twice.
 
 Native Grok turns also record the CLI's prompt-wide input, output, cache, and reasoning usage,

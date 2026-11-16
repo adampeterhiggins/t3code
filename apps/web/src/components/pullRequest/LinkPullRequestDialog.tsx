@@ -269,7 +269,7 @@ function LinkPullRequestPicker({
           ? "Paste a pull request URL or enter 123 / #123."
           : pullRequests.isPending || trimmedQuery !== debouncedQuery
             ? "Loading pull requests…"
-            : (pullRequests.error ?? "No pull requests match these filters.");
+            : (pullRequests.error?.message ?? "No pull requests match these filters.");
 
   const renderRow = (
     candidate: LinkCandidate,

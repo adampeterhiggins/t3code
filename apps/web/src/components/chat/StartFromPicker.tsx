@@ -530,7 +530,7 @@ function StartFromPickerDialog(props: StartFromPickerDialogProps) {
         ? null
         : pullRequests.isPending || searching
           ? "Loading pull requests…"
-          : (pullRequests.error ?? "No pull requests match these filters."),
+          : (pullRequests.error?.message ?? "No pull requests match these filters."),
       <CommandGroup items={[...entries]}>
         <CommandCollection>
           {(entry: EnvironmentPullRequestEntry) => {

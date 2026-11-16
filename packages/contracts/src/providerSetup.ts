@@ -35,6 +35,11 @@ export const ProviderSetupAuthMethod = Schema.Struct({
 export type ProviderSetupAuthMethod = typeof ProviderSetupAuthMethod.Type;
 
 const SetupOperationId = TrimmedNonEmptyString.check(Schema.isMaxLength(128));
+// Environments supply these and clients open them, so a `javascript:` URL would run as the client.
+const SignInUrl = TrimmedNonEmptyString.check(
+  Schema.isMaxLength(16_384),
+  Schema.isPattern(/^https?:\/\//i),
+);
 
 export const ProviderAuthMethod = Schema.Struct({
   id: SetupOperationId,
@@ -50,14 +55,14 @@ export const ProviderAuthInteraction = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("browser"),
     id: SetupOperationId,
-    url: TrimmedNonEmptyString.check(Schema.isMaxLength(16_384)),
+    url: SignInUrl,
     requiresConsent: Schema.Boolean,
     acceptsCallback: Schema.optionalKey(Schema.Boolean),
   }),
   Schema.Struct({
     type: Schema.Literal("deviceCode"),
     id: SetupOperationId,
-    url: TrimmedNonEmptyString.check(Schema.isMaxLength(16_384)),
+    url: SignInUrl,
     userCode: TrimmedNonEmptyString.check(Schema.isMaxLength(256)),
   }),
   Schema.Struct({
@@ -143,7 +148,7 @@ export const ProviderAuthState = Schema.Struct({
     "cancelled",
   ]),
   flowId: Schema.NullOr(SetupOperationId),
-  authorizationUrl: Schema.NullOr(Schema.String),
+  authorizationUrl: Schema.NullOr(SignInUrl),
   expiresAt: Schema.NullOr(IsoDateTime),
   message: Schema.NullOr(Schema.String),
   /**

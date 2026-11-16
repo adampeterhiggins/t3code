@@ -6,7 +6,7 @@ import * as HttpClient from "effect/http/HttpClient";
 import * as Layer from "effect/Layer";
 
 import type { CursorCredentialSource } from "./accountCache.ts";
-import { readCursorAccountUsage, type CursorAccountUsageReadResult } from "./accountUsage.ts";
+import { makeCursorAccountUsageReader, type CursorAccountUsageReadResult } from "./accountUsage.ts";
 import * as CursorKeychain from "./CursorKeychain.ts";
 
 export class CursorAccountReader extends Context.Service<
@@ -27,14 +27,10 @@ export const layer = Layer.effect(
     const context = yield* Effect.context<
       FileSystem.FileSystem | Digest.Digest | HttpClient.HttpClient
     >();
+    const read = yield* makeCursorAccountUsageReader(keychain.accessToken);
     return CursorAccountReader.of({
       read: Effect.fn("CursorAccountReader.read")(function (credentialSource, sinceMs, untilMs) {
-        return readCursorAccountUsage(
-          credentialSource,
-          sinceMs,
-          untilMs,
-          keychain.accessToken,
-        ).pipe(Effect.provideContext(context));
+        return read(credentialSource, sinceMs, untilMs).pipe(Effect.provideContext(context));
       }),
     });
   }),

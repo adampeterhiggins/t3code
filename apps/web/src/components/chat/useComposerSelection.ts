@@ -27,7 +27,11 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { useNavigate } from "@tanstack/react-router";
 import { toastManager } from "../ui/toast";
 import { resolveAppModelSelectionForInstance } from "../../modelSelection";
-import { resolveNewDraftStartFromOrigin } from "../../lib/chatThreadActions";
+import {
+  draftModelSelectionApplies,
+  threadHasStarted,
+  resolveNewDraftStartFromOrigin,
+} from "../../lib/chatThreadActions";
 
 import { getStartedThreadModelChangeBlockReason, deriveLockedProvider } from "../ChatView.logic";
 function makeModelChangeAvailability(
@@ -216,7 +220,10 @@ export function useComposerSelection(input: ComposerSelectionInput) {
       { preserveUnavailableSelection: true },
     );
     const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
-    const draft = useComposerDraftStore.getState().getComposerDraft(threadRef);
+    const storedDraft = useComposerDraftStore.getState().getComposerDraft(threadRef);
+    const draft = draftModelSelectionApplies(storedDraft, threadHasStarted(activeThread))
+      ? storedDraft
+      : null;
     const shownInstanceId =
       draft?.activeProvider ??
       activeRuntime?.providerInstanceId ??

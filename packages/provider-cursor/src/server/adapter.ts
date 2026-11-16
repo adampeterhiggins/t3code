@@ -312,6 +312,7 @@ const CURSOR_AGENT_SETTING_SOURCES = [
 export function makeCursorAgentOptions(input: {
   readonly apiKey?: string;
   readonly modelSelection: ModelSelection;
+  readonly models?: ReadonlyArray<ServerProviderModel>;
   readonly runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy;
   readonly threadId: ThreadId;
   readonly mcpSession: McpProviderSession.McpProviderSessionConfig | undefined;
@@ -320,7 +321,7 @@ export function makeCursorAgentOptions(input: {
   const policy = cursorRuntimeAgentPolicy(input.runtimePolicy, input.platform);
   const mcpServers = cursorMcpServers(input.mcpSession);
   return {
-    model: cursorSdkModelSelection(input.modelSelection),
+    model: cursorSdkModelSelection(input.modelSelection, input.models),
     name: `T3 Code ${input.threadId}`,
     mode: input.runtimePolicy.interactionMode === "plan" ? "plan" : "agent",
     ...(input.apiKey === undefined ? {} : { apiKey: input.apiKey }),
@@ -1032,11 +1033,13 @@ interface ActiveCursorTurn {
   readonly prompt: string | undefined;
   interrupted: boolean;
   finalized: boolean;
-  usage?: TokenUsage;
+  usage: TokenUsage | undefined;
   /** Set when the subscription-limit guard cancels this run, which then fails with it. */
   subscriptionLimitStop?: OrchestrationV2ProviderFailure;
   /** The agent's latest turn ended and no new work has started since. */
   turnEnded: boolean;
+  readonly session: CursorAgentSdk.CursorAgentSdkSession;
+  /** What Cursor billed for this run, summed over its turn-ended updates. */
 }
 
 interface CursorLiveAgent {
@@ -2152,10 +2155,20 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
               // Each turn-ended notification carries that model turn's usage,
               // while the eventual run result is cumulative over all of them.
               if (update.usage !== undefined) {
-                const reported = normalizeCursorTurnTokenUsage(update.usage, false, "running");
+                // Streamed input includes caches; the finished SDK result uses uncached input.
+                const streamedUsage = {
+                  ...update.usage,
+                  inputTokens: Math.max(
+                    0,
+                    update.usage.inputTokens -
+                      update.usage.cacheReadTokens -
+                      update.usage.cacheWriteTokens,
+                  ),
+                };
+                const reported = normalizeCursorTurnTokenUsage(streamedUsage, false, "running");
                 if (reported.usageStatus !== "unavailable") {
                   const prior = context.usage;
-                  const usage = update.usage;
+                  const usage = streamedUsage;
                   context.usage = {
                     inputTokens: (prior?.inputTokens ?? 0) + usage.inputTokens,
                     outputTokens: (prior?.outputTokens ?? 0) + usage.outputTokens,
@@ -2234,6 +2247,7 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
           readonly context: ActiveCursorTurn;
           readonly status: OrchestrationV2ProviderTurn["status"];
           readonly completedAt: DateTime.Utc | null;
+          readonly tokenUsage?: OrchestrationV2ProviderTurn["tokenUsage"];
         }): OrchestrationV2ProviderTurn => ({
           id: input.context.providerTurnId,
           providerThreadId: input.context.input.providerThread.id,
@@ -2248,6 +2262,7 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
           status: input.status,
           startedAt: input.context.startedAt,
           completedAt: input.completedAt,
+          ...(input.tokenUsage === undefined ? {} : { tokenUsage: input.tokenUsage }),
         });
 
         const finalizeTurn = Effect.fnUntraced(function* (requested: {
@@ -2293,6 +2308,17 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
           }
           yield* completeReasoning(input.context);
           yield* completeAssistant(input.context);
+          // The turn's billed totals count every step; only the checkpoint knows the context fill.
+          const contextUsage = yield* (
+            input.context.session.readContextUsage ?? Effect.undefined
+          ).pipe(
+            Effect.catch((cause) =>
+              Effect.logWarning("orchestration-v2.cursor-context-usage-unavailable", {
+                providerTurnId: input.context.providerTurnId,
+                cause,
+              }).pipe(Effect.as(undefined)),
+            ),
+          );
           const finalUsage = normalizeCursorTurnTokenUsage(
             input.usage,
             input.context.subagents.size > 0,
@@ -2314,9 +2340,18 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
                 context: input.context,
                 status: input.status,
                 completedAt,
+                ...(contextUsage === undefined
+                  ? {}
+                  : {
+                      tokenUsage: {
+                        usedTokens: contextUsage.usedTokens,
+                        maxTokens: contextUsage.maxTokens,
+                        updatedAt: DateTime.formatIso(completedAt),
+                      },
+                    }),
               }),
               // Run totals span every model call, so they are billable usage, not
-              // context occupancy; tokenUsage (the context meter) stays unset.
+              // context occupancy; the checkpoint provides the context meter.
               turnTokenUsage,
             },
           });
@@ -2447,6 +2482,7 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
           const options = makeCursorAgentOptions({
             ...(apiKey === undefined ? {} : { apiKey }),
             modelSelection: openInput.modelSelection,
+            models: adapterOptions.getModels?.() ?? [],
             runtimePolicy: openInput.runtimePolicy,
             platform,
             threadId: openInput.threadId,
@@ -2686,7 +2722,10 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
                 message,
                 summarize: compacted,
                 options: {
-                  model: cursorSdkModelSelection(turnInput.modelSelection),
+                  model: cursorSdkModelSelection(
+                    turnInput.modelSelection,
+                    adapterOptions.getModels?.() ?? [],
+                  ),
                   mode: turnInput.runtimePolicy.interactionMode === "plan" ? "plan" : "agent",
                   ...(Object.keys(turnMcpServers).length === 0
                     ? {}
@@ -2738,6 +2777,8 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
               interrupted: false,
               finalized: false,
               turnEnded: false,
+              session: agent.session,
+              usage: undefined,
             };
             yield* Ref.set(activeTurn, context);
             yield* emitProviderEvent({

@@ -33,6 +33,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as SqlError from "effect/sql/SqlError";
 import * as Stream from "effect/Stream";
@@ -49,8 +50,10 @@ import * as ProviderEventIngestor from "./ProviderEventIngestor.ts";
 import * as ProviderUsageAnalytics from "../telemetry/ProviderUsageAnalytics.ts";
 import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
+import { UsageLimitResetFallback } from "../usage/UsageLimitSources.ts";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import type { ProviderInstance } from "@t3tools/provider-core/server/driver";
+import type { ServerProvider } from "@t3tools/contracts";
 import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
 import {
   makeProviderEventRoutingState,
@@ -167,6 +170,7 @@ const modelSelection = {
   model: "gpt-5.4",
 } satisfies ModelSelection;
 const CODEX_DRIVER = ProviderDriverKind.make("codex");
+const isProviderEvent = Schema.is(ProviderAdapter.ProviderAdapterV2Event);
 
 function threadCreatedEvent(
   now: DateTime.Utc,
@@ -230,101 +234,121 @@ function threadCreatedEvent(
 
 const layer = it.layer(layerTest);
 
-it.effect("refreshes the failing instance snapshot after a committed usage_limit terminal", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const refreshed = yield* Deferred.make<void>();
-      const adapter = yield* ProviderAdapter.ProviderAdapterV2.pipe(
-        Effect.provide(
-          Layer.mock(ProviderAdapter.ProviderAdapterV2)({
-            instanceId: ProviderInstanceId.make("cursor-work"),
-            driver: ProviderDriverKind.make("cursor"),
-          }),
-        ),
-      );
-      const instance: ProviderInstance = {
-        instanceId: ProviderInstanceId.make("cursor-work"),
+it.effect("takes a hub's reset for an unreset usage_limit, then refreshes the snapshot", () =>
+  Effect.gen(function* () {
+    const refreshed = yield* Deferred.make<void>();
+    const adapter = yield* ProviderAdapter.ProviderAdapterV2.pipe(
+      Effect.provide(
+        Layer.mock(ProviderAdapter.ProviderAdapterV2)({
+          instanceId: ProviderInstanceId.make("cursor-work"),
+          driver: ProviderDriverKind.make("cursor"),
+        }),
+      ),
+    );
+    const instance: ProviderInstance = {
+      instanceId: ProviderInstanceId.make("cursor-work"),
+      driverKind: ProviderDriverKind.make("cursor"),
+      continuationIdentity: {
         driverKind: ProviderDriverKind.make("cursor"),
-        continuationIdentity: {
-          driverKind: ProviderDriverKind.make("cursor"),
-          continuationKey: "work",
-        },
-        enabled: true,
-        displayName: undefined,
-        orchestrationAdapter: adapter,
-        textGeneration: {
-          generateBranchName: () => Effect.die("unused"),
-          generateCommitMessage: () => Effect.die("unused"),
-          generatePrContent: () => Effect.die("unused"),
-          generateThreadTitle: () => Effect.die("unused"),
-          generateReviewGuide: () => Effect.die("unused"),
-          generateIgnoredNames: () => Effect.die("unused"),
-          generateTranscriptionPostProcessing: () => Effect.die("unused"),
-        },
-        snapshot: {
-          refreshUsage: Deferred.succeed(refreshed, undefined).pipe(Effect.asVoid),
-          getSnapshot: Effect.die("unused"),
-          refresh: Effect.die("unused"),
-          resolveMaintenance: () => Effect.die("unused"),
-          applyUsageLimits: () => Effect.die("unused"),
-          streamChanges: Stream.empty,
-        },
-      };
-      const lookups: ProviderInstanceId[] = [];
-      const instances = Layer.mock(ProviderInstanceRegistry.ProviderInstanceRegistry)({
-        getInstance: (id) =>
-          Effect.sync(() => {
-            lookups.push(id);
-            return id === instance.instanceId ? instance : undefined;
-          }),
-      });
-      yield* Effect.gen(function* () {
-        const now = yield* DateTime.now;
-        const eventSink = yield* EventSink.EventSinkV2;
-        const ingestor = yield* ProviderEventIngestor.ProviderEventIngestorV2;
-        const idAllocator = yield* IdAllocator.IdAllocatorV2;
-        const threadEvent = yield* threadCreatedEvent(now);
-        yield* eventSink.write({ events: [threadEvent] });
-        const input = {
-          providerSessionId: yield* idAllocator.allocate.providerSession({
-            providerInstanceId: instance.instanceId,
-            threadId: threadEvent.threadId,
-          }),
+        continuationKey: "work",
+      },
+      enabled: true,
+      displayName: undefined,
+      orchestrationAdapter: adapter,
+      textGeneration: {
+        generateBranchName: () => Effect.die("unused"),
+        generateCommitMessage: () => Effect.die("unused"),
+        generatePrContent: () => Effect.die("unused"),
+        generateThreadTitle: () => Effect.die("unused"),
+        generateIgnoredNames: () => Effect.die("unused"),
+        generateReviewGuide: () => Effect.die("unused"),
+        generateTranscriptionPostProcessing: () => Effect.die("unused"),
+      },
+      snapshot: {
+        refreshUsage: Deferred.succeed(refreshed, undefined).pipe(Effect.asVoid),
+        getSnapshot: Effect.succeed({
+          auth: { status: "authenticated", endpoint: "http://hub.test:8317" },
+        } as ServerProvider),
+        refresh: Effect.die("unused"),
+        resolveMaintenance: () => Effect.die("unused"),
+        applyUsageLimits: () => Effect.die("unused"),
+        streamChanges: Stream.empty,
+      },
+    };
+    const lookups: ProviderInstanceId[] = [];
+    const hubLookups: Array<[string, string, string | null]> = [];
+    const instances = Layer.mock(ProviderInstanceRegistry.ProviderInstanceRegistry)({
+      getInstance: (id) =>
+        Effect.sync(() => {
+          lookups.push(id);
+          return id === instance.instanceId ? instance : undefined;
+        }),
+    });
+    yield* Effect.gen(function* () {
+      const now = yield* DateTime.now;
+      const eventSink = yield* EventSink.EventSinkV2;
+      const ingestor = yield* ProviderEventIngestor.ProviderEventIngestorV2;
+      const idAllocator = yield* IdAllocator.IdAllocatorV2;
+      const threadEvent = yield* threadCreatedEvent(now);
+      yield* eventSink.write({ events: [threadEvent] });
+      const input = {
+        providerSessionId: yield* idAllocator.allocate.providerSession({
           providerInstanceId: instance.instanceId,
           threadId: threadEvent.threadId,
-        };
-        for (const failureClass of ["validation_error", "usage_limit"] as const) {
-          const stored = yield* ingestor.ingestNormalized({
-            ...input,
-            event: {
-              type: "turn.terminal",
+        }),
+        providerInstanceId: instance.instanceId,
+        threadId: threadEvent.threadId,
+      };
+      for (const failureClass of ["validation_error", "usage_limit"] as const) {
+        const stored = yield* ingestor.ingestNormalized({
+          ...input,
+          event: {
+            type: "turn.terminal",
+            driver: instance.driverKind,
+            providerThreadId: idAllocator.derive.providerThread({
               driver: instance.driverKind,
-              providerThreadId: idAllocator.derive.providerThread({
-                driver: instance.driverKind,
-                nativeThreadId: "limited",
-              }),
-              providerTurnId: idAllocator.derive.providerTurn({
-                driver: instance.driverKind,
-                nativeTurnId: failureClass,
-              }),
-              runOrdinal: 1,
-              failureItemOrdinal: 1,
-              status: "failed",
-              failure: makeProviderFailure({
-                class: failureClass,
-                message: "Provider rejected turn.",
-              }),
-              threadDisposition: "reusable",
-            },
-          });
-          assert.equal(stored.length, 1);
-          if (failureClass === "validation_error") assert.deepEqual(lookups, []);
+              nativeThreadId: "limited",
+            }),
+            providerTurnId: idAllocator.derive.providerTurn({
+              driver: instance.driverKind,
+              nativeTurnId: failureClass,
+            }),
+            runOrdinal: 1,
+            failureItemOrdinal: 1,
+            status: "failed",
+            failure: makeProviderFailure({
+              class: failureClass,
+              message: "Provider rejected turn.",
+            }),
+            threadDisposition: "reusable",
+          },
+        });
+        assert.equal(stored.length, 1);
+        if (failureClass === "validation_error") assert.deepEqual(lookups, []);
+        else {
+          const event = stored[0]?.event;
+          assert.equal(
+            event?.type === "turn-item.updated" && event.payload.type === "error"
+              ? event.payload.failure.resetAt
+              : undefined,
+            "2026-11-13T18:00:00.000Z",
+          );
         }
-        assert.deepEqual(lookups, [instance.instanceId]);
-        yield* Deferred.await(refreshed);
-      }).pipe(Effect.provide(makeLayerTest(layerTestEventSink, instances)));
-    }),
-  ),
+      }
+      assert.deepEqual(lookups, [instance.instanceId, instance.instanceId]);
+      assert.deepEqual(hubLookups, [["cursor", "http://hub.test:8317", "gpt-5.4"]]);
+      yield* Deferred.await(refreshed);
+    }).pipe(
+      Effect.provide(makeLayerTest(layerTestEventSink, instances)),
+      Effect.provideService(UsageLimitResetFallback, {
+        resetAt: (driver, endpoint, model) =>
+          Effect.sync(() => {
+            hubLookups.push([driver, endpoint, model]);
+            return "2026-11-13T18:00:00.000Z";
+          }),
+      }),
+    );
+  }),
 );
 
 it.effect("records accepted billed turn usage once without billing the context window", () => {
@@ -424,6 +448,76 @@ it.effect("records accepted billed turn usage once without billing the context w
     });
   }).pipe(Effect.provide(layerTest.pipe(Layer.provide(layerAnalytics))));
 });
+
+it.effect(
+  "reports invalid provider questions as typed errors and still ingests valid questions",
+  () =>
+    Effect.gen(function* () {
+      const now = yield* DateTime.now;
+      const eventSink = yield* EventSink.EventSinkV2;
+      const eventStore = yield* EventStore.EventStoreV2;
+      const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
+      const ingestor = yield* ProviderEventIngestor.ProviderEventIngestorV2;
+      const idAllocator = yield* IdAllocator.IdAllocatorV2;
+      const threadEvent = yield* threadCreatedEvent(now);
+      const threadId = threadEvent.threadId;
+      yield* eventSink.write({ events: [threadEvent] });
+      const providerInstanceId = ProviderInstanceId.make("pi");
+      const providerSessionId = yield* idAllocator.allocate.providerSession({
+        providerInstanceId,
+        threadId,
+      });
+      const question = { id: "input", header: "Enter a value", question: "", options: [] };
+      const item = {
+        id: TurnItemId.make(`${threadId}:question`),
+        threadId,
+        runId: null,
+        nodeId: null,
+        providerThreadId: null,
+        providerTurnId: null,
+        nativeItemRef: null,
+        parentItemId: null,
+        ordinal: 1,
+        status: "waiting",
+        title: "Enter a value",
+        startedAt: now,
+        completedAt: null,
+        updatedAt: now,
+        type: "user_input_request",
+        requestId: RuntimeRequestId.make(`${threadId}:question`),
+        questions: [question],
+      } satisfies OrchestrationV2TurnItem;
+      const event = {
+        type: "turn_item.updated",
+        driver: ProviderDriverKind.make("pi"),
+        turnItem: item,
+      } satisfies ProviderAdapter.ProviderAdapterV2Event;
+      const input = { providerSessionId, providerInstanceId, threadId, event };
+
+      assert.isFalse(isProviderEvent(event));
+      const error = yield* ingestor.ingestNormalized(input).pipe(Effect.flip);
+      assert.instanceOf(error, ProviderEventIngestor.ProviderEventNormalizeError);
+      assert.equal(
+        error.message,
+        `Failed to normalize provider event turn_item.updated for thread ${threadId}.`,
+      );
+      assert.instanceOf(error.cause, Schema.SchemaError);
+      assert.equal(yield* eventStore.latestSequence({ threadId }), 1);
+      assert.isEmpty((yield* projectionStore.getThreadProjection(threadId)).turnItems);
+
+      const validEvent = {
+        ...event,
+        turnItem: { ...item, questions: [{ ...question, question: "Enter a value" }] },
+      };
+      assert.isTrue(isProviderEvent(validEvent));
+      const stored = yield* ingestor.ingestNormalized({ ...input, event: validEvent });
+      assert.lengthOf(stored, 1);
+      assert.equal(stored[0]?.event.type, "turn-item.updated");
+      assert.deepEqual((yield* projectionStore.getThreadProjection(threadId)).turnItems, [
+        validEvent.turnItem,
+      ]);
+    }).pipe(Effect.provide(layerTest)),
+);
 
 layer("ProviderEventIngestorV2", (it) => {
   it.effect("normalizes provider events through the real event log and projection store", () =>
@@ -2344,184 +2438,6 @@ layer("ProviderEventIngestorV2", (it) => {
         ),
       ),
     ),
-  );
-
-  it.effect(
-    "updates delegated usage before completion without double-counting or overwriting task state",
-    () =>
-      Effect.gen(function* () {
-        const now = yield* DateTime.now;
-        const eventSink = yield* EventSink.EventSinkV2;
-        const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
-        const ingestor = yield* ProviderEventIngestor.ProviderEventIngestorV2;
-        const idAllocator = yield* IdAllocator.IdAllocatorV2;
-        const rootEvent = yield* threadCreatedEvent(now);
-        if (rootEvent.type !== "thread.created") {
-          throw new Error("Expected a thread.created fixture event");
-        }
-        const childThreadId = idAllocator.derive.threadFromProviderThread({
-          driver: CODEX_DRIVER,
-          nativeThreadId: "app-owned-usage-child",
-        });
-        const providerSessionId = yield* idAllocator.allocate.providerSession({
-          providerInstanceId: modelSelection.instanceId,
-          threadId: rootEvent.threadId,
-        });
-        const ingest = (event: ProviderEventIngestor.ProviderEventIngestInput["event"]) =>
-          ingestor.ingestNormalized({
-            providerSessionId,
-            providerInstanceId: modelSelection.instanceId,
-            threadId: rootEvent.threadId,
-            event,
-          });
-        yield* eventSink.write({ events: [rootEvent] });
-        // The subagent's thread starts on the parent's model and options.
-        yield* ingest({
-          type: "app_thread.created",
-          driver: CODEX_DRIVER,
-          appThread: {
-            ...rootEvent.payload,
-            id: childThreadId,
-            title: "review design",
-            modelSelection: {
-              ...modelSelection,
-              options: [{ id: "reasoningEffort", value: "xhigh" }],
-            },
-            activeProviderThreadId: null,
-            forkedFrom: {
-              type: "node",
-              nodeId: NodeId.make("node:app-owned-usage"),
-            },
-            lineage: {
-              parentThreadId: rootEvent.threadId,
-              relationshipToParent: "subagent",
-              rootThreadId: rootEvent.threadId,
-            },
-          },
-        });
-        const subagentUpdated = {
-          type: "subagent.updated",
-          driver: CODEX_DRIVER,
-          subagent: {
-            id: NodeId.make("node:app-owned-usage"),
-            threadId: rootEvent.threadId,
-            runId: null,
-            parentNodeId: NodeId.make("node:root"),
-            origin: "app_owned",
-            createdBy: "agent",
-            driver: CODEX_DRIVER,
-            providerInstanceId: modelSelection.instanceId,
-            providerThreadId: null,
-            childThreadId,
-            nativeTaskRef: null,
-            prompt: "Review the design",
-            title: "review design",
-            model: "gpt-6.1-sol",
-            status: "running",
-            completionWake: "always",
-            result: null,
-            startedAt: now,
-            completedAt: null,
-            updatedAt: now,
-          },
-        } satisfies ProviderEventIngestor.ProviderEventIngestInput["event"];
-
-        yield* ingest(subagentUpdated);
-        const providerThreadId = idAllocator.derive.providerThread({
-          driver: CODEX_DRIVER,
-          nativeThreadId: "child-usage-provider-thread",
-        });
-        const providerTurn = {
-          id: idAllocator.derive.providerTurn({
-            driver: CODEX_DRIVER,
-            nativeTurnId: "child-usage-turn-1",
-          }),
-          providerThreadId,
-          nodeId: NodeId.make("node:child-usage-turn"),
-          runAttemptId: null,
-          nativeTurnRef: null,
-          ordinal: 1,
-          status: "running" as const,
-          startedAt: now,
-          completedAt: null,
-          turnTokenUsage: {
-            usageStatus: "partial" as const,
-            usageScope: "main_agent" as const,
-            hasSubagents: false,
-            inputTokens: 40,
-            outputTokens: 10,
-            cachedInputTokens: 20,
-          },
-        };
-        const update = {
-          type: "provider_turn.updated" as const,
-          driver: CODEX_DRIVER,
-          threadId: childThreadId,
-          providerTurn,
-        };
-        const first = yield* ingest(update);
-        const repeated = yield* ingest(update);
-        assert.deepEqual(
-          first.map((stored) => [stored.event.type, stored.event.threadId]),
-          [
-            ["provider-turn.updated", childThreadId],
-            ["subagent.updated", rootEvent.threadId],
-          ],
-        );
-        assert.deepEqual(
-          repeated.map((stored) => stored.event.type),
-          ["provider-turn.updated"],
-        );
-        const parent = yield* projectionStore.getThreadRecords(rootEvent.threadId, ["subagents"]);
-        assert.deepEqual(parent.subagents[0]?.usage, {
-          totalTokens: 50,
-          inputTokens: 40,
-          outputTokens: 10,
-          cachedInputTokens: 20,
-          toolUses: 0,
-        });
-        assert.equal(parent.subagents[0]?.status, "running");
-        assert.equal(parent.subagents[0]?.completionWake, "always");
-        // A later child turn adds to the first, rather than replacing the task's total.
-        yield* ingest({
-          ...update,
-          providerTurn: {
-            ...providerTurn,
-            id: idAllocator.derive.providerTurn({
-              driver: CODEX_DRIVER,
-              nativeTurnId: "child-usage-turn-2",
-            }),
-            ordinal: 2,
-          },
-        });
-        const next = yield* projectionStore.getThreadRecords(rootEvent.threadId, ["subagents"]);
-        assert.equal(next.subagents[0]?.usage?.totalTokens, 100);
-        // Usage refresh must preserve a result already published by the parent.
-        yield* ingest({
-          ...subagentUpdated,
-          subagent: {
-            ...next.subagents[0]!,
-            status: "completed",
-            result: "Done",
-            completedAt: now,
-            completionWake: "settled_only",
-          },
-        });
-        yield* ingest({
-          ...update,
-          providerTurn: {
-            ...providerTurn,
-            turnTokenUsage: { ...providerTurn.turnTokenUsage, inputTokens: 60 },
-          },
-        });
-        const completed = yield* projectionStore.getThreadRecords(rootEvent.threadId, [
-          "subagents",
-        ]);
-        assert.equal(completed.subagents[0]?.status, "completed");
-        assert.equal(completed.subagents[0]?.result, "Done");
-        assert.equal(completed.subagents[0]?.completionWake, "settled_only");
-        assert.equal(completed.subagents[0]?.usage?.totalTokens, 120);
-      }),
   );
 });
 

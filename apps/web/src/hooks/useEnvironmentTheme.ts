@@ -13,6 +13,7 @@ import {
   publishedThemeFile,
   subscribeToCustomThemes,
   updateCustomTheme,
+  storePublishedEnvironmentThemes,
   type ThemeDefinition,
 } from "../themePalette";
 import { refreshTheme } from "./useTheme";
@@ -26,7 +27,8 @@ export function useEnvironmentThemeDefinitions(): ReadonlyArray<ThemeDefinition>
  * only land if the active theme is re-applied.
  */
 export function startEnvironmentThemeRepaint(): () => void {
-  return subscribeAtomChanges(environmentThemeDefinitionsAtom, () => {
+  return subscribeAtomChanges(environmentThemeDefinitionsAtom, (definitions) => {
+    storePublishedEnvironmentThemes(definitions);
     refreshTheme({ preservePreview: true });
   });
 }
@@ -50,7 +52,7 @@ function readSharedThemeBases(): Record<string, EnvironmentThemeFile> {
 
 function followSharedThemes(): void {
   if (appAtomRegistry.get(primaryServerConfigAtom) === null) return;
-  const published = appAtomRegistry.get(themeServerEnvironmentThemesAtom);
+  const published = appAtomRegistry.get(themeServerEnvironmentThemesAtom) ?? [];
   const bases = readSharedThemeBases();
   let basesChanged = false;
   for (const local of getCustomThemes()) {

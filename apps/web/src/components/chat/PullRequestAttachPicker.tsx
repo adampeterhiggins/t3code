@@ -149,7 +149,7 @@ function PullRequestList(props: {
       ? null
       : pullRequests.isPending || trimmedQuery !== debouncedQuery
         ? "Loading pull requests…"
-        : (pullRequests.error ?? "No pull requests match these filters.");
+        : (pullRequests.error?.message ?? "No pull requests match these filters.");
 
   return (
     <ContextMenu.Root

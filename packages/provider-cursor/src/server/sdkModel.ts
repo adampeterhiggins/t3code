@@ -60,11 +60,23 @@ export function cursorContextWindowTokens(
   return Number.isSafeInteger(tokens) && tokens > 0 ? tokens : undefined;
 }
 
-export function cursorSdkModelSelection(modelSelection: ModelSelection): CursorSdkModelSelection {
-  // A T3 thread option, not a Cursor model parameter: T3 enforces the guard itself.
-  const options = (modelSelection.options ?? []).filter(
+export function cursorSdkModelSelection(
+  modelSelection: ModelSelection,
+  models: ReadonlyArray<ServerProviderModel> = [],
+): CursorSdkModelSelection {
+  const explicit = (modelSelection.options ?? []).filter(
     (option) => option.id !== SUBSCRIPTION_LIMIT_OPTION_ID,
   );
+  const descriptors =
+    models.find((model) => model.slug === modelSelection.model)?.capabilities?.optionDescriptors ??
+    [];
+  // Some Cursor plans reject runs that leave a catalog parameter unset; T3 keeps Fast off until picked.
+  const defaults = descriptors.flatMap((descriptor) => {
+    if (explicit.some((option) => option.id === descriptor.id)) return [];
+    const value = descriptor.id === "fastMode" ? false : getProviderOptionCurrentValue(descriptor);
+    return value === undefined ? [] : [{ id: descriptor.id, value }];
+  });
+  const options = [...explicit, ...defaults];
   return {
     id: modelSelection.model === "auto" ? "default" : modelSelection.model,
     ...(options.length === 0
@@ -78,13 +90,7 @@ export function cursorSdkModelSelection(modelSelection: ModelSelection): CursorS
   };
 }
 
-/**
- * Fills the parameters a selection leaves out with the defaults the model
- * picker shows. Cursor resolves an omitted parameter to the model's standard
- * tier rather than its default variant, so an untouched composer, a delegated
- * task or a scheduled run would otherwise get a smaller context window than
- * the picker displays. Fast stays off unless chosen, as in the composer.
- */
+// Cursor omission selects its standard tier; fill picker defaults and keep Fast off unless chosen.
 export function withCursorDefaultParameters(
   selection: CursorSdkModelSelection,
   descriptors: ReadonlyArray<ProviderOptionDescriptor> | undefined,

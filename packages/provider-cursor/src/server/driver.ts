@@ -436,6 +436,7 @@ export const CursorDriver: ProviderDriver<
       processEnv,
       auth.requireApiKey,
       auth.withAccess,
+      () => catalogModels,
     );
 
     const checkProvider = auth.readCredential.pipe(
