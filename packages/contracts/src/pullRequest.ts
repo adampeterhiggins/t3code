@@ -110,12 +110,29 @@ export const PullRequestCheckStatus = Schema.Literals([
 ]);
 export type PullRequestCheckStatus = typeof PullRequestCheckStatus.Type;
 
+export const PullRequestCheckAnnotation = Schema.Struct({
+  level: Schema.Literals(["failure", "warning", "notice"]),
+  message: Schema.String,
+  path: Schema.NullOr(Schema.String),
+  line: Schema.NullOr(Schema.Number),
+});
+export type PullRequestCheckAnnotation = typeof PullRequestCheckAnnotation.Type;
+
 export const PullRequestCheck = Schema.Struct({
   name: TrimmedNonEmptyString,
   status: PullRequestCheckStatus,
   description: Schema.NullOr(Schema.String),
   url: Schema.NullOr(Schema.String),
   required: Schema.optional(Schema.Boolean),
+  /** The app that reported the check, such as GitHub Actions or Codecov. */
+  app: Schema.optional(Schema.NullOr(Schema.String)),
+  workflow: Schema.optional(Schema.NullOr(Schema.String)),
+  startedAt: Schema.optional(Schema.NullOr(Schema.String)),
+  completedAt: Schema.optional(Schema.NullOr(Schema.String)),
+  /** The run's output summary, cut short by the host so a long report stays off the wire. */
+  summary: Schema.optional(Schema.NullOr(Schema.String)),
+  /** The first few annotations the run left. */
+  annotations: Schema.optional(Schema.Array(PullRequestCheckAnnotation)),
   /**
    * Not a check: it stands for ones the host could not list, such as workflow runs awaiting
    * approval when that read fails, so nothing waits on it or counts it as passing.

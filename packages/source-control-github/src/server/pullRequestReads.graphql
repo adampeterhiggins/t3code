@@ -39,8 +39,25 @@ fragment CheckContext on StatusCheckRollupContext {
     startedAt
     completedAt
     detailsUrl
+    title
+    summary
     isRequired(pullRequestNumber: $number) @include(if: $required)
+    annotations(first: 3) {
+      nodes {
+        annotationLevel
+        message
+        path
+        location {
+          start {
+            line
+          }
+        }
+      }
+    }
     checkSuite {
+      app {
+        name
+      }
       workflowRun {
         workflow {
           name

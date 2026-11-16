@@ -21,6 +21,47 @@ export const StatusContext = Schema.Struct({
 })
 export interface StatusContext extends Schema.Struct.Type<typeof StatusContext.fields> {}
 
+/** A character position in a check annotation. */
+export const CheckAnnotationPosition = Schema.Struct({
+  /** Line number (1 indexed). */
+  line: Shared.Int
+})
+export interface CheckAnnotationPosition extends Schema.Struct.Type<typeof CheckAnnotationPosition.fields> {}
+
+/** An inclusive pair of positions for a check annotation. */
+export const CheckAnnotationSpan = Schema.Struct({
+  /** Start position (inclusive). */
+  start: CheckAnnotationPosition
+})
+export interface CheckAnnotationSpan extends Schema.Struct.Type<typeof CheckAnnotationSpan.fields> {}
+
+/** A single check annotation. */
+export const CheckAnnotation = Schema.Struct({
+  /** The annotation's severity level. */
+  annotationLevel: Schema.NullOr(GraphQL.enumLiterals(Shared.CheckAnnotationLevel.literals)),
+  /** The annotation's message. */
+  message: Schema.String,
+  /** The path that this annotation was made on. */
+  path: Schema.String,
+  /** The position of this annotation. */
+  location: CheckAnnotationSpan
+})
+export interface CheckAnnotation extends Schema.Struct.Type<typeof CheckAnnotation.fields> {}
+
+/** The connection type for CheckAnnotation. */
+export const CheckAnnotationConnection = Schema.Struct({
+  /** A list of nodes. */
+  nodes: Schema.NullOr(Schema.Array(Schema.NullOr(CheckAnnotation)))
+})
+export interface CheckAnnotationConnection extends Schema.Struct.Type<typeof CheckAnnotationConnection.fields> {}
+
+/** A GitHub App. */
+export const App = Schema.Struct({
+  /** The name of the app. */
+  name: Schema.String
+})
+export interface App extends Schema.Struct.Type<typeof App.fields> {}
+
 /** A workflow contains meta information about an Actions workflow file. */
 export const Workflow = Schema.Struct({
   /** The name of the workflow. */
@@ -37,6 +78,8 @@ export interface WorkflowRun extends Schema.Struct.Type<typeof WorkflowRun.field
 
 /** A check suite. */
 export const CheckSuite = Schema.Struct({
+  /** The GitHub App which created this check suite. */
+  app: Schema.NullOr(App),
   /** The workflow run associated with this check suite. */
   workflowRun: Schema.NullOr(WorkflowRun)
 })
@@ -57,8 +100,14 @@ export const CheckRun = Schema.Struct({
   completedAt: Schema.NullOr(Shared.DateTime),
   /** The URL from which to find full details of the check run on the integrator's site. */
   detailsUrl: Schema.NullOr(Shared.URI),
+  /** A string representing the check run */
+  title: Schema.NullOr(Schema.String),
+  /** A string representing the check run's summary */
+  summary: Schema.NullOr(Schema.String),
   /** Whether this is required to pass before merging for a specific pull request. */
   isRequired: Schema.optionalKey(Schema.Boolean),
+  /** The check run's annotations */
+  annotations: Schema.NullOr(CheckAnnotationConnection),
   /** The check suite that this run is a part of. */
   checkSuite: CheckSuite
 })
@@ -539,7 +588,7 @@ export const PullRequestCore = GraphQL.query("PullRequestCore", {
       { name: "repository", body: ["(owner:$", "owner", " name:$", "name", "){mergeCommitAllowed squashMergeAllowed rebaseMergeAllowed autoMergeAllowed viewerPermission pullRequest(number:$", "number", "){number title url body state isDraft mergeable mergeStateStatus reviewDecision additions deletions changedFiles createdAt updatedAt mergedAt closedAt headRefName baseRefName headRefOid isCrossRepository maintainerCanModify headRepositoryOwner{__typename login}headRepository{nameWithOwner viewerPermission}headRef{id}author{__typename login avatarUrl...on User{id name}}autoMergeRequest{mergeMethod}mergeQueueRemovals:timelineItems(last:1 itemTypes:[REMOVED_FROM_MERGE_QUEUE_EVENT])@include(if:$", "mergeQueue", "){nodes{__typename...on RemovedFromMergeQueueEvent{id createdAt reason}}}viewerCanUpdate viewerDidAuthor viewerCanUpdateBranch baseRef{compare(headRef:$", "headRef", "){behindBy}}reviewRequests(first:$", "requestedReviewers", "){nodes{requestedReviewer{__typename...on User{login name}...on Bot{login}...on Team{slug combinedSlug teamName:name teamAvatarUrl:avatarUrl}}}}labels(first:100){nodes{name color description}}commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{__typename...", "CheckContext", "}pageInfo{hasNextPage endCursor}}}}}}}}"] }
     ],
     fragments: [
-      { name: "CheckContext", body: ["on StatusCheckRollupContext{__typename...on StatusContext{context state targetUrl createdAt description isRequired(pullRequestNumber:$", "number", ")@include(if:$", "required", ")}...on CheckRun{name status conclusion startedAt completedAt detailsUrl isRequired(pullRequestNumber:$", "number", ")@include(if:$", "required", ")checkSuite{workflowRun{workflow{name}}}}}"] }
+      { name: "CheckContext", body: ["on StatusCheckRollupContext{__typename...on StatusContext{context state targetUrl createdAt description isRequired(pullRequestNumber:$", "number", ")@include(if:$", "required", ")}...on CheckRun{name status conclusion startedAt completedAt detailsUrl title summary isRequired(pullRequestNumber:$", "number", ")@include(if:$", "required", ")annotations(first:3){nodes{annotationLevel message path location{start{line}}}}checkSuite{app{name}workflowRun{workflow{name}}}}}"] }
     ]
   },
   variables: {
@@ -591,7 +640,7 @@ export const PullRequestCheckContexts = GraphQL.query("PullRequestCheckContexts"
       { name: "repository", body: ["(owner:$", "owner", " name:$", "name", "){pullRequest(number:$", "number", "){headRefOid commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100 after:$", "after", "){nodes{__typename...", "CheckContext", "}pageInfo{hasNextPage endCursor}}}}}}}}"] }
     ],
     fragments: [
-      { name: "CheckContext", body: ["on StatusCheckRollupContext{__typename...on StatusContext{context state targetUrl createdAt description isRequired(pullRequestNumber:$", "number", ")@include(if:$", "required", ")}...on CheckRun{name status conclusion startedAt completedAt detailsUrl isRequired(pullRequestNumber:$", "number", ")@include(if:$", "required", ")checkSuite{workflowRun{workflow{name}}}}}"] }
+      { name: "CheckContext", body: ["on StatusCheckRollupContext{__typename...on StatusContext{context state targetUrl createdAt description isRequired(pullRequestNumber:$", "number", ")@include(if:$", "required", ")}...on CheckRun{name status conclusion startedAt completedAt detailsUrl title summary isRequired(pullRequestNumber:$", "number", ")@include(if:$", "required", ")annotations(first:3){nodes{annotationLevel message path location{start{line}}}}checkSuite{app{name}workflowRun{workflow{name}}}}}"] }
     ]
   },
   variables: {
