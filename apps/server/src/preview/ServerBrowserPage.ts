@@ -14,6 +14,7 @@ import {
   type PreviewAutomationSelectInput,
   type PreviewAutomationSelectResult,
   type PreviewAutomationSnapshot,
+  type PreviewAutomationSnapshotMetadata,
   type PreviewAutomationSnapshotStage,
   type PreviewAutomationTypeInput,
   type PreviewAutomationUploadInput,
@@ -581,6 +582,37 @@ const pngSize = (base64: string) => {
   return { width: header.readUInt32BE(16), height: header.readUInt32BE(20) };
 };
 
+export const jpegSize = (base64: string) => {
+  const bytes = Buffer.from(base64, "base64");
+  if (bytes.length < 4 || bytes.readUInt16BE(0) !== 0xffd8)
+    throw new Error("Invalid JPEG screenshot.");
+  let offset = 2;
+  while (offset < bytes.length) {
+    if (bytes[offset++] !== 0xff) throw new Error("Invalid JPEG screenshot.");
+    while (bytes[offset] === 0xff) offset++;
+    const marker = bytes[offset++];
+    if (marker === undefined || marker === 0xd9 || marker === 0xda) break;
+    if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) continue;
+    if (offset + 2 > bytes.length) break;
+    const length = bytes.readUInt16BE(offset);
+    if (length < 2 || offset + length > bytes.length) break;
+    if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)) {
+      if (length < 7) break;
+      const height = bytes.readUInt16BE(offset + 3);
+      const width = bytes.readUInt16BE(offset + 5);
+      if (width && height) return { width, height };
+      break;
+    }
+    offset += length;
+  }
+  throw new Error("Invalid JPEG screenshot.");
+};
+
+const scaledSize = (size: { readonly width: number; readonly height: number }, scale: number) =>
+  scale < 1
+    ? { width: Math.round(size.width * scale), height: Math.round(size.height * scale) }
+    : size;
+
 /**
  * A page's display ratio and CSS viewport, read in an isolated world since page script can
  * reassign `devicePixelRatio`, `innerWidth`, and `innerHeight` in its own, and its page zoom.
@@ -748,7 +780,8 @@ const capture = async (
   deadline: number,
   budget: ReadStage,
   stages: SnapshotStages,
-): Promise<PreviewAutomationSnapshot> => {
+  metadataOnly: boolean,
+) => {
   const { running } = stages;
   const track = async <A>(stage: SnapshotStage, operation: (remainingMs: number) => Promise<A>) => {
     running.set(stage, (running.get(stage) ?? 0) + 1);
@@ -781,24 +814,42 @@ const capture = async (
   // Taken between the reads, so a value that changes during either fails the comparison.
   // Awaited after the tree: a capture that fails has finished its tree before a retry starts.
   const pageAndScreenshot = Promise.all([
-    track("page state", () => input.page.evaluate(SNAPSHOT_SCRIPT)) as Promise<
-      Pick<
-        PreviewAutomationSnapshot,
-        "url" | "title" | "loading" | "visibleText" | "interactiveElements"
-      >
-    >,
-    input.includeImage === false
-      ? undefined
-      : captureViewportWithinBudget(
-          input.page,
-          input.cdp,
-          { format: "png", scale: 1 },
-          (stage, operation) => track("screenshot", operation),
-        ).then(async (full) => ({
-          data:
-            scale < 1 ? await track("screenshot", () => shrinkPng(input.cdp, full, scale)) : full,
-          full: input.fullScreenshot && scale < 1 ? full : undefined,
-        })),
+    track(
+      "page state",
+      () =>
+        input.page.evaluate(SNAPSHOT_SCRIPT) as Promise<
+          Pick<
+            PreviewAutomationSnapshot,
+            "url" | "title" | "loading" | "visibleText" | "interactiveElements"
+          >
+        >,
+    ),
+    // A cheap real frame still sizes the screenshot; computing it from metrics drifted from the PNG.
+    track("screenshot", () =>
+      metadataOnly
+        ? captureViewportWithinBudget(
+            input.page,
+            input.cdp,
+            { format: "jpeg", quality: 10, scale: 1 },
+            (stage, operation) => track("screenshot", operation),
+          ).then((data) => ({
+            data,
+            full: undefined,
+          }))
+        : captureViewportWithinBudget(
+            input.page,
+            input.cdp,
+            { format: "png", scale: 1 },
+            (stage, operation) => track("screenshot", operation),
+          ).then(async (full) =>
+            scale < 1
+              ? {
+                  data: await shrinkPng(input.cdp, full, scale),
+                  full: input.fullScreenshot ? full : undefined,
+                }
+              : { data: full, full: undefined },
+          ),
+    ),
   ]);
   void pageAndScreenshot.catch(constVoid);
   // Leaves time for the second read; a frame that never loads holds the tree until then.
@@ -853,22 +904,18 @@ const capture = async (
     consoleEntries: [...input.consoleEntries],
     networkEntries: [...input.networkEntries],
     actionTimeline: [...input.actionTimeline],
-    ...(data === undefined
-      ? {}
-      : {
-          screenshot: {
-            mimeType: "image/png" as const,
-            data,
-            ...pngSize(data),
-          },
-        }),
+    // Reports the size the PNG path would have shrunk to.
+    screenshot: metadataOnly
+      ? scaledSize(jpegSize(data!), scale)
+      : { mimeType: "image/png" as const, data: data!, ...pngSize(data!) },
+    ...(full !== undefined ? { fullScreenshot: { data: full, ...pngSize(full) } } : {}),
   };
 };
 
 /** Snapshots begun per page; observers' snapshots aren't queued, so two can overlap. */
 const snapshotTurns = new WeakMap<Page, number>();
 
-export const snapshot = (input: SnapshotInput): Promise<PreviewAutomationSnapshot> =>
+const runSnapshot = (input: SnapshotInput, metadataOnly: boolean) =>
   withReadBudget(input, async (read) => {
     const timeoutMs = Math.max(
       1,
@@ -879,7 +926,7 @@ export const snapshot = (input: SnapshotInput): Promise<PreviewAutomationSnapsho
     const turn = (snapshotTurns.get(input.page) ?? 0) + 1;
     snapshotTurns.set(input.page, turn);
     // Retry only while this snapshot still owns the page's refs and budget.
-    return capture(input, deadline, read, stages)
+    return capture(input, deadline, read, stages, metadataOnly)
       .catch((cause: unknown) =>
         Date.now() < deadline &&
         !input.signal?.aborted &&
@@ -888,7 +935,7 @@ export const snapshot = (input: SnapshotInput): Promise<PreviewAutomationSnapsho
           (isServerBrowserOperationError(cause) &&
             (cause.message === pageChanged().message ||
               cause.tag === "PreviewAutomationTimeoutError")))
-          ? capture(input, deadline, read, stages)
+          ? capture(input, deadline, read, stages, metadataOnly)
           : Promise.reject(cause),
       )
       .catch((cause: unknown) => {
@@ -902,6 +949,12 @@ export const snapshot = (input: SnapshotInput): Promise<PreviewAutomationSnapsho
         throw cause;
       });
   });
+
+export const snapshot = (input: SnapshotInput) =>
+  runSnapshot(input, false) as Promise<PreviewAutomationSnapshot>;
+
+export const snapshotMetadata = (input: SnapshotInput) =>
+  runSnapshot(input, true) as Promise<PreviewAutomationSnapshotMetadata>;
 
 /** Return when a dialog opens; waiting for the action to finish would block until dialog resolution. */
 export const click = async (
@@ -986,6 +1039,76 @@ const clickTarget = async (
   return point;
 };
 
+type FocusCandidate = {
+  readonly tagName: string;
+  readonly type?: string;
+  readonly disabled?: boolean;
+  readonly readOnly?: boolean;
+  readonly isContentEditable?: boolean;
+  readonly shadowRoot?: { readonly activeElement: FocusCandidate | null } | null;
+  readonly focus?: () => void;
+  getRootNode(): { readonly activeElement?: FocusCandidate | null };
+  contains(other: FocusCandidate): boolean;
+};
+
+// Serialized into the page's main world, so it must not reference module scope.
+const focusTextTarget = (target: FocusCandidate | null) => {
+  let element =
+    target ??
+    (globalThis as unknown as { document: { activeElement: FocusCandidate | null } }).document
+      .activeElement;
+  if (target === null) {
+    while (element?.shadowRoot?.activeElement) element = element.shadowRoot.activeElement;
+    // Focus inside a frame cannot be checked from here, and an editable frame would pass as contentEditable.
+    if (element && ["IFRAME", "FRAME", "FENCEDFRAME", "OBJECT", "EMBED"].includes(element.tagName))
+      return false;
+  }
+  if (element == null) return false;
+  // Require an enabled, focused text target to avoid losing input or sending it to the previous field.
+  const nonText = [
+    "button",
+    "checkbox",
+    "color",
+    "file",
+    "hidden",
+    "image",
+    "radio",
+    "range",
+    "reset",
+    "submit",
+  ];
+  const textControl =
+    element.tagName === "TEXTAREA" ||
+    (element.tagName === "INPUT" && !nonText.includes(element.type ?? "text"));
+  if (!(textControl || element.isContentEditable) || element.disabled || element.readOnly) {
+    return false;
+  }
+  element.focus?.();
+  const active = element.getRootNode().activeElement;
+  return active != null && (active === element || element.contains(active));
+};
+
+// A `*:focus` locator needs Playwright's utility world, which some desktop tabs never get.
+const focusedTextField = async (page: Page, timeout: number) => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          new ServerBrowserOperationError({
+            tag: "PreviewAutomationTimeoutError",
+            message: `The page did not report its focused element within ${timeout}ms, so no text was typed.`,
+            detail: { timeoutMs: timeout },
+          }),
+        ),
+      timeout,
+    );
+  });
+  return await Promise.race([page.evaluate(focusTextTarget, null), expired]).finally(() =>
+    clearTimeout(timer),
+  );
+};
+
 export const type = async (page: Page, input: PreviewAutomationTypeInput) => {
   const timeout = input.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const locator = targetLocator(page, input);
@@ -993,46 +1116,10 @@ export const type = async (page: Page, input: PreviewAutomationTypeInput) => {
     await locator.fill(input.text, { timeout });
     return;
   }
-  // A shadow host also matches :focus; use its innermost focused descendant.
-  const target = locator ?? page.locator("*:focus").last();
   const focused =
-    (locator !== null || (await target.count()) > 0) &&
-    (await target.evaluate(
-      (element) => {
-        // Require an enabled, focused text target to avoid losing input or sending it to the previous field.
-        const control = element as unknown as {
-          readonly type?: string;
-          readonly disabled?: boolean;
-          readonly readOnly?: boolean;
-          readonly isContentEditable?: boolean;
-          readonly focus?: () => void;
-        };
-        const nonText = [
-          "button",
-          "checkbox",
-          "color",
-          "file",
-          "hidden",
-          "image",
-          "radio",
-          "range",
-          "reset",
-          "submit",
-        ];
-        const textControl =
-          element.tagName === "TEXTAREA" ||
-          (element.tagName === "INPUT" && !nonText.includes(control.type ?? "text"));
-        if (!(textControl || control.isContentEditable) || control.disabled || control.readOnly) {
-          return false;
-        }
-        control.focus?.();
-        const root = element.getRootNode() as { readonly activeElement?: typeof element | null };
-        const active = root.activeElement;
-        return active != null && (active === element || element.contains(active));
-      },
-      undefined,
-      { timeout },
-    ));
+    locator === null
+      ? await focusedTextField(page, timeout)
+      : await locator.evaluate(focusTextTarget, undefined, { timeout });
   if (focused !== true) {
     throw new ServerBrowserOperationError({
       tag: "PreviewAutomationTargetNotEditableError",
@@ -1051,14 +1138,15 @@ export const hover = async (
   input: PreviewAutomationHoverInput,
   pointer: PointerReporter = noPointer,
 ) => {
-  const timeout = input.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const deadline = Date.now() + (input.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  const remaining = () => Math.max(1, deadline - Date.now());
   const locator = targetLocator(page, input);
-  await pointer(await targetPoint(page, locator, input, () => timeout), "move");
+  await pointer(await targetPoint(page, locator, input, remaining), "move");
   if (locator === null) {
     await page.mouse.move(input.x ?? 0, input.y ?? 0);
     return;
   }
-  await locator.hover({ timeout });
+  await locator.hover({ timeout: remaining() });
 };
 
 export const select = async (
@@ -1101,17 +1189,18 @@ export const drag = async (
   input: PreviewAutomationDragInput,
   pointer: PointerReporter = noPointer,
 ) => {
-  const timeout = input.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const deadline = Date.now() + (input.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  const remaining = () => Math.max(1, deadline - Date.now());
   const source = targetLocator(page, { locator: input.source })!;
   const target = targetLocator(page, { locator: input.target })!;
-  await pointer(await targetPoint(page, source, {}, () => timeout), "move");
+  await pointer(await targetPoint(page, source, {}, remaining), "move");
   // Observe drag rejection immediately; an unhandled rejection during cursor movement exits the server.
   // Chromium delivers a single move before dragstart; steps give the page mousemoves during the drag.
-  const dragFailure = source.dragTo(target, { timeout, steps: 5 }).then(
+  const dragFailure = source.dragTo(target, { timeout: remaining(), steps: 5 }).then(
     () => null,
     (error: unknown) => ({ error }),
   );
-  const end = await target.boundingBox({ timeout }).catch(() => null);
+  const end = await target.boundingBox({ timeout: remaining() }).catch(() => null);
   if (end) await pointer({ x: end.x + end.width / 2, y: end.y + end.height / 2 }, "move");
   const failure = await dragFailure;
   if (failure) throw failure.error;

@@ -1,3 +1,4 @@
+import { sentMessageFromToolItem } from "@t3tools/shared/toolOutput";
 import { citationRowIndex, transcriptItemId } from "./transcriptCitation.logic";
 import { useAtomValue } from "@effect/atom-react";
 import { type AtomCommandSuccess, runAtomCommand } from "@t3tools/client-runtime/state/runtime";
@@ -98,7 +99,11 @@ export function resolveCitationPhase(input: {
   const sourceId = input.segments?.[0]?.id ?? input.messageId;
   const source = input.entries.find((entry) => transcriptItemId(entry) === sourceId);
   if (!source) return { _tag: "loading" };
-  if (!input.segments && (source.kind !== "message" || source.message.role !== "assistant"))
+  if (
+    !input.segments &&
+    source.kind !== "sent-message" &&
+    (source.kind !== "message" || source.message.role !== "assistant")
+  )
     return { _tag: "failed" };
   const rowIndex = citationRowIndex(input.rows, {
     messageId: input.messageId,
@@ -140,14 +145,18 @@ export function citedThreadSnapshot(input: {
       ? item.id === sourceId ||
         ((item.type === "assistant_message" || item.type === "user_message") &&
           item.messageId === sourceId)
-      : (item.type === "assistant_message" || item.type === "user_message") &&
-        item.messageId === input.messageId,
+      : ((item.type === "assistant_message" || item.type === "user_message") &&
+          item.messageId === input.messageId) ||
+        (item.type === "dynamic_tool" &&
+          item.id === input.messageId &&
+          item.status === "completed" &&
+          sentMessageFromToolItem(item) !== undefined),
   )?.item;
   return {
     message:
       item === undefined
         ? null
-        : input.segments || item.type === "assistant_message"
+        : input.segments || item.type !== "user_message"
           ? "assistant"
           : "other",
     hasMoreHistory: input.history.hasMoreHistory,

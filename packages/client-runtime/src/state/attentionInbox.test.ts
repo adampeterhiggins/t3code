@@ -19,7 +19,7 @@ function makeThread(
     readonly pending?: "approval" | "input";
     readonly runtimeStatus?: "running" | "idle" | "failed";
     readonly runtimeUpdatedAt?: string;
-    readonly runStatus?: "completed" | "failed" | "running";
+    readonly runStatus?: "completed" | "failed" | "running" | "interrupted" | "cancelled";
     readonly runCompletedAt?: string | null;
     readonly updatedAt?: string;
     readonly archivedAt?: string | null;
@@ -116,6 +116,14 @@ describe("resolveThreadAttention", () => {
     const thread = makeThread("t", { runCompletedAt: AFTER_VISIT });
     expect(resolveThreadAttention(thread, undefined)).toBeNull();
     expect(resolveThreadAttention(thread, VISITED)?.reason).toBe("completed");
+    for (const runStatus of ["interrupted", "cancelled"] as const) {
+      expect(
+        resolveThreadAttention(
+          makeThread("stopped", { runStatus, runCompletedAt: AFTER_VISIT }),
+          VISITED,
+        ),
+      ).toBeNull();
+    }
   });
 });
 

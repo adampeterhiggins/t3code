@@ -1,3 +1,4 @@
+import { resolveListedAncestorThreadRef } from "@t3tools/client-runtime/state/threads";
 import { attachSidebarTree } from "../lib/sidebarTree";
 import { resolveProjectExpanded, useUiStateStore } from "../uiStateStore";
 import {
@@ -524,12 +525,19 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     routeDraftRedirect,
   );
   const routeThreadKey = routeThreadRef ? scopedThreadKey(routeThreadRef) : null;
+  const routeRowThreadKey = routeThreadRef
+    ? scopedThreadKey(resolveListedAncestorThreadRef(routeThreadRef, threads))
+    : null;
   // The open thread's group row, which must stay rendered even inside a collapsed shelf.
   const sidebarRouteThreadKey =
-    routeThreadKey === null ? null : (tabThreadGroups.get(routeThreadKey) ?? routeThreadKey);
+    routeRowThreadKey === null
+      ? null
+      : (tabThreadGroups.get(routeRowThreadKey) ?? routeRowThreadKey);
   // A listed tab carries its own highlight; a folded one lights its group's row.
   const highlightedRouteThreadKey =
-    routeThreadKey === null ? null : (hiddenTabThreads.get(routeThreadKey) ?? routeThreadKey);
+    routeRowThreadKey === null
+      ? null
+      : (hiddenTabThreads.get(routeRowThreadKey) ?? routeRowThreadKey);
   // The chat shown beside the routed one in split view, mapped to its row the same way.
   const splitHidden = useMediaQuery(SPLIT_VIEW_HIDDEN_MEDIA_QUERY);
   const splitPartnerRef = useSplitPartner(
@@ -1294,12 +1302,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const [renamingThreadRef, setRenamingThreadRef] = useState<ScopedThreadRef | null>(null);
   const renamingThreadKey = renamingThreadRef ? scopedThreadKey(renamingThreadRef) : null;
   const [renamingTitle, setRenamingTitle] = useState("");
-  const startThreadRename = (threadRef: ScopedThreadRef, title: string) => {
+  const startThreadRename = useStableCallback((threadRef: ScopedThreadRef, title: string) => {
     if (!readEnvironmentScope(threadRef.environmentId, AuthOrchestrationOperateScope)) return;
     setRenamingThreadRef(threadRef);
     setRenamingTitle(title);
     renamingOriginalTitleRef.current = title;
-  };
+  });
   const cancelThreadRename = () => setRenamingThreadRef(null);
   const commitThreadRename = (threadRef: ScopedThreadRef, title: string) => {
     const originalTitle = renamingOriginalTitleRef.current;
@@ -1606,7 +1614,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     if (scroll && scroll.viewport.scrollTop !== scroll.top) scroll.viewport.scrollTop = scroll.top;
   };
   const moveThreadContextDrag = (point: { x: number; y: number }) => {
-    const contextDrag = pointerOutsideThreadList(point);
+    // Search results cannot reorder, so their context preview starts inside the list.
+    const contextDrag = searchResultsListRef.current !== null || pointerOutsideThreadList(point);
     setDragState((current) =>
       current === null || current.contextDrag === contextDrag
         ? current

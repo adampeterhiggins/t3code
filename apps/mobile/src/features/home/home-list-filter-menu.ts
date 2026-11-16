@@ -1,16 +1,32 @@
-import type { AppBarMenuItem } from "../../components/ui/AppBar.types";
 import type { EnvironmentId } from "@t3tools/contracts";
+import * as Arr from "effect/Array";
+import * as Order from "effect/Order";
 
 import type { ThreadGroups } from "@t3tools/contracts/settings";
 
 import { threadListPageLabel, type ThreadListPage } from "../threads/threadListV2";
 import type { ThreadListOrganisation } from "./thread-list-organisations";
+import type { AppBarMenuItem } from "../../components/ui/AppBar.types";
+import type { WorkspaceEnvironment } from "../../state/workspaceModel";
 
 export interface HomeListFilterMenuEnvironment {
   readonly environmentId: EnvironmentId;
   readonly label: string;
   /** Threads picking it would show under the other filters; see buildThreadListFilterFacets. */
   readonly count?: number;
+}
+
+export function homeListFilterEnvironments(environments: ReadonlyArray<WorkspaceEnvironment>) {
+  return Arr.sort(
+    environments
+      .filter((environment) => environment.isEnabled)
+      .map((environment) => ({
+        environmentId: environment.environmentId,
+        label: environment.environmentLabel,
+        connectionState: environment.connectionState,
+      })),
+    Order.mapInput(Order.String, (environment: { readonly label: string }) => environment.label),
+  );
 }
 
 export interface HomeListFilterMenuProject {

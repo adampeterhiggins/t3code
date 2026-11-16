@@ -178,6 +178,8 @@ function TerminalExcerptPreview({
       },
       readOnly: true,
       onData: () => {},
+      onBinary: () => {},
+      onReply: () => {},
       onResize: () => {},
       onSelectionChange: () => {},
       beforeKey: () => true,

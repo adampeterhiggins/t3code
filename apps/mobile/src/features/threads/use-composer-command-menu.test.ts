@@ -286,6 +286,7 @@ describe("@ menu agents", () => {
       hasThread: true,
       hasCompactableConversation: false,
       onChangeDraftMessage,
+      onOpenModelPicker: vi.fn(),
     });
     capture(menu);
     return null;
