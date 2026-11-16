@@ -531,34 +531,41 @@ export function CitationDestinationPicker({
                 aria-label="Choose where the citation goes"
               >
                 <CommandInput placeholder="Search threads and tabs..." />
-                <CommandList className="max-h-96 overflow-y-auto">
-                  {search.length > 0 ? (
-                    <>
-                      {matches.length > 0 ? (
+                <CommandList className="flex max-h-96 flex-col">
+                  <div className="min-h-0 overflow-y-auto">
+                    {search.length > 0 ? (
+                      matches.length > 0 ? (
                         <CommandGroup>
                           <CommandGroupLabel>Tabs</CommandGroupLabel>
                           {matches.map(({ group, tab }) => tabRow(group, tab, true))}
                         </CommandGroup>
-                      ) : null}
-                      <CommandGroup>{newThreadRow}</CommandGroup>
-                    </>
-                  ) : (
-                    <>
-                      {groups[0]?.current ? (
-                        <CommandGroup>
-                          <CommandGroupLabel>This thread</CommandGroupLabel>
-                          {groupRow(groups[0])}
-                        </CommandGroup>
-                      ) : null}
-                      {groups.some((group) => !group.current) ? (
-                        <CommandGroup>
-                          <CommandGroupLabel>Threads</CommandGroupLabel>
-                          {groups.filter((group) => !group.current).map(groupRow)}
-                        </CommandGroup>
-                      ) : null}
-                      <CommandGroup>{newThreadRow}</CommandGroup>
-                    </>
-                  )}
+                      ) : null
+                    ) : (
+                      <>
+                        {groups[0]?.current ? (
+                          <CommandGroup>
+                            <CommandGroupLabel>This thread</CommandGroupLabel>
+                            {groupRow(groups[0])}
+                          </CommandGroup>
+                        ) : null}
+                        {groups.some((group) => !group.current) ? (
+                          <CommandGroup>
+                            <CommandGroupLabel>Threads</CommandGroupLabel>
+                            {groups.filter((group) => !group.current).map(groupRow)}
+                          </CommandGroup>
+                        ) : null}
+                      </>
+                    )}
+                  </div>
+                  <div
+                    className={cn(
+                      "shrink-0",
+                      (search.length > 0 ? matches.length > 0 : groups.length > 0) &&
+                        "-mx-2 mt-1 border-t border-border px-2 pt-1",
+                    )}
+                  >
+                    <CommandGroup>{newThreadRow}</CommandGroup>
+                  </div>
                 </CommandList>
               </Command>
               {destination.kind === "new-tab" ? (
