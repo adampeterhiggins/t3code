@@ -1,3 +1,4 @@
+import { resolveListedAncestorThreadRef } from "@t3tools/client-runtime/state/threads";
 import { attachSidebarTree } from "../lib/sidebarTree";
 import { resolveProjectExpanded, useUiStateStore } from "../uiStateStore";
 import {
@@ -524,12 +525,19 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     routeDraftRedirect,
   );
   const routeThreadKey = routeThreadRef ? scopedThreadKey(routeThreadRef) : null;
+  const routeRowThreadKey = routeThreadRef
+    ? scopedThreadKey(resolveListedAncestorThreadRef(routeThreadRef, threads))
+    : null;
   // The open thread's group row, which must stay rendered even inside a collapsed shelf.
   const sidebarRouteThreadKey =
-    routeThreadKey === null ? null : (tabThreadGroups.get(routeThreadKey) ?? routeThreadKey);
+    routeRowThreadKey === null
+      ? null
+      : (tabThreadGroups.get(routeRowThreadKey) ?? routeRowThreadKey);
   // A listed tab carries its own highlight; a folded one lights its group's row.
   const highlightedRouteThreadKey =
-    routeThreadKey === null ? null : (hiddenTabThreads.get(routeThreadKey) ?? routeThreadKey);
+    routeRowThreadKey === null
+      ? null
+      : (hiddenTabThreads.get(routeRowThreadKey) ?? routeRowThreadKey);
   // The chat shown beside the routed one in split view, mapped to its row the same way.
   const splitHidden = useMediaQuery(SPLIT_VIEW_HIDDEN_MEDIA_QUERY);
   const splitPartnerRef = useSplitPartner(

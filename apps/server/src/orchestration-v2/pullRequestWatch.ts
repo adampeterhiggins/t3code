@@ -32,6 +32,7 @@ export type PullRequestWatchChange =
 const isFollowUp = (change: PullRequestWatchChange) =>
   change.kind === "checks-failed" ||
   change.kind === "conflicting" ||
+  change.kind === "needs-rebase" ||
   change.kind === "changes-requested";
 
 export interface PullRequestWatchReport {

@@ -354,6 +354,19 @@ describe("citation comment destinations", () => {
     expect(onSaveAndSend).not.toHaveBeenCalled();
     expect(textarea()).toBeNull();
   });
+
+  it("saves with Tab then Enter after typing a comment", async () => {
+    using source = setup();
+    const onSave = vi.fn(() => true);
+    await using _screen = await mount(source.sourceAnchor, onSave);
+    await vi.waitFor(() => expect(document.activeElement).toBe(textarea()));
+
+    await userEvent.keyboard("agreed");
+    await userEvent.keyboard("{Tab}");
+    await userEvent.keyboard("{Enter}");
+
+    expect(onSave).toHaveBeenCalledWith("agreed");
+  });
 });
 
 describe("citation comment popup position", () => {

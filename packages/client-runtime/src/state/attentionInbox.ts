@@ -52,6 +52,7 @@ export function hasUnseenCompletion(
   latestRun: EnvironmentThreadShell["latestRun"],
   lastVisitedAt: string | undefined,
 ): boolean {
+  if (latestRun?.status === "interrupted" || latestRun?.status === "cancelled") return false;
   return isAfterVisit(latestRun?.completedAt, lastVisitedAt);
 }
 

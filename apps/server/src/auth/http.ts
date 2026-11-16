@@ -30,10 +30,10 @@ import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 
 import * as Schema from "effect/Schema";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as Cookies from "effect/http/Cookies";
 import * as HttpEffect from "effect/http/HttpEffect";
 import { HttpServer, HttpServerRequest, HttpServerResponse } from "effect/http";

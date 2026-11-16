@@ -171,6 +171,11 @@ const makeLaptopWith = (
       Layer.provide(Layer.mock(RemoteDelegation.RemoteDelegation)({})),
       Layer.provide(Layer.succeedContext(answering)),
       Layer.provide(NodeCrypto.layer),
+      Layer.provide(
+        Layer.mock(McpContextLinks.McpContextLinks)({
+          attach: ({ text }) => Effect.succeed({ text, context: undefined }),
+        }),
+      ),
       Layer.provideMerge(layerThreads),
       Layer.provide(
         Layer.mock(McpContextLinks.McpContextLinks)({

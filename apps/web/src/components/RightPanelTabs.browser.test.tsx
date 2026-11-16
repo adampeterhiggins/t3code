@@ -80,8 +80,8 @@ function overlay(
   audio?: { audible?: boolean; audioMuted?: boolean },
 ) {
   return {
+    navStatus: { _tag: "Idle" as const },
     hasWebContents: true,
-    navStatus: sessions["tab-1"]!.navStatus,
     canGoBack: false,
     canGoForward: false,
     loading: false,

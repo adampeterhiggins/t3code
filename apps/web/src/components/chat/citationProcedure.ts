@@ -1,7 +1,7 @@
+import { sentMessageFromToolItem } from "@t3tools/shared/toolOutput";
 import { citationRowIndex, transcriptItemId } from "./transcriptCitation.logic";
 import { useAtomValue } from "@effect/atom-react";
 import { type AtomCommandSuccess, runAtomCommand } from "@t3tools/client-runtime/state/runtime";
-import { sentMessageFromToolItem } from "@t3tools/shared/toolOutput";
 import { Atom, type AtomRegistry } from "effect/reactivity";
 import type { TimelineEntry } from "../../session-logic";
 import { environmentThreadDetails, threadEnvironment } from "../../state/threads";

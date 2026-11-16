@@ -7354,6 +7354,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                       findCursorEndIndex(indexed, decodeThreadHistoryCursor(cursor)),
                       indexed.length - 1,
                     );
+              // oxlint-disable-next-line eslint/no-unmodified-loop-condition -- Scanned runs advance until a page has no unread inline output.
               while (workMode !== undefined) {
                 const { page } = selection;
                 const span = [...page.items.slice(0, 1), ...page.items.slice(-1)].map(

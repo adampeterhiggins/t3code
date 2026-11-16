@@ -713,7 +713,7 @@ describe("server browser snapshot screenshot", () => {
       [0.85, 0.75],
     ];
     const pixels = (await page.evaluate(`(async () => {
-      const bytes = Uint8Array.from(atob(${JSON.stringify(screenshot.data)}), (char) => char.charCodeAt(0));
+      const bytes = Uint8Array.from(atob(${JSON.stringify(screenshot!.data)}), (char) => char.charCodeAt(0));
       const bitmap = await createImageBitmap(new Blob([bytes], { type: "image/png" }));
       const canvas = document.createElement("canvas");
       canvas.width = bitmap.width;
@@ -733,7 +733,7 @@ describe("server browser snapshot screenshot", () => {
     const { screenshot, pixels } = await screenshotOf(halves("backdrop-filter: blur(4px);"));
 
     expect({
-      size: [screenshot.width, screenshot.height],
+      size: [screenshot!.width, screenshot!.height],
       colors: pixels.map(colorOf),
     }).toEqual({ size: [1280, 800], colors: ["blue", "red", "red"] });
   });
@@ -743,7 +743,7 @@ describe("server browser snapshot screenshot", () => {
     const metadata = await ServerBrowserPage.snapshotMetadata(input);
 
     expect({
-      size: [screenshot.width, screenshot.height],
+      size: [screenshot!.width, screenshot!.height],
       fullSize: [fullScreenshot?.width, fullScreenshot?.height],
       metadataSize: metadata.screenshot,
       colors: pixels.map(colorOf),
@@ -803,7 +803,7 @@ describe("server browser snapshot screenshot", () => {
     });
 
     if (!screenshot) throw new Error("Snapshot did not include a screenshot");
-    expect([screenshot.width, screenshot.height]).toEqual([1280, 800]);
+    expect([screenshot!.width, screenshot!.height]).toEqual([1280, 800]);
   });
 });
 

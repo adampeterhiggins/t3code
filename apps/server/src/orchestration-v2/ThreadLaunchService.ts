@@ -22,6 +22,7 @@ import {
   type RunId,
   type RuntimeMode,
   type ScheduledTaskId,
+  TextGenerationError,
   ThreadId,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
@@ -68,6 +69,9 @@ import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
 import { randomUuidV4 } from "@t3tools/provider-core/server/randomUuid";
 import { DispatchModeLimit } from "./DispatchModeLimit.ts";
 import * as ThreadManagement from "./ThreadManagementService.ts";
+
+// The agent waits for its branch name; a rate-limited provider would hold it for minutes.
+const BRANCH_NAME_TIMEOUT = "20 seconds";
 
 export type ThreadLaunchWorkspaceStrategy =
   | { readonly type: "root"; readonly branch?: string | undefined }
@@ -266,7 +270,7 @@ export class ThreadLaunchService extends Context.Service<
       | ThreadManagement.ThreadManagementProviderInstanceDisabledError
     >;
     /** Check a new worktree's base ref and branch name before creation for early errors; launch otherwise accepts and reports these failures inside the thread. */
-    readonly checkNewWorktree: (
+    readonly checkWorktreeBase: (
       input: Pick<ThreadLaunchInput, "projectId" | "workspaceStrategy"> & {
         /** Skips the check when this launch was already accepted, so its retry replays. */
         readonly commandId?: CommandId;
@@ -479,6 +483,16 @@ const make = Effect.gen(function* () {
         projectId,
       })
       .pipe(
+        Effect.timeoutOrElse({
+          duration: BRANCH_NAME_TIMEOUT,
+          orElse: () =>
+            Effect.fail(
+              new TextGenerationError({
+                operation: "generateBranchName",
+                detail: `Timed out after ${BRANCH_NAME_TIMEOUT}.`,
+              }),
+            ),
+        }),
         Effect.map((result) => ({
           branch: result.branch,
           exactName: settings.branchNamingMode === "custom",
@@ -576,8 +590,8 @@ const make = Effect.gen(function* () {
       ),
     );
 
-  const checkNewWorktree: ThreadLaunchService["Service"]["checkNewWorktree"] = Effect.fn(
-    "ThreadLaunchService.checkNewWorktree",
+  const checkWorktreeBase: ThreadLaunchService["Service"]["checkWorktreeBase"] = Effect.fn(
+    "ThreadLaunchService.checkWorktreeBase",
   )(function* (input) {
     const strategy = input.workspaceStrategy;
     if (strategy.type !== "worktree") return;
@@ -1162,7 +1176,7 @@ const make = Effect.gen(function* () {
           generated: Fiber.join(lateBranchName).pipe(
             Effect.flatMap(
               Option.match({
-                onNone: () => Effect.fail(new Cause.NoSuchElementError()),
+                onNone: () => Effect.interrupt,
                 onSome: Effect.succeed,
               }),
             ),
@@ -1230,10 +1244,12 @@ const make = Effect.gen(function* () {
         if (setup.completion) {
           const awaitCompletion = Effect.gen(function* () {
             const completion = yield* setup.completion!;
-            yield* setupTracker.stage(threadId, "setup-script", {
-              status: completion.exitCode === 0 ? "done" : "failed",
-              detail: `exited with ${completion.exitCode ?? "no exit code"}`,
-            });
+            yield* setupTracker.stageStatus(
+              threadId,
+              "setup-script",
+              completion.exitCode === 0 ? "done" : "failed",
+              `exited with ${completion.exitCode ?? "no exit code"}`,
+            );
             if (completion.exitCode !== 0 && !setup.async)
               return yield* mapError(
                 input,
@@ -1249,14 +1265,18 @@ const make = Effect.gen(function* () {
               detail: "running in its terminal",
             });
           } else if (setup.async) {
-            awaitAsyncSetup = awaitCompletion.pipe(
+            const asyncSetup = yield* awaitCompletion.pipe(
               Effect.catchCause((cause) =>
-                setupTracker.stage(threadId, "setup-script", {
-                  status: "failed",
-                  detail: failureDetail(Cause.squash(cause)),
-                }),
+                setupTracker.stageStatus(
+                  threadId,
+                  "setup-script",
+                  "failed",
+                  failureDetail(Cause.squash(cause)),
+                ),
               ),
+              Effect.forkChild,
             );
+            awaitAsyncSetup = Fiber.join(asyncSetup);
           } else {
             yield* awaitCompletion;
           }
@@ -1914,12 +1934,12 @@ const make = Effect.gen(function* () {
 
   return ThreadLaunchService.of({
     launch,
-    checkNewWorktree,
-    prepareMessageWorkspace,
-    nameTemporaryBranch,
+    checkWorktreeBase,
     isNonGitProject,
     retryPreparation,
     prepareRun,
+    prepareMessageWorkspace,
+    nameTemporaryBranch,
   });
 });
 

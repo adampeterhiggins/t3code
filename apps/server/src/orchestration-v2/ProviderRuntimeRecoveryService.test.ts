@@ -871,6 +871,7 @@ it.effect(
       assert.equal(summary.retiredEffects, 2);
       assert.deepEqual(committedInput?.cancelUnsettledEffects?.effectTypes, [
         "provider-session.apply-model-selection",
+        "provider-session.apply-thread-title",
         "provider-turn.start",
         "provider-turn.interrupt",
         "provider-turn.steer",
@@ -1699,6 +1700,7 @@ it.effect("recovery closes a secret card's form but leaves a link card open", ()
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
           getRecoveryThreadIds: () => Effect.succeed([threadId]),
           getRuntimeRecoveryProjection: () => Effect.succeed(projection),
+          getThreadRecords: () => Effect.succeed(projection),
         }),
         Layer.mock(EventSink.EventSinkV2)({
           commitCommand: (input) => {

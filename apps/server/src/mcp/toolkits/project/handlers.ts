@@ -216,7 +216,7 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
         if (!replaying && strategy?.type === "worktree")
           yield* ThreadLaunch.ThreadLaunchService.pipe(
             Effect.flatMap((launches) =>
-              launches.checkNewWorktree({ projectId, workspaceStrategy: strategy }),
+              launches.checkWorktreeBase({ projectId, workspaceStrategy: strategy }),
             ),
             Effect.mapError(
               (error) =>

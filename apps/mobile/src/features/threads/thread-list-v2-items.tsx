@@ -648,6 +648,7 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
         enableTrackpadSwipe
         fullSwipeAction="primary"
         fullSwipeWidth={props.fullSwipeWidth ?? windowWidth - 32}
+        listAnimatesLayout
         onDelete={handleDelete}
         onSwipeableClose={props.onSwipeableClose}
         onSwipeableWillOpen={props.onSwipeableWillOpen}
@@ -879,13 +880,14 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   });
 
   const visitThread = useAtomCommand(threadEnvironment.visit, { reportFailure: false });
-  const handleAcknowledgeWoke = () => {
+  const markThreadUnread = useAtomCommand(threadEnvironment.markUnread, { reportFailure: false });
+  const handleAcknowledgeWoke = useCallback(() => {
     if (props.wokeAt === null) return;
     void visitThread({
       environmentId: thread.environmentId,
       input: { threadId: thread.id, visitedAt: props.wokeAt },
     });
-  };
+  }, [props.wokeAt, visitThread, thread.environmentId, thread.id]);
   // VoiceOver cannot focus buttons inside the accessible row.
   const rowAccessibilityActions = [
     ...(prBadgeLabel ? [{ name: "openPullRequests", label: prBadgeLabel }] : []),
@@ -1086,6 +1088,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const canTurnIntoProject = canTurnThreadIntoProject(thread);
   const titleMenuItems = (() => [
     { id: "rename", title: "Rename", image: "square.and.pencil" },
+    { id: "mark-unread", title: "Mark unread", image: "envelope.badge" },
     ...buildThreadTitleRegenerationMenuItems({
       supported: props.titleRegenerationSupported,
       isRegenerating: thread.titleRegeneration != null,
@@ -1260,6 +1263,11 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     if (nativeEvent.event === "copy-thread-id") {
       copyTextWithHaptic(thread.id, { target: "thread-id" });
     }
+    if (nativeEvent.event === "mark-unread")
+      void markThreadUnread({
+        environmentId: thread.environmentId,
+        input: { threadId: thread.id },
+      });
     if (nativeEvent.event === "delete") handleDelete();
     if (nativeEvent.event === "snooze:custom") {
       setCustomSnoozeOpen(true);
@@ -1751,6 +1759,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         enableTrackpadSwipe
         fullSwipeAction="primary"
         fullSwipeWidth={props.fullSwipeWidth ?? windowWidth - 32}
+        listAnimatesLayout
         onDelete={handleDelete}
         onSwipeableClose={props.onSwipeableClose}
         onSwipeableWillOpen={props.onSwipeableWillOpen}

@@ -391,7 +391,7 @@ const clientLaunchHarness = (input: {
   readonly overrideModel?: ModelSelection;
   readonly launched: Array<ThreadLaunch.ThreadLaunchInput>;
   readonly workspaceRoot?: string;
-  readonly checkNewWorktree?: ThreadLaunch.ThreadLaunchService["Service"]["checkNewWorktree"];
+  readonly checkWorktreeBase?: ThreadLaunch.ThreadLaunchService["Service"]["checkWorktreeBase"];
   readonly launchError?: ThreadLaunch.ThreadLaunchPullRequestError;
   readonly hostedAppUrl?: string;
   /** The orchestrator refuses the new thread's mode, as under a managed ceiling. */
@@ -459,7 +459,7 @@ const clientLaunchHarness = (input: {
       },
     }),
     Layer.mock(ThreadLaunch.ThreadLaunchService)({
-      checkNewWorktree: input.checkNewWorktree ?? (() => Effect.void),
+      checkWorktreeBase: input.checkWorktreeBase ?? (() => Effect.void),
       launch: (launch) => {
         input.launched.push(launch);
         if (input.launchError !== undefined) return Effect.fail(input.launchError);
@@ -917,7 +917,7 @@ it.effect("a launch into a new worktree creates nothing when its base ref has no
     const { projectId, dependencies } = clientLaunchHarness({
       runtimeModeCeiling: "auto",
       launched,
-      checkNewWorktree: ({ projectId, workspaceStrategy }) =>
+      checkWorktreeBase: ({ projectId, workspaceStrategy }) =>
         workspaceStrategy.type === "worktree" && workspaceStrategy.baseRef === "t3/renamed"
           ? Effect.fail(
               new ThreadLaunch.ThreadLaunchBaseRefError({
@@ -969,7 +969,7 @@ it.effect("a worktree launch that omits startFromOrigin follows the new-worktree
         runtimeModeCeiling: "auto",
         launched,
         newWorktreesStartFromOrigin: setting,
-        checkNewWorktree: ({ workspaceStrategy }) =>
+        checkWorktreeBase: ({ workspaceStrategy }) =>
           Effect.sync(() => {
             checked.push(workspaceStrategy);
           }),
@@ -1006,7 +1006,7 @@ it.effect("a launch into a new worktree on an existing branch points at the chec
     const { projectId, dependencies } = clientLaunchHarness({
       runtimeModeCeiling: "auto",
       launched,
-      checkNewWorktree: ({ projectId, workspaceStrategy }) =>
+      checkWorktreeBase: ({ projectId, workspaceStrategy }) =>
         workspaceStrategy.type === "worktree" && workspaceStrategy.branch !== undefined
           ? Effect.fail(
               new ThreadLaunch.ThreadLaunchBranchExistsError({
@@ -1091,7 +1091,7 @@ it.effect("a retried worktree launch replays after its base ref is gone", () =>
     const { projectId, dependencies } = clientLaunchHarness({
       runtimeModeCeiling: "auto",
       launched,
-      checkNewWorktree: ({ projectId, workspaceStrategy }) =>
+      checkWorktreeBase: ({ projectId, workspaceStrategy }) =>
         base.exists || workspaceStrategy.type !== "worktree"
           ? Effect.void
           : Effect.fail(
@@ -1361,7 +1361,7 @@ it.effect("a launch into a new worktree creates nothing when its branch collides
     const { projectId, dependencies } = clientLaunchHarness({
       runtimeModeCeiling: "auto",
       launched,
-      checkNewWorktree: ({ projectId, workspaceStrategy }) =>
+      checkWorktreeBase: ({ projectId, workspaceStrategy }) =>
         Effect.fail(
           new ThreadLaunch.ThreadLaunchBranchConflictError({
             projectId,

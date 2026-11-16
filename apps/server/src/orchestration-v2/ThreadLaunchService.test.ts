@@ -1622,7 +1622,7 @@ it.effect.each(["stable", "upstream/release"])(
           branch: "feature",
           startFromOrigin: true,
         };
-        yield* launches.checkNewWorktree({ projectId, workspaceStrategy: workspace });
+        yield* launches.checkWorktreeBase({ projectId, workspaceStrategy: workspace });
         const launched = yield* launches.launch(
           launchInput({
             command: "command:launch:remote-base",
@@ -2793,7 +2793,7 @@ it.effect("shared intake preserves durable attachment bytes after a lost launch 
               }),
             ),
           ),
-        checkNewWorktree: launches.checkNewWorktree,
+        checkWorktreeBase: launches.checkWorktreeBase,
         isNonGitProject: launches.isNonGitProject,
         retryPreparation: launches.retryPreparation,
         prepareMessageWorkspace: launches.prepareMessageWorkspace,
@@ -3185,6 +3185,43 @@ it.effect("tells the thread when its worktree branch could not be renamed", () =
   }),
 );
 
+it.effect("starts the agent on the temporary branch when branch naming hangs", () =>
+  Effect.gen(function* () {
+    const branchNameStarted = yield* Deferred.make<void>();
+    const harness = makeHarness({
+      // A rate-limited provider retries until the CLI's own timeout, minutes later.
+      generateBranchName: () =>
+        Deferred.succeed(branchNameStarted, undefined).pipe(Effect.andThen(Effect.never)),
+    });
+    yield* Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const tracker = yield* WorktreeSetupTracker.WorktreeSetupTracker;
+      const threads = yield* ThreadManagement.ThreadManagementService;
+      const launched = yield* launches.launch(
+        launchInput({
+          command: "launch:rename-hangs",
+          thread: "thread:rename-hangs",
+          message: "Start",
+          workspace: { type: "worktree", baseRef: "main" },
+        }),
+      );
+      yield* Deferred.await(branchNameStarted);
+      yield* TestClock.adjust("20 seconds");
+      yield* tracker.stream(launched.threadId).pipe(
+        Stream.filter((snapshot) => snapshot?.phase === "done"),
+        Stream.runHead,
+      );
+      assert.equal(harness.renameBranch.mock.calls.length, 0);
+      const projection = yield* threads.getThreadProjection(launched.threadId);
+      const notice = projection.turnItems.find((item) => item.type === "system_notice");
+      assert.include(
+        notice?.type === "system_notice" ? notice.message : "",
+        `stays ${projection.thread.branch}. Text generation failed in generateBranchName: Timed out after 20 seconds.`,
+      );
+    }).pipe(Effect.provide(harness.layer));
+  }),
+);
+
 it.effect("reports submodule downloads as their own setup step", () =>
   Effect.gen(function* () {
     const progressReady =
@@ -3317,6 +3354,97 @@ it.effect.each([0, 1])("releases an async setup before its completion with exit 
       );
     }).pipe(Effect.provide(harness.layer));
   }),
+);
+
+it.effect("shows an async setup as done while branch naming continues in the background", () =>
+  Effect.gen(function* () {
+    const branchNameStarted = yield* Deferred.make<void>();
+    const allowBranchName = yield* Deferred.make<void>();
+    const harness = makeHarness({
+      runSetup: () =>
+        Effect.succeed({
+          status: "started" as const,
+          async: true,
+          scriptId: "setup",
+          scriptName: "Setup",
+          scriptCommand: "vp install",
+          terminalId: "setup",
+          cwd: "/repo-worktrees/feature",
+          completion: Effect.succeed({ exitCode: 0, durationMs: 1 }),
+        }),
+      generateBranchName: () =>
+        Deferred.succeed(branchNameStarted, undefined).pipe(
+          Effect.andThen(Deferred.await(allowBranchName)),
+          Effect.as({ branch: "generated-branch" }),
+        ),
+    });
+    yield* Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const tracker = yield* WorktreeSetupTracker.WorktreeSetupTracker;
+      const launched = yield* launches.launch(
+        launchInput({
+          command: "launch:async-setup-before-name",
+          thread: "thread:async-setup-before-name",
+          message: "Start",
+          workspace: { type: "worktree", baseRef: "main" },
+        }),
+      );
+      yield* Deferred.await(branchNameStarted);
+      yield* TestClock.adjust("10 seconds");
+      const snapshot = yield* tracker.stream(launched.threadId).pipe(
+        Stream.filter(
+          (current) =>
+            current?.stages.some(
+              (stage) =>
+                (stage.id === "setup-script" &&
+                  (stage.status === "done" || stage.status === "failed")) ||
+                (stage.id === "agent" && stage.status === "done"),
+            ) === true,
+        ),
+        Stream.runHead,
+      );
+      const stages = Option.getOrUndefined(snapshot)?.stages ?? [];
+      const setupStage = stages.find((stage) => stage.id === "setup-script");
+      assert.equal(setupStage?.status, "done");
+      assert.isNotNull(setupStage?.endedAt ?? null);
+      assert.equal(stages.find((stage) => stage.id === "agent")?.status, "done");
+      assert.isFalse(yield* Deferred.isDone(allowBranchName));
+      yield* Deferred.succeed(allowBranchName, undefined);
+    }).pipe(Effect.provide(harness.layer));
+  }),
+);
+
+it.effect.each(["origin/master", ":/initial"])(
+  "refuses a worktree in a non-Git project before checking base %s",
+  (baseRef) =>
+    Effect.gen(function* () {
+      const harness = makeHarness({
+        git: { repositoryRoot: () => Effect.succeed(null) },
+      });
+      yield* Effect.gen(function* () {
+        const launches = yield* ThreadLaunch.ThreadLaunchService;
+        const result = yield* launches
+          .checkWorktreeBase({
+            projectId,
+            workspaceStrategy: { type: "worktree", baseRef, startFromOrigin: true },
+          })
+          .pipe(Effect.result);
+        assert.isTrue(Result.isFailure(result));
+        if (Result.isFailure(result)) {
+          assert.instanceOf(result.failure, ThreadLaunch.ThreadLaunchNotRepositoryError);
+          assert.deepInclude(result.failure, {
+            projectId,
+            projectTitle: project.title,
+            workspaceRoot: project.workspaceRoot,
+          });
+        }
+        yield* launches.checkWorktreeBase({ projectId, workspaceStrategy: { type: "root" } });
+        yield* launches.checkWorktreeBase({
+          projectId,
+          workspaceStrategy: { type: "existing_worktree", worktreePath: "/existing-worktree" },
+        });
+      }).pipe(Effect.provide(harness.layer));
+    }),
 );
 
 const repositoryRecord = {
@@ -3817,7 +3945,7 @@ it.effect.each([
     yield* Effect.gen(function* () {
       const launches = yield* ThreadLaunch.ThreadLaunchService;
       const error = yield* launches
-        .checkNewWorktree({
+        .checkWorktreeBase({
           projectId,
           workspaceStrategy: {
             type: "worktree",
@@ -3876,7 +4004,7 @@ it.effect.each([
     });
     yield* Effect.gen(function* () {
       const launches = yield* ThreadLaunch.ThreadLaunchService;
-      yield* launches.checkNewWorktree({
+      yield* launches.checkWorktreeBase({
         projectId,
         workspaceStrategy: {
           type: "worktree",
@@ -3919,7 +4047,7 @@ it.effect.each([
     yield* Effect.gen(function* () {
       const launches = yield* ThreadLaunch.ThreadLaunchService;
       const error = yield* launches
-        .checkNewWorktree({
+        .checkWorktreeBase({
           projectId,
           workspaceStrategy: { type: "worktree", baseRef: "feature", branch: "feature" },
         })
@@ -3930,7 +4058,7 @@ it.effect.each([
         worktreePath: testCase.worktreePath,
       });
       // A fresh branch name from the same base is fine.
-      yield* launches.checkNewWorktree({
+      yield* launches.checkWorktreeBase({
         projectId,
         workspaceStrategy: { type: "worktree", baseRef: "feature", branch: "feature-review" },
       });
@@ -4355,7 +4483,7 @@ it.effect.each(["origin/master", ":/initial"])(
       yield* Effect.gen(function* () {
         const launches = yield* ThreadLaunch.ThreadLaunchService;
         const result = yield* launches
-          .checkNewWorktree({
+          .checkWorktreeBase({
             projectId,
             workspaceStrategy: { type: "worktree", baseRef, startFromOrigin: true },
           })
@@ -4369,8 +4497,8 @@ it.effect.each(["origin/master", ":/initial"])(
             workspaceRoot: project.workspaceRoot,
           });
         }
-        yield* launches.checkNewWorktree({ projectId, workspaceStrategy: { type: "root" } });
-        yield* launches.checkNewWorktree({
+        yield* launches.checkWorktreeBase({ projectId, workspaceStrategy: { type: "root" } });
+        yield* launches.checkWorktreeBase({
           projectId,
           workspaceStrategy: { type: "existing_worktree", worktreePath: "/existing-worktree" },
         });
@@ -4396,7 +4524,7 @@ it.effect("leaves uncertain Git detection failures to workspace preparation", ()
     });
     yield* ThreadLaunch.ThreadLaunchService.pipe(
       Effect.flatMap((launches) =>
-        launches.checkNewWorktree({ projectId, workspaceStrategy: worktreeStrategy }),
+        launches.checkWorktreeBase({ projectId, workspaceStrategy: worktreeStrategy }),
       ),
       Effect.provide(harness.layer),
     );
@@ -4417,7 +4545,7 @@ it.effect.each([
       const workspace = { type: "worktree" as const, baseRef: "main", branch: testCase.requested };
       const commandId = CommandId.make("launch:branch-conflict");
       const check = (branch: string) =>
-        launches.checkNewWorktree({
+        launches.checkWorktreeBase({
           commandId,
           projectId,
           workspaceStrategy: { ...workspace, branch },

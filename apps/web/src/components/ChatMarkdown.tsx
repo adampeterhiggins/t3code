@@ -1,4 +1,3 @@
-import type { MouseEvent as ReactMouseEvent } from "react";
 import { type MessageSkill, renderSkillInlineMarkdownChildren } from "./chat/SkillInlineText";
 import { clientHostEnvironmentAtom } from "../state/clientHostEnvironment";
 import { buildFileLinkParentSuffixByPath, fileLinkLabel } from "@t3tools/shared/fileLinks";
@@ -91,6 +90,7 @@ import React, {
   useRef,
   useState,
   type ReactNode,
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import {
   type Components,
