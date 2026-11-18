@@ -175,9 +175,11 @@ export type ComposerCommandItem =
   | {
       id: string;
       type: "subagent";
-      /** The thread being composed in, whose agents the `@` menu lists. */
+      /** The thread being composed in, whose agents the `@` menu lists first. */
       parentRef: ScopedThreadRef;
       entry: AgentFleetEntry;
+      /** Title of the other thread that started the agent; null for this thread's own agents. */
+      ownerTitle: string | null;
       workspaceRoot: string | null;
       label: string;
       description: string;
@@ -629,6 +631,7 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
         <AgentCommandRow
           parentRef={props.item.parentRef}
           entry={props.item.entry}
+          ownerTitle={props.item.ownerTitle}
           workspaceRoot={props.item.workspaceRoot}
         />
       ) : (

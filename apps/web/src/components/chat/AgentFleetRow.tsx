@@ -1,16 +1,7 @@
 /**
  * Fork: one agent's row in the Agents panel and in an agent's list of the agents it started.
- *
- * - A row is one line. Working agents add their latest tool call, finished agents the first line
- *   of their result, and failed agents their error as a second line, so a row's height only
- *   changes with its status.
- * - Hovering a row previews the agent (prompt, outcome, latest tool calls, usage). Clicking the
- *   row or its preview opens the agent; clicking a tool call in the preview opens the agent on
- *   that call. Right-click for the agent menu; Alt-click attaches the agent to chat by its
- *   `@handle`. An agent recorded before its child thread exists
- *   opens too, with its record alone.
- * - The Agents panel's details toggle hides every row's second line (`agentListViewStore.ts`).
- * - Only a working row on screen (or an open preview) subscribes to its child thread.
+ * Rows keep one height per status. Only a working row on screen (or an open preview) subscribes
+ * to its child thread.
  */
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
@@ -44,6 +35,7 @@ import { useRef, type MouseEvent, type ReactNode } from "react";
 import { useAgentListViewStore } from "~/agentListViewStore";
 import { useClientSettings } from "~/hooks/useSettings";
 import { useArchivedThreadSnapshots } from "~/lib/archivedThreadsState";
+import { useRightPanelStore } from "~/rightPanelStore";
 import { cn } from "~/lib/utils";
 import {
   deriveProviderInstanceEntries,
@@ -365,7 +357,7 @@ export function AgentRow(props: {
           )}
           {/* Fixed widths keep the columns aligned across rows. */}
           <span className="w-[5ch] shrink-0 truncate text-right font-mono text-2xs tabular-nums text-muted-foreground/80">
-            {agent.usage ? formatSubagentTokenCount(agent.usage.totalTokens) : "—"}
+            {agent.usage ? formatSubagentTokenCount(agent.usage.totalTokens) : "-"}
           </span>
           <span className="w-[7ch] shrink-0 truncate text-right font-mono text-2xs tabular-nums text-muted-foreground/80">
             <AgentElapsed agent={agent} />
@@ -420,6 +412,7 @@ export function AgentRow(props: {
 export function AgentCommandRow(props: {
   parentRef: ScopedThreadRef;
   entry: AgentFleetEntry;
+  ownerTitle: string | null;
   workspaceRoot: string | null;
 }) {
   const { entry } = props;
@@ -431,7 +424,9 @@ export function AgentCommandRow(props: {
     STATUS_VISUALS[agent.status].label,
     ...(provider ? [provider.displayName] : []),
     ...subagentIdentityParts(agent),
+    ...(props.ownerTitle === null ? [] : [`from ${props.ownerTitle}`]),
   ];
+  const childThreadId = entry.childThreadId;
   const row = (
     <span className="flex min-w-0 flex-1 flex-col gap-0.5 py-0.5">
       <span className="flex min-w-0 items-center gap-2">
@@ -446,7 +441,7 @@ export function AgentCommandRow(props: {
           <AgentHandle handle={entry.handle} className="max-w-full" />
         </span>
         <span className="w-[5ch] shrink-0 truncate text-right font-mono text-2xs tabular-nums text-muted-foreground/80">
-          {agent.usage ? formatSubagentTokenCount(agent.usage.totalTokens) : "—"}
+          {agent.usage ? formatSubagentTokenCount(agent.usage.totalTokens) : "-"}
         </span>
         <span className="w-[7ch] shrink-0 truncate text-right font-mono text-2xs tabular-nums text-muted-foreground/80">
           <AgentElapsed agent={agent} />
@@ -478,7 +473,14 @@ export function AgentCommandRow(props: {
         entry={entry}
         provider={provider}
         workspaceRoot={props.workspaceRoot}
-        onOpen={() => showAgentInPanel(props.parentRef, entry.key)}
+        onOpen={() =>
+          // Another thread's agent is not in this thread's Agents panel; open its own tab.
+          props.ownerTitle !== null && childThreadId !== null
+            ? useRightPanelStore
+                .getState()
+                .openAgent(props.parentRef, { childThreadId, title: entry.title })
+            : showAgentInPanel(props.parentRef, entry.key)
+        }
       />
     </CursorPreviewCard>
   );
