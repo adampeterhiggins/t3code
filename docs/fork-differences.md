@@ -789,6 +789,16 @@ Code: `prepareInBackground` in `apps/server/src/orchestration-v2/ThreadLaunchSer
 in `apps/server/src/serverSettings.ts`. User guide:
 [project-settings.md](./user/project-settings.md#defaults-and-inheritance).
 
+## Drag to resize the chat
+
+On web and desktop, dragging either edge of the chat column resizes it around its centre, so it
+grows and shrinks on both sides. Double-clicking an edge goes back to the **Settings → Appearance
+→ Chat width** preset, which then reads "Custom" while a dragged width is set; picking a preset or
+resetting the setting also clears it. Upstream offers only the presets. The dragged width is a
+client setting, `chatCustomWidth`, saved once on release.
+
+Code: `apps/web/src/components/chat/ChatWidthResizeHandles.tsx`.
+
 ## Sidebar resource pill
 
 The sidebar titlebar shows how much memory T3 uses on the primary environment's machine. That
