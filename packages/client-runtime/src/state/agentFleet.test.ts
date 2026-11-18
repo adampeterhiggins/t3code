@@ -10,6 +10,7 @@ import * as DateTime from "effect/DateTime";
 
 import {
   arrangeAgentFleet,
+  deriveOtherThreadAgents,
   deriveThreadAgentFleet,
   edgeAgentStatus,
   modelSelectionEffort,
@@ -196,6 +197,27 @@ describe("deriveThreadAgentFleet", () => {
       shells: [shell("a", "parent"), shell("b", "a"), shell("parent", "b")],
     });
     expect(fleet.map((entry) => entry.key)).toEqual(["a", "b"]);
+  });
+});
+
+describe("deriveOtherThreadAgents", () => {
+  it("lists other threads' agents by owner, with the handles their own thread gives them", () => {
+    const entries = deriveOtherThreadAgents({
+      threadId: parentId,
+      shells: [
+        shell("own", "parent"),
+        shell("review", "other", { title: "Review", createdAt: at("2026-10-05T10:00:00Z") }),
+        shell("review-again", "other", { title: "Review", createdAt: at("2026-10-05T10:05:00Z") }),
+        shell("nested", "review"),
+        shell("same-name", "third", { title: "Review" }),
+      ],
+    });
+    expect(entries.map(({ key, ownerThreadId, handle }) => [key, ownerThreadId, handle])).toEqual([
+      ["review", "other", "review"],
+      ["review-again", "other", "review-2"],
+      ["nested", "review", "nested"],
+      ["same-name", "third", "review"],
+    ]);
   });
 });
 

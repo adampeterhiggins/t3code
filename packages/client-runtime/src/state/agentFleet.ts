@@ -317,6 +317,33 @@ export function deriveThreadAgentFleet(input: {
   return entries.map((entry) => ({ ...entry, handle: handles.get(entry.key) ?? "agent" }));
 }
 
+/**
+ * Agents started by threads other than `threadId`, from shells alone, each with the handle its
+ * own thread gives it. Lets the composer's `@` menu mention an agent from any thread.
+ */
+export function deriveOtherThreadAgents(input: {
+  readonly threadId: ThreadId;
+  readonly shells: ReadonlyArray<OrchestrationV2ThreadShell>;
+}): ReadonlyArray<AgentFleetEntry> {
+  const childrenByOwner = new Map<ThreadId, OrchestrationV2ThreadShell[]>();
+  for (const shell of input.shells) {
+    const owner = shell.lineage.parentThreadId;
+    if (
+      owner === null ||
+      owner === input.threadId ||
+      shell.lineage.relationshipToParent !== "subagent"
+    ) {
+      continue;
+    }
+    const siblings = childrenByOwner.get(owner);
+    if (siblings) siblings.push(shell);
+    else childrenByOwner.set(owner, [shell]);
+  }
+  return [...childrenByOwner].flatMap(([owner, children]) =>
+    deriveThreadAgentFleet({ threadId: owner, subagents: [], shells: children }),
+  );
+}
+
 export interface AgentFleetRow {
   readonly entry: AgentFleetEntry;
   /** 0 for the viewed thread's own agents, 1 for the agents they spawned, and so on. */
