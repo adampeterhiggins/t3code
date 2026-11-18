@@ -1,12 +1,18 @@
 import { MIN_CHAT_CUSTOM_WIDTH } from "@t3tools/contracts";
 
-/** The chat stays centred, so a handle's distance from the centre is half the width. */
+/**
+ * The chat stays centred, so moving a handle by `deltaX` changes the width by twice that.
+ * Works from the pointer's movement, not its distance to the centre: the centre shifts while
+ * dragging when the details card moves inline, and chasing it makes the width oscillate.
+ */
 export function resolveDraggedChatWidth(input: {
-  pointerX: number;
-  centerX: number;
+  side: "start" | "end";
+  startWidth: number;
+  deltaX: number;
   availableWidth: number;
 }): number {
-  const width = Math.round(Math.abs(input.pointerX - input.centerX) * 2);
+  const direction = input.side === "end" ? 1 : -1;
+  const width = Math.round(input.startWidth + direction * input.deltaX * 2);
   const maxWidth = Math.max(MIN_CHAT_CUSTOM_WIDTH, Math.floor(input.availableWidth));
   return Math.min(maxWidth, Math.max(MIN_CHAT_CUSTOM_WIDTH, width));
 }

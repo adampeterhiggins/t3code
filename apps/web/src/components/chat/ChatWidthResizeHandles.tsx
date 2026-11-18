@@ -11,32 +11,42 @@ export function ChatWidthResizeHandles({
   timelineElement: HTMLElement | null;
 }) {
   const overlayRef = useRef<HTMLDivElement | null>(null);
-  // The width dragged so far; null until the pointer moves.
-  const dragRef = useRef<{ width: number | null } | null>(null);
+  const dragRef = useRef<{
+    side: "start" | "end";
+    startX: number;
+    startWidth: number;
+    availableWidth: number;
+    width: number | null;
+  } | null>(null);
   const [resizing, setResizing] = useState(false);
 
-  const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
+  const startDrag = (side: "start" | "end", event: PointerEvent<HTMLDivElement>) => {
+    const overlay = overlayRef.current;
+    const lane = event.currentTarget.parentElement;
+    if (event.button !== 0 || !overlay || !lane) return;
     event.preventDefault();
-    dragRef.current = { width: null };
+    // Measured once: the details card moving inline mid-drag changes the space, and
+    // re-measuring would feed the width back into itself.
+    const styles = getComputedStyle(overlay);
+    const availableWidth =
+      overlay.clientWidth -
+      Number.parseFloat(styles.paddingLeft) -
+      Number.parseFloat(styles.paddingRight);
+    dragRef.current = {
+      side,
+      startX: event.clientX,
+      startWidth: lane.getBoundingClientRect().width,
+      availableWidth,
+      width: null,
+    };
     event.currentTarget.setPointerCapture(event.pointerId);
     setResizing(true);
   };
 
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current;
-    const lane = overlayRef.current;
-    if (!drag || !lane) return;
-    // Measured per move: a wider chat can move the details card inline, which insets the lane.
-    const styles = getComputedStyle(lane);
-    const bounds = lane.getBoundingClientRect();
-    const left = bounds.left + Number.parseFloat(styles.paddingLeft);
-    const availableWidth = bounds.right - Number.parseFloat(styles.paddingRight) - left;
-    drag.width = resolveDraggedChatWidth({
-      pointerX: event.clientX,
-      centerX: left + availableWidth / 2,
-      availableWidth,
-    });
+    if (!drag) return;
+    drag.width = resolveDraggedChatWidth({ ...drag, deltaX: event.clientX - drag.startX });
     // Write the variable directly while dragging; the setting is persisted once on release.
     applyChatCustomWidth(document.documentElement, drag.width);
   };
@@ -59,7 +69,6 @@ export function ChatWidthResizeHandles({
     "aria-orientation": "vertical",
     "aria-label": "Resize chat width",
     title: "Drag to resize, double-click to reset",
-    onPointerDown,
     onPointerMove,
     onPointerUp: endDrag,
     onPointerCancel: endDrag,
@@ -79,10 +88,18 @@ export function ChatWidthResizeHandles({
       }}
     >
       <div className="relative mx-auto h-full max-w-(--chat-content-max-width)">
-        <div {...handleProps} className={cn(handleClassName, "-start-3")}>
+        <div
+          {...handleProps}
+          className={cn(handleClassName, "-start-3")}
+          onPointerDown={(event) => startDrag("start", event)}
+        >
           <div className={lineClassName} />
         </div>
-        <div {...handleProps} className={cn(handleClassName, "-end-3")}>
+        <div
+          {...handleProps}
+          className={cn(handleClassName, "-end-3")}
+          onPointerDown={(event) => startDrag("end", event)}
+        >
           <div className={lineClassName} />
         </div>
       </div>
