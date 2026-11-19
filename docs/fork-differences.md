@@ -2621,10 +2621,3 @@ Web and desktop retain compact, rounded chips with a border and tinted backgroun
 citations, file references, and other context attachments in messages and the composer.
 The shared [ContextChip](../apps/web/src/components/ContextChip.tsx) keeps these references
 visually distinct from surrounding prose.
-
-## Fork features are not translated yet
-
-Upstream translates the app into every supported language. The fork's own features carry
-English copy in every locale until someone translates it: their strings are in the catalogs
-with English values, and many fork-only files still have copy that `t3code/no-untranslated-copy`
-flags (`vp run i18n:untranslated` counts them). See [Translating the UI](internals/i18n.md).
