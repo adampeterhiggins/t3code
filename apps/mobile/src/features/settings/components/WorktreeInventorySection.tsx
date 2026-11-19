@@ -1,6 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { createEnvironmentRpcCommand } from "@t3tools/client-runtime/state/runtime";
 import { WS_METHODS, type EnvironmentId, type ManagedWorktree } from "@t3tools/contracts";
+import { useGT } from "gt-react-native";
 import { useState } from "react";
 import { Alert, Linking, View } from "react-native";
 
@@ -24,6 +25,7 @@ const removeWorktrees = createEnvironmentRpcCommand(connectionAtomRuntime, {
 });
 
 export function WorktreeInventorySection({ environmentId }: { environmentId: EnvironmentId }) {
+  const gt = useGT();
   const list = useAtomCommand(listWorktrees);
   const size = useAtomCommand(sizeWorktree);
   const remove = useAtomCommand(removeWorktrees);
@@ -31,7 +33,7 @@ export function WorktreeInventorySection({ environmentId }: { environmentId: Env
   const [entries, setEntries] = useState<readonly ManagedWorktree[]>([]);
   const [sizes, setSizes] = useState<Record<string, number | null>>({});
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState("Load worktrees to review storage on this machine.");
+  const [notice, setNotice] = useState<string | null>(null);
   const refresh = async () => {
     setBusy(true);
     const result = await list({ environmentId, input: {} });
@@ -40,19 +42,22 @@ export function WorktreeInventorySection({ environmentId }: { environmentId: Env
       setEntries(result.value.worktrees);
       setNotice(
         result.value.worktrees.length
-          ? "Branches and thread history are kept when you remove a worktree."
-          : "No managed worktrees.",
+          ? gt("Branches and thread history are kept when you remove a worktree.")
+          : gt("No managed worktrees."),
       );
-    } else setNotice("Could not load worktrees.");
+    } else setNotice(gt("Could not load worktrees."));
   };
   const prune = (paths: readonly string[]) =>
     Alert.alert(
-      "Remove worktrees?",
-      `Remove ${paths.length} clean worktree${paths.length === 1 ? "" : "s"} from this machine? Branches and thread history are kept. Running work and local changes are protected.`,
+      gt("Remove worktrees?"),
+      gt(
+        "{count, plural, one {Remove {count} clean worktree from this machine? Branches and thread history are kept. Running work and local changes are protected.} other {Remove {count} clean worktrees from this machine? Branches and thread history are kept. Running work and local changes are protected.}}",
+        { count: paths.length },
+      ),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: gt("Cancel"), style: "cancel" },
         {
-          text: "Remove",
+          text: gt("Remove"),
           style: "destructive",
           onPress: () => {
             setBusy(true);
@@ -62,8 +67,13 @@ export function WorktreeInventorySection({ environmentId }: { environmentId: Env
                 const removed = result.value.results.filter(
                   (entry) => entry.outcome === "removed",
                 ).length;
-                setNotice(`Removed ${removed}; kept ${result.value.results.length - removed}.`);
-              } else setNotice("Could not remove worktrees.");
+                setNotice(
+                  gt("Removed {removed}; kept {kept}.", {
+                    removed,
+                    kept: result.value.results.length - removed,
+                  }),
+                );
+              } else setNotice(gt("Could not remove worktrees."));
             });
           },
         },
@@ -73,11 +83,13 @@ export function WorktreeInventorySection({ environmentId }: { environmentId: Env
     (entry) => entry.dirty === false && !entry.threads.some((thread) => thread.running),
   );
   return (
-    <SettingsSection title="Managed worktrees">
-      <Text className="p-4 text-sm text-muted-foreground">{notice}</Text>
+    <SettingsSection title={gt("Managed worktrees")}>
+      <Text className="p-4 text-sm text-muted-foreground">
+        {notice ?? gt("Load worktrees to review storage on this machine.")}
+      </Text>
       <SettingsActionRow
         icon="arrow.clockwise"
-        label="Refresh worktrees"
+        label={gt("Refresh worktrees")}
         disabled={busy}
         loading={busy}
         onPress={() => void refresh()}
@@ -86,7 +98,7 @@ export function WorktreeInventorySection({ environmentId }: { environmentId: Env
         <SettingsActionRow
           icon="trash"
           tone="danger"
-          label={`Remove clean worktrees (${Math.min(eligible.length, 200)})`}
+          label={gt("Remove clean worktrees ({count})", { count: Math.min(eligible.length, 200) })}
           disabled={busy || !canRemove}
           onPress={() => prune(eligible.slice(0, 200).map((entry) => entry.path))}
         />
@@ -97,24 +109,24 @@ export function WorktreeInventorySection({ environmentId }: { environmentId: Env
         return (
           <View key={entry.path}>
             <Text className="px-4 pt-4 text-base text-foreground">
-              {entry.repositoryName} · {entry.branch ?? "Unknown branch"}
+              {entry.repositoryName} · {entry.branch ?? gt("Unknown branch")}
             </Text>
             <Text className="px-4 text-sm text-muted-foreground">
               {entry.path}
               {"\n"}
               {entry.state} ·{" "}
               {running
-                ? "Running (protected)"
+                ? gt("Running (protected)")
                 : entry.dirty === false
-                  ? "Clean"
-                  : "Changes or status unknown (protected)"}
+                  ? gt("Clean", { $context: "worktree has no local changes" })
+                  : gt("Changes or status unknown (protected)")}
               {"\n"}
               {entry.threads.map((thread) => `${thread.title} · ${thread.state}`).join("\n")}
             </Text>
             {entry.pullRequest && (
               <SettingsActionRow
                 icon="link"
-                label={`PR #${entry.pullRequest.number} · ${entry.pullRequest.state ?? "State not synced"}`}
+                label={`${gt("PR #{number}", { number: entry.pullRequest.number })} · ${entry.pullRequest.state ?? gt("State not synced")}`}
                 onPress={() => {
                   if (entry.pullRequest) void Linking.openURL(entry.pullRequest.url);
                 }}
@@ -124,10 +136,10 @@ export function WorktreeInventorySection({ environmentId }: { environmentId: Env
               icon="internaldrive"
               label={
                 bytes === undefined
-                  ? "Measure size"
+                  ? gt("Measure size")
                   : bytes === null
-                    ? "Size unavailable · retry"
-                    : `${(bytes / 1024 / 1024).toFixed(1)} MiB · refresh size`
+                    ? gt("Size unavailable · retry")
+                    : gt("{size} MiB · refresh size", { size: (bytes / 1024 / 1024).toFixed(1) })
               }
               disabled={busy}
               onPress={() => {
@@ -144,7 +156,7 @@ export function WorktreeInventorySection({ environmentId }: { environmentId: Env
             <SettingsActionRow
               icon="trash"
               tone="danger"
-              label="Remove worktree"
+              label={gt("Remove worktree")}
               disabled={busy || !canRemove || running || entry.dirty !== false}
               onPress={() => prune([entry.path])}
             />

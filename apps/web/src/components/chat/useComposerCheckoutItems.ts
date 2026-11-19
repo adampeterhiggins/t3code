@@ -1,4 +1,5 @@
 import type { CheckoutInspectEntry, EnvironmentId } from "@t3tools/contracts";
+import { useGT } from "gt-react";
 import {
   checkoutAccessForDriver,
   checkoutCandidates,
@@ -55,6 +56,7 @@ export function useComposerCheckoutItems(
 ) {
   const projects = useProjects();
   const threads = useThreadShells(input.enabled);
+  const gt = useGT();
   const configs = useServerConfigs();
   const candidates = checkoutCandidates({
     currentEnvironmentId: environmentId,
@@ -109,7 +111,8 @@ export function useComposerCheckoutItems(
           toCheckoutItem(
             {
               environmentId,
-              environmentLabel: configs.get(environmentId)?.environment.label ?? "This environment",
+              environmentLabel:
+                configs.get(environmentId)?.environment.label ?? gt("This environment"),
               selectable: pastedEntry?.exists === true,
               path: pastedEntry?.path ?? pasted,
               name: pastedEntry?.name ?? pasted,

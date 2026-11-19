@@ -1,3 +1,4 @@
+import { T, useGT, Var } from "gt-react";
 import type { CSSProperties } from "react";
 
 import { describeColorCode } from "~/lib/colorCodes";
@@ -18,14 +19,15 @@ function ColorSwatch({ code, className }: { code: string; className: string }) {
 
 /** A colour code in chat text, tinted by the colour, with a swatch on hover. */
 export function ColorCodeChip({ code }: { code: string }) {
+  const gt = useGT();
   return (
     <HoverPopover
-      accessibleLabel={`Colour ${code}`}
+      accessibleLabel={gt("Colour {code}", { code })}
       trigger={
         <ContextChip
           kind="color"
           render={<button type="button" />}
-          aria-label={`Colour ${code}. Show swatch`}
+          aria-label={gt("Colour {code}. Show swatch", { code })}
           data-markdown-copy={code}
           style={{ "--context-chip-accent": code } as CSSProperties}
         >
@@ -40,6 +42,7 @@ export function ColorCodeChip({ code }: { code: string }) {
 }
 
 export function ColorCodePreview({ code }: { code: string }) {
+  const gt = useGT();
   const facts = describeColorCode(code);
   const values = [
     ["HEX", code.toUpperCase()],
@@ -57,9 +60,13 @@ export function ColorCodePreview({ code }: { code: string }) {
           } as CSSProperties
         }
       >
+        {/* oxlint-disable-next-line t3code/no-untranslated-copy -- typographic sample glyphs */}
         <span>Aa</span>
         <span className="opacity-70">
-          {facts.contrastOnWhite}:1 on white · {facts.contrastOnBlack}:1 on black
+          <T>
+            <Var>{facts.contrastOnWhite}</Var>:1 on white · <Var>{facts.contrastOnBlack}</Var>:1 on
+            black
+          </T>
         </span>
       </div>
       <dl className="mt-2 grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-0.5 text-xs">
@@ -67,7 +74,7 @@ export function ColorCodePreview({ code }: { code: string }) {
           <div key={label} className="contents">
             <dt className="text-muted-foreground">{label}</dt>
             <dd className="font-mono">{value}</dd>
-            <MessageCopyButton text={value} label={`Copy ${label}`} variant="ghost" />
+            <MessageCopyButton text={value} label={gt("Copy {label}", { label })} variant="ghost" />
           </div>
         ))}
       </dl>

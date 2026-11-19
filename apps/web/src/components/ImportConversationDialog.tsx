@@ -32,8 +32,10 @@ import {
   LayersIcon,
   ListFilterIcon,
 } from "lucide-react";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
 import { useEffect, useRef, useState, type ElementType } from "react";
 
+import { m } from "~/i18n/messages";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import {
@@ -114,6 +116,7 @@ function ImportConversationDialog({
   initialProjectRef: ScopedProjectRef | null;
 }) {
   const projects = useImportableProjects();
+  const gt = useGT();
   const [chosenKey, setChosenKey] = useState(
     initialProjectRef === null ? ALL_PROJECTS : scopedProjectKey(initialProjectRef),
   );
@@ -129,7 +132,7 @@ function ImportConversationDialog({
     value: selectedKey,
     onChange: setChosenKey,
     options: [
-      { value: ALL_PROJECTS, label: "All projects", Icon: LayersIcon },
+      { value: ALL_PROJECTS, label: gt("All projects"), Icon: LayersIcon },
       ...projects.map((candidate) => ({
         value: scopedProjectKey(scopeProjectRef(candidate.environmentId, candidate.id)),
         label: candidate.title,
@@ -148,17 +151,21 @@ function ImportConversationDialog({
     >
       <DialogPopup className="sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Import conversation</DialogTitle>
+          <DialogTitle>
+            <T>Import conversation</T>
+          </DialogTitle>
           <DialogDescription>
-            Claude Code and Codex conversations from the last 30 days, and Conductor workspaces, for
-            your projects. An imported conversation continues the same session. Import all Conductor
-            can include archived workspaces, which become settled threads.
+            <T>
+              Claude Code and Codex conversations from the last 30 days, and Conductor workspaces,
+              for your projects. An imported conversation continues the same session. Import all
+              Conductor can include archived workspaces, which become settled threads.
+            </T>
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>
           {projects.length === 0 ? (
             <div className="flex h-40 items-center justify-center px-6 text-center text-muted-foreground text-sm">
-              Add a project to import conversations into it.
+              <T>Add a project to import conversations into it.</T>
             </div>
           ) : (
             <ImportConversationList
@@ -184,7 +191,7 @@ const SOURCES = ["all", "claudeAgent", "codex", "conductor"] as const;
 type ImportSource = (typeof SOURCES)[number];
 
 const SOURCE_LABEL: Record<ImportSource, string> = {
-  all: "All",
+  all: msg("All", { $context: "all import sources" }),
   claudeAgent: "Claude Code",
   codex: "Codex",
   conductor: "Conductor",
@@ -248,10 +255,6 @@ interface ImportFilter<Value extends string> {
 
 const DEFAULT_SOURCE: ImportSource = "conductor";
 
-function countPhrase(count: number, singular: string): string {
-  return `${count} ${count === 1 ? singular : `${singular}s`}`;
-}
-
 /** What the import-all run should tell the user, or nothing when it was stopped before any work. */
 function conductorImportToast(input: {
   readonly stopped: boolean;
@@ -275,14 +278,31 @@ function conductorImportToast(input: {
   }
   const refreshed =
     input.refreshedThreads > 0
-      ? `Updated ${countPhrase(input.refreshedThreads, "earlier imported thread")}.`
+      ? m(
+          msg(
+            "{count, plural, one {Updated {count} earlier imported thread.} other {Updated {count} earlier imported threads.}}",
+            { count: input.refreshedThreads },
+          ),
+        )
       : null;
   const settled =
     input.settledThreads > 0
-      ? `${countPhrase(input.settledThreads, "archived thread")} ${input.settledThreads === 1 ? "is" : "are"} settled.`
+      ? m(
+          msg(
+            "{count, plural, one {{count} archived thread is settled.} other {{count} archived threads are settled.}}",
+            { count: input.settledThreads },
+          ),
+        )
       : null;
   const failed =
-    input.failed > 0 ? `${countPhrase(input.failed, "workspace")} could not be imported.` : null;
+    input.failed > 0
+      ? m(
+          msg(
+            "{count, plural, one {{count} workspace could not be imported.} other {{count} workspaces could not be imported.}}",
+            { count: input.failed },
+          ),
+        )
+      : null;
   const description = [
     refreshed,
     settled,
@@ -296,8 +316,13 @@ function conductorImportToast(input: {
       type: "success",
       title:
         input.refreshedThreads > 0
-          ? `Updated ${countPhrase(input.refreshedThreads, "imported thread")}`
-          : "Conductor threads are already imported",
+          ? m(
+              msg(
+                "{count, plural, one {Updated {count} imported thread} other {Updated {count} imported threads}}",
+                { count: input.refreshedThreads },
+              ),
+            )
+          : m(msg("Conductor threads are already imported")),
       description: undefined,
     };
   }
@@ -309,10 +334,19 @@ function conductorImportToast(input: {
           ? "warning"
           : "success",
     title: input.stopped
-      ? `Stopped after importing ${countPhrase(input.importedThreads, "thread")}`
+      ? m(
+          msg(
+            "{count, plural, one {Stopped after importing {count} thread} other {Stopped after importing {count} threads}}",
+            { count: input.importedThreads },
+          ),
+        )
       : input.failed > 0 && input.importedThreads === 0
-        ? "Could not import Conductor threads"
-        : `Imported ${countPhrase(input.importedThreads, "thread")}`,
+        ? m(msg("Could not import Conductor threads"))
+        : m(
+            msg("{count, plural, one {Imported {count} thread} other {Imported {count} threads}}", {
+              count: input.importedThreads,
+            }),
+          ),
     description: description === "" ? undefined : description,
   };
 }
@@ -346,10 +380,11 @@ const CONDUCTOR_AGENT: Record<ConductorAgent, { driver: ProviderDriverKind; labe
 /** "9 tabs", listing each tab's agent, title, and prompt count on hover. */
 function TabCount({ workspace }: { workspace: ConductorWorkspaceSummary }) {
   const tabs = workspace.tabs.length;
+  const gt = useGT();
   return (
     <Tooltip>
       <TooltipTrigger render={<span className="underline decoration-dotted underline-offset-2" />}>
-        {tabs} {tabs === 1 ? "tab" : "tabs"}
+        {gt("{count, plural, one {{count} tab} other {{count} tabs}}", { count: tabs })}
       </TooltipTrigger>
       <TooltipPopup align="start">
         <ul className="flex max-w-80 flex-col gap-1">
@@ -363,7 +398,9 @@ function TabCount({ workspace }: { workspace: ConductorWorkspaceSummary }) {
               />
               <span className="min-w-0 flex-1 truncate">{tab.title}</span>
               <span className="shrink-0 text-muted-foreground">
-                {tab.messageCount} {tab.messageCount === 1 ? "prompt" : "prompts"}
+                {gt("{count, plural, one {{count} prompt} other {{count} prompts}}", {
+                  count: tab.messageCount,
+                })}
               </span>
             </li>
           ))}
@@ -466,6 +503,8 @@ function ImportConversationList({
   projectFilter: ImportFilter<string>;
 }) {
   const navigate = useNavigate();
+  const gt = useGT();
+  const messages = useMessages();
   const listings = useAtomValue(
     importListingsAtom(
       JSON.stringify(
@@ -539,8 +578,8 @@ function ImportConversationList({
       setPendingKey(null);
       toastManager.add({
         type: "error",
-        title: "Could not import conversation",
-        description: "It may have changed on disk, or an earlier import of it was deleted.",
+        title: m(msg("Could not import conversation")),
+        description: m(msg("It may have changed on disk, or an earlier import of it was deleted.")),
       });
       return;
     }
@@ -549,8 +588,8 @@ function ImportConversationList({
     const error = squashAtomCommandFailure(result);
     toastManager.add({
       type: "error",
-      title: "Could not import conversation",
-      description: error instanceof Error ? error.message : "An error occurred.",
+      title: m(msg("Could not import conversation")),
+      description: error instanceof Error ? error.message : m(msg("An error occurred.")),
     });
   };
 
@@ -584,8 +623,8 @@ function ImportConversationList({
     const error = result._tag === "Success" ? null : squashAtomCommandFailure(result);
     toastManager.add({
       type: "error",
-      title: "Could not import Conductor workspace",
-      description: error instanceof Error ? error.message : "An error occurred.",
+      title: m(msg("Could not import Conductor workspace")),
+      description: error instanceof Error ? error.message : m(msg("An error occurred.")),
     });
   };
 
@@ -643,7 +682,11 @@ function ImportConversationList({
   const failure = relevant.find((result) => result._tag === "Failure");
   const truncated = showSessions && loaded.some((listing) => listing.sessions?.truncated === true);
   const sourceOptions = SOURCES.filter((option) => option !== "conductor" || !conductorMissing).map(
-    (option) => ({ value: option, label: SOURCE_LABEL[option], Icon: SOURCE_ICON[option] }),
+    (option) => ({
+      value: option,
+      label: messages(SOURCE_LABEL[option]),
+      Icon: SOURCE_ICON[option],
+    }),
   );
   const activeFilters =
     Number(projectFilter.value !== ALL_PROJECTS) + Number(source !== DEFAULT_SOURCE);
@@ -711,7 +754,7 @@ function ImportConversationList({
       } else {
         failed += 1;
         const error = squashAtomCommandFailure(result);
-        failureDetail = error instanceof Error ? error.message : "An error occurred.";
+        failureDetail = error instanceof Error ? error.message : m(msg("An error occurred."));
       }
       setImportProgress({ completed: index + 1, total: targets.length });
       if (run.cancelled) break;
@@ -745,7 +788,9 @@ function ImportConversationList({
         <Menu>
           <MenuTrigger render={<Button type="button" variant="outline" size="sm" />}>
             <ListFilterIcon />
-            <span>Filters</span>
+            <span>
+              <T>Filters</T>
+            </span>
             {activeFilters > 0 ? (
               <span className="rounded-full bg-muted px-1.5 text-xs text-muted-foreground tabular-nums">
                 {activeFilters}
@@ -754,13 +799,13 @@ function ImportConversationList({
           </MenuTrigger>
           <MenuPopup align="start" side="bottom">
             <PullRequestFilterRadioSubmenu
-              label="Project"
+              label={gt("Project", { $context: "filter" })}
               value={projectFilter.value}
               options={projectFilter.options}
               onChange={projectFilter.onChange}
             />
             <PullRequestFilterRadioSubmenu
-              label="Source"
+              label={gt("Source", { $context: "where a conversation comes from" })}
               value={source}
               options={sourceOptions}
               optionsPending={listings.some(
@@ -775,8 +820,8 @@ function ImportConversationList({
             size="sm"
             type="search"
             value={query}
-            placeholder="Search by title, prompt, or conversation ID"
-            aria-label="Search conversations and workspaces"
+            placeholder={gt("Search by title, prompt, or conversation ID")}
+            aria-label={gt("Search conversations and workspaces")}
             onChange={(event) => setQuery(event.target.value)}
           />
         </div>
@@ -791,21 +836,25 @@ function ImportConversationList({
                   disabled={importingAll || archivedIds.size === 0}
                   onCheckedChange={(checked) => setIncludeArchived(checked === true)}
                 />
-                Include archived
+                <T>Include archived</T>
                 {archivedIds.size > 0 ? (
                   <span className="text-muted-foreground tabular-nums">{archivedIds.size}</span>
                 ) : null}
               </Label>
             </TooltipTrigger>
             <TooltipPopup>
-              Archived Conductor workspaces become settled threads. Their folders are usually
-              already gone, so the conversation comes across without a working copy.
+              <T>
+                Archived Conductor workspaces become settled threads. Their folders are usually
+                already gone, so the conversation comes across without a working copy.
+              </T>
             </TooltipPopup>
           </Tooltip>
           <div className="ml-auto flex items-center gap-2">
             {importingAll && importProgress !== null ? (
               <span className="text-muted-foreground text-xs tabular-nums">
-                {importProgress.completed} of {importProgress.total}
+                <T>
+                  <Var>{importProgress.completed}</Var> of <Var>{importProgress.total}</Var>
+                </T>
               </span>
             ) : null}
             <Button
@@ -821,7 +870,9 @@ function ImportConversationList({
                 void importAll();
               }}
             >
-              {importingAll ? "Stop" : "Import all Conductor"}
+              {importingAll
+                ? gt("Stop", { $context: "stop importing" })
+                : gt("Import all Conductor")}
             </Button>
           </div>
         </div>
@@ -837,17 +888,22 @@ function ImportConversationList({
       ) : visibleRows.length === 0 ? (
         <div className="flex h-40 items-center justify-center px-6 text-center text-muted-foreground text-sm">
           {needle !== ""
-            ? `Nothing matches “${query.trim()}”.`
+            ? gt("Nothing matches “{query}”.", { query: query.trim() })
             : source === "conductor"
-              ? "No active Conductor workspaces found."
+              ? gt("No active Conductor workspaces found.")
               : source === "all"
-                ? "Nothing to import."
-                : `No ${SOURCE_LABEL[source]} conversations found.`}
+                ? gt("Nothing to import.")
+                : gt("No {source} conversations found.", {
+                    source: messages(SOURCE_LABEL[source]),
+                  })}
         </div>
       ) : (
         <div>
           <div className="max-h-[28rem] overflow-y-auto rounded-xl border border-border/70">
-            <Table className="table-fixed" aria-label="Conversations and workspaces to import">
+            <Table
+              className="table-fixed"
+              aria-label={gt("Conversations and workspaces to import")}
+            >
               <colgroup>
                 <col />
                 <col className="w-28" />
@@ -859,22 +915,42 @@ function ImportConversationList({
               <TableHeader>
                 <TableRow>
                   <TableHead aria-sort={ariaSort(sort, "name")}>
-                    <SortHeader label="Name" column="name" sort={sort} onSort={setSort} />
+                    <SortHeader
+                      label={gt("Name", { $context: "column header" })}
+                      column="name"
+                      sort={sort}
+                      onSort={setSort}
+                    />
                   </TableHead>
                   <TableHead aria-sort={ariaSort(sort, "workspace")}>
-                    <SortHeader label="Workspace" column="workspace" sort={sort} onSort={setSort} />
+                    <SortHeader
+                      label={gt("Workspace", { $context: "column header" })}
+                      column="workspace"
+                      sort={sort}
+                      onSort={setSort}
+                    />
                   </TableHead>
                   {showProject ? (
                     <TableHead aria-sort={ariaSort(sort, "project")}>
-                      <SortHeader label="Project" column="project" sort={sort} onSort={setSort} />
+                      <SortHeader
+                        label={gt("Project", { $context: "column header" })}
+                        column="project"
+                        sort={sort}
+                        onSort={setSort}
+                      />
                     </TableHead>
                   ) : null}
                   <TableHead aria-sort={ariaSort(sort, "source")}>
-                    <SortHeader label="Source" column="source" sort={sort} onSort={setSort} />
+                    <SortHeader
+                      label={gt("Source", { $context: "column header" })}
+                      column="source"
+                      sort={sort}
+                      onSort={setSort}
+                    />
                   </TableHead>
                   <TableHead aria-sort={ariaSort(sort, "updated")} className="text-right">
                     <SortHeader
-                      label="Updated"
+                      label={gt("Updated", { $context: "column header" })}
                       column="updated"
                       sort={sort}
                       onSort={setSort}
@@ -882,7 +958,9 @@ function ImportConversationList({
                     />
                   </TableHead>
                   <TableHead>
-                    <span className="sr-only">Action</span>
+                    <span className="sr-only">
+                      <T>Action</T>
+                    </span>
                   </TableHead>
                 </TableRow>
               </TableHeader>
@@ -946,10 +1024,12 @@ function ImportConversationList({
                             >
                               {row.workspace.name}
                             </TooltipTrigger>
-                            <TooltipPopup>{row.workspace.branch ?? "No branch"}</TooltipPopup>
+                            <TooltipPopup>{row.workspace.branch ?? gt("No branch")}</TooltipPopup>
                           </Tooltip>
                         ) : (
-                          <div className="text-muted-foreground/50">None</div>
+                          <div className="text-muted-foreground/50">
+                            <T>None</T>
+                          </div>
                         )}
                       </TableCell>
                       {showProject ? (
@@ -963,7 +1043,9 @@ function ImportConversationList({
                         <div className="truncate text-muted-foreground">
                           {rowSource(row)} ·{" "}
                           {row.kind === "session" ? (
-                            `${row.session.messageCount} msgs`
+                            gt("{count, plural, one {{count} msgs} other {{count} msgs}}", {
+                              count: row.session.messageCount,
+                            })
                           ) : (
                             <TabCount workspace={row.workspace} />
                           )}
@@ -971,7 +1053,7 @@ function ImportConversationList({
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="truncate text-muted-foreground tabular-nums">
-                          {formatRelativeTimeLabel(row.updatedAt)}
+                          {formatRelativeTimeLabel(row.updatedAt, undefined, messages)}
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
@@ -983,7 +1065,11 @@ function ImportConversationList({
                                 size="icon-xs"
                                 variant="ghost"
                                 disabled={pendingKey !== null}
-                                aria-label={`${imported ? "Open" : "Import"} ${rowTitle(row)}`}
+                                aria-label={
+                                  imported
+                                    ? gt("Open {title}", { title: rowTitle(row) })
+                                    : gt("Import {title}", { title: rowTitle(row) })
+                                }
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   run();
@@ -999,7 +1085,9 @@ function ImportConversationList({
                               <DownloadIcon aria-hidden />
                             )}
                           </TooltipTrigger>
-                          <TooltipPopup>{imported ? "Open thread" : "Import"}</TooltipPopup>
+                          <TooltipPopup>
+                            {imported ? gt("Open thread") : gt("Import", { $context: "verb" })}
+                          </TooltipPopup>
                         </Tooltip>
                       </TableCell>
                     </TableRow>
@@ -1010,11 +1098,11 @@ function ImportConversationList({
           </div>
           {pending ? (
             <p className="mt-2 flex items-center gap-2 text-muted-foreground text-xs">
-              <Spinner size="xs" /> Still loading some projects.
+              <Spinner size="xs" /> <T>Still loading some projects.</T>
             </p>
           ) : truncated ? (
             <p className="mt-2 text-muted-foreground text-xs">
-              Showing the newest 50 conversations per project.
+              <T>Showing the newest 50 conversations per project.</T>
             </p>
           ) : null}
         </div>

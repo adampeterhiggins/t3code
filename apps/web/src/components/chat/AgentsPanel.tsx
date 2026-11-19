@@ -1,19 +1,7 @@
 /**
- * Fork: the Agents right-panel surface, the whole fleet of a thread's subagents. Lineage in the
- * thread details panel lists the same agents compactly; both read the list logic in
- * `agentListView.ts`/`agentFleet.ts` and share one filter and sort (`agentListViewStore.ts`).
- *
- * - Spawn order is stable; activity and completion update rows in place.
- * - Agents spawned by an agent sit indented under it, found through child-thread lineage.
- * - Clicking an agent drills into its detail view in place (`AgentDetailPanel`), with Back to the
- *   list; an agent it started drills one level further, and a tool call clicked in a preview opens
- *   the agent on that call. An agent recorded before its child thread exists opens on its record.
- *   The drill-in is per thread and session-only (`agentDrillStore.ts`). **Open in new tab** pins an
- *   agent as its own agent tab.
- * - The footer counts agents by status and sums the usage they reported.
- * - Static status dots and DOM-write elapsed timers. Rows page in, and only working rows on
- *   screen (or an open preview) subscribe to a child thread; the detail view subscribes to its
- *   agent's child thread while it is shown.
+ * Fork: the Agents right-panel, a thread's whole subagent fleet. Only working rows on screen (or
+ * an open preview) subscribe to a child thread, and elapsed timers write to the DOM, so a large
+ * fleet stays cheap.
  */
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
@@ -37,6 +25,7 @@ import type {
   ThreadId,
   TurnItemId,
 } from "@t3tools/contracts";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
 import { BotIcon, ListCollapseIcon, ListIcon, PanelTopIcon } from "lucide-react";
 import { useState, type MouseEvent } from "react";
 
@@ -63,11 +52,11 @@ const STATUS_COUNTS: ReadonlyArray<{
   readonly status: RuntimeSubagent["status"];
   readonly label: string;
 }> = [
-  { filter: "working", status: "running", label: "Working" },
-  { filter: "idle", status: "idle", label: "Idle" },
-  { filter: "done", status: "completed", label: "Completed" },
-  { filter: "failed", status: "failed", label: "Failed" },
-  { filter: "stopped", status: "cancelled", label: "Stopped" },
+  { filter: "working", status: "running", label: msg("Working", { $context: "agent status" }) },
+  { filter: "idle", status: "idle", label: msg("Idle", { $context: "agent status" }) },
+  { filter: "done", status: "completed", label: msg("Completed", { $context: "agent status" }) },
+  { filter: "failed", status: "failed", label: msg("Failed", { $context: "agent status" }) },
+  { filter: "stopped", status: "cancelled", label: msg("Stopped", { $context: "agent status" }) },
 ];
 
 function StatusCount(props: { status: RuntimeSubagent["status"]; count: number; label: string }) {
@@ -91,7 +80,8 @@ function StatusCount(props: { status: RuntimeSubagent["status"]; count: number; 
 function RowDetailsToggle() {
   const show = useAgentListViewStore((state) => state.showRowDetails);
   const setShow = useAgentListViewStore((state) => state.setShowRowDetails);
-  const label = show ? "Hide agent details" : "Show agent details";
+  const gt = useGT();
+  const label = show ? gt("Hide agent details") : gt("Show agent details");
   return (
     <Tooltip>
       <TooltipTrigger
@@ -178,6 +168,7 @@ export function AgentsPanel(props: AgentsPanelProps) {
   const threadKey = scopedThreadKey(threadRef);
   const stack = useAgentDrillStore(selectAgentDrillStack(threadKey));
   const focused = stack.at(-1) ?? null;
+  const gt = useGT();
   const previous = stack.length > 1 ? drillTarget(stack.at(-2)!).childThreadId : null;
   const previousShell = useThreadShell(
     previous === null ? null : scopeThreadRef(threadRef.environmentId, previous),
@@ -192,7 +183,9 @@ export function AgentsPanel(props: AgentsPanelProps) {
       subagentId={target.subagentId}
       workspaceRoot={props.workspaceRoot}
       backLabel={
-        previous === null ? "Agents" : formatSubagentDisplayTitle(previousShell?.title ?? "Agent")
+        previous === null
+          ? gt("Agents")
+          : formatSubagentDisplayTitle(previousShell?.title ?? gt("Agent"))
       }
       onBack={() => useAgentDrillStore.getState().back(threadKey)}
       onOpenInTab={(agent) => useRightPanelStore.getState().openAgent(threadRef, agent)}
@@ -205,6 +198,8 @@ export function AgentsPanel(props: AgentsPanelProps) {
 function AgentFleetList(props: AgentsPanelProps) {
   const { threadRef } = props;
   const threadKey = scopedThreadKey(threadRef);
+  const gt = useGT();
+  const m = useMessages();
   const projection = useThreadProjection(threadRef)?.projection ?? null;
   const shells = useEnvironmentShells(threadRef.environmentId);
   const providers = useProviderEntries(threadRef.environmentId);
@@ -240,14 +235,16 @@ function AgentFleetList(props: AgentsPanelProps) {
             type="button"
             size="icon-xs"
             variant="ghost-muted"
-            aria-label="Show in Lineage"
+            aria-label={gt("Show in Lineage")}
             onClick={props.onShowLineage}
           />
         }
       >
         <PanelTopIcon />
       </TooltipTrigger>
-      <TooltipPopup>Show in Lineage</TooltipPopup>
+      <TooltipPopup>
+        <T>Show in Lineage</T>
+      </TooltipPopup>
     </Tooltip>
   ) : null;
 
@@ -256,12 +253,14 @@ function AgentFleetList(props: AgentsPanelProps) {
       <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
         <BotIcon aria-hidden className="size-6 text-muted-foreground/60" />
         <p className="text-sm font-medium">
-          {projection === null ? "Loading agents…" : "No agents yet"}
+          {projection === null ? gt("Loading agents…") : gt("No agents yet")}
         </p>
         {projection !== null ? (
           <p className="max-w-56 text-xs text-muted-foreground">
-            When this thread spawns subagents, they show up here with live status, activity, and
-            token usage.
+            <T>
+              When this thread spawns subagents, they show up here with live status, activity, and
+              token usage.
+            </T>
           </p>
         ) : null}
       </div>
@@ -283,13 +282,15 @@ function AgentFleetList(props: AgentsPanelProps) {
         <div className="flex flex-col p-2 pt-0">
           {rows.length === 0 ? (
             <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
-              <p className="text-xs text-muted-foreground">No agents match these filters.</p>
+              <p className="text-xs text-muted-foreground">
+                <T>No agents match these filters.</T>
+              </p>
               <Button
                 size="xs"
                 variant="outline"
                 onClick={() => setView({ ...view, statuses: [], query: "" })}
               >
-                Clear filters
+                <T>Clear filters</T>
               </Button>
             </div>
           ) : null}
@@ -317,7 +318,9 @@ function AgentFleetList(props: AgentsPanelProps) {
                 variant="ghost-muted"
                 onClick={() => setVisibleCount((count) => count + PAGE_SIZE)}
               >
-                Show {Math.min(hiddenCount, PAGE_SIZE)} more
+                <T>
+                  Show <Var>{Math.min(hiddenCount, PAGE_SIZE)}</Var> more
+                </T>
               </Button>
             </div>
           ) : null}
@@ -333,10 +336,16 @@ function AgentFleetList(props: AgentsPanelProps) {
                 key={filter}
                 status={status}
                 count={summary.counts[filter]}
-                label={label}
+                label={m(label)}
               />
             ))}
-            {filtered ? <span className="shrink-0">· {rows.length} shown</span> : null}
+            {filtered ? (
+              <span className="shrink-0">
+                <T>
+                  · <Var>{rows.length}</Var> shown
+                </T>
+              </span>
+            ) : null}
           </>
         }
       />

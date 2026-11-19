@@ -22,7 +22,12 @@ import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { useNowMinute } from "../hooks/useNowMinute";
 import { __setClientSettingsForTests, getClientSettings } from "../hooks/useSettings";
 import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
-import { useProjects, useServerConfigs, useQuietThreadShells } from "../state/entities";
+import {
+  readThreadShell,
+  useProjects,
+  useServerConfigs,
+  useQuietThreadShells,
+} from "../state/entities";
 import { readEnvironmentScope, useEnvironmentScope } from "../state/session";
 import { useOrchestrationCommand } from "../state/use-orchestration-command";
 import { useTerminalUiStateStore } from "../terminalUiStateStore";
@@ -275,6 +280,7 @@ describe("sidebar thread menu", () => {
     vi.mocked(readLocalApi).mockReturnValue({ contextMenu: { show } } as unknown as LocalApi);
     vi.mocked(useProjects).mockReturnValue([activeProject]);
     vi.mocked(useQuietThreadShells).mockReturnValue([thread]);
+    vi.mocked(readThreadShell).mockReturnValue(thread);
     vi.mocked(useThreadRouteTarget).mockReturnValue({ kind: "server", threadRef });
     vi.mocked(useHandleNewThread).mockReturnValue({
       activeDraftThread: null,

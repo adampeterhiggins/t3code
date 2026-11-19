@@ -1,5 +1,6 @@
 import { type ScopedThreadRef } from "@t3tools/contracts";
 
+import { useGT } from "gt-react";
 import { useRef } from "react";
 
 /** Inline title editor, mounted only while a row is being renamed. */
@@ -13,12 +14,13 @@ export function SidebarRenameInput(props: {
 }) {
   // Enter and Escape unmount the field, which blurs it; the blur must not commit a second time.
   const finishedRef = useRef(false);
+  const gt = useGT();
   return (
     <input
       autoFocus
       value={props.value}
       dir="auto"
-      aria-label="Thread title"
+      aria-label={gt("Thread title")}
       onChange={(event) => props.onChange(event.target.value)}
       onFocus={(event) => event.currentTarget.select()}
       onKeyDown={(event) => {

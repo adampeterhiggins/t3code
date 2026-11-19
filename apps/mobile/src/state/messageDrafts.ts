@@ -6,8 +6,10 @@ import type { EnvironmentId, MessageDraft, ThreadId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { useAtomValue } from "@effect/atom-react";
+import { msg } from "gt-react-native";
 
 import { connectionAtomRuntime } from "../connection/runtime";
+import { m } from "../i18n/messages";
 import { scopedThreadKey } from "../lib/scopedEntities";
 import { environmentPresentations } from "./presentation";
 import { useEnvironmentQuery } from "./query";
@@ -73,7 +75,9 @@ export function messageDraftFailureMessage(error: unknown): string {
     "reason" in error &&
     error.reason === "not-found"
   ) {
-    return "This draft was already opened or sent on another device.";
+    return m(msg("This draft was already opened or sent on another device."));
   }
-  return error instanceof Error && error.message.trim().length > 0 ? error.message : "Try again.";
+  return error instanceof Error && error.message.trim().length > 0
+    ? error.message
+    : m(msg("Try again."));
 }

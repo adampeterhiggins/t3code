@@ -6,6 +6,7 @@ import type {
   ThreadId,
 } from "@t3tools/contracts";
 import { formatPathsForWorkspace } from "@t3tools/client-runtime/work-log/command-display";
+import { T, Var, useGT, useMessages } from "gt-react";
 import type { ToolCallDiffTarget } from "../../diffPanelStore";
 
 import {
@@ -101,6 +102,7 @@ function useFetchedTurnItem(
   source: TurnItemSource | undefined,
   skip = false,
 ) {
+  const gt = useGT();
   const wireItem = projectedItem.item;
   const fetches = !skip && (turnItemNeedsDetailFetch(wireItem) || fileChangeDiffWithheld(wireItem));
   const detail = useTurnItemDetail(
@@ -128,7 +130,7 @@ function useFetchedTurnItem(
         item !== wireItem
           ? null
           : detail.data?.item === null
-            ? "Output is no longer available."
+            ? gt("Output is no longer available.")
             : detail.error,
       empty: fetches && item !== wireItem,
     },
@@ -152,12 +154,13 @@ interface ToolOutputState {
 function ToolOutputImages(
   props: Pick<ToolOutputState, "images" | "environmentId" | "onImageExpand">,
 ) {
+  const gt = useGT();
   return props.images.map((resource) => (
     <ChatMarkdownAssetImage
       key={resource.index}
       environmentId={props.environmentId}
       resource={resource}
-      alt="Tool output image"
+      alt={gt("Tool output image")}
       maxHeightRem={16}
       onImageExpand={props.onImageExpand}
     />
@@ -196,11 +199,19 @@ function ToolOutput(props: ToolOutputState & { readonly structured?: boolean }) 
   ) : props.output ? (
     <ToolOutputText text={props.output} cwd={props.cwd} structured={props.structured ?? false} />
   ) : props.pending ? (
-    <div className="text-muted-foreground italic">Loading output…</div>
+    <div className="text-muted-foreground italic">
+      <T>Loading output…</T>
+    </div>
   ) : props.error ? (
-    <div className="text-destructive">Couldn&apos;t load output: {props.error}</div>
+    <div className="text-destructive">
+      <T>
+        Couldn&apos;t load output: <Var>{props.error}</Var>
+      </T>
+    </div>
   ) : props.empty && props.images.length === 0 ? (
-    <div className="text-muted-foreground italic">No output.</div>
+    <div className="text-muted-foreground italic">
+      <T>No output.</T>
+    </div>
   ) : null;
   return (
     <>
@@ -267,7 +278,9 @@ function ToolCallBody(
       {props.outputSlot ?? <ToolOutput {...props} structured={props.command === undefined} />}
       {props.exitCode !== undefined ? (
         <div className={props.exitCode === 0 ? "text-muted-foreground" : "text-destructive"}>
-          exit {props.exitCode}
+          <T>
+            exit <Var>{props.exitCode}</Var>
+          </T>
         </div>
       ) : null}
     </div>
@@ -281,7 +294,11 @@ function FileChangePreview(props: {
   readonly workspaceRoot: string | undefined;
 }) {
   if (props.preview === null) {
-    return props.pending ? <div className="text-muted-foreground italic">Loading diff…</div> : null;
+    return props.pending ? (
+      <div className="text-muted-foreground italic">
+        <T>Loading diff…</T>
+      </div>
+    ) : null;
   }
   // Line counts already sit beside the file name; the preview adds the diff.
   const diff = props.preview
@@ -297,6 +314,7 @@ function FileChangePreview(props: {
 }
 
 export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspectorProps) {
+  const messages = useMessages();
   // Command rows stream their output, including the final output, from the server.
   const environmentStreamsOutput = useCommandOutputStreaming(props.environmentId);
   const streamsOutput =
@@ -310,7 +328,7 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
   );
   const item = fetched.item;
   const outputState = fetched.output;
-  const preview = (() => resolveToolPreview(item))();
+  const preview = (() => resolveToolPreview(item, messages))();
   const support = useV2ItemSupport({
     environmentId: props.environmentId,
     sourceThreadId: props.projectedItem.sourceThreadId,
@@ -390,7 +408,7 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
                 }
               >
                 <ExternalLinkIcon />
-                Open tool diff
+                <T>Open tool diff</T>
               </Button>
             ) : null}
             {!props.hidePreviewActions &&
@@ -399,7 +417,7 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
               <PreviewCornerAction
                 onClick={() => props.onOpenTurnDiff?.(item.runId!, item.fileName)}
               >
-                Open diff
+                <T>Open diff</T>
               </PreviewCornerAction>
             ) : null}
           </div>
@@ -536,7 +554,7 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
                 })
               }
             >
-              Roll back
+              <T>Roll back</T>
             </PreviewCornerAction>
           ) : null}
         </div>
@@ -545,7 +563,7 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
       {item.type === "fork" && !props.hidePreviewActions ? (
         <div className="flex justify-end">
           <PreviewCornerAction onClick={() => props.onOpenThread(item.targetThreadId)}>
-            Open fork
+            <T>Open fork</T>
           </PreviewCornerAction>
         </div>
       ) : null}
@@ -553,7 +571,7 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
       {item.type === "subagent" && item.childThreadId !== null && !props.hidePreviewActions ? (
         <div className="flex justify-end">
           <PreviewCornerAction onClick={() => props.onOpenThread(item.childThreadId!)}>
-            Open subagent thread
+            <T>Open subagent thread</T>
           </PreviewCornerAction>
         </div>
       ) : null}
@@ -568,8 +586,10 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
           </p>
           {support.contextTransfer ? (
             <p>
-              Transfer {support.contextTransfer.type.replaceAll("_", " ")} ·{" "}
-              {support.contextTransfer.status}
+              <T>
+                Transfer <Var>{support.contextTransfer.type.replaceAll("_", " ")}</Var> ·{" "}
+                <Var>{support.contextTransfer.status}</Var>
+              </T>
             </p>
           ) : null}
         </div>

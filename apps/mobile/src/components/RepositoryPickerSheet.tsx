@@ -1,3 +1,4 @@
+import { LegendList } from "@legendapp/list/react-native";
 import {
   configuredContextRepositoryOwners,
   contextRepositoryCandidateLabels,
@@ -12,10 +13,12 @@ import {
 } from "@t3tools/client-runtime/context-repositories";
 import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
 import type { EnvironmentId } from "@t3tools/contracts";
+import { msg, useGT, useMessages } from "gt-react-native";
 import { useMemo, useState, type ReactNode } from "react";
-import { ActivityIndicator, Alert, FlatList, Pressable, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { m } from "../i18n/messages";
 import { useEnvironmentServerConfig } from "../state/entities";
 import { useDebouncedValue } from "../state/queries";
 import { useEnvironmentQuery } from "../state/query";
@@ -62,6 +65,8 @@ export function useRepositoryPicker(target: RepositoryPickerTarget | null): {
 }
 
 function RepositoryPickerSheet(props: OpenedRepositoryPicker & { readonly onClose: () => void }) {
+  const gt = useGT();
+  const resolve = useMessages();
   const insets = useSafeAreaInsets();
   const settings = useEnvironmentServerConfig(props.environmentId)?.settings;
   const defaultOwners = useMemo(
@@ -122,7 +127,10 @@ function RepositoryPickerSheet(props: OpenedRepositoryPicker & { readonly onClos
         props.insertion,
       )
     ) {
-      Alert.alert("Too many context items", "Remove some context from the draft and try again.");
+      Alert.alert(
+        m(msg("Too many context items")),
+        m(msg("Remove some context from the draft and try again.")),
+      );
       return;
     }
     props.onClose();
@@ -131,40 +139,55 @@ function RepositoryPickerSheet(props: OpenedRepositoryPicker & { readonly onClos
   const workspaceNote = (remoteUrl: string) => {
     const clone = clones ? findContextRepositoryClone(clones.clones, remoteUrl) : null;
     if (!clone || !clones) return null;
-    return `In ${clones.directory}/${clone.directoryName}${clone.git ? ` · ${describeContextRepositoryGitStatus(clone.git)}` : ""}`;
+    const location = gt("In {path}", { path: `${clones.directory}/${clone.directoryName}` });
+    return clone.git
+      ? `${location} · ${describeContextRepositoryGitStatus(clone.git, resolve)}`
+      : location;
   };
 
   const status =
     rows.length > 0
       ? null
       : owners.length === 0
-        ? "Type an owner followed by a slash, like acme/, or paste a repository URL. Repository owners can be set in Settings > General on desktop or web."
+        ? gt(
+            "Type an owner followed by a slash, like acme/, or paste a repository URL. Repository owners can be set in Settings > General on desktop or web.",
+          )
         : list.isPending || ownersKey !== settledOwnersKey
           ? null
-          : (list.error ?? `No repositories in ${describeContextRepositoryOwners(owners)} match.`);
+          : (list.error ??
+            gt("No repositories in {owners} match.", {
+              owners: describeContextRepositoryOwners(owners, resolve),
+            }));
 
   return (
-    <PickerSheet title="Attach repository" onClose={props.onClose}>
+    <PickerSheet title={gt("Attach repository")} onClose={props.onClose}>
       <View className="px-4 pb-3">
         <AppTextInput
-          accessibilityLabel="Search repositories"
+          accessibilityLabel={gt("Search repositories")}
           autoFocus
           autoCapitalize="none"
           autoCorrect={false}
           clearButtonMode="while-editing"
           placeholder={
             defaultOwners.length > 0
-              ? `Search ${describeContextRepositoryOwners(defaultOwners)}, type another-org/, or paste a URL`
-              : "Type an owner like acme/, or paste a URL"
+              ? gt("Search {owners}, type another-org/, or paste a URL", {
+                  owners: describeContextRepositoryOwners(defaultOwners, resolve),
+                })
+              : gt("Type an owner like acme/, or paste a URL")
           }
           returnKeyType="search"
           value={query}
           onChangeText={setQuery}
         />
       </View>
-      <FlatList
+      {/* oxlint-disable-next-line t3code/require-registered-list-scroll -- PickerSheet is a Modal with an inline header; there is no navigation header to register with. */}
+      <LegendList
         data={rows}
         keyExtractor={(row) => row.remoteUrl}
+        extraData={{ clones, attach }}
+        estimatedItemSize={64}
+        recycleItems
+        className="flex-1"
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) }}
         ListEmptyComponent={
@@ -182,13 +205,17 @@ function RepositoryPickerSheet(props: OpenedRepositoryPicker & { readonly onClos
           return (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`Attach ${item.nameWithOwner}`}
+              accessibilityLabel={gt("Attach {name}", { name: item.nameWithOwner })}
               onPress={() => attach(item)}
               className="gap-0.5 px-4 py-3 active:bg-subtle"
             >
               <Text className="text-base text-foreground" numberOfLines={1}>
                 {item.label}
-                {item.isPrivate ? <Text className="text-foreground-muted"> · private</Text> : null}
+                {item.isPrivate ? (
+                  <Text className="text-foreground-muted">
+                    {` · ${gt("private", { $context: "repository visibility" })}`}
+                  </Text>
+                ) : null}
               </Text>
               {detail ? (
                 <Text className="text-sm text-foreground-muted" numberOfLines={2}>

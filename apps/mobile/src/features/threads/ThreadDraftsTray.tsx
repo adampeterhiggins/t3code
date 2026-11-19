@@ -1,4 +1,5 @@
 import type { MessageDraft, MessageDraftSendMode } from "@t3tools/contracts";
+import { useGT, useMessages } from "gt-react-native";
 import { Platform, Pressable, ScrollView, View } from "react-native";
 
 import { AppText as Text } from "../../components/ui/AppText";
@@ -21,9 +22,21 @@ export function ThreadDraftsTray(props: {
   readonly onSend: (draft: MessageDraft, mode: MessageDraftSendMode) => void;
   readonly onDelete: (draft: MessageDraft) => void;
 }) {
+  const gt = useGT();
+  const messages = useMessages();
   if (props.drafts.length === 0) return null;
   const sendLabel =
-    props.sendMode === "auto" ? "Send" : props.sendMode === "queue" ? "Queue" : "Steer now";
+    props.sendMode === "auto"
+      ? gt("Send", { $context: "verb, sends a draft" })
+      : props.sendMode === "queue"
+        ? gt("Queue", { $context: "verb, queues a draft" })
+        : gt("Steer now");
+  const sendDraftLabel = (title: string) =>
+    props.sendMode === "auto"
+      ? gt("Send draft {title}", { title })
+      : props.sendMode === "queue"
+        ? gt("Queue draft {title}", { title })
+        : gt("Steer now draft {title}", { title });
   const act = (draft: MessageDraft, action: DraftRowAction) => {
     if (action === "open") props.onOpen(draft);
     else if (action === "send") props.onSend(draft, props.sendMode);
@@ -38,17 +51,17 @@ export function ThreadDraftsTray(props: {
         style={{ maxHeight: TRAY_MAX_HEIGHT }}
       >
         {props.drafts.map((draft, index) => {
-          const row = messageDraftRowPresentation(draft);
+          const row = messageDraftRowPresentation(draft, messages);
           const meta = [row.originLabel, relativeTime(draft.createdAt)].filter(Boolean).join(" · ");
           return (
             <Menu
               key={draft.id}
-              accessibilityLabel={`Actions for draft ${row.title}`}
+              accessibilityLabel={gt("Actions for draft {title}", { title: row.title })}
               shouldOpenOnLongPress
               actions={[
                 {
                   id: "open",
-                  title: "Open",
+                  title: gt("Open", { $context: "verb, opens a draft" }),
                   image: Platform.OS === "ios" ? "pencil" : "edit",
                 },
                 {
@@ -60,12 +73,12 @@ export function ThreadDraftsTray(props: {
                   ? [
                       {
                         id: "steer",
-                        title: "Steer now",
+                        title: gt("Steer now"),
                         image: Platform.OS === "ios" ? "arrow.turn.left.up" : "arrow_upward",
                       },
                     ]
                   : []),
-                { id: "delete", title: "Delete", attributes: { destructive: true } },
+                { id: "delete", title: gt("Delete"), attributes: { destructive: true } },
               ]}
               onPressAction={({ nativeEvent }) => {
                 if (!props.disabled) act(draft, nativeEvent.event as DraftRowAction);
@@ -73,8 +86,8 @@ export function ThreadDraftsTray(props: {
             >
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`Draft: ${row.title}`}
-                accessibilityHint="Opens this draft in the composer"
+                accessibilityLabel={gt("Draft: {title}", { title: row.title })}
+                accessibilityHint={gt("Opens this draft in the composer")}
                 disabled={props.disabled}
                 onPress={() => act(draft, "open")}
                 className={
@@ -93,7 +106,10 @@ export function ThreadDraftsTray(props: {
                 </Text>
                 {row.attachmentCount > 0 ? (
                   <View
-                    accessibilityLabel={`${row.attachmentCount} attachment${row.attachmentCount === 1 ? "" : "s"}`}
+                    accessibilityLabel={gt(
+                      "{count, plural, one {{count} attachment} other {{count} attachments}}",
+                      { count: row.attachmentCount },
+                    )}
                     className="flex-row items-center gap-0.5"
                   >
                     <SymbolView
@@ -109,7 +125,7 @@ export function ThreadDraftsTray(props: {
                 <Text className="shrink-0 text-2xs text-foreground-muted">{meta}</Text>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={`${sendLabel} draft ${row.title}`}
+                  accessibilityLabel={sendDraftLabel(row.title)}
                   disabled={props.disabled}
                   hitSlop={6}
                   onPress={() => act(draft, "send")}

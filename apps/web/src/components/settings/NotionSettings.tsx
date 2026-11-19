@@ -9,11 +9,13 @@ import {
   type NotionConnectionState,
 } from "@t3tools/contracts";
 import { ExternalLinkIcon } from "lucide-react";
+import { msg, T, useGT, Var } from "gt-react";
 import { useRef, useState } from "react";
 
 import { isElectron } from "../../env";
 import { writeTextToClipboard } from "../../hooks/useCopyToClipboard";
 import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hooks/useSettings";
+import { m } from "../../i18n/messages";
 import { ensureLocalApi } from "../../localApi";
 import { usePrimaryEnvironment } from "../../state/environments";
 import { notionEnvironment } from "../../state/notion";
@@ -24,7 +26,7 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Switch } from "../ui/switch";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import { useSettingsScope } from "./SettingsScopeContext";
 
 /**
@@ -32,6 +34,8 @@ import { useSettingsScope } from "./SettingsScopeContext";
  * the environment, so every client of that environment can attach pages.
  */
 export function NotionSettingsSection() {
+  const gt = useGT();
+  const searchableSetting = useSearchableSetting();
   const { environment: scopedEnvironment } = useSettingsScope();
   const primaryEnvironment = usePrimaryEnvironment();
   // The account belongs to an environment, not a project, so a project or
@@ -44,14 +48,14 @@ export function NotionSettingsSection() {
     <SettingsSection {...searchableSetting("notion")}>
       {environmentId === null ? (
         <SettingsRow
-          title="Notion account"
-          description="Connect to an environment to set up Notion."
+          title={gt("Notion account")}
+          description={gt("Connect to an environment to set up Notion.")}
         />
       ) : (
         <NotionIntegrationRows
           key={environmentId}
           environmentId={environmentId}
-          environmentLabel={environment?.label ?? "this environment"}
+          environmentLabel={environment?.label ?? gt("this environment")}
         />
       )}
     </SettingsSection>
@@ -62,16 +66,19 @@ function NotionIntegrationRows(props: {
   readonly environmentId: EnvironmentId;
   readonly environmentLabel: string;
 }) {
+  const gt = useGT();
   const enabled = useEnvironmentSettings(props.environmentId, (s) => s.enableNotionIntegration);
   const updateSettings = useUpdateEnvironmentSettings(props.environmentId);
   return (
     <>
       <SettingsRow
-        title="Enable Notion integration"
-        description="Attach Notion pages. Turn off to keep pasted Notion links as links without setup prompts. Your connected account is kept."
+        title={gt("Enable Notion integration")}
+        description={gt(
+          "Attach Notion pages. Turn off to keep pasted Notion links as links without setup prompts. Your connected account is kept.",
+        )}
         control={
           <Switch
-            aria-label="Enable Notion integration"
+            aria-label={gt("Enable Notion integration")}
             checked={enabled}
             onCheckedChange={(checked) => updateSettings({ enableNotionIntegration: checked })}
           />
@@ -82,17 +89,22 @@ function NotionIntegrationRows(props: {
   );
 }
 
-function describeConnection(state: NotionConnectionState | null): string {
-  if (state === null) return "Reading Notion status.";
+function describeConnection(
+  state: NotionConnectionState | null,
+  gt: ReturnType<typeof useGT>,
+): string {
+  if (state === null) return gt("Reading Notion status.");
   switch (state.phase) {
     case "connected":
-      return state.account ? `Connected to ${state.account.workspaceName}.` : "Connected.";
+      return state.account
+        ? gt("Connected to {workspace}.", { workspace: state.account.workspaceName })
+        : gt("Connected.");
     case "waiting":
-      return "Approve T3 Code on Notion's page in your browser.";
+      return gt("Approve T3 Code on Notion's page in your browser.");
     case "failed":
-      return state.message ?? "Notion sign-in failed.";
+      return state.message ?? gt("Notion sign-in failed.");
     case "disconnected":
-      return "Attach Notion pages to messages as context for the agent.";
+      return gt("Attach Notion pages to messages as context for the agent.");
   }
 }
 
@@ -103,6 +115,7 @@ function NotionConnectionRows({
   readonly environmentId: EnvironmentId;
   readonly environmentLabel: string;
 }) {
+  const gt = useGT();
   const connection = useEnvironmentQuery(
     notionEnvironment.connection({ environmentId, input: {} }),
   );
@@ -145,7 +158,7 @@ function NotionConnectionRows({
     if (result._tag === "Failure") {
       if (!isAtomCommandInterrupted(result)) {
         const failure = squashAtomCommandFailure(result);
-        setError(failure instanceof Error ? failure.message : "Notion request failed.");
+        setError(failure instanceof Error ? failure.message : m(msg("Notion request failed.")));
       }
       return null;
     }
@@ -156,7 +169,7 @@ function NotionConnectionRows({
     try {
       await ensureLocalApi().shell.openExternal(url);
     } catch {
-      setError("Could not open the browser. Copy the link and open it yourself.");
+      setError(m(msg("Could not open the browser. Copy the link and open it yourself.")));
     }
   }
 
@@ -186,12 +199,17 @@ function NotionConnectionRows({
 
   async function confirmDisconnect() {
     const confirmed = await ensureLocalApi().dialogs.confirm(
-      `Disconnect Notion from ${environmentLabel}? Pages already attached to messages stay as they are.`,
+      m(
+        msg(
+          "Disconnect Notion from {environment}? Pages already attached to messages stay as they are.",
+          { environment: environmentLabel },
+        ),
+      ),
     );
     if (confirmed) await run(() => disconnect({ environmentId, input: {} }));
   }
 
-  const status = error ?? describeConnection(state);
+  const status = error ?? describeConnection(state, gt);
   const statusClass = error !== null || state?.phase === "failed" ? "text-destructive" : undefined;
   const signedOut = state?.phase === "disconnected" || state?.phase === "failed";
   const showCredentials = signedOut && (state.configured === false || editingCredentials);
@@ -200,26 +218,34 @@ function NotionConnectionRows({
   return (
     <>
       <SettingsRow
-        title="Notion account"
+        title={gt("Notion account")}
         description={<span className={statusClass}>{status}</span>}
         control={
           state === null ? null : state.phase === "connected" ? (
             <Button size="sm" variant="outline" disabled={pending} onClick={confirmDisconnect}>
-              Disconnect
+              <T context="button, disconnects the account">Disconnect</T>
             </Button>
           ) : state.phase === "waiting" ? (
             <div className="flex flex-wrap gap-2 sm:justify-end">
               {authorizationUrl ? (
                 <>
                   <Button size="sm" onClick={() => openAuthorization(authorizationUrl)}>
-                    Open Notion
+                    <T>Open Notion</T>
                   </Button>
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => writeTextToClipboard(authorizationUrl, "Notion sign-in link")}
+                    onClick={() =>
+                      writeTextToClipboard(authorizationUrl, {
+                        target: "Notion sign-in link",
+                        unavailableMessage: msg(
+                          "Clipboard API is unavailable while copying Notion sign-in link.",
+                        ),
+                        failureMessage: msg("Failed to copy Notion sign-in link to the clipboard."),
+                      })
+                    }
                   >
-                    Copy link
+                    <T>Copy link</T>
                   </Button>
                 </>
               ) : null}
@@ -231,14 +257,14 @@ function NotionConnectionRows({
                   flowId ? run(() => cancelLogin({ environmentId, input: { flowId } })) : undefined
                 }
               >
-                Cancel
+                <T context="button, cancels sign-in">Cancel</T>
               </Button>
             </div>
           ) : (
             <div className="flex flex-wrap gap-2 sm:justify-end">
               {state.configured && !editingCredentials ? (
                 <Button size="sm" variant="ghost" onClick={() => setEditingCredentials(true)}>
-                  Change credentials
+                  <T>Change credentials</T>
                 </Button>
               ) : null}
               {editingCredentials ? (
@@ -251,11 +277,11 @@ function NotionConnectionRows({
                     setClientSecretDraft("");
                   }}
                 >
-                  Cancel
+                  <T context="button, stops editing credentials">Cancel</T>
                 </Button>
               ) : null}
               <Button size="sm" disabled={pending || !canConnect} onClick={connect}>
-                {state.phase === "failed" ? "Reconnect Notion" : "Connect Notion"}
+                {state.phase === "failed" ? gt("Reconnect Notion") : gt("Connect Notion")}
               </Button>
             </div>
           )
@@ -270,8 +296,10 @@ function NotionConnectionRows({
             }}
           >
             <p className="max-w-2xl text-xs leading-relaxed text-muted-foreground">
-              Create an OAuth connection in Notion with this redirect URI, then add its client ID
-              and secret. The secret stays on {environmentLabel}.{" "}
+              <T>
+                Create an OAuth connection in Notion with this redirect URI, then add its client ID
+                and secret. The secret stays on <Var>{environmentLabel}</Var>.
+              </T>{" "}
               <InlineButton
                 render={
                   <a
@@ -281,12 +309,14 @@ function NotionConnectionRows({
                   />
                 }
               >
-                Create a connection
+                <T>Create a connection</T>
                 <ExternalLinkIcon aria-hidden className="size-3" />
               </InlineButton>
             </p>
             <div className="grid gap-1.5">
-              <Label htmlFor={fieldId("redirect-uri")}>Redirect URI</Label>
+              <Label htmlFor={fieldId("redirect-uri")}>
+                <T>Redirect URI</T>
+              </Label>
               <div className="flex gap-2">
                 <Input
                   id={fieldId("redirect-uri")}
@@ -298,16 +328,24 @@ function NotionConnectionRows({
                   size="sm"
                   variant="outline"
                   onClick={() =>
-                    writeTextToClipboard(state?.redirectUri ?? NOTION_REDIRECT_URI, "Redirect URI")
+                    writeTextToClipboard(state?.redirectUri ?? NOTION_REDIRECT_URI, {
+                      target: "redirect URI",
+                      unavailableMessage: msg(
+                        "Clipboard API is unavailable while copying redirect URI.",
+                      ),
+                      failureMessage: msg("Failed to copy redirect URI to the clipboard."),
+                    })
                   }
                 >
-                  Copy
+                  <T context="button, copies the redirect URI">Copy</T>
                 </Button>
               </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="grid gap-1.5">
-                <Label htmlFor={fieldId("client-id")}>Client ID</Label>
+                <Label htmlFor={fieldId("client-id")}>
+                  <T>Client ID</T>
+                </Label>
                 <Input
                   id={fieldId("client-id")}
                   size="sm"
@@ -317,14 +355,16 @@ function NotionConnectionRows({
                 />
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor={fieldId("client-secret")}>Client secret</Label>
+                <Label htmlFor={fieldId("client-secret")}>
+                  <T>Client secret</T>
+                </Label>
                 <Input
                   id={fieldId("client-secret")}
                   size="sm"
                   type="password"
                   autoComplete="off"
                   placeholder={
-                    state?.configured ? "Saved, enter a new one to replace it" : undefined
+                    state?.configured ? gt("Saved, enter a new one to replace it") : undefined
                   }
                   value={clientSecretDraft}
                   onChange={(event) => setClientSecretDraft(event.target.value)}
@@ -336,8 +376,11 @@ function NotionConnectionRows({
       </SettingsRow>
       {state?.phase === "waiting" ? (
         <SettingsRow
-          title="Approving from another device?"
-          description={`If the browser can't reach ${environmentLabel}, Notion ends on a page that won't load. Paste that page's URL here.`}
+          title={gt("Approving from another device?")}
+          description={gt(
+            "If the browser can't reach {environment}, Notion ends on a page that won't load. Paste that page's URL here.",
+            { environment: environmentLabel },
+          )}
           control={
             <form
               className="flex w-full gap-2 sm:w-80"
@@ -348,13 +391,13 @@ function NotionConnectionRows({
             >
               <Input
                 size="sm"
-                aria-label="Redirect URL from Notion"
-                placeholder="Full redirect URL from Notion"
+                aria-label={gt("Redirect URL from Notion")}
+                placeholder={gt("Full redirect URL from Notion")}
                 value={pastedValue}
                 onChange={(event) => setPasted({ flowId, value: event.target.value })}
               />
               <Button size="sm" type="submit" disabled={pending || !pastedValue.trim()}>
-                Submit
+                <T context="button, submits the pasted redirect URL">Submit</T>
               </Button>
             </form>
           }

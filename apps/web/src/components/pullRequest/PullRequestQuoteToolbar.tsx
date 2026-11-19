@@ -1,4 +1,5 @@
 import { ASSISTANT_CITATION_MAX_TEXT_LENGTH } from "@t3tools/contracts";
+import { useGT } from "gt-react";
 import { QuoteIcon } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -69,6 +70,7 @@ export function PullRequestQuoteToolbar({
   viewport: HTMLElement | null;
   onCite: (quote: PullRequestQuote) => void;
 }) {
+  const gt = useGT();
   const [selection, setSelection] = useState<{
     source: HTMLElement;
     range: Range;
@@ -78,6 +80,7 @@ export function PullRequestQuoteToolbar({
   const toolbarRef = useRef<HTMLButtonElement>(null);
   const actionsRef = useRef<ReturnType<typeof observeSelectionActions> | null>(null);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- positions the toolbar DOM node within the window
   useLayoutEffect(() => {
     const toolbar = toolbarRef.current;
     if (!toolbar || !selection) return;
@@ -86,6 +89,7 @@ export function PullRequestQuoteToolbar({
     toolbar.style.top = `${Math.max(8, Math.min(selection.position.y, window.innerHeight - rect.height - 8))}px`;
   }, [selection]);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- document selection listeners on the viewport
   useEffect(() => {
     if (!viewport?.ownerDocument) return;
     const clear = () => setSelection(null);
@@ -169,7 +173,7 @@ export function PullRequestQuoteToolbar({
       size="xs"
       variant="glass"
       disabled={tooLong}
-      aria-label={tooLong ? "Selection is too long to cite" : "Cite selection in composer"}
+      aria-label={tooLong ? gt("Selection is too long to cite") : gt("Cite selection in composer")}
       className="fixed z-50 max-w-[calc(100vw-1rem)]"
       style={{ left: selection.position.x, top: selection.position.y }}
       onPointerDown={(event) => event.preventDefault()}
@@ -183,7 +187,7 @@ export function PullRequestQuoteToolbar({
       }}
     >
       <QuoteIcon aria-hidden="true" className="size-3.5" />
-      {tooLong ? "Shorten selection" : "Cite"}
+      {tooLong ? gt("Shorten selection") : gt("Cite", { $context: "quote selected text" })}
     </Button>,
     document.body,
   );

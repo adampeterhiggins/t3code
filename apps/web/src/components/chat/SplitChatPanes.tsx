@@ -1,5 +1,6 @@
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
+import { T, useGT } from "gt-react";
 import { useRef, useState, type CSSProperties, type HTMLAttributes, type RefObject } from "react";
 
 import { useResizeDrag } from "../../hooks/useResizeDrag";
@@ -40,6 +41,7 @@ function SplitPane({
   handleProps: HTMLAttributes<HTMLButtonElement>;
   onFocus: () => void;
 }) {
+  const gt = useGT();
   const context = { focused };
   const paneKey = scopedThreadKey(threadRef);
   const dropTarget = drag !== null && drag.fromKey !== paneKey && drag.overKey === paneKey;
@@ -78,7 +80,7 @@ function SplitPane({
             render={
               <button
                 type="button"
-                aria-label="Swap panes"
+                aria-label={gt("Swap panes")}
                 className={cn(
                   "group/split-handle absolute top-0 left-1/2 z-50 flex h-3 w-14 -translate-x-1/2 touch-none items-center justify-center rounded-b-md [-webkit-app-region:no-drag] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                   drag?.fromKey === paneKey ? "cursor-grabbing" : "cursor-grab",
@@ -96,7 +98,9 @@ function SplitPane({
               )}
             />
           </TooltipTrigger>
-          <TooltipPopup side="bottom">Drag to swap panes</TooltipPopup>
+          <TooltipPopup side="bottom">
+            <T>Drag to swap panes</T>
+          </TooltipPopup>
         </Tooltip>
         {drag !== null ? (
           // Covers the chat while a handle is dragged, so the timeline ignores the pointer and
@@ -125,6 +129,7 @@ function SplitPane({
  * each frame and stores the ratio on release; double-clicking evens the panes out.
  */
 function SplitDivider({ containerRef }: { containerRef: RefObject<HTMLDivElement | null> }) {
+  const gt = useGT();
   const handlers = useResizeDrag<HTMLDivElement>(() => {
     const container = containerRef.current;
     const startPane = container?.querySelector<HTMLElement>(':scope > [data-split-pane="start"]');
@@ -150,7 +155,7 @@ function SplitDivider({ containerRef }: { containerRef: RefObject<HTMLDivElement
       <div
         role="separator"
         aria-orientation="vertical"
-        aria-label="Resize split panes"
+        aria-label={gt("Resize split panes")}
         className="group absolute inset-y-0 -inset-x-1 cursor-col-resize touch-none select-none [-webkit-app-region:no-drag]"
         onDoubleClick={() => useSplitViewStore.getState().resize(0.5)}
         {...handlers}

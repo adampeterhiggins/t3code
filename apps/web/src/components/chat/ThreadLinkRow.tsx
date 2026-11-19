@@ -2,6 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { threadLinkWatchFor } from "@t3tools/client-runtime/state/threadLinkWatches";
 import type { ScopedThreadRef, ThreadLinkKind } from "@t3tools/contracts";
 import { parseComposerObjectLink } from "@t3tools/source-control-definitions/composerObjectLinks";
+import { T, useGT } from "gt-react";
 import { EyeIcon, EyeOffIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
@@ -49,6 +50,7 @@ export function ThreadLinkRow(props: {
   linkUrl: string;
   children: ReactNode;
 }) {
+  const gt = useGT();
   const [menuOpen, setMenuOpen] = useState(false);
   const objectLink = parseComposerObjectLink(props.url);
   const { supported, watch } = useThreadLinkWatch(props.threadRef, props.watchKind);
@@ -77,7 +79,7 @@ export function ThreadLinkRow(props: {
                   part="row"
                   aria-label={
                     watching
-                      ? `${props.accessibleLabel}. Watching for changes`
+                      ? gt("{label}. Watching for changes", { label: props.accessibleLabel })
                       : props.accessibleLabel
                   }
                 />
@@ -110,7 +112,7 @@ export function ThreadLinkRow(props: {
             <>
               <MenuItem onClick={toggleWatch}>
                 {watching ? <EyeOffIcon /> : <EyeIcon />}
-                {watching ? "Stop watching" : "Watch for changes"}
+                {watching ? <T>Stop watching</T> : <T>Watch for changes</T>}
               </MenuItem>
               <MenuSeparator />
             </>
@@ -136,6 +138,12 @@ function ThreadLinkPreviewBody(props: {
   if (record !== null) {
     return <ContextPreviewBody kind={record.kind} preview={{ record, onOpenLink: openLink }} />;
   }
-  if (available && !failed) return <p className="text-muted-foreground">Loading…</p>;
+  if (available && !failed) {
+    return (
+      <p className="text-muted-foreground">
+        <T>Loading…</T>
+      </p>
+    );
+  }
   return <p className="break-all text-muted-foreground">{props.objectLink.url}</p>;
 }

@@ -1,3 +1,4 @@
+import { T } from "gt-react-native";
 import type { ReactNode } from "react";
 import { Modal, Platform, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -24,7 +25,9 @@ export function PickerSheet(props: {
         <View className="flex-row items-center justify-between p-4">
           <Text className="text-lg text-foreground">{props.title}</Text>
           <Pressable accessibilityRole="button" onPress={props.onClose} className="p-3">
-            <Text className="text-foreground">Cancel</Text>
+            <Text className="text-foreground">
+              <T>Cancel</T>
+            </Text>
           </Pressable>
         </View>
         {props.children}

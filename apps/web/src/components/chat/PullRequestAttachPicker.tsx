@@ -2,6 +2,7 @@ import { ContextMenu } from "@base-ui/react/context-menu";
 import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId, ProjectId, ScopedThreadRef } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
+import { T, useGT } from "gt-react";
 import { MessageCircleIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -80,6 +81,7 @@ function PullRequestAttachPickerDialog(props: {
   projectId: ProjectId;
   threadRef: ScopedThreadRef;
 }) {
+  const gt = useGT();
   // Right-click → "Attach a comment…" swaps the list for that pull request's comments.
   const [commentsOf, setCommentsOf] = useState<EnvironmentPullRequestEntry | null>(null);
   return (
@@ -89,7 +91,7 @@ function PullRequestAttachPickerDialog(props: {
         if (!open) closePullRequestAttachPicker();
       }}
     >
-      <CommandDialogPopup aria-label="Attach pull request" className="overflow-hidden">
+      <CommandDialogPopup aria-label={gt("Attach pull request")} className="overflow-hidden">
         {commentsOf === null ? (
           <PullRequestList {...props} onPickComment={setCommentsOf} />
         ) : (
@@ -111,6 +113,7 @@ function PullRequestList(props: {
   onPickComment: (entry: EnvironmentPullRequestEntry) => void;
 }) {
   const { environmentId, projectId, threadRef } = props;
+  const gt = useGT();
   const [query, setQuery] = useState("");
   // The row the context menu was opened on; the menu is closed whenever this is null.
   const [menuEntry, setMenuEntry] = useState<EnvironmentPullRequestEntry | null>(null);
@@ -148,8 +151,8 @@ function PullRequestList(props: {
     entries.length > 0
       ? null
       : pullRequests.isPending || trimmedQuery !== debouncedQuery
-        ? "Loading pull requests…"
-        : (pullRequests.error?.message ?? "No pull requests match these filters.");
+        ? gt("Loading pull requests…")
+        : (pullRequests.error?.message ?? gt("No pull requests match these filters."));
 
   return (
     <ContextMenu.Root
@@ -166,7 +169,7 @@ function PullRequestList(props: {
     >
       <CommandPaletteContent
         inputProps={{
-          placeholder: "Search pull requests by title, number, or author",
+          placeholder: gt("Search pull requests by title, number, or author"),
           startAddon: <PullRequestGlyph.pullRequest />,
         }}
         inputAccessory={
@@ -179,7 +182,7 @@ function PullRequestList(props: {
             onChange={setView}
           />
         }
-        footerActionLabel="Attach"
+        footerActionLabel={gt("Attach", { $context: "verb" })}
         mode="none"
         value={query}
         onValueChange={setQuery}
@@ -231,8 +234,12 @@ function PullRequestList(props: {
       <MenuPopup>
         {menuEntry === null ? null : (
           <>
-            <MenuItem onClick={() => select(menuEntry)}>Attach pull request</MenuItem>
-            <MenuItem onClick={() => props.onPickComment(menuEntry)}>Attach a comment…</MenuItem>
+            <MenuItem onClick={() => select(menuEntry)}>
+              <T>Attach pull request</T>
+            </MenuItem>
+            <MenuItem onClick={() => props.onPickComment(menuEntry)}>
+              <T>Attach a comment…</T>
+            </MenuItem>
           </>
         )}
       </MenuPopup>
@@ -247,6 +254,7 @@ function PullRequestCommentList(props: {
   onBack: () => void;
 }) {
   const { entry, threadRef } = props;
+  const gt = useGT();
   const [query, setQuery] = useState("");
   const activity = useEnvironmentQuery(
     pullRequestEnvironment.activity({
@@ -283,16 +291,18 @@ function PullRequestCommentList(props: {
     shown.length > 0
       ? null
       : activity.isPending
-        ? "Loading comments…"
+        ? gt("Loading comments…")
         : (activity.error ??
           (choices.length === 0
-            ? "This pull request has no comments."
-            : "No comments match this search."));
+            ? gt("This pull request has no comments.")
+            : gt("No comments match this search.")));
 
   return (
     <CommandPaletteContent
       inputProps={{
-        placeholder: `Search comments on #${entry.number} by author or text`,
+        placeholder: gt("Search comments on #{number} by author or text", {
+          number: entry.number,
+        }),
         startAddon: <MessageCircleIcon />,
         onKeyDown: (event) => {
           if (event.key === "Backspace" && query.length === 0) {
@@ -301,7 +311,7 @@ function PullRequestCommentList(props: {
           }
         },
       }}
-      footerActionLabel="Attach"
+      footerActionLabel={gt("Attach", { $context: "verb" })}
       showBackHint
       mode="none"
       value={query}

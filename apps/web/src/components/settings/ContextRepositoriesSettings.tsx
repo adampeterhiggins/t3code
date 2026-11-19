@@ -4,6 +4,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { ContextRepositoryClone } from "@t3tools/contracts";
+import { msg, useGT, useMessages } from "gt-react";
 import { useState } from "react";
 
 import { requestConfirmDialog } from "../../confirmDialog";
@@ -15,36 +16,67 @@ import { Button } from "../ui/button";
 import { toastManager } from "../ui/toast";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
 import { useSettingsScope } from "./SettingsScopeContext";
+import { m, type MessageResolver } from "../../i18n/messages";
 
-function plural(count: number, noun: string) {
-  return `${count} ${noun}${count === 1 ? "" : "s"}`;
-}
-
-function cloneSummary(clone: ContextRepositoryClone) {
+function cloneSummary(clone: ContextRepositoryClone, resolve: MessageResolver) {
   const git = clone.git;
   const state =
     git === null
       ? null
       : [
-          git.branch ?? "detached",
-          git.ahead > 0 ? `${plural(git.ahead, "unpushed commit")}` : null,
-          git.changedFiles > 0 ? `${plural(git.changedFiles, "changed file")}` : null,
+          git.branch ?? resolve(msg("detached", { $context: "git HEAD not on a branch" })),
+          git.ahead > 0
+            ? resolve(
+                msg(
+                  "{count, plural, one {{count} unpushed commit} other {{count} unpushed commits}}",
+                  { count: git.ahead },
+                ),
+              )
+            : null,
+          git.changedFiles > 0
+            ? resolve(
+                msg("{count, plural, one {{count} changed file} other {{count} changed files}}", {
+                  count: git.changedFiles,
+                }),
+              )
+            : null,
         ]
           .filter((part) => part !== null)
           .join(" · ");
-  return [clone.remoteUrl ?? "No origin remote", state].filter((part) => part !== null).join(" — ");
+  return [clone.remoteUrl ?? resolve(msg("No origin remote")), state]
+    .filter((part) => part !== null)
+    .join(" · ");
 }
 
-/** What a removal throws away, so the confirmation can say so. */
-function localWork(clone: ContextRepositoryClone) {
-  const git = clone.git;
-  if (git === null || (git.ahead === 0 && git.changedFiles === 0)) return null;
-  return [
-    git.changedFiles > 0 ? plural(git.changedFiles, "changed file") : null,
-    git.ahead > 0 ? plural(git.ahead, "unpushed commit") : null,
-  ]
-    .filter((part) => part !== null)
-    .join(" and ");
+/** The confirmation names what a removal throws away. */
+function removeConfirmation(path: string, clone: ContextRepositoryClone): string {
+  const changed = clone.git?.changedFiles ?? 0;
+  const ahead = clone.git?.ahead ?? 0;
+  if (changed > 0 && ahead > 0) {
+    return m(
+      msg(
+        "Remove {path}?\nIts {changed, plural, one {{changed} changed file} other {{changed} changed files}} and {ahead, plural, one {{ahead} unpushed commit} other {{ahead} unpushed commits}} will be lost.",
+        { path, changed, ahead },
+      ),
+    );
+  }
+  if (changed > 0) {
+    return m(
+      msg(
+        "Remove {path}?\nIts {changed, plural, one {{changed} changed file} other {{changed} changed files}} will be lost.",
+        { path, changed },
+      ),
+    );
+  }
+  if (ahead > 0) {
+    return m(
+      msg(
+        "Remove {path}?\nIts {ahead, plural, one {{ahead} unpushed commit} other {{ahead} unpushed commits}} will be lost.",
+        { path, ahead },
+      ),
+    );
+  }
+  return m(msg("Remove {path}?", { path }));
 }
 
 function ProjectContextRepositories({
@@ -73,18 +105,23 @@ function ProjectContextRepositories({
     reportFailure: false,
   });
   const [removing, setRemoving] = useState<string | null>(null);
+  const gt = useGT();
+  const messages = useMessages();
   const directory = query.data?.directory ?? ".context";
   const location = showLocation
-    ? `${member.workspaceRoot}${member.environmentLabel ? ` on ${member.environmentLabel}` : ""}`
+    ? member.environmentLabel
+      ? gt("{path} on {environment}", {
+          path: member.workspaceRoot,
+          environment: member.environmentLabel,
+        })
+      : member.workspaceRoot
     : null;
 
   const confirmRemove = async (clone: ContextRepositoryClone) => {
     const path = `${directory}/${clone.directoryName}`;
-    const lost = localWork(clone);
-    const confirmed = await requestConfirmDialog(
-      `Remove ${path}?${lost === null ? "" : `\nIts ${lost} will be lost.`}`,
-      { variant: "destructive" },
-    );
+    const confirmed = await requestConfirmDialog(removeConfirmation(path, clone), {
+      variant: "destructive",
+    });
     if (confirmed !== true) return;
     setRemoving(clone.directoryName);
     const result = await remove({
@@ -96,7 +133,7 @@ function ProjectContextRepositories({
     if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
       toastManager.add({
         type: "error",
-        title: `Could not remove ${path}`,
+        title: m(msg("Could not remove {path}", { path })),
         description: String(squashAtomCommandFailure(result)),
       });
     }
@@ -105,8 +142,10 @@ function ProjectContextRepositories({
   if (query.error !== null) {
     return (
       <SettingsRow
-        title={location ?? "Context repositories"}
-        description={`Could not list context repositories: ${query.error}`}
+        title={location ?? gt("Context repositories")}
+        description={gt("Could not list context repositories: {error}", {
+          error: String(query.error),
+        })}
       />
     );
   }
@@ -114,8 +153,8 @@ function ProjectContextRepositories({
   if (query.data.clones.length === 0) {
     return (
       <SettingsRow
-        title={location ?? "No context repositories"}
-        description={`No repositories are cloned into ${directory}/.`}
+        title={location ?? gt("No context repositories")}
+        description={gt("No repositories are cloned into {directory}/.", { directory })}
       />
     );
   }
@@ -123,17 +162,25 @@ function ProjectContextRepositories({
     <SettingsRow
       key={clone.directoryName}
       title={`${directory}/${clone.directoryName}`}
-      description={location === null ? cloneSummary(clone) : `${location} — ${cloneSummary(clone)}`}
+      description={
+        location === null
+          ? cloneSummary(clone, messages)
+          : `${location} · ${cloneSummary(clone, messages)}`
+      }
       control={
         <Button
           type="button"
           size="sm"
           variant="destructive-outline"
           disabled={!supported || !canWrite || removing !== null}
-          title={supported ? undefined : "Update this environment to remove context repositories."}
+          title={
+            supported ? undefined : gt("Update this environment to remove context repositories.")
+          }
           onClick={() => void confirmRemove(clone)}
         >
-          {removing === clone.directoryName ? "Removing…" : "Remove"}
+          {removing === clone.directoryName
+            ? gt("Removing…")
+            : gt("Remove", { $context: "verb, deletes a cloned repository" })}
         </Button>
       }
     />
@@ -149,9 +196,10 @@ export function ContextRepositoriesSection({
 }: {
   members: readonly SidebarProjectGroupMember[];
 }) {
+  const gt = useGT();
   if (members.length === 0) return null;
   return (
-    <SettingsSection id="storage-context-repositories" title="Context repositories">
+    <SettingsSection id="storage-context-repositories" title={gt("Context repositories")}>
       {members.map((member) => (
         <ProjectContextRepositories
           key={member.physicalProjectKey}

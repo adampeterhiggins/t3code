@@ -1,6 +1,7 @@
 import type { EnvironmentTheme } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigation } from "@react-navigation/native";
+import { msg, useGT, useMessages } from "gt-react-native";
 import { memo, useId } from "react";
 import { Pressable, View } from "react-native";
 import Svg, { Circle, Defs, RadialGradient, Stop } from "react-native-svg";
@@ -21,6 +22,7 @@ import {
   type MobileThemeMode,
 } from "../../../../lib/mobileTheme";
 import { getMobileUniwindThemeName } from "../../../../lib/mobileThemeRuntime";
+import type { MessageResolver } from "../../../../i18n/messages";
 import { cn } from "../../../../lib/cn";
 import {
   publishedEnvironmentThemesAtom,
@@ -28,13 +30,28 @@ import {
 } from "../../../../state/server";
 import { useAppearancePreferences } from "../AppearancePreferencesProvider";
 
+const THEME_NAMES: Readonly<Record<string, string>> = {
+  grove: msg("Grove", { $context: "color theme name" }),
+  ocean: msg("Ocean", { $context: "color theme name" }),
+  ember: msg("Ember", { $context: "color theme name" }),
+  iris: msg("Iris", { $context: "color theme name" }),
+};
+
+function themeName(
+  theme: { readonly id: string; readonly label: string },
+  resolve: MessageResolver,
+) {
+  const name = THEME_NAMES[theme.id];
+  return name === undefined ? theme.label : resolve(name);
+}
+
 const APPEARANCE_MODES: ReadonlyArray<{
   readonly id: MobileThemeMode;
   readonly label: string;
 }> = [
-  { id: "system", label: "System" },
-  { id: "light", label: "Light" },
-  { id: "dark", label: "Dark" },
+  { id: "system", label: msg("System", { $context: "appearance follows the system" }) },
+  { id: "light", label: msg("Light", { $context: "light appearance" }) },
+  { id: "dark", label: msg("Dark", { $context: "dark appearance" }) },
 ];
 
 const previewPercentage = (value: number) => `${value * 100}%`;
@@ -139,11 +156,20 @@ function ThemeCard(props: {
   readonly onSelect: (appearance: MobileThemeAppearance) => void;
   readonly themeId: MobileThemeId;
 }) {
+  const gt = useGT();
   const appearances = props.appearances ?? BOTH_APPEARANCES;
   const choice = (appearance: MobileThemeAppearance, selected: boolean) => (
     <Pressable
-      accessibilityHint={`Sets the ${appearance} appearance only`}
-      accessibilityLabel={`${props.label} ${appearance} theme`}
+      accessibilityHint={
+        appearance === "light"
+          ? gt("Sets the light appearance only")
+          : gt("Sets the dark appearance only")
+      }
+      accessibilityLabel={
+        appearance === "light"
+          ? gt("{theme} light theme", { theme: props.label })
+          : gt("{theme} dark theme", { theme: props.label })
+      }
       accessibilityRole="button"
       accessibilityState={{ disabled: props.disabled, selected }}
       className={cn(
@@ -173,10 +199,12 @@ function ThemeCard(props: {
       <Pressable
         accessibilityHint={
           appearances.length === 1
-            ? `Sets the ${appearances[0]} appearance only`
-            : "Sets both light and dark appearances"
+            ? appearances[0] === "light"
+              ? gt("Sets the light appearance only")
+              : gt("Sets the dark appearance only")
+            : gt("Sets both light and dark appearances")
         }
-        accessibilityLabel={`${props.label} theme`}
+        accessibilityLabel={gt("{theme} theme", { theme: props.label })}
         accessibilityRole="button"
         accessibilityState={{
           disabled: props.disabled,
@@ -201,7 +229,7 @@ function ThemeCard(props: {
       </Text>
       {props.onEdit ? (
         <Pressable
-          accessibilityLabel={`Edit ${props.label}`}
+          accessibilityLabel={gt("Edit {theme}", { theme: props.label })}
           accessibilityRole="button"
           className="absolute right-2 top-2 size-8 items-center justify-center rounded-full active:bg-subtle"
           hitSlop={6}
@@ -221,9 +249,10 @@ function ThemeCard(props: {
 }
 
 function CreateThemeCard(props: { readonly onPress: () => void }) {
+  const gt = useGT();
   return (
     <Pressable
-      accessibilityLabel="Create theme"
+      accessibilityLabel={gt("Create theme")}
       accessibilityRole="button"
       className="min-h-[136px] min-w-36 flex-1 basis-[47%] items-center justify-center gap-2 rounded-[24px] border border-dashed border-border px-2 py-4 active:bg-subtle"
       onPress={props.onPress}
@@ -235,7 +264,7 @@ function CreateThemeCard(props: { readonly onPress: () => void }) {
         type="monochrome"
         weight="medium"
       />
-      <Text className="text-lg font-t3-medium">Create theme</Text>
+      <Text className="text-lg font-t3-medium">{gt("Create theme")}</Text>
     </Pressable>
   );
 }
@@ -313,9 +342,10 @@ function ModeCard(props: {
   readonly selected: boolean;
   readonly themeIds: MobileThemeIds;
 }) {
+  const gt = useGT();
   return (
     <Pressable
-      accessibilityLabel={`${props.label} appearance`}
+      accessibilityLabel={gt("{mode} appearance", { mode: props.label })}
       accessibilityRole="radio"
       accessibilityState={{ checked: props.selected, disabled: props.disabled }}
       className={cn(
@@ -346,6 +376,8 @@ function SectionLabel({ children }: { readonly children: string }) {
 }
 
 export function ThemeAppearanceSection() {
+  const gt = useGT();
+  const m = useMessages();
   const {
     isReady,
     setThemeIdForAppearance,
@@ -363,13 +395,13 @@ export function ThemeAppearanceSection() {
   return (
     <View className="gap-6">
       <View className="gap-2">
-        <SectionLabel>Color scheme</SectionLabel>
+        <SectionLabel>{gt("Color scheme")}</SectionLabel>
         <View accessibilityRole="radiogroup" className="flex-row gap-2">
           {APPEARANCE_MODES.map((mode) => (
             <ModeCard
               disabled={!isReady}
               key={mode.id}
-              label={mode.label}
+              label={m(mode.label)}
               mode={mode.id}
               onPress={() => setThemeMode(mode.id)}
               selected={mode.id === themeMode}
@@ -380,7 +412,7 @@ export function ThemeAppearanceSection() {
       </View>
 
       <View className="gap-3">
-        <SectionLabel>Themes</SectionLabel>
+        <SectionLabel>{gt("Themes")}</SectionLabel>
         <View className="flex-row flex-wrap gap-3">
           {MOBILE_THEME_OPTIONS.filter(
             (theme) => theme.id !== "material-you" || systemColorsAvailable,
@@ -388,7 +420,7 @@ export function ThemeAppearanceSection() {
             <ThemeCard
               disabled={!isReady}
               key={theme.id}
-              label={theme.label}
+              label={themeName(theme, m)}
               darkSelected={theme.id === themeIds.dark}
               lightSelected={theme.id === themeIds.light}
               onSelect={(appearance) => setThemeIdForAppearance(appearance, theme.id)}

@@ -1,4 +1,5 @@
 import { ProviderInteractionMode, RuntimeMode } from "@t3tools/contracts";
+import { T, useGT } from "gt-react";
 import { memo, type ReactNode, useRef } from "react";
 import { EllipsisIcon } from "lucide-react";
 import {
@@ -27,6 +28,7 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
   hidden?: boolean;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
 }) {
+  const gt = useGT();
   const composerFloatingLayerProps = useComposerMenuProps();
   const size = props.size ?? "sm";
   const [open, setOpen] = useComposerMenuState(props.hidden);
@@ -45,7 +47,7 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
             ref={triggerRef}
             size={size}
             className="shrink-0"
-            aria-label="More composer controls"
+            aria-label={gt("More composer controls")}
             data-composer-shortcut={
               [
                 showPermissions ? "composer.mode" : null,
@@ -68,7 +70,9 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
         ) : null}
         {props.showInteractionModeToggle ? (
           <>
-            <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">Mode</div>
+            <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">
+              <T context="interaction mode menu heading">Mode</T>
+            </div>
             <MenuRadioGroup
               value={props.interactionMode}
               onValueChange={(value) => {
@@ -76,8 +80,12 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
                 props.onToggleInteractionMode();
               }}
             >
-              <MenuRadioItem value="default">Chat</MenuRadioItem>
-              <MenuRadioItem value="plan">Plan</MenuRadioItem>
+              <MenuRadioItem value="default">
+                <T context="interaction mode">Chat</T>
+              </MenuRadioItem>
+              <MenuRadioItem value="plan">
+                <T context="interaction mode">Plan</T>
+              </MenuRadioItem>
             </MenuRadioGroup>
             {showPermissions ? <MenuDivider /> : null}
           </>

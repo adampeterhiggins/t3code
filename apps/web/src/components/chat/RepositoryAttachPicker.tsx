@@ -18,6 +18,7 @@ import type {
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
+import { T, useGT, useMessages } from "gt-react";
 import { ExternalLinkIcon, FolderGit2Icon, LockIcon, LockOpenIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -118,6 +119,7 @@ export function RepositoryAttachPickerHost(props: { workspaceCwd: string | null 
  * browser without attaching it. Only web URLs get one; an ssh remote has nothing to open.
  */
 function OpenRepositoryButton(props: { threadRef: ScopedThreadRef; url: string }) {
+  const gt = useGT();
   const openLink = useLinkClickHandler(props.threadRef);
   if (!/^https?:\/\//i.test(props.url)) return null;
   return (
@@ -128,7 +130,7 @@ function OpenRepositoryButton(props: { threadRef: ScopedThreadRef; url: string }
             <Button
               size="icon-xs"
               variant="ghost-muted"
-              aria-label="Open repository"
+              aria-label={gt("Open repository")}
               render={<a href={props.url} target="_blank" rel="noreferrer" />}
               // Keep focus in the search box, and do not attach the row.
               onMouseDown={(event) => event.preventDefault()}
@@ -142,7 +144,7 @@ function OpenRepositoryButton(props: { threadRef: ScopedThreadRef; url: string }
           }
         />
         <TooltipPopup side="top" align="center">
-          Open repository
+          <T>Open repository</T>
         </TooltipPopup>
       </Tooltip>
     </span>
@@ -155,6 +157,8 @@ function RepositoryAttachPickerDialog(props: {
   onClose: () => void;
 }) {
   const { threadRef, workspaceCwd, onClose } = props;
+  const gt = useGT();
+  const messages = useMessages();
   const environmentId: EnvironmentId = threadRef.environmentId;
   const navigate = useNavigate();
   const defaultOwners = useEnvironmentSettings(environmentId, configuredContextRepositoryOwners);
@@ -202,22 +206,26 @@ function RepositoryAttachPickerDialog(props: {
     if (!clone) return null;
     return (
       <span className="shrink-0 truncate text-muted-foreground/70 text-xs">
-        In {directory}/{clone.directoryName}
-        {clone.git ? ` · ${describeContextRepositoryGitStatus(clone.git)}` : ""}
+        {clone.git
+          ? gt("In {path} · {status}", {
+              path: `${directory}/${clone.directoryName}`,
+              status: describeContextRepositoryGitStatus(clone.git, messages),
+            })
+          : gt("In {path}", { path: `${directory}/${clone.directoryName}` })}
       </span>
     );
   };
 
   const needsOwner = owners.length === 0 && !pastedEntry;
-  const ownersLabel = describeContextRepositoryOwners(owners);
+  const ownersLabel = describeContextRepositoryOwners(owners, messages);
   const status = needsOwner
     ? null
     : listQuery.error !== null && shown.length === 0 && !pastedEntry
       ? listQuery.error
       : shown.length === 0 && !pastedEntry
         ? listQuery.isPending || ownersKey !== debouncedOwnersKey
-          ? `Listing ${ownersLabel}'s repositories…`
-          : `No repositories in ${ownersLabel} match.`
+          ? gt("Listing {owners}'s repositories…", { owners: ownersLabel })
+          : gt("No repositories in {owners} match.", { owners: ownersLabel })
         : null;
 
   return (
@@ -227,16 +235,18 @@ function RepositoryAttachPickerDialog(props: {
         if (!open) onClose();
       }}
     >
-      <CommandDialogPopup aria-label="Attach repository" className="overflow-hidden">
+      <CommandDialogPopup aria-label={gt("Attach repository")} className="overflow-hidden">
         <CommandPaletteContent
           inputProps={{
             placeholder:
               defaultOwners.length > 0
-                ? `Search ${describeContextRepositoryOwners(defaultOwners)}, type another-org/, or paste a repository URL`
-                : "Type an owner like acme/, or paste a repository URL",
+                ? gt("Search {owners}, type another-org/, or paste a repository URL", {
+                    owners: describeContextRepositoryOwners(defaultOwners, messages),
+                  })
+                : gt("Type an owner like acme/, or paste a repository URL"),
             startAddon: <FolderGit2Icon />,
           }}
-          footerActionLabel="Attach"
+          footerActionLabel={gt("Attach", { $context: "verb" })}
           mode="none"
           value={query}
           onValueChange={setQuery}
@@ -244,8 +254,10 @@ function RepositoryAttachPickerDialog(props: {
           {needsOwner ? (
             <div className="flex flex-col items-center gap-3 px-6 py-10 text-center text-sm">
               <p className="text-muted-foreground">
-                Type an owner followed by a slash to list its repositories, or add repository owners
-                so the list opens ready.
+                <T>
+                  Type an owner followed by a slash to list its repositories, or add repository
+                  owners so the list opens ready.
+                </T>
               </p>
               <Button
                 size="sm"
@@ -255,7 +267,7 @@ function RepositoryAttachPickerDialog(props: {
                   void navigate({ to: "/settings/general" });
                 }}
               >
-                Add repository owners
+                <T>Add repository owners</T>
               </Button>
             </div>
           ) : status !== null ? (
@@ -305,12 +317,12 @@ function RepositoryAttachPickerDialog(props: {
                       <span className="group/row flex min-w-0 flex-1 items-center gap-2">
                         {candidate.isPrivate ? (
                           <LockIcon
-                            aria-label="Private"
+                            aria-label={gt("Private", { $context: "repository visibility" })}
                             className="size-3 shrink-0 text-muted-foreground/70"
                           />
                         ) : (
                           <LockOpenIcon
-                            aria-label="Public"
+                            aria-label={gt("Public", { $context: "repository visibility" })}
                             className="size-3 shrink-0 text-muted-foreground/70"
                           />
                         )}

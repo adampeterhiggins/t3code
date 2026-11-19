@@ -33,6 +33,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { GitHubIcon, DiscordIcon, GranolaIcon, LinearIcon, NotionIcon, SlackIcon } from "../Icons";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
 import { memo, type ReactNode, useLayoutEffect, useRef, useState } from "react";
 
 import type { AgentFleetEntry } from "@t3tools/client-runtime/state/agent-fleet";
@@ -235,6 +236,8 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
   /** `toggle` is set for a cmd/ctrl+click, which picks the row instead of choosing it. */
   onSelect: (item: ComposerCommandItem, options: { toggle: boolean }) => void;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const selectedCount = props.selection?.itemIds.size ?? 0;
   const listRef = useRef<HTMLDivElement>(null);
   // Only keyboard moves scroll the list. Following the pointer would scroll a half-visible edge
@@ -276,7 +279,9 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
         {props.items.length > 0 ? (
           <CommandList
             id={props.listId}
-            aria-label={props.triggerKind ? LISTBOX_LABEL_BY_TRIGGER[props.triggerKind] : undefined}
+            aria-label={
+              props.triggerKind ? m(LISTBOX_LABEL_BY_TRIGGER[props.triggerKind]) : undefined
+            }
             className="max-h-72 min-h-0 scroll-pb-6"
           >
             <CommandGroup>
@@ -305,23 +310,26 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
                 ? props.loadingText !== undefined
                   ? props.loadingText
                   : props.triggerKind === "skill" || props.triggerKind === "slash-command"
-                    ? "Searching workspace skills..."
+                    ? gt("Searching workspace skills...")
                     : props.triggerKind === "pull-request"
-                      ? "Finding pull request..."
-                      : "Searching workspace files..."
+                      ? gt("Finding pull request...")
+                      : gt("Searching workspace files...")
                 : (props.emptyStateText ??
                   (props.triggerKind === "skill"
-                    ? "No skills found. Try / to browse provider commands."
+                    ? gt("No skills found. Try / to browse provider commands.")
                     : props.triggerKind === "path"
-                      ? "No matching files or folders."
-                      : "No matching command."))}
+                      ? gt("No matching files or folders.")
+                      : gt("No matching command.")))}
             </p>
           </div>
         )}
         {props.selection && selectedCount > 0 ? (
           <div className="flex items-center gap-2 px-5 pt-1 pb-2.5 text-secondary-label text-xs">
             <span className="min-w-0 flex-1 truncate">
-              {selectedCount} selected · <Kbd>Enter</Kbd> to attach, <Kbd>Esc</Kbd> to cancel
+              <T>
+                <Var>{selectedCount}</Var> selected · <Kbd>Enter</Kbd> to attach, <Kbd>Esc</Kbd> to
+                cancel
+              </T>
             </span>
             <Button
               size="micro"
@@ -330,7 +338,9 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
               }}
               onClick={props.selection.onCommit}
             >
-              Attach {selectedCount}
+              <T>
+                Attach <Var>{selectedCount}</Var>
+              </T>
             </Button>
           </div>
         ) : null}
@@ -380,6 +390,7 @@ function CheckoutCommandRow(props: { item: Extract<ComposerCommandItem, { type: 
 
 /** Fixed-width columns so models, instances, and context sizes line up down the list. */
 function ModelCommandRow(props: { item: Extract<ComposerCommandItem, { type: "model" }> }) {
+  const gt = useGT();
   const { entry, option, model } = props.item;
   return (
     <span className="flex min-w-0 flex-1 items-center gap-2 text-xs">
@@ -402,7 +413,7 @@ function ModelCommandRow(props: { item: Extract<ComposerCommandItem, { type: "mo
       </span>
       <span className="flex w-3.5 shrink-0 justify-end">
         {props.item.isFavorite ? (
-          <StarIcon aria-label="Favourite" className="size-3 fill-current text-warning" />
+          <StarIcon aria-label={gt("Favourite")} className="size-3 fill-current text-warning" />
         ) : null}
       </span>
     </span>
@@ -416,12 +427,13 @@ function LinearIssueRow(props: {
   item: LinearIssueCommandItem;
   environmentId: EnvironmentId | null;
 }) {
+  const gt = useGT();
   const row = (
     <span className="flex min-w-0 flex-1 items-center gap-2 text-xs">
       <span className="w-20 shrink-0 truncate font-medium font-sans">{props.item.label}</span>
       <span className="min-w-0 flex-1 truncate text-secondary-label">{props.item.description}</span>
       <span className="w-28 shrink-0 truncate text-secondary-label">
-        {props.item.assigneeName ?? "Unassigned"}
+        {props.item.assigneeName ?? gt("Unassigned")}
       </span>
       <span className="w-24 shrink-0 truncate text-secondary-label">{props.item.stateName}</span>
     </span>
@@ -444,6 +456,7 @@ function GitHubIssueRow(props: {
   item: GitHubIssueCommandItem;
   environmentId: EnvironmentId | null;
 }) {
+  const m = useMessages();
   const state = GITHUB_ISSUE_STATE_PRESENTATION[props.item.state];
   const row = (
     <span className="flex min-w-0 flex-1 items-center gap-2 text-xs">
@@ -454,7 +467,7 @@ function GitHubIssueRow(props: {
       <span className="w-24 shrink-0 truncate text-secondary-label">
         {props.item.authorLogin ?? ""}
       </span>
-      <span className={cn("w-14 shrink-0 truncate", state.toneClassName)}>{state.label}</span>
+      <span className={cn("w-14 shrink-0 truncate", state.toneClassName)}>{m(state.label)}</span>
     </span>
   );
   return props.environmentId === null ? (
@@ -501,12 +514,14 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
   onHighlight: (itemId: string | null) => void;
   onSelect: (item: ComposerCommandItem, options: { toggle: boolean }) => void;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const skillSourceKind =
     props.item.type === "skill" ? resolveProviderSkillSourceKind(props.item.skill) : null;
   const isSlashSkill =
     props.triggerKind === "slash-command" && props.item.type === "skill" ? props.item.skill : null;
   const pullRequestPresentation =
-    props.item.type === "pull-request" ? resolvePullRequestState(props.item.pullRequest) : null;
+    props.item.type === "pull-request" ? resolvePullRequestState(props.item.pullRequest, m) : null;
   const descriptionRef = useRef<HTMLSpanElement>(null);
   const [descriptionTruncated, setDescriptionTruncated] = useState(false);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- measures the rendered description so only cut-off text gets a tooltip
@@ -608,7 +623,9 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
             <span tabIndex={-1} className="flex min-w-0 flex-1 items-center gap-2 text-xs">
               <span className="min-w-0 flex-1 truncate font-medium">{props.item.label}</span>
               <span className="text-secondary-label">
-                {props.item.fileId.includes("/spreadsheets/") ? "Sheet" : "Doc"}
+                {props.item.fileId.includes("/spreadsheets/")
+                  ? gt("Sheet", { $context: "Google Sheets file type" })
+                  : gt("Doc", { $context: "Google Docs file type" })}
               </span>
             </span>
           }
@@ -678,10 +695,10 @@ export function composerSuggestionOptionId(listId: string, itemId: string): stri
 }
 
 const LISTBOX_LABEL_BY_TRIGGER: Record<ComposerTriggerKind, string> = {
-  path: "Files and folders",
-  "pull-request": "Pull requests",
-  "slash-command": "Commands",
-  skill: "Skills",
+  path: msg("Files and folders"),
+  "pull-request": msg("Pull requests"),
+  "slash-command": msg("Commands"),
+  skill: msg("Skills"),
 };
 
 const SKILL_SOURCE_ICON_BY_KIND: Record<ProviderSkillSourceKind, LucideIcon> = {
@@ -693,22 +710,44 @@ const SKILL_SOURCE_ICON_BY_KIND: Record<ProviderSkillSourceKind, LucideIcon> = {
   other: PackageIcon,
 };
 
-const SKILL_SOURCE_LABEL_BY_KIND: Record<ProviderSkillSourceKind, string> = {
-  app: "App",
-  repo: "Repo",
-  project: "Project",
-  personal: "Personal",
-  system: "System",
-  other: "Provider",
+const SKILL_SOURCE_LABEL_BY_KIND: Record<
+  ProviderSkillSourceKind,
+  { readonly label: string; readonly skillLabel: string }
+> = {
+  app: {
+    label: msg("App", { $context: "skill source badge" }),
+    skillLabel: msg("App Skill"),
+  },
+  repo: {
+    label: msg("Repo", { $context: "skill source badge" }),
+    skillLabel: msg("Repo Skill"),
+  },
+  project: {
+    label: msg("Project", { $context: "skill source badge" }),
+    skillLabel: msg("Project Skill"),
+  },
+  personal: {
+    label: msg("Personal", { $context: "skill source badge" }),
+    skillLabel: msg("Personal Skill"),
+  },
+  system: {
+    label: msg("System", { $context: "skill source badge" }),
+    skillLabel: msg("System Skill"),
+  },
+  other: {
+    label: msg("Provider", { $context: "skill source badge" }),
+    skillLabel: msg("Provider Skill"),
+  },
 };
 
 function SkillSourceBadge(props: { kind: ProviderSkillSourceKind; showSkillSuffix: boolean }) {
+  const m = useMessages();
   const Icon = SKILL_SOURCE_ICON_BY_KIND[props.kind];
+  const labels = SKILL_SOURCE_LABEL_BY_KIND[props.kind];
   return (
     <Badge className="ms-auto" variant="secondary">
       <Icon aria-hidden="true" className="text-current" />
-      {SKILL_SOURCE_LABEL_BY_KIND[props.kind]}
-      {props.showSkillSuffix ? " Skill" : null}
+      {m(props.showSkillSuffix ? labels.skillLabel : labels.label)}
     </Badge>
   );
 }

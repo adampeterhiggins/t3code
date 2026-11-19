@@ -27,6 +27,7 @@ export const PROVIDER_PRESENTATION = {
     driverKind: ProviderDriverKind.make("grok"),
   },
   devin: {
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- product name
     label: "Devin ACP",
     color: "#6b7cff",
     driverKind: ProviderDriverKind.make("devin"),

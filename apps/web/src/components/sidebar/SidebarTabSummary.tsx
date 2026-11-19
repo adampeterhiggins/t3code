@@ -1,4 +1,5 @@
 import type { SidebarTabSortOrder } from "@t3tools/contracts";
+import { useMessages } from "gt-react";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 
 import { cn } from "~/lib/utils";
@@ -16,7 +17,7 @@ import {
 } from "../Sidebar.logic";
 import { resolveSidebarTopStatus, SidebarTopStatusIcon } from "./SidebarTopStatus";
 
-export function compactSidebarTimeLabel(label: string): string {
+function compactSidebarTimeLabel(label: string): string {
   if (label === "just now") return "now";
   return label.endsWith(" ago") ? label.slice(0, -4) : label;
 }
@@ -60,6 +61,7 @@ export function SidebarTabSummary(props: {
   compact?: boolean;
 }) {
   const { thread, providerEntries, compact = false } = props;
+  const messages = useMessages();
   const localLastVisitedAt = useUiStateStore(
     (state) =>
       state.threadLastVisitedAtById[
@@ -77,7 +79,7 @@ export function SidebarTabSummary(props: {
     lastVisitedAt: resolveThreadLastVisitedAt(thread.lastVisitedAt, localLastVisitedAt),
   });
   const status = resolveSidebarThreadStatus(thread);
-  const topStatus = resolveSidebarTopStatus(status, false, isUnread);
+  const topStatus = resolveSidebarTopStatus(status, false, isUnread, messages);
   const shouldRecede = shouldRecedeSidebarThread({
     status,
     isUnread,

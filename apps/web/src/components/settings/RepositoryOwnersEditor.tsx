@@ -1,4 +1,5 @@
 import { MAX_CONTEXT_REPOSITORY_OWNERS } from "@t3tools/contracts";
+import { useGT } from "gt-react";
 import { ArrowDownIcon, ArrowUpIcon, XIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
@@ -27,6 +28,7 @@ export function RepositoryOwnersAddInput(props: {
   readonly onChange: (owners: ReadonlyArray<string>) => void;
 }) {
   const [draft, setDraft] = useState("");
+  const gt = useGT();
   const commit = () => {
     if (draft.trim().length === 0) return;
     props.onChange(addRepositoryOwners(props.owners, draft));
@@ -43,9 +45,13 @@ export function RepositoryOwnersAddInput(props: {
         if (event.key === "Enter") commit();
       }}
       disabled={props.owners.length >= MAX_CONTEXT_REPOSITORY_OWNERS}
-      placeholder={props.mixed ? "Mixed" : "Add an owner, e.g. acme"}
+      placeholder={
+        props.mixed
+          ? gt("Mixed", { $context: "values differ across targets" })
+          : gt("Add an owner, e.g. acme")
+      }
       spellCheck={false}
-      aria-label="Add repository owner"
+      aria-label={gt("Add repository owner")}
     />
   );
 }
@@ -56,6 +62,7 @@ export function RepositoryOwnersList(props: {
   readonly onChange: (owners: ReadonlyArray<string>) => void;
 }) {
   const { owners, onChange } = props;
+  const gt = useGT();
   if (owners.length === 0) return null;
   const move = (index: number, offset: -1 | 1) => {
     const next = [...owners];
@@ -73,24 +80,24 @@ export function RepositoryOwnersList(props: {
           <span className="min-w-0 flex-1 truncate">{owner}</span>
           <span className="flex shrink-0 items-center gap-0.5">
             <OwnerAction
-              label="Move up"
-              ariaLabel={`Move ${owner} up`}
+              label={gt("Move up")}
+              ariaLabel={gt("Move {owner} up", { owner })}
               disabled={index === 0}
               onClick={() => move(index, -1)}
             >
               <ArrowUpIcon />
             </OwnerAction>
             <OwnerAction
-              label="Move down"
-              ariaLabel={`Move ${owner} down`}
+              label={gt("Move down")}
+              ariaLabel={gt("Move {owner} down", { owner })}
               disabled={index === owners.length - 1}
               onClick={() => move(index, 1)}
             >
               <ArrowDownIcon />
             </OwnerAction>
             <OwnerAction
-              label="Remove"
-              ariaLabel={`Remove ${owner}`}
+              label={gt("Remove", { $context: "verb, removes an item from a list" })}
+              ariaLabel={gt("Remove {owner}", { owner })}
               onClick={() => onChange(owners.filter((_, other) => other !== index))}
             >
               <XIcon />

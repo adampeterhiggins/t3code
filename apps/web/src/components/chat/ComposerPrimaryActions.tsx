@@ -7,6 +7,7 @@ import {
   useEffect,
   useState,
 } from "react";
+import { msg, useGT, useMessages } from "gt-react";
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -20,6 +21,7 @@ import {
 } from "lucide-react";
 
 import { useEnvironmentIdentificationMode } from "~/hooks/useSettings";
+import type { MessageResolver } from "~/i18n/messages";
 import { formatContextWindowTokens } from "~/lib/contextWindow";
 import { cn, isMacPlatform } from "~/lib/utils";
 import { useShortcutModifierState } from "../../shortcutModifierState";
@@ -84,22 +86,27 @@ interface ComposerPrimaryActionsProps {
   onSendContextMenu?: (event: ReactMouseEvent<HTMLElement>, surface: ComposerSendSurface) => void;
 }
 
-const formatPendingPrimaryActionLabel = (input: {
-  compact: boolean;
-  isLastQuestion: boolean;
-  isResponding: boolean;
-  questionIndex: number;
-}) => {
+const formatPendingPrimaryActionLabel = (
+  input: {
+    compact: boolean;
+    isLastQuestion: boolean;
+    isResponding: boolean;
+    questionIndex: number;
+  },
+  resolve: MessageResolver,
+) => {
   if (input.isResponding) {
-    return "Submitting...";
+    return resolve(msg("Submitting..."));
   }
   if (input.compact) {
-    return input.isLastQuestion ? "Submit" : "Next";
+    return input.isLastQuestion
+      ? resolve(msg("Submit", { $context: "verb, submits answers" }))
+      : resolve(msg("Next", { $context: "button that goes to the next question" }));
   }
   if (!input.isLastQuestion) {
-    return "Next question";
+    return resolve(msg("Next question"));
   }
-  return input.questionIndex > 0 ? "Submit answers" : "Submit answer";
+  return input.questionIndex > 0 ? resolve(msg("Submit answers")) : resolve(msg("Submit answer"));
 };
 
 const STOP_PENDING_MAX_MS = 10_000;
@@ -161,6 +168,7 @@ function StopGenerationButton({
   onStopRequested: () => void;
   onInterrupt: () => void;
 }) {
+  const gt = useGT();
   const isStopDisabled = stopPhase === "pending";
   return (
     <Tooltip>
@@ -179,7 +187,7 @@ function StopGenerationButton({
               onStopRequested();
               onInterrupt();
             }}
-            aria-label={stopPhase === "pending" ? "Stopping" : "Stop generation"}
+            aria-label={stopPhase === "pending" ? gt("Stopping") : gt("Stop generation")}
           />
         }
       >
@@ -187,7 +195,11 @@ function StopGenerationButton({
           <rect x="2" y="2" width="8" height="8" rx="1.5" />
         </svg>
       </TooltipTrigger>
-      <TooltipPopup>{stopPhase === "pending" ? "Stopping…" : "Interrupt"}</TooltipPopup>
+      <TooltipPopup>
+        {stopPhase === "pending"
+          ? gt("Stopping…")
+          : gt("Interrupt", { $context: "verb, stops the running agent" })}
+      </TooltipPopup>
     </Tooltip>
   );
 }
@@ -270,6 +282,8 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   onToggleKeepFullHistory,
   onSendContextMenu,
 }: ComposerPrimaryActionsProps) {
+  const gt = useGT();
+  const m = useMessages();
   const [stopPhase, setStopPhase] = useStopPhase({ runId, canInterrupt, canOperateThread });
   const pointerFocusProps = preserveComposerFocusOnPointerDown
     ? { onPointerDown: preventPointerFocus }
@@ -325,7 +339,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
               {...pointerFocusProps}
               onClick={onPreviousPendingQuestion}
               disabled={pendingAction.isResponding}
-              aria-label="Previous question"
+              aria-label={gt("Previous question")}
             >
               <ChevronLeftIcon className="size-3.5" />
             </Button>
@@ -337,7 +351,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
               onClick={onPreviousPendingQuestion}
               disabled={pendingAction.isResponding}
             >
-              Previous
+              {gt("Previous", { $context: "button that goes to the previous question" })}
             </Button>
           )
         ) : null}
@@ -360,12 +374,15 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
                 : !pendingAction.canAdvance))
           }
         >
-          {formatPendingPrimaryActionLabel({
-            compact,
-            isLastQuestion: pendingAction.isLastQuestion,
-            isResponding: pendingAction.isResponding,
-            questionIndex: pendingAction.questionIndex,
-          })}
+          {formatPendingPrimaryActionLabel(
+            {
+              compact,
+              isLastQuestion: pendingAction.isLastQuestion,
+              isResponding: pendingAction.isResponding,
+              questionIndex: pendingAction.questionIndex,
+            },
+            m,
+          )}
         </button>
         {canInterrupt || stopPhase === "pending" || stopPhase === "timedOut"
           ? renderStopGenerationButton(true)
@@ -384,7 +401,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
             {...pointerFocusProps}
             disabled={isSendBusy || isSendDisabled || isEnvironmentUnavailable}
           >
-            {isSendBusy ? "Sending..." : "Refine"}
+            {isSendBusy ? gt("Sending...") : gt("Refine", { $context: "verb, refines a plan" })}
           </button>
         </span>
       );
@@ -402,7 +419,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           {...pointerFocusProps}
           disabled={isSendBusy || isSendDisabled || isEnvironmentUnavailable}
         >
-          {isSendBusy ? "Sending..." : "Implement"}
+          {isSendBusy ? gt("Sending...") : gt("Implement", { $context: "verb, implements a plan" })}
         </button>
         <Menu>
           <MenuTrigger
@@ -413,7 +430,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
                   messageActionPillClassName,
                   "h-9 rounded-l-none border-l border-message-action-foreground/20 px-2 sm:h-8",
                 )}
-                aria-label="Implementation actions"
+                aria-label={gt("Implementation actions")}
                 onMouseDown={
                   preserveComposerFocusOnPointerDown ? (event) => event.preventDefault() : undefined
                 }
@@ -430,7 +447,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
                 if (canOperateThread) onImplementPlanInNewThread();
               }}
             >
-              Implement in a new thread
+              {gt("Implement in a new thread")}
             </MenuItem>
           </MenuPopup>
         </Menu>
@@ -472,7 +489,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
         aria-label={sendDisabledReason ?? undefined}
       >
         <Icon className="size-3.5" aria-hidden="true" />
-        {createWithoutMessage === "worktree" ? "Create worktree" : "Create thread"}
+        {createWithoutMessage === "worktree" ? gt("Create worktree") : gt("Create thread")}
       </button>
     );
   }
@@ -486,32 +503,47 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   const compactsBeforeSend = compactTokens !== null && !keepFullHistory;
 
   const submitLabel = showResume
-    ? "Resume thread"
+    ? gt("Resume thread")
     : isEditingQueuedMessage
-      ? "Update queued message"
+      ? gt("Update queued message")
       : compactsBeforeSend
-        ? "Compact and send"
+        ? gt("Compact and send")
         : isQueuing
-          ? "Queue message"
+          ? gt("Queue message")
           : isRunning
-            ? "Steer message"
-            : "Submit message";
+            ? gt("Steer message")
+            : gt("Submit message");
   const submitStatus = isEnvironmentUnavailable
-    ? "Environment disconnected"
+    ? gt("Environment disconnected")
     : (sendDisabledReason ??
       (isPreparingWorktree
-        ? "Preparing worktree"
+        ? gt("Preparing worktree")
         : isSendBusy
           ? isEditingQueuedMessage
-            ? "Updating queued message"
-            : "Submitting message"
+            ? gt("Updating queued message")
+            : gt("Submitting message")
           : null));
+  const modifier = isMacPlatform(navigator.platform) ? "⌘" : "Ctrl";
+  const dispatchTooltip =
+    alternateAction === "queue"
+      ? alternateShortcutLabel
+        ? gt("Click to steer, {modifier}-click or {shortcut} to queue", {
+            modifier,
+            shortcut: alternateShortcutLabel,
+          })
+        : gt("Click to steer, {modifier}-click to queue", { modifier })
+      : alternateShortcutLabel
+        ? gt("Click to queue, {modifier}-click or {shortcut} to steer", {
+            modifier,
+            shortcut: alternateShortcutLabel,
+          })
+        : gt("Click to queue, {modifier}-click to steer", { modifier });
   const submitTooltip =
     submitStatus ??
     (compactsBeforeSend
-      ? `Summarize ${compactTokens} tokens of history, then send`
+      ? gt("Summarize {tokens} tokens of history, then send", { tokens: compactTokens })
       : isRunning && !isEditingQueuedMessage && canSteer
-        ? `Click to ${followUpBehavior}, ${isMacPlatform(navigator.platform) ? "⌘" : "Ctrl"}-click${alternateShortcutLabel ? ` or ${alternateShortcutLabel}` : ""} to ${alternateAction}`
+        ? dispatchTooltip
         : submitLabel);
 
   const sendButton = (
@@ -598,7 +630,9 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
               className="flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-(--control-radius) px-2 font-medium text-base text-foreground/80 tabular-nums outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-64 sm:text-sm aria-pressed:bg-accent/60 aria-pressed:text-foreground [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:text-muted-foreground"
               {...pointerFocusProps}
               aria-pressed={!keepFullHistory}
-              aria-label={`Compact ${compactTokens} tokens of history before sending`}
+              aria-label={gt("Compact {tokens} tokens of history before sending", {
+                tokens: compactTokens,
+              })}
               disabled={!canOperateThread}
               onClick={onToggleKeepFullHistory}
             />
@@ -606,17 +640,21 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
         >
           <Minimize2Icon aria-hidden="true" />
           <span className="@max-[480px]/composer-surface:hidden">
-            {keepFullHistory ? "Keep" : "Compact"}
+            {keepFullHistory
+              ? gt("Keep", { $context: "keep full history instead of compacting" })
+              : gt("Compact", { $context: "verb, compact history before sending" })}
           </span>
           <span className="text-muted-foreground">{compactTokens}</span>
         </TooltipTrigger>
         <TooltipPopup>
           <div>
             {keepFullHistory
-              ? `Next send keeps all ${compactTokens} tokens.`
-              : `Next send compacts ${compactTokens} tokens first.`}
+              ? gt("Next send keeps all {tokens} tokens.", { tokens: compactTokens })
+              : gt("Next send compacts {tokens} tokens first.", { tokens: compactTokens })}
           </div>
-          <div>{keepFullHistory ? "Click to compact first" : "Click to keep full history"}</div>
+          <div>
+            {keepFullHistory ? gt("Click to compact first") : gt("Click to keep full history")}
+          </div>
         </TooltipPopup>
       </Tooltip>
       {children}

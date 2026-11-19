@@ -7,6 +7,8 @@ import { resolveT3McpToolId } from "@t3tools/shared/t3McpToolPresentation";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
 
 import {
   agentUtilityToolPreview,
@@ -329,11 +331,11 @@ function positiveInt(value: unknown): number | null {
 const MAX_THREAD_ITEMS = 4;
 
 const THREAD_ITEM_LABELS: Readonly<Record<string, string>> = {
-  user_message: "User",
-  assistant_message: "Agent",
-  reasoning: "Thinking",
-  command_execution: "Command",
-  file_change: "Edit",
+  user_message: msg("User", { $context: "thread message author" }),
+  assistant_message: msg("Agent", { $context: "thread message author" }),
+  reasoning: msg("Thinking", { $context: "thread item kind" }),
+  command_execution: msg("Command", { $context: "thread item kind" }),
+  file_change: msg("Edit", { $context: "noun, thread item kind" }),
 };
 
 const THREAD_MESSAGE_TYPES = new Set(["user_message", "assistant_message", "reasoning"]);
@@ -368,6 +370,7 @@ function threadActivityText(type: string, item: Record_): string | null {
  */
 export function latestThreadPreviewItems(
   messages: ReadonlyArray<OrchestrationV2ConversationMessage>,
+  resolve: MFunctionType = mFallback,
 ): ReadonlyArray<ThreadPreviewItem> {
   const items: ThreadPreviewItem[] = [];
   for (let index = messages.length - 1; index >= 0 && items.length < MAX_THREAD_ITEMS; index--) {
@@ -377,7 +380,11 @@ export function latestThreadPreviewItems(
     if (!text) continue;
     items.unshift({
       key: message.id,
-      label: message.role === "user" ? "User" : "Agent",
+      label: resolve(
+        message.role === "user"
+          ? msg("User", { $context: "thread message author" })
+          : msg("Agent", { $context: "thread message author" }),
+      ),
       text,
       activity: false,
     });
@@ -385,7 +392,7 @@ export function latestThreadPreviewItems(
   return items;
 }
 
-function threadPreview(result: Record_): ThreadToolPreview | null {
+function threadPreview(result: Record_, resolve: MFunctionType): ThreadToolPreview | null {
   const thread = isRecord(result.thread) ? result.thread : null;
   const threadId = str(thread?.threadId);
   if (!thread || !threadId) return null;
@@ -395,13 +402,15 @@ function threadPreview(result: Record_): ThreadToolPreview | null {
     const activity = !THREAD_MESSAGE_TYPES.has(type);
     const text = activity ? threadActivityText(type, item) : str(item.text);
     if (!text) return [];
-    const label = THREAD_ITEM_LABELS[type] ?? "Tool";
+    const label = resolve(
+      THREAD_ITEM_LABELS[type] ?? msg("Tool", { $context: "thread item kind" }),
+    );
     return [{ key: str(item.itemId) ?? String(index), label, text: text.trim(), activity }];
   });
   return {
     kind: "thread",
     threadId,
-    title: str(thread.title) ?? "Untitled thread",
+    title: str(thread.title) ?? resolve(msg("Untitled thread")),
     status: str(thread.status),
     model: str(thread.model),
     branch: str(thread.branch),
@@ -424,16 +433,22 @@ function taskPreview(result: Record_, input: Record_): TaskToolPreview | null {
   };
 }
 
-function pullRequestNote(tool: string, result: Record_): string | null {
+function pullRequestNote(tool: string, result: Record_, resolve: MFunctionType): string | null {
   switch (tool) {
     case "link_pull_request":
-      return result.alreadyLinked === true ? "Already linked" : "Linked";
+      return result.alreadyLinked === true
+        ? resolve(msg("Already linked"))
+        : resolve(msg("Linked", { $context: "pull request linked to thread" }));
     case "unlink_pull_request":
-      return "Unlinked";
+      return resolve(msg("Unlinked", { $context: "pull request unlinked from thread" }));
     case "watch_pull_request":
-      return result.wasWatching === true ? "Already watching" : "Watching";
+      return result.wasWatching === true
+        ? resolve(msg("Already watching"))
+        : resolve(msg("Watching", { $context: "pull request watch state" }));
     case "unwatch_pull_request":
-      return result.wasWatching === false ? "Was not watching" : "Stopped watching";
+      return result.wasWatching === false
+        ? resolve(msg("Was not watching"))
+        : resolve(msg("Stopped watching"));
     default:
       return null;
   }
@@ -458,10 +473,14 @@ function pullRequestRow(
   };
 }
 
-function pullRequestPreview(tool: string, result: Record_): PullRequestToolPreview | null {
+function pullRequestPreview(
+  tool: string,
+  result: Record_,
+  resolve: MFunctionType,
+): PullRequestToolPreview | null {
   const rows = Array.isArray(result.pullRequests)
     ? result.pullRequests.filter(isRecord).map((pr) => pullRequestRow(pr, null))
-    : [pullRequestRow(result, pullRequestNote(tool, result))];
+    : [pullRequestRow(result, pullRequestNote(tool, result, resolve))];
   const pullRequests = rows.filter((row) => row !== null);
   return pullRequests.length > 0 || Array.isArray(result.pullRequests)
     ? { kind: "pull-requests", pullRequests }
@@ -479,7 +498,12 @@ function browserPage(result: Record_ | null): BrowserToolPreview["page"] {
 }
 
 /** What a browser call acted on or changed, for tools whose input is not a locator, key or URL. */
-function browserDetail(tool: string, input: Record_, result: Record_ | null): string | null {
+function browserDetail(
+  tool: string,
+  input: Record_,
+  result: Record_ | null,
+  resolve: MFunctionType,
+): string | null {
   switch (tool) {
     case "preview_resize": {
       const viewport = isRecord(result?.viewport) ? result.viewport : null;
@@ -490,38 +514,51 @@ function browserDetail(tool: string, input: Record_, result: Record_ | null): st
       return str(result?.colorScheme) ?? str(input.colorScheme);
     case "preview_select": {
       const selected = Array.isArray(result?.selected) ? result.selected : input.values;
-      return Array.isArray(selected) ? `Selected ${selected.filter(isText).join(", ")}` : null;
+      return Array.isArray(selected)
+        ? resolve(msg("Selected {values}", { values: selected.filter(isText).join(", ") }))
+        : null;
     }
     case "preview_upload": {
       const paths = Array.isArray(input.paths) ? input.paths.filter(isText) : [];
-      return paths.length === 0 ? "Cancelled the file picker" : paths.join(", ");
+      return paths.length === 0 ? resolve(msg("Cancelled the file picker")) : paths.join(", ");
     }
     case "preview_drag":
       return str(input.source) && str(input.target)
         ? `${str(input.source)} → ${str(input.target)}`
         : null;
     case "preview_dialog":
-      return input.accept === false ? "Dismissed the dialog" : "Accepted the dialog";
+      return input.accept === false
+        ? resolve(msg("Dismissed the dialog"))
+        : resolve(msg("Accepted the dialog"));
     case "preview_recording_start":
-      return "Started recording";
+      return resolve(msg("Started recording"));
     case "preview_recording_stop":
-      return str(result?.path) ? `Saved ${str(result?.path)}` : "Stopped recording";
+      return str(result?.path)
+        ? resolve(msg("Saved {path}", { path: str(result?.path) }))
+        : resolve(msg("Stopped recording"));
     case "preview_wait_for":
       return str(input.text)
-        ? `Waited for “${str(input.text)}”`
+        ? resolve(msg("Waited for “{text}”", { text: str(input.text) }))
         : str(input.urlIncludes)
-          ? `Waited for a URL with ${str(input.urlIncludes)}`
+          ? resolve(msg("Waited for a URL with {text}", { text: str(input.urlIncludes) }))
           : null;
     case "preview_scroll":
       return typeof input.deltaY === "number"
-        ? `Scrolled ${input.deltaY > 0 ? "down" : "up"} ${Math.abs(input.deltaY)}px`
+        ? input.deltaY > 0
+          ? resolve(msg("Scrolled down {pixels}px", { pixels: Math.abs(input.deltaY) }))
+          : resolve(msg("Scrolled up {pixels}px", { pixels: Math.abs(input.deltaY) }))
         : null;
     default:
       return null;
   }
 }
 
-function browserPreview(tool: string, input: Record_, result: Record_ | null): BrowserToolPreview {
+function browserPreview(
+  tool: string,
+  input: Record_,
+  result: Record_ | null,
+  resolve: MFunctionType,
+): BrowserToolPreview {
   const modifiers = Array.isArray(input.modifiers) ? input.modifiers.filter(isText) : [];
   const key = str(input.key);
   const target =
@@ -539,7 +576,7 @@ function browserPreview(tool: string, input: Record_, result: Record_ | null): B
         : null,
     target,
     text: tool === "preview_type" ? str(input.text) : null,
-    detail: browserDetail(tool, input, result),
+    detail: browserDetail(tool, input, result, resolve),
     expression: str(input.expression),
     value: hasValue ? (JSON.stringify(result.value, null, 2) ?? "undefined") : null,
     page: browserPage(result),
@@ -547,18 +584,23 @@ function browserPreview(tool: string, input: Record_, result: Record_ | null): B
 }
 
 /** Server hosts list every tab in the thread, which says more than the one current page. */
-function previewTabsPreview(result: Record_ | null): RecordsToolPreview | null {
+function previewTabsPreview(
+  result: Record_ | null,
+  resolve: MFunctionType,
+): RecordsToolPreview | null {
   const tabs = Array.isArray(result?.tabs) ? result.tabs.filter(isRecord) : [];
   if (tabs.length === 0) return null;
   const profiles = Array.isArray(result?.profiles) ? result.profiles.filter(isRecord) : [];
   return records(
     tabs.map((tab, index) => ({
       key: str(tab.tabId) ?? String(index),
-      title: str(tab.url) ?? "Blank tab",
+      title: str(tab.url) ?? resolve(msg("Blank tab")),
       subtitle: str(tab.owner),
       meta: [
-        tab.ownedByCaller === true ? "yours" : null,
-        tab.visible === true ? "visible" : null,
+        tab.ownedByCaller === true
+          ? resolve(msg("yours", { $context: "browser tab owner" }))
+          : null,
+        tab.visible === true ? resolve(msg("visible", { $context: "browser tab state" })) : null,
       ].filter((fact) => fact !== null),
       url: null,
       body: null,
@@ -567,7 +609,13 @@ function previewTabsPreview(result: Record_ | null): RecordsToolPreview | null {
     {
       notes: [
         profiles.length > 0
-          ? `Profiles: ${profiles.map((profile) => str(profile.name) ?? "Profile").join(", ")}`
+          ? resolve(
+              msg("Profiles: {profiles}", {
+                profiles: profiles
+                  .map((profile) => str(profile.name) ?? resolve(msg("Profile")))
+                  .join(", "),
+              }),
+            )
           : null,
       ],
     },
@@ -658,7 +706,10 @@ function slackConciseResults(text: string): SlackMessagesPreview["messages"] {
 }
 
 /** Concise thread reads: `THREAD: <parent>` then one `> Author: reply` line per reply. */
-function slackConciseThread(text: string): SlackMessagesPreview["messages"] {
+function slackConciseThread(
+  text: string,
+  resolve: MFunctionType,
+): SlackMessagesPreview["messages"] {
   const [parent = "", ...rest] = text.slice("THREAD: ".length).split(/\n(?=> )/);
   const replies = rest.flatMap((block) => {
     const reply = /^> ([^:\n]+): ([\s\S]*)$/.exec(block.trim());
@@ -671,16 +722,24 @@ function slackConciseThread(text: string): SlackMessagesPreview["messages"] {
   const parentText = slackPlainText(parent);
   return [
     ...(parentText
-      ? [{ author: "Thread", time: null, channel: null, url: null, text: parentText }]
+      ? [
+          {
+            author: resolve(msg("Thread", { $context: "Slack thread parent message" })),
+            time: null,
+            channel: null,
+            url: null,
+            text: parentText,
+          },
+        ]
       : []),
     ...replies,
   ];
 }
 
-function slackPreview(text: string | null): SlackMessagesPreview | null {
+function slackPreview(text: string | null, resolve: MFunctionType): SlackMessagesPreview | null {
   if (!text) return null;
   if (text.startsWith("THREAD: ")) {
-    const messages = slackConciseThread(text);
+    const messages = slackConciseThread(text, resolve);
     return messages.length > 0 ? { kind: "slack-messages", messages } : null;
   }
   const separator = SLACK_THREAD_SECTION.test(text)
@@ -724,7 +783,11 @@ function questionsPreview(input: Record_, result: Record_ | null): QuestionsTool
   return shown.length > 0 ? { kind: "questions", questions: shown } : null;
 }
 
-function htmlPagePreview(input: Record_, result: Record_ | null): HtmlPageToolPreview {
+function htmlPagePreview(
+  input: Record_,
+  result: Record_ | null,
+  resolve: MFunctionType,
+): HtmlPageToolPreview {
   const width = positiveInt(result?.width) ?? positiveInt(input.width);
   const height = positiveInt(result?.contentHeight) ?? positiveInt(input.height);
   const appearance = str(input.appearance);
@@ -734,16 +797,28 @@ function htmlPagePreview(input: Record_, result: Record_ | null): HtmlPageToolPr
     kind: "html-page",
     title: str(input.title) ?? (title || null),
     details: [
-      width && height ? `${width}×${height}` : height ? `${height}px tall` : null,
+      width && height
+        ? `${width}×${height}`
+        : height
+          ? resolve(msg("{height}px tall", { height }))
+          : null,
       appearance,
       consoleMessages.length > 0
-        ? `${consoleMessages.length} console message${consoleMessages.length === 1 ? "" : "s"}`
+        ? resolve(
+            msg("{count, plural, one {{count} console message} other {{count} console messages}}", {
+              count: consoleMessages.length,
+            }),
+          )
         : null,
     ].filter((detail) => detail !== null),
   };
 }
 
-function launchedThreadPreview(input: Record_, result: Record_): ThreadToolPreview | null {
+function launchedThreadPreview(
+  input: Record_,
+  result: Record_,
+  resolve: MFunctionType,
+): ThreadToolPreview | null {
   const threadId = str(result.threadId);
   if (!threadId) return null;
   const selection = isRecord(result.modelSelection) ? result.modelSelection : null;
@@ -752,18 +827,25 @@ function launchedThreadPreview(input: Record_, result: Record_): ThreadToolPrevi
   return {
     kind: "thread",
     threadId,
-    title: str(input.title) ?? "New thread",
+    title: str(input.title) ?? resolve(msg("New thread")),
     status: str(result.status),
     model: str(selection?.model),
     branch: str(workspace?.branch),
     items: message
-      ? [{ key: "message", label: "Message", text: message.trim(), activity: false }]
+      ? [
+          {
+            key: "message",
+            label: resolve(msg("Message", { $context: "noun" })),
+            text: message.trim(),
+            activity: false,
+          },
+        ]
       : [],
     moreItems: 0,
   };
 }
 
-function threadListPreview(result: Record_): ThreadListToolPreview | null {
+function threadListPreview(result: Record_, resolve: MFunctionType): ThreadListToolPreview | null {
   if (!Array.isArray(result.threads)) return null;
   return {
     kind: "threads",
@@ -773,7 +855,7 @@ function threadListPreview(result: Record_): ThreadListToolPreview | null {
         ? [
             {
               threadId,
-              title: str(thread.title) ?? "Untitled thread",
+              title: str(thread.title) ?? resolve(msg("Untitled thread")),
               status: str(thread.status),
               model: str(thread.model),
             },
@@ -785,7 +867,10 @@ function threadListPreview(result: Record_): ThreadListToolPreview | null {
 
 const decodeSchedule = Schema.decodeUnknownOption(ScheduledTaskSchedule);
 
-function scheduledTasksPreview(result: Record_): ScheduledTasksToolPreview | null {
+function scheduledTasksPreview(
+  result: Record_,
+  resolve: MFunctionType,
+): ScheduledTasksToolPreview | null {
   const tasks = Array.isArray(result.tasks) ? result.tasks.filter(isRecord) : [result];
   const shown = tasks.flatMap((task) => {
     const id = str(task.scheduledTaskId);
@@ -793,7 +878,7 @@ function scheduledTasksPreview(result: Record_): ScheduledTasksToolPreview | nul
       ? [
           {
             id,
-            title: str(task.title) ?? "Scheduled task",
+            title: str(task.title) ?? resolve(msg("Scheduled task")),
             enabled: task.enabled !== false,
             schedule: Option.getOrNull(decodeSchedule(task.schedule)),
           },
@@ -843,50 +928,58 @@ function tabTitles(result: Record_ | null): string[] {
     : [];
 }
 
-function sourcePointLabel(value: unknown): string | null {
+function sourcePointLabel(value: unknown, resolve: MFunctionType): string | null {
   const point = isRecord(value) ? value : null;
   switch (point?.type) {
     case "latest_stable":
-      return "From the latest stable point";
+      return resolve(msg("From the latest stable point"));
     case "run":
-      return "From a run";
+      return resolve(msg("From a run"));
     case "checkpoint":
-      return "From a checkpoint";
+      return resolve(msg("From a checkpoint"));
     default:
       return null;
   }
 }
 
 const ORGANIZE_LABELS: Readonly<Record<string, string>> = {
-  pin: "Pinned",
-  unpin: "Unpinned",
-  snooze: "Snoozed",
-  unsnooze: "Unsnoozed",
-  settle: "Settled",
-  unsettle: "Unsettled",
-  archive: "Archived",
-  unarchive: "Unarchived",
-  mark_unread: "Marked unread",
-  hide: "Hidden from the sidebar",
-  unhide: "Shown in the sidebar",
-  move_to_group: "Moved to a group",
-  remove_from_group: "Removed from its group",
+  pin: msg("Pinned", { $context: "thread action result" }),
+  unpin: msg("Unpinned", { $context: "thread action result" }),
+  snooze: msg("Snoozed", { $context: "thread action result" }),
+  unsnooze: msg("Unsnoozed", { $context: "thread action result" }),
+  settle: msg("Settled", { $context: "thread action result" }),
+  unsettle: msg("Unsettled", { $context: "thread action result" }),
+  archive: msg("Archived", { $context: "thread action result" }),
+  unarchive: msg("Unarchived", { $context: "thread action result" }),
+  mark_unread: msg("Marked unread"),
+  hide: msg("Hidden from the sidebar"),
+  unhide: msg("Shown in the sidebar"),
+  move_to_group: msg("Moved to a group"),
+  remove_from_group: msg("Removed from its group"),
 };
 
-function organizePreview(input: Record_, result: Record_ | null): ThreadActionToolPreview | null {
+function organizePreview(
+  input: Record_,
+  result: Record_ | null,
+  resolve: MFunctionType,
+): ThreadActionToolPreview | null {
   const action = str(input.action);
   if (!action) return null;
   const group = str(input.groupName);
   const until = str(input.snoozedUntil);
   const headline =
     action === "move_to_group" && group
-      ? `Moved to “${group}”`
-      : (ORGANIZE_LABELS[action] ?? action.replaceAll("_", " "));
+      ? resolve(msg("Moved to “{group}”", { group }))
+      : ORGANIZE_LABELS[action] !== undefined
+        ? resolve(ORGANIZE_LABELS[action])
+        : action.replaceAll("_", " ");
   return threadAction(headline, {
     threadId: str(input.threadId),
     details: [
-      action === "snooze" && until ? `Until ${until}` : null,
-      result?.settlesWhenTurnEnds === true ? "Takes effect when this turn ends" : null,
+      action === "snooze" && until ? resolve(msg("Until {time}", { time: until })) : null,
+      result?.settlesWhenTurnEnds === true
+        ? resolve(msg("Takes effect when this turn ends"))
+        : null,
     ].filter((detail) => detail !== null),
   });
 }
@@ -894,6 +987,7 @@ function organizePreview(input: Record_, result: Record_ | null): ThreadActionTo
 function metadataUpdatePreview(
   input: Record_,
   result: Record_ | null,
+  resolve: MFunctionType,
 ): ThreadActionToolPreview | null {
   const action = str(input.action);
   const title = str(result?.title) ?? str(input.title);
@@ -901,21 +995,31 @@ function metadataUpdatePreview(
   const pr = isRecord(input.pullRequest) ? input.pullRequest : null;
   switch (action) {
     case "rename":
-      return threadAction(title ? `Renamed to “${title}”` : "Renamed the thread", { threadId });
+      return threadAction(
+        title
+          ? resolve(msg("Renamed to “{title}”", { title }))
+          : resolve(msg("Renamed the thread")),
+        { threadId },
+      );
     case "regenerate_title":
-      return threadAction("Regenerated the title", {
+      return threadAction(resolve(msg("Regenerated the title")), {
         threadId,
         details: title ? [title] : [],
       });
     case "link_pull_request": {
-      const label =
+      return threadAction(
         str(pr?.repository) && positiveInt(pr?.number)
-          ? `${str(pr?.repository)}#${positiveInt(pr?.number)}`
-          : "a pull request";
-      return threadAction(`Linked ${label}`, { threadId });
+          ? resolve(
+              msg("Linked {pullRequest}", {
+                pullRequest: `${str(pr?.repository)}#${positiveInt(pr?.number)}`,
+              }),
+            )
+          : resolve(msg("Linked a pull request")),
+        { threadId },
+      );
     }
     case "unlink_pull_request":
-      return threadAction("Unlinked the pull request", { threadId });
+      return threadAction(resolve(msg("Unlinked the pull request")), { threadId });
     default:
       return null;
   }
@@ -951,55 +1055,71 @@ function contextTransfersPreview(result: Record_): ContextTransfersToolPreview |
 }
 
 const DELIVERY_LABELS: Readonly<Record<string, string>> = {
-  started: "Started a run",
-  queued: "Queued",
-  steered: "Steered the running turn",
-  restarted: "Restarted the run",
+  started: msg("Started a run"),
+  queued: msg("Queued", { $context: "message delivery result" }),
+  steered: msg("Steered the running turn"),
+  restarted: msg("Restarted the run"),
 };
 
-function t3ToolPreview(tool: string, input: Record_, result: Record_ | null): ToolPreview | null {
+function t3ToolPreview(
+  tool: string,
+  input: Record_,
+  result: Record_ | null,
+  resolve: MFunctionType,
+): ToolPreview | null {
   switch (tool) {
     case "t3_thread_read":
-      return result ? threadPreview(result) : null;
+      return result ? threadPreview(result, resolve) : null;
     case "task_status":
     case "delegate_task":
     case "task_cancel":
       return result ? taskPreview(result, input) : null;
     case "t3_thread_launch":
-      return result ? launchedThreadPreview(input, result) : null;
+      return result ? launchedThreadPreview(input, result, resolve) : null;
     case "t3_thread_list":
     case "create_threads":
-      return result ? threadListPreview(result) : null;
+      return result ? threadListPreview(result, resolve) : null;
     case "t3_thread_start":
-      return result ? (threadListPreview(result) ?? launchedThreadPreview(input, result)) : null;
+      return result
+        ? (threadListPreview(result, resolve) ?? launchedThreadPreview(input, result, resolve))
+        : null;
     case "t3_thread_wait":
       return result
-        ? threadAction(result.timedOut === true ? "Stopped waiting" : "Waited for the run", {
-            threadId: str(result.threadId) ?? str(input.threadId),
-            status: str(result.status),
-            details: result.timedOut === true ? ["The wait timed out"] : [],
-          })
+        ? threadAction(
+            result.timedOut === true
+              ? resolve(msg("Stopped waiting"))
+              : resolve(msg("Waited for the run")),
+            {
+              threadId: str(result.threadId) ?? str(input.threadId),
+              status: str(result.status),
+              details: result.timedOut === true ? [resolve(msg("The wait timed out"))] : [],
+            },
+          )
         : null;
     case "t3_thread_interrupt":
       // The result acknowledges the request; the run stops on its own time.
-      return threadAction("Interrupt requested", {
+      return threadAction(resolve(msg("Interrupt requested")), {
         threadId: str(result?.threadId) ?? str(input.threadId),
         status: str(result?.status),
         details: [str(input.reason)].filter((detail) => detail !== null),
       });
     case "t3_thread_rollback":
-      return threadAction("Requested a checkpoint rollback", {
+      return threadAction(resolve(msg("Requested a checkpoint rollback")), {
         threadId: str(result?.threadId) ?? str(input.threadId),
         status: str(result?.status),
         details: [
-          `Keep through run ${result?.runOrdinal ?? input.runOrdinal ?? 0}`,
+          resolve(
+            msg("Keep through run {run}", {
+              run: String(result?.runOrdinal ?? input.runOrdinal ?? 0),
+            }),
+          ),
           (result?.restoreFiles ?? input.restoreFiles ?? true) === false
-            ? "Keep workspace files"
-            : "Restore workspace files",
+            ? resolve(msg("Keep workspace files"))
+            : resolve(msg("Restore workspace files")),
         ],
       });
     case "t3_thread_usage_limit_resume":
-      return threadAction("Resumed after the usage limit", {
+      return threadAction(resolve(msg("Resumed after the usage limit")), {
         threadId: str(result?.threadId) ?? str(input.threadId),
         status: str(result?.status),
         details: [],
@@ -1008,14 +1128,17 @@ function t3ToolPreview(tool: string, input: Record_, result: Record_ | null): To
       if (input.modelSelection !== undefined) {
         const { model, details } = modelSelectionDetails(input.modelSelection);
         return model
-          ? threadAction(`Switched to ${model}`, { threadId: str(input.threadId), details })
+          ? threadAction(resolve(msg("Switched to {model}", { model })), {
+              threadId: str(input.threadId),
+              details,
+            })
           : null;
       }
     // fall through
     case "t3_thread_configuration": {
       if (!result) return null;
       const { model, details } = modelSelectionDetails(result.modelSelection);
-      return threadAction(model ?? "Thread configuration", {
+      return threadAction(model ?? resolve(msg("Thread configuration")), {
         threadId: str(input.threadId),
         details: [
           ...details,
@@ -1027,15 +1150,20 @@ function t3ToolPreview(tool: string, input: Record_, result: Record_ | null): To
     }
     case "t3_thread_fork": {
       const title = str(input.title);
-      return threadAction(title ? `Forked as “${title}”` : "Forked the thread", {
-        threadId: str(result?.targetThreadId),
-        details: [sourcePointLabel(input.sourcePoint)].filter((detail) => detail !== null),
-      });
+      return threadAction(
+        title ? resolve(msg("Forked as “{title}”", { title })) : resolve(msg("Forked the thread")),
+        {
+          threadId: str(result?.targetThreadId),
+          details: [sourcePointLabel(input.sourcePoint, resolve)].filter(
+            (detail) => detail !== null,
+          ),
+        },
+      );
     }
     case "t3_thread_merge_back":
-      return threadAction("Merged context back", {
+      return threadAction(resolve(msg("Merged context back")), {
         threadId: str(result?.targetThreadId) ?? str(input.targetThreadId),
-        details: [sourcePointLabel(input.sourcePoint)].filter((detail) => detail !== null),
+        details: [sourcePointLabel(input.sourcePoint, resolve)].filter((detail) => detail !== null),
       });
     case "t3_thread_search":
       return result ? threadSearchPreview(input, result) : null;
@@ -1044,36 +1172,59 @@ function t3ToolPreview(tool: string, input: Record_, result: Record_ | null): To
     case "t3_thread_group_name": {
       const name = str(result?.name) ?? str(input.name);
       const tabs = tabTitles(result);
-      return threadAction(name ? `Named the group “${name}”` : "Cleared the group name", {
-        threadId: str(input.threadId),
-        details: tabs.length > 0 ? [tabs.join(", ")] : [],
-      });
+      return threadAction(
+        name
+          ? resolve(msg("Named the group “{name}”", { name }))
+          : resolve(msg("Cleared the group name")),
+        {
+          threadId: str(input.threadId),
+          details: tabs.length > 0 ? [tabs.join(", ")] : [],
+        },
+      );
     }
     case "t3_thread_tabs": {
       const tabs = tabTitles(result);
       return result
-        ? threadAction(`${tabs.length} tab${tabs.length === 1 ? "" : "s"}`, {
-            threadId: str(input.threadId),
-            details: tabs.length > 0 ? [tabs.join(", ")] : [],
-          })
+        ? threadAction(
+            resolve(
+              msg("{count, plural, one {{count} tab} other {{count} tabs}}", {
+                count: tabs.length,
+              }),
+            ),
+            {
+              threadId: str(input.threadId),
+              details: tabs.length > 0 ? [tabs.join(", ")] : [],
+            },
+          )
         : null;
     }
     case "t3_thread_tab_open": {
       const title = str(input.title);
       const { model } = modelSelectionDetails(input.modelSelection);
-      const verb = isRecord(input.fork) ? "Forked into a tab" : "Opened a tab";
-      return threadAction(title ? `${verb} “${title}”` : verb, {
+      const forked = isRecord(input.fork);
+      const headline = title
+        ? forked
+          ? resolve(msg("Forked into a tab “{title}”", { title }))
+          : resolve(msg("Opened a tab “{title}”", { title }))
+        : forked
+          ? resolve(msg("Forked into a tab"))
+          : resolve(msg("Opened a tab"));
+      return threadAction(headline, {
         threadId: str(result?.threadId),
         details: [model].filter((detail) => detail !== null),
       });
     }
     case "t3_thread_organize":
-      return organizePreview(input, result);
+      return organizePreview(input, result, resolve);
     case "t3_thread_update":
-      return metadataUpdatePreview(input, result);
+      return metadataUpdatePreview(input, result, resolve);
     case "t3_thread_send_attachments": {
       const count = Array.isArray(input.attachments) ? input.attachments.length : 0;
-      const label = `Sent ${count} attachment${count === 1 ? "" : "s"}`;
+      const label = resolve(
+        msg("{count, plural, one {Sent {count} attachment} other {Sent {count} attachments}}", {
+          count,
+        }),
+      );
       return {
         kind: "agent-message",
         recipient: null,
@@ -1090,27 +1241,31 @@ function t3ToolPreview(tool: string, input: Record_, result: Record_ | null): To
         kind: "agent-message",
         recipient: null,
         threadId: str(input.threadId),
-        summary: delivery ? (DELIVERY_LABELS[delivery] ?? delivery) : null,
+        summary: delivery
+          ? DELIVERY_LABELS[delivery] !== undefined
+            ? resolve(DELIVERY_LABELS[delivery])
+            : delivery
+          : null,
         message,
       };
     }
     case "schedule_task":
     case "update_scheduled_task":
     case "list_scheduled_tasks":
-      return result ? scheduledTasksPreview(result) : null;
+      return result ? scheduledTasksPreview(result, resolve) : null;
     case "link_pull_request":
     case "unlink_pull_request":
     case "watch_pull_request":
     case "unwatch_pull_request":
     case "list_thread_pull_requests":
-      return result ? pullRequestPreview(tool, result) : null;
+      return result ? pullRequestPreview(tool, result, resolve) : null;
     case "html_preview":
     case "html_render":
-      return htmlPagePreview(input, result);
+      return htmlPagePreview(input, result, resolve);
     case "preview_status":
-      return previewTabsPreview(result) ?? browserPreview(tool, input, result);
+      return previewTabsPreview(result, resolve) ?? browserPreview(tool, input, result, resolve);
     default:
-      return tool.startsWith("preview_") ? browserPreview(tool, input, result) : null;
+      return tool.startsWith("preview_") ? browserPreview(tool, input, result, resolve) : null;
   }
 }
 
@@ -1146,14 +1301,17 @@ function withoutIdRows(preview: ToolPreview | null): ToolPreview | null {
 }
 
 /** A dynamic tool call's preview, or null when the generic body says it best. */
-export function resolveToolPreview(item: OrchestrationV2TurnItem): ToolPreview | null {
+export function resolveToolPreview(
+  item: OrchestrationV2TurnItem,
+  resolve: MFunctionType = mFallback,
+): ToolPreview | null {
   if (item.type !== "dynamic_tool" || item.status === "failed") return null;
   const input = toolCallArgs(item.input);
   if (!isRecord(input)) return null;
   const result = item.outputOmitted === true ? null : toolResultData(item.output);
   const resultRecord = isRecord(result) ? result : null;
   const text = item.outputOmitted === true ? null : toolResultText(item.output);
-  const oversized = oversizedResultPreview(text);
+  const oversized = oversizedResultPreview(text, resolve);
   if (oversized) return oversized;
   const t3Tool = resolveT3McpToolId(item.toolName, input);
   // T3 tools without their own card still show their result as one.
@@ -1163,16 +1321,17 @@ export function resolveToolPreview(item: OrchestrationV2TurnItem): ToolPreview |
         t3Tool,
         input,
         t3Tool === "preview_snapshot" ? snapshotResult(resultRecord, text) : resultRecord,
+        resolve,
       ) ??
-      t3UtilityToolPreview(t3Tool, input, result) ??
+      t3UtilityToolPreview(t3Tool, input, result, resolve) ??
       withoutIdRows(genericToolPreview(result, text))
     );
   }
   const toolName = item.toolName ?? "";
   return (
-    claudeToolPreview(item, input, resultRecord) ??
-    agentUtilityToolPreview(toolName, input, result, text) ??
-    integrationToolPreview(toolName, input, result, text)
+    claudeToolPreview(item, input, resultRecord, resolve) ??
+    agentUtilityToolPreview(toolName, input, result, text, resolve) ??
+    integrationToolPreview(toolName, input, result, text, resolve)
   );
 }
 
@@ -1180,10 +1339,12 @@ function claudeToolPreview(
   item: DynamicToolItem,
   input: Record_,
   result: Record_ | null,
+  resolve: MFunctionType,
 ): ToolPreview | null {
   const tool = item.toolName ?? "";
-  if (tool.endsWith("slack_read_thread")) return slackPreview(str(result?.messages));
-  if (/slack_search_public(?:_and_private)?$/.test(tool)) return slackPreview(str(result?.results));
+  if (tool.endsWith("slack_read_thread")) return slackPreview(str(result?.messages), resolve);
+  if (/slack_search_public(?:_and_private)?$/.test(tool))
+    return slackPreview(str(result?.results), resolve);
   switch (tool) {
     case "ToolSearch": {
       const matches = Array.isArray(result?.matches) ? result.matches.filter(isText) : [];

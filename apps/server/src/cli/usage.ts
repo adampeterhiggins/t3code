@@ -2,6 +2,8 @@ import {
   UsageDay,
   WS_METHODS,
   type ServerConfig,
+  type ServerProviderUsageLimits,
+  type ServerProviderUsageWindow,
   type UsageBucket,
   type UsageLimitSourceSnapshots,
   type UsageSummary,
@@ -9,8 +11,8 @@ import {
 import {
   collectDegradedServices,
   collectLimitAccounts,
-  collectLimitNotices,
-  formatResetsIn,
+  providersWithLimits,
+  resetCountdown,
   type LimitAccount,
   type LimitPresentations,
 } from "@t3tools/shared/usageLimits";
@@ -23,6 +25,7 @@ import { Command, Flag } from "effect/cli";
 import {
   LiveRpcFailedError,
   LiveUsageError,
+  formatDuration,
   jsonFlag,
   liveLocationFlags,
   printJson,
@@ -91,6 +94,48 @@ export const limitsReport = (input: {
     notices: collectLimitNotices(presentations),
     degradedServices: collectDegradedServices(presentations),
   };
+};
+
+// English copies of the `@t3tools/shared/usageLimitsCopy` helpers, which only clients import.
+const limitsNotice = (limits: ServerProviderUsageLimits) => {
+  if (limits.unavailable?.reason === "unsupported") {
+    return limits.unavailable.message ?? "This account has no subscription limits.";
+  }
+  if (limits.unavailable?.reason === "probeFailed") {
+    return limits.unavailable.message ?? "Could not read limits.";
+  }
+  return limits.windows.length === 0 ? "No limits reported." : null;
+};
+
+const collectLimitNotices = (presentations: LimitPresentations): readonly string[] => {
+  const label = (environmentLabel: string, subject: string) =>
+    presentations.size > 1 ? `${environmentLabel} · ${subject}` : subject;
+  const notices = new Set<string>();
+  for (const presentation of presentations.values()) {
+    const environmentLabel = presentation.entry.target.label;
+    for (const provider of providersWithLimits(presentation.serverConfig?.providers ?? [])) {
+      if (provider.usageLimits?.unavailable?.reason === "unsupported") continue;
+      const notice = provider.usageLimits ? limitsNotice(provider.usageLimits) : null;
+      const name = provider.displayName?.trim() || String(provider.driver);
+      if (notice) notices.add(`${label(environmentLabel, name)}: ${notice}`);
+    }
+    for (const source of presentation.serverConfig?.usageLimitSources ?? []) {
+      if (source.error) {
+        notices.add(`${label(environmentLabel, source.label)}: ${source.error}`);
+      } else if (source.accounts.length === 0) {
+        notices.add(`${label(environmentLabel, source.label)}: No accounts reported.`);
+      }
+    }
+  }
+  return [...notices];
+};
+
+const formatResetsIn = (window: ServerProviderUsageWindow, now: number) => {
+  const countdown = resetCountdown(window, now);
+  if (countdown === null) return null;
+  if (countdown.kind === "now") return "resets now";
+  if (countdown.kind === "momentarily") return "Resets momentarily";
+  return `resets in ${formatDuration(countdown.ms)}`;
 };
 
 const accountName = (account: LimitAccount) => account.displayName ?? String(account.driver);

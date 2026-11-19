@@ -1,4 +1,5 @@
 import type { Organisation } from "@t3tools/contracts/settings";
+import { T, useGT } from "gt-react";
 import { lazy, Suspense, useState } from "react";
 
 import { useOrganisations } from "../../hooks/useOrganisations";
@@ -22,6 +23,7 @@ const ProjectIconPickerDialog = lazy(() =>
 
 /** Names and icons for the repository owners the sidebar's Organisations filter lists. */
 export function OrganisationsSettings() {
+  const gt = useGT();
   const groups = useSettingsProjectGroups();
   const { organisations, saveOrganisation } = useOrganisations();
   const options = buildOrganisationOptions(
@@ -31,11 +33,13 @@ export function OrganisationsSettings() {
 
   return (
     <SettingsPageContainer>
-      <SettingsSection id="organisations" title="Organisations">
+      <SettingsSection id="organisations" title={gt("Organisations")}>
         {options.length === 0 ? (
           <p className="px-3 py-2 text-sm text-muted-foreground sm:px-4">
-            Organisations come from your projects' git remotes. Add a project with a remote to name
-            and style its organisation.
+            <T>
+              Organisations come from your projects' git remotes. Add a project with a remote to
+              name and style its organisation.
+            </T>
           </p>
         ) : (
           options.map((option) => (
@@ -55,6 +59,7 @@ function OrganisationRow(props: {
   option: OrganisationOption;
   onSave: (organisation: Organisation) => void;
 }) {
+  const gt = useGT();
   const { option } = props;
   const current = option.organisation ?? {};
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
@@ -85,7 +90,9 @@ function OrganisationRow(props: {
       resetAction={
         option.organisation ? (
           <SettingResetButton
-            label={`${option.label} name and icon`}
+            ariaLabel={gt("Reset {organisation} name and icon to default", {
+              organisation: option.label,
+            })}
             onClick={() => props.onSave({})}
           />
         ) : null
@@ -96,7 +103,7 @@ function OrganisationRow(props: {
             key={`${option.key}:${current.name ?? ""}`}
             size="sm"
             className="w-full sm:w-48"
-            aria-label={`${option.defaultLabel} display name`}
+            aria-label={gt("{organisation} display name", { organisation: option.defaultLabel })}
             placeholder={option.defaultLabel}
             defaultValue={current.name ?? ""}
             onBlur={(event) => saveName(event.currentTarget.value)}
@@ -109,27 +116,29 @@ function OrganisationRow(props: {
               size="sm"
               variant="outline"
               type="button"
-              aria-label={`Use the GitHub avatar for ${option.label}`}
+              aria-label={gt("Use the GitHub avatar for {organisation}", {
+                organisation: option.label,
+              })}
               onClick={() => save({ icon: undefined })}
             >
-              Use GitHub avatar
+              <T>Use GitHub avatar</T>
             </Button>
           ) : null}
           <Button
             size="sm"
             variant="outline"
             type="button"
-            aria-label={`Choose an icon for ${option.label}`}
+            aria-label={gt("Choose an icon for {organisation}", { organisation: option.label })}
             onClick={() => setIconPickerOpen(true)}
           >
-            Choose icon
+            <T>Choose icon</T>
           </Button>
           {iconPickerOpen ? (
             <Suspense fallback={null}>
               <ProjectIconPickerDialog
                 current={current.icon ?? null}
                 projectName={option.label}
-                title="Choose organisation icon"
+                title={gt("Choose organisation icon")}
                 open
                 onOpenChange={setIconPickerOpen}
                 onSelect={(icon) => save({ icon })}

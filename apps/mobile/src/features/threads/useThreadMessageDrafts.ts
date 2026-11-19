@@ -19,9 +19,11 @@ import type * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import { uploadComposerAttachmentShared } from "../../state/composer-attachment-uploads";
 import { AsyncResult } from "effect/reactivity";
+import { msg } from "gt-react-native";
 import { useRef, useState } from "react";
 
 import * as Dialog from "../../components/ui/Dialog";
+import { m } from "../../i18n/messages";
 import { prepareTurnAttachments, type UploadedMobileAttachment } from "../../lib/attachmentUpload";
 import { uploadedComposerContext } from "../../lib/composerContext";
 import type { DraftComposerAttachment } from "../../lib/composerImages";
@@ -120,7 +122,7 @@ export function useThreadMessageDrafts(input: {
       ),
     );
     if (AsyncResult.isFailure(prepared)) {
-      Dialog.alert("Could not save draft", failureText(prepared));
+      Dialog.alert(m(msg("Could not save draft")), failureText(prepared));
       return false;
     }
     if (prepared.value.status !== "ready") return false;
@@ -134,7 +136,10 @@ export function useThreadMessageDrafts(input: {
     };
     const attachments = messageDraftAttachmentsFromPrepared(resolved.attachments);
     if (attachments === null) {
-      Dialog.alert("Could not save draft", "This server cannot keep attachments in drafts.");
+      Dialog.alert(
+        m(msg("Could not save draft")),
+        m(msg("This server cannot keep attachments in drafts.")),
+      );
       return false;
     }
     const saved = await save({
@@ -148,7 +153,7 @@ export function useThreadMessageDrafts(input: {
       },
     });
     if (saved._tag !== "Success") {
-      Dialog.alert("Could not save draft", failureText(saved));
+      Dialog.alert(m(msg("Could not save draft")), failureText(saved));
       return false;
     }
     return true;
@@ -189,8 +194,12 @@ export function useThreadMessageDrafts(input: {
     scheduleUnusedComposerAttachmentCleanup(draft.attachments);
     if (cancelled._tag !== "Success") {
       Dialog.alert(
-        "Saved as a draft",
-        "The queued message may have already started, so it could not be removed from the queue.",
+        m(msg("Saved as a draft")),
+        m(
+          msg(
+            "The queued message may have already started, so it could not be removed from the queue.",
+          ),
+        ),
       );
     }
     return true;
@@ -201,7 +210,7 @@ export function useThreadMessageDrafts(input: {
     if (!(await saveComposer())) return false;
     const taken = await take({ environmentId, input: { draftId } });
     if (taken._tag !== "Success") {
-      Dialog.alert("Could not open draft", failureText(taken));
+      Dialog.alert(m(msg("Could not open draft")), failureText(taken));
       return false;
     }
     const draft: MessageDraft = taken.value;
@@ -220,7 +229,10 @@ export function useThreadMessageDrafts(input: {
           origin: draft.origin,
         },
       });
-      Dialog.alert("Could not open draft", "Its attachments could not be downloaded. Try again.");
+      Dialog.alert(
+        m(msg("Could not open draft")),
+        m(msg("Its attachments could not be downloaded. Try again.")),
+      );
       return false;
     }
     await mergeComposerDraftContent(threadKey, {
@@ -243,14 +255,14 @@ export function useThreadMessageDrafts(input: {
       exclusive(async () => {
         const result = await send({ environmentId, input: { draftId, mode } });
         if (result._tag === "Success") return true;
-        Dialog.alert("Could not send draft", failureText(result));
+        Dialog.alert(m(msg("Could not send draft")), failureText(result));
         return false;
       }),
     remove: (draftId: MessageDraftId) =>
       exclusive(async () => {
         const result = await remove({ environmentId, input: { draftId } });
         if (result._tag === "Success") return true;
-        Dialog.alert("Could not delete draft", failureText(result));
+        Dialog.alert(m(msg("Could not delete draft")), failureText(result));
         return false;
       }),
   };

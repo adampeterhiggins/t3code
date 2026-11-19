@@ -1,5 +1,6 @@
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import { msg, useGT } from "gt-react";
 import type { ReactElement } from "react";
 
 import { useLinkClickHandler } from "~/browser/useOpenLink";
@@ -13,8 +14,14 @@ const NO_THREADS: ReadonlyArray<EnvironmentThreadShell> = [];
 
 /** How an issue's state reads in rows and the header chip: open in green, closed in violet. */
 export const GITHUB_ISSUE_STATE_PRESENTATION = {
-  open: { label: "Open", toneClassName: "text-emerald-600 dark:text-emerald-300/90" },
-  closed: { label: "Closed", toneClassName: "text-violet-600 dark:text-violet-300/90" },
+  open: {
+    label: msg("Open", { $context: "GitHub issue state" }),
+    toneClassName: "text-emerald-600 dark:text-emerald-300/90",
+  },
+  closed: {
+    label: msg("Closed", { $context: "GitHub issue state" }),
+    toneClassName: "text-violet-600 dark:text-violet-300/90",
+  },
 } as const;
 
 /**
@@ -44,6 +51,7 @@ function GitHubIssuePreviewBody(props: {
   threads?: ReadonlyArray<EnvironmentThreadShell>;
   onOpenThread?: (thread: EnvironmentThreadShell) => void;
 }) {
+  const gt = useGT();
   const issue = useEnvironmentQuery(
     githubIssueEnvironment.issue({
       environmentId: props.environmentId,
@@ -53,7 +61,7 @@ function GitHubIssuePreviewBody(props: {
   const openLink = useLinkClickHandler(props.threadRef);
   const detail = issue.data;
   if (detail === null) {
-    return <p className="text-muted-foreground">{issue.error ?? "Loading issue…"}</p>;
+    return <p className="text-muted-foreground">{issue.error ?? gt("Loading issue…")}</p>;
   }
   return (
     <div className="flex flex-col gap-2">

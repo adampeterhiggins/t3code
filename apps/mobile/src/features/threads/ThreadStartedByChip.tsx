@@ -1,11 +1,12 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { resolveStartedBy, startedByThreadRef } from "@t3tools/client-runtime/state/startedBy";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
-import { useNavigation } from "@react-navigation/native";
+import { useMessages } from "gt-react-native";
 import { Pressable, Text } from "react-native";
 
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { useThreadShell } from "../../state/entities";
+import { useOpenLinkedThread } from "./useOpenLinkedThread";
 
 /**
  * Names who started a thread when an agent did: the thread whose agent
@@ -15,10 +16,11 @@ export function ThreadStartedByChip(props: {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
 }) {
-  const navigation = useNavigation();
+  const openLinkedThread = useOpenLinkedThread();
+  const messages = useMessages();
   const thread = useThreadShell(scopeThreadRef(props.environmentId, props.threadId));
   const starter = useThreadShell(startedByThreadRef(thread));
-  const attribution = resolveStartedBy(thread, starter);
+  const attribution = resolveStartedBy(thread, starter, messages);
   if (attribution === null) return null;
   const { label, description, openRef } = attribution;
 
@@ -29,7 +31,7 @@ export function ThreadStartedByChip(props: {
       disabled={openRef === null}
       onPress={() => {
         if (openRef === null) return;
-        navigation.navigate("Thread", {
+        openLinkedThread({
           environmentId: String(openRef.environmentId),
           threadId: String(openRef.threadId),
         });

@@ -1,3 +1,4 @@
+import { LegendList } from "@legendapp/list/react-native";
 import { threadsForPullRequest } from "@t3tools/client-runtime/state/pull-requests";
 import {
   isAtomCommandInterrupted,
@@ -5,8 +6,9 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentId, ProjectId, PullRequestListEntry } from "@t3tools/contracts";
 import { StackActions, useNavigation } from "@react-navigation/native";
+import { useGT } from "gt-react-native";
 import { useState, type ReactNode } from "react";
-import { ActivityIndicator, Alert, FlatList, Pressable, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText as Text, AppTextInput } from "../../components/ui/AppText";
@@ -55,6 +57,7 @@ export function useStartFromPullRequestPicker(target: StartFromPullRequestTarget
 function StartFromPullRequestSheet(
   props: StartFromPullRequestTarget & { readonly onClose: () => void },
 ) {
+  const gt = useGT();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const [query, setQuery] = useState("");
@@ -94,7 +97,7 @@ function StartFromPullRequestSheet(
       if (!isAtomCommandInterrupted(result)) {
         const failure = squashAtomCommandFailure(result);
         Alert.alert(
-          `Could not check out #${entry.number}`,
+          gt("Could not check out #{number}", { number: entry.number }),
           failure instanceof Error ? failure.message : undefined,
         );
       }
@@ -104,8 +107,10 @@ function StartFromPullRequestSheet(
     props.onClose();
     if (!result.value.isOnPullRequestHead) {
       Alert.alert(
-        "Checked out, but not on the latest commits",
-        "The worktree holds uncommitted work or local commits, so it stays behind the pull request.",
+        gt("Checked out, but not on the latest commits"),
+        gt(
+          "The worktree holds uncommitted work or local commits, so it stays behind the pull request.",
+        ),
       );
     }
   };
@@ -131,23 +136,28 @@ function StartFromPullRequestSheet(
   };
 
   return (
-    <PickerSheet title="Start from pull request" onClose={props.onClose}>
+    <PickerSheet title={gt("Start from pull request")} onClose={props.onClose}>
       <View className="px-4 pb-3">
         <AppTextInput
-          accessibilityLabel="Search pull requests"
+          accessibilityLabel={gt("Search pull requests")}
           autoFocus
           autoCapitalize="none"
           autoCorrect={false}
           clearButtonMode="while-editing"
-          placeholder="Search open pull requests"
+          placeholder={gt("Search open pull requests")}
           returnKeyType="search"
           value={query}
           onChangeText={setQuery}
         />
       </View>
-      <FlatList
+      {/* oxlint-disable-next-line t3code/require-registered-list-scroll -- PickerSheet is a Modal with an inline header; there is no navigation header to register with. */}
+      <LegendList
         data={entries}
         keyExtractor={(entry) => entry.url}
+        extraData={{ checkingOut, pick }}
+        estimatedItemSize={64}
+        recycleItems
+        className="flex-1"
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) }}
         ListEmptyComponent={
@@ -161,7 +171,8 @@ function StartFromPullRequestSheet(
                   error ? "text-center text-danger-foreground" : "text-center text-foreground-muted"
                 }
               >
-                {error ?? (trimmed ? "No matching pull requests." : "No open pull requests.")}
+                {error ??
+                  (trimmed ? gt("No matching pull requests.") : gt("No open pull requests."))}
               </Text>
             )}
           </View>
@@ -171,7 +182,11 @@ function StartFromPullRequestSheet(
           return (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`#${item.number} ${item.title}${inUse ? ", in use" : ""}`}
+              accessibilityLabel={
+                inUse
+                  ? gt("#{number} {title}, in use", { number: item.number, title: item.title })
+                  : `#${item.number} ${item.title}`
+              }
               disabled={checkingOut !== null}
               onPress={() => void pick(item)}
               className="flex-row items-center gap-3 px-4 py-3 active:bg-subtle disabled:opacity-60"
@@ -182,9 +197,9 @@ function StartFromPullRequestSheet(
                 </Text>
                 <Text className="text-sm text-foreground-muted" numberOfLines={1}>
                   #{item.number}
-                  {item.isDraft ? " · draft" : ""}
+                  {item.isDraft ? ` · ${gt("draft", { $context: "pull request state" })}` : ""}
                   {item.author ? ` · ${item.author.login}` : ""}
-                  {inUse ? " · in use" : ""}
+                  {inUse ? ` · ${gt("in use", { $context: "pull request has a thread" })}` : ""}
                 </Text>
               </View>
               {checkingOut === item.url ? <ActivityIndicator /> : null}

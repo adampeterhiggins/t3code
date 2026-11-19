@@ -1,5 +1,6 @@
 import type { ProjectIconColor } from "@t3tools/contracts";
 import { SidebarThreadView, type ThreadGroup } from "@t3tools/contracts/settings";
+import { msg, T, useGT, useMessages } from "gt-react";
 import { lazy, Suspense, useEffect, useId, useState } from "react";
 import { create } from "zustand";
 
@@ -27,11 +28,11 @@ const ProjectIconPickerDialog = lazy(() =>
   })),
 );
 
-// "default" follows the Grouped threads setting in Settings.
+// "default" follows the Grouped threads setting in Settings. `msg()` labels: render with `useMessages()`.
 export const THREAD_GROUP_VIEW_LABELS = {
-  default: "Default",
-  card: "Detailed",
-  slim: "Compact",
+  default: msg("Default"),
+  card: msg("Detailed"),
+  slim: msg("Compact"),
 } as const;
 
 export interface ThreadGroupDraft {
@@ -72,6 +73,8 @@ export function ThreadGroupDialogHost() {
 
 function ThreadGroupDialog(props: { initial: ThreadGroupDraft | null }) {
   const id = useId();
+  const gt = useGT();
+  const messages = useMessages();
   const editing = props.initial !== null;
   const [name, setName] = useState(props.initial?.name ?? "");
   const [style, setStyle] = useState<ThreadGroup>(props.initial?.group ?? {});
@@ -101,27 +104,31 @@ function ThreadGroupDialog(props: { initial: ThreadGroupDraft | null }) {
           }}
         >
           <DialogHeader>
-            <DialogTitle>{editing ? "Edit group" : "New group"}</DialogTitle>
+            <DialogTitle>{editing ? gt("Edit group") : gt("New group")}</DialogTitle>
             <DialogDescription>
               {editing
-                ? "Renaming moves every thread in the group along with it."
-                : "Pick the group under Show in the sidebar filters to see it."}
+                ? gt("Renaming moves every thread in the group along with it.")
+                : gt("Pick the group under Show in the sidebar filters to see it.")}
             </DialogDescription>
           </DialogHeader>
           <DialogPanel>
             <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor={`${id}-name`}>Name</Label>
+                <Label htmlFor={`${id}-name`}>
+                  <T>Name</T>
+                </Label>
                 <Input
                   id={`${id}-name`}
                   autoFocus
                   value={name}
                   onChange={(event) => setName(event.currentTarget.value)}
-                  placeholder="Research"
+                  placeholder={gt("Research", { $context: "example thread group name" })}
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label>Icon</Label>
+                <Label>
+                  <T>Icon</T>
+                </Label>
                 <div className="flex items-center gap-2">
                   <ThreadGroupIcon style={style} name={trimmed} className="size-6" />
                   <Button
@@ -130,21 +137,23 @@ function ThreadGroupDialog(props: { initial: ThreadGroupDraft | null }) {
                     variant="outline"
                     onClick={() => setIconPickerOpen(true)}
                   >
-                    Choose…
+                    <T>Choose…</T>
                   </Button>
                   {style.icon ? (
                     <Button type="button" size="sm" variant="ghost" onClick={clearIcon}>
-                      Remove
+                      <T>Remove</T>
                     </Button>
                   ) : null}
                 </div>
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label>Accent</Label>
+                <Label>
+                  <T>Accent</T>
+                </Label>
                 <div className="flex flex-wrap gap-1">
                   <button
                     type="button"
-                    aria-label="No accent"
+                    aria-label={gt("No accent")}
                     aria-pressed={style.accent === undefined}
                     className={cn(
                       "flex size-6 items-center justify-center rounded-full border border-transparent outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
@@ -158,7 +167,7 @@ function ThreadGroupDialog(props: { initial: ThreadGroupDraft | null }) {
                     <button
                       key={option.value}
                       type="button"
-                      aria-label={option.label}
+                      aria-label={messages(option.label)}
                       aria-pressed={style.accent === option.value}
                       className={cn(
                         "flex size-6 items-center justify-center rounded-full border border-transparent outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
@@ -172,7 +181,9 @@ function ThreadGroupDialog(props: { initial: ThreadGroupDraft | null }) {
                 </div>
               </div>
               <div className="flex items-center justify-between gap-3">
-                <Label htmlFor={`${id}-view`}>Rows</Label>
+                <Label htmlFor={`${id}-view`}>
+                  <T>Rows</T>
+                </Label>
                 <div className="w-36">
                   <Select
                     value={style.view ?? "default"}
@@ -184,12 +195,14 @@ function ThreadGroupDialog(props: { initial: ThreadGroupDraft | null }) {
                     }}
                   >
                     <SelectTrigger id={`${id}-view`} size="sm">
-                      <SelectValue>{THREAD_GROUP_VIEW_LABELS[style.view ?? "default"]}</SelectValue>
+                      <SelectValue>
+                        {messages(THREAD_GROUP_VIEW_LABELS[style.view ?? "default"])}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectPopup>
                       {(["default", ...SidebarThreadView.literals] as const).map((view) => (
                         <SelectItem key={view} value={view}>
-                          {THREAD_GROUP_VIEW_LABELS[view]}
+                          {messages(THREAD_GROUP_VIEW_LABELS[view])}
                         </SelectItem>
                       ))}
                     </SelectPopup>
@@ -197,7 +210,9 @@ function ThreadGroupDialog(props: { initial: ThreadGroupDraft | null }) {
                 </div>
               </div>
               <label className="flex items-center justify-between gap-3 text-sm">
-                <span>Also show its threads in Threads, Snoozed and Settled</span>
+                <span>
+                  <T>Also show its threads in Threads, Snoozed and Settled</T>
+                </span>
                 <Switch
                   checked={style.showInThreads === true}
                   onCheckedChange={(checked) => {
@@ -207,7 +222,9 @@ function ThreadGroupDialog(props: { initial: ThreadGroupDraft | null }) {
                 />
               </label>
               <label className="flex items-center justify-between gap-3 text-sm">
-                <span>Show settled threads</span>
+                <span>
+                  <T>Show settled threads</T>
+                </span>
                 <Switch
                   checked={style.showSettled !== false}
                   onCheckedChange={(checked) => {
@@ -227,15 +244,15 @@ function ThreadGroupDialog(props: { initial: ThreadGroupDraft | null }) {
                   variant="destructive-outline"
                   onClick={() => finish("delete")}
                 >
-                  Delete group
+                  <T>Delete group</T>
                 </Button>
               </div>
             ) : null}
             <Button type="button" variant="outline" onClick={() => finish(null)}>
-              Cancel
+              <T>Cancel</T>
             </Button>
             <Button type="submit" disabled={trimmed.length === 0}>
-              {editing ? "Save" : "Create group"}
+              {editing ? gt("Save") : gt("Create group")}
             </Button>
           </DialogFooter>
         </form>
@@ -244,7 +261,7 @@ function ThreadGroupDialog(props: { initial: ThreadGroupDraft | null }) {
         <Suspense fallback={null}>
           <ProjectIconPickerDialog
             current={style.icon ?? null}
-            projectName={trimmed || "Group"}
+            projectName={trimmed || gt("Group", { $context: "fallback thread group name" })}
             open={iconPickerOpen}
             onOpenChange={setIconPickerOpen}
             onSelect={(icon) => {

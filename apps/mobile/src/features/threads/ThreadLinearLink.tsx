@@ -2,6 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { linearLinkForThread } from "@t3tools/client-runtime/state/linear";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentId, LinearThreadLink, ThreadId } from "@t3tools/contracts";
+import { useGT } from "gt-react-native";
 import { Alert, Pressable, Text, View } from "react-native";
 
 import { Menu } from "../../components/ui/Menu";
@@ -47,6 +48,7 @@ export function ThreadLinearLinkChip(props: {
   readonly onChange?: () => void;
 }) {
   const { environmentId, threadId, link } = props;
+  const gt = useGT();
   const summary = useEnvironmentQuery(
     linearEnvironment.issueSummary({ environmentId, input: { id: link.issueId } }),
   ).data;
@@ -64,8 +66,8 @@ export function ThreadLinearLinkChip(props: {
     if (result._tag === "Failure") {
       const error = squashAtomCommandFailure(result);
       Alert.alert(
-        "Could not unlink issue",
-        error instanceof Error && error.message.trim() ? error.message : "Try again.",
+        gt("Could not unlink issue"),
+        error instanceof Error && error.message.trim() ? error.message : gt("Try again."),
       );
     }
   };
@@ -74,7 +76,7 @@ export function ThreadLinearLinkChip(props: {
     if (watch.handleMenuAction(id)) return;
     if (id === OPEN_ACTION) {
       void tryOpenExternalUrl(url, "linear").then((opened) => {
-        if (!opened) Alert.alert("Could not open Linear", "Try again later.");
+        if (!opened) Alert.alert(gt("Could not open Linear"), gt("Try again later."));
       });
     } else if (id === CHANGE_ACTION) props.onChange?.();
     else if (id === UNLINK_ACTION) void unlink();
@@ -84,19 +86,19 @@ export function ThreadLinearLinkChip(props: {
     <Menu
       accessible
       accessibilityRole="button"
-      accessibilityLabel={`Linked Linear issue ${identifier}: ${title}`}
+      accessibilityLabel={gt("Linked Linear issue {identifier}: {title}", { identifier, title })}
       title={`${identifier} ${title}`}
       actions={[
-        { id: OPEN_ACTION, title: "Open in Linear", image: "arrow.up.right.square" },
+        { id: OPEN_ACTION, title: gt("Open in Linear"), image: "arrow.up.right.square" },
         ...watch.menuActions,
         ...(canEdit && props.onChange
-          ? [{ id: CHANGE_ACTION, title: "Change issue…", image: "pencil" }]
+          ? [{ id: CHANGE_ACTION, title: gt("Change issue…"), image: "pencil" }]
           : []),
         ...(canEdit
           ? [
               {
                 id: UNLINK_ACTION,
-                title: "Unlink issue",
+                title: gt("Unlink issue"),
                 image: "link",
                 attributes: { destructive: true },
               },
@@ -106,7 +108,7 @@ export function ThreadLinearLinkChip(props: {
       onPressAction={({ nativeEvent }) => onMenuAction(nativeEvent.event)}
     >
       <Pressable
-        accessibilityLabel={`Linked Linear issue ${identifier}: ${title}`}
+        accessibilityLabel={gt("Linked Linear issue {identifier}: {title}", { identifier, title })}
         accessibilityRole="button"
         className="shrink-0 flex-row items-center gap-1.5 rounded-full bg-subtle px-3 py-1.5 active:opacity-70"
       >

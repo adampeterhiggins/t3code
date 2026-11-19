@@ -2,6 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { gitHubIssueLinkForThread } from "@t3tools/client-runtime/state/github-issues";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentId, GitHubIssueThreadLink, ThreadId } from "@t3tools/contracts";
+import { useGT } from "gt-react-native";
 import { Alert, Pressable, Text, View } from "react-native";
 
 import { Menu } from "../../components/ui/Menu";
@@ -40,6 +41,7 @@ export function ThreadGitHubIssueLinkChip(props: {
   readonly onChange?: () => void;
 }) {
   const { environmentId, threadId, link, onChange } = props;
+  const gt = useGT();
   const summary = useEnvironmentQuery(
     gitHubIssueEnvironment.issueSummary({ environmentId, input: { url: link.url } }),
   ).data;
@@ -56,8 +58,8 @@ export function ThreadGitHubIssueLinkChip(props: {
     if (result._tag === "Failure") {
       const error = squashAtomCommandFailure(result);
       Alert.alert(
-        "Could not unlink issue",
-        error instanceof Error && error.message.trim() ? error.message : "Try again.",
+        gt("Could not unlink issue"),
+        error instanceof Error && error.message.trim() ? error.message : gt("Try again."),
       );
     }
   };
@@ -66,7 +68,7 @@ export function ThreadGitHubIssueLinkChip(props: {
     if (watch.handleMenuAction(id)) return;
     if (id === OPEN_ACTION) {
       void tryOpenExternalUrl(link.url, "github-issue").then((opened) => {
-        if (!opened) Alert.alert("Could not open GitHub", "Try again later.");
+        if (!opened) Alert.alert(gt("Could not open GitHub"), gt("Try again later."));
       });
     } else if (id === CHANGE_ACTION) onChange?.();
     else if (id === UNLINK_ACTION) void unlink();
@@ -76,19 +78,19 @@ export function ThreadGitHubIssueLinkChip(props: {
     <Menu
       accessible
       accessibilityRole="button"
-      accessibilityLabel={`Linked GitHub issue ${label}: ${title}`}
+      accessibilityLabel={gt("Linked GitHub issue {label}: {title}", { label, title })}
       title={`${label} ${title}`}
       actions={[
-        { id: OPEN_ACTION, title: "Open on GitHub", image: "arrow.up.right.square" },
+        { id: OPEN_ACTION, title: gt("Open on GitHub"), image: "arrow.up.right.square" },
         ...watch.menuActions,
         ...(canEdit && onChange
-          ? [{ id: CHANGE_ACTION, title: "Change issue…", image: "pencil" }]
+          ? [{ id: CHANGE_ACTION, title: gt("Change issue…"), image: "pencil" }]
           : []),
         ...(canEdit
           ? [
               {
                 id: UNLINK_ACTION,
-                title: "Unlink issue",
+                title: gt("Unlink issue"),
                 image: "link",
                 attributes: { destructive: true },
               },
@@ -98,7 +100,7 @@ export function ThreadGitHubIssueLinkChip(props: {
       onPressAction={({ nativeEvent }) => onMenuAction(nativeEvent.event)}
     >
       <Pressable
-        accessibilityLabel={`Linked GitHub issue ${label}: ${title}`}
+        accessibilityLabel={gt("Linked GitHub issue {label}: {title}", { label, title })}
         accessibilityRole="button"
         className="shrink-0 flex-row items-center gap-1.5 rounded-full bg-subtle px-3 py-1.5 active:opacity-70"
       >
@@ -110,7 +112,9 @@ export function ThreadGitHubIssueLinkChip(props: {
               style={{ backgroundColor: STATE_COLORS[summary.state] }}
             />
             <Text className="text-sm text-muted-foreground">
-              {summary.state === "open" ? "Open" : "Closed"}
+              {summary.state === "open"
+                ? gt("Open", { $context: "issue state" })
+                : gt("Closed", { $context: "issue state" })}
             </Text>
           </>
         ) : null}

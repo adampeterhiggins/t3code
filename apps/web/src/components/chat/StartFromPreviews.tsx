@@ -6,10 +6,12 @@ import type {
   ScopedThreadRef,
   VcsRef,
 } from "@t3tools/contracts";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
 import { GitBranchIcon } from "lucide-react";
 import type { ReactElement } from "react";
 
 import { useLinkClickHandler } from "~/browser/useOpenLink";
+import { m, type MessageResolver } from "~/i18n/messages";
 import { pullRequestEnvironment } from "~/state/pullRequests";
 import { useEnvironmentQuery } from "~/state/query";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
@@ -40,7 +42,9 @@ export function ThreadsInUse(props: {
   const extra = props.threads.length - LISTED_THREADS;
   return (
     <div className="flex flex-col gap-0.5 border-t pt-2 text-muted-foreground">
-      <span>Already in use by</span>
+      <span>
+        <T>Already in use by</T>
+      </span>
       {props.threads.slice(0, LISTED_THREADS).map((thread) =>
         onOpenThread ? (
           <button
@@ -57,7 +61,13 @@ export function ThreadsInUse(props: {
           </span>
         ),
       )}
-      {extra > 0 ? <span>and {extra} more</span> : null}
+      {extra > 0 ? (
+        <span>
+          <T>
+            and <Var>{extra}</Var> more
+          </T>
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -82,6 +92,7 @@ function PullRequestPreviewBody(props: {
   threads: ReadonlyArray<EnvironmentThreadShell>;
 }) {
   const { entry } = props;
+  const gt = useGT();
   const detailQuery = useEnvironmentQuery(
     pullRequestEnvironment.detail({
       environmentId: entry.environmentId,
@@ -118,7 +129,9 @@ function PullRequestPreviewBody(props: {
           className="shrink-0 underline-offset-2 hover:text-foreground hover:underline"
           onClick={(event) => onLinkClick(event, entry.url)}
         >
-          {entry.provider === "github" ? "Open on GitHub" : "Open"}
+          {entry.provider === "github"
+            ? gt("Open on GitHub")
+            : gt("Open", { $context: "verb, opens the pull request in the browser" })}
         </a>
       </div>
       <p className="font-medium text-foreground text-sm leading-snug text-pretty">{entry.title}</p>
@@ -126,7 +139,11 @@ function PullRequestPreviewBody(props: {
         <PullRequestActorAvatar actor={author} className="size-4" />
         <span className="min-w-0 truncate">{author?.login ?? "ghost"}</span>
         <span aria-hidden>·</span>
-        <span className="shrink-0">opened {formatRelativeTimeLabel(entry.createdAt)}</span>
+        <span className="shrink-0">
+          <T>
+            opened <Var>{formatRelativeTimeLabel(entry.createdAt)}</Var>
+          </T>
+        </span>
       </div>
       <div className="flex min-w-0 items-center gap-1.5 font-mono text-muted-foreground">
         <span className="min-w-0 truncate">{entry.headBranch}</span>
@@ -142,10 +159,10 @@ function PullRequestPreviewBody(props: {
       </div>
       <div className="max-h-80 overflow-y-auto rounded-lg border border-border/70 bg-background/70 px-3 py-2.5 text-xs text-foreground">
         {detail === null ? (
-          <p className="text-muted-foreground">{detailQuery.error ?? "Loading description…"}</p>
+          <p className="text-muted-foreground">{detailQuery.error ?? gt("Loading description…")}</p>
         ) : (
           <PullRequestMarkdown
-            text={detail.body.trim().length > 0 ? detail.body : "_No description provided._"}
+            text={detail.body.trim().length > 0 ? detail.body : gt("_No description provided._")}
             cwd={detail.workspaceRoot}
             environmentId={entry.environmentId}
             threadRef={props.threadRef}
@@ -158,10 +175,18 @@ function PullRequestPreviewBody(props: {
 }
 
 /** Where a branch would be worked on, as `resolveBranchStart` decides it. */
-function branchCheckoutLabel(branch: VcsRef, workspaceRoot: string): string {
-  if (branch.worktreePath === workspaceRoot) return "Checked out in the project folder";
-  if (branch.worktreePath !== null) return `Checked out in ${branch.worktreePath}`;
-  return "Starts in a new worktree";
+function branchCheckoutLabel(
+  branch: VcsRef,
+  workspaceRoot: string,
+  resolve: MessageResolver = m,
+): string {
+  if (branch.worktreePath === workspaceRoot) {
+    return resolve(msg("Checked out in the project folder"));
+  }
+  if (branch.worktreePath !== null) {
+    return resolve(msg("Checked out in {path}"), { path: branch.worktreePath });
+  }
+  return resolve(msg("Starts in a new worktree"));
 }
 
 /** Hover card for a branch row: its full name, where it would run, and threads already on it. */
@@ -172,13 +197,15 @@ export function BranchHoverPreview(props: {
   trigger: ReactElement;
 }) {
   const { branch } = props;
+  const gt = useGT();
+  const resolve = useMessages();
   const kind = branch.current
-    ? "Current branch"
+    ? gt("Current branch")
     : branch.isDefault
-      ? "Default branch"
+      ? gt("Default branch")
       : branch.isRemote
-        ? `Remote branch, worked on as ${localBranchName(branch)}`
-        : "Local branch";
+        ? gt("Remote branch, worked on as {name}", { name: localBranchName(branch) })
+        : gt("Local branch");
   return (
     <CursorPreviewCard trigger={props.trigger}>
       <div className="flex flex-col gap-2">
@@ -188,7 +215,9 @@ export function BranchHoverPreview(props: {
         </div>
         <div className="flex flex-col gap-0.5 text-muted-foreground">
           <span>{kind}</span>
-          <span className="break-all">{branchCheckoutLabel(branch, props.workspaceRoot)}</span>
+          <span className="break-all">
+            {branchCheckoutLabel(branch, props.workspaceRoot, resolve)}
+          </span>
         </div>
         <ThreadsInUse threads={props.threads} />
       </div>
@@ -196,17 +225,25 @@ export function BranchHoverPreview(props: {
   );
 }
 
-function workspaceLabel(strategy: OrchestrationV2ThreadLaunchWorkspaceStrategy): string {
-  if (strategy.type === "root") return "Runs in the project checkout";
-  if (strategy.type === "existing_worktree") return `Runs in ${strategy.worktreePath}`;
-  return `Runs in a new worktree from ${strategy.startFromOrigin ? "origin/" : ""}${strategy.baseRef}`;
+function workspaceLabel(
+  strategy: OrchestrationV2ThreadLaunchWorkspaceStrategy,
+  resolve: MessageResolver = m,
+): string {
+  if (strategy.type === "root") return resolve(msg("Runs in the project checkout"));
+  if (strategy.type === "existing_worktree") {
+    return resolve(msg("Runs in {path}"), { path: strategy.worktreePath });
+  }
+  return resolve(msg("Runs in a new worktree from {ref}"), {
+    ref: `${strategy.startFromOrigin ? "origin/" : ""}${strategy.baseRef}`,
+  });
 }
 
+/** `{time}` is the last run's relative time, empty when there is none. */
 const RUN_STATUS_LABELS: Record<ScheduledTask["lastRunStatus"], string> = {
-  never: "Never run",
-  running: "Running now",
-  succeeded: "Last run succeeded",
-  failed: "Last run failed",
+  never: msg("Never run"),
+  running: msg("Running now"),
+  succeeded: msg("Last run succeeded {time}"),
+  failed: msg("Last run failed {time}"),
 };
 
 /** Hover card for an automation row: what running it would do, and how it last went. */
@@ -216,7 +253,9 @@ export function AutomationHoverPreview(props: {
   trigger: ReactElement;
 }) {
   const { task } = props;
-  const blocker = automationRunBlocker(task);
+  const gt = useGT();
+  const resolve = useMessages();
+  const blocker = automationRunBlocker(task, resolve);
   return (
     <CursorPreviewCard trigger={props.trigger} className="w-[28rem] max-w-[calc(100vw-2rem)]">
       <div className="flex flex-col gap-2">
@@ -225,26 +264,29 @@ export function AutomationHoverPreview(props: {
           <span>
             {scheduleLabel(task.schedule, props.timeZone)}
             {!task.enabled ? (
-              " · paused"
+              gt(" · paused")
             ) : task.nextRunAt !== null ? (
-              <>
+              <T>
                 {" · next "}
-                <ScheduledRelativeLabel value={task.nextRunAt} />
-              </>
+                <Var>
+                  <ScheduledRelativeLabel value={task.nextRunAt} />
+                </Var>
+              </T>
             ) : null}
           </span>
           <span className="truncate font-mono">
             {task.modelSelection.instanceId} · {task.modelSelection.model}
           </span>
-          <span className="break-all">{workspaceLabel(task.workspaceStrategy)}</span>
+          <span className="break-all">{workspaceLabel(task.workspaceStrategy, resolve)}</span>
           <span>
             {task.threadId === null
-              ? "Starts a new thread each run"
-              : "Sends each run to the same thread"}
+              ? gt("Starts a new thread each run")
+              : gt("Sends each run to the same thread")}
           </span>
           <span>
-            {RUN_STATUS_LABELS[task.lastRunStatus]}
-            {task.lastRunAt !== null ? ` ${formatRelativeTimeLabel(task.lastRunAt)}` : null}
+            {resolve(RUN_STATUS_LABELS[task.lastRunStatus], {
+              time: task.lastRunAt === null ? "" : formatRelativeTimeLabel(task.lastRunAt),
+            }).trim()}
           </span>
           {task.lastRunError ? <span className="text-destructive">{task.lastRunError}</span> : null}
           {blocker ? <span>{blocker}</span> : null}

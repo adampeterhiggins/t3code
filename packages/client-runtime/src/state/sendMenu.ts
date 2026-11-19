@@ -1,3 +1,6 @@
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
+
 import type { ActiveTurnComposerAction } from "./composerDispatch.ts";
 
 /**
@@ -43,9 +46,9 @@ export interface ComposerSendMenuInput {
 
 const DRAFT_LABEL_MAX = 48;
 
-export function draftMenuLabel(text: string): string {
+export function draftMenuLabel(text: string, resolve: MFunctionType = mFallback): string {
   const firstLine = text.trim().split("\n")[0]?.trim() ?? "";
-  if (firstLine.length === 0) return "Untitled draft";
+  if (firstLine.length === 0) return resolve(msg("Untitled draft"));
   return firstLine.length > DRAFT_LABEL_MAX
     ? `${firstLine.slice(0, DRAFT_LABEL_MAX - 1)}…`
     : firstLine;
@@ -64,67 +67,85 @@ function item(
   };
 }
 
-export const SAVE_DRAFT_MENU_ITEM = item({ type: "save-draft" }, "Save as draft", {
-  icon: "file-text",
-});
+export function saveDraftMenuItem(resolve: MFunctionType = mFallback): ComposerSendMenuItem {
+  return item({ type: "save-draft" }, resolve(msg("Save as draft")), { icon: "file-text" });
+}
 
-export function resolveComposerSendMenu(input: ComposerSendMenuInput): ComposerSendMenuItem[] {
+/** English label; render sites use `saveDraftMenuItem(resolve)`. Its `id` is stable either way. */
+export const SAVE_DRAFT_MENU_ITEM = saveDraftMenuItem();
+
+export function resolveComposerSendMenu(
+  input: ComposerSendMenuInput,
+  resolve: MFunctionType = mFallback,
+): ComposerSendMenuItem[] {
   const sendState = input.sendDisabled ? { disabled: true } : {};
   if (input.isEditingQueuedMessage) {
     return [
-      item({ type: "update-queued" }, "Update queued message", { icon: "check", ...sendState }),
+      item({ type: "update-queued" }, resolve(msg("Update queued message")), {
+        icon: "check",
+        ...sendState,
+      }),
       ...(input.canSaveDraft
-        ? [item({ type: "move-to-drafts" }, "Move to drafts", { icon: "file-text" })]
+        ? [item({ type: "move-to-drafts" }, resolve(msg("Move to drafts")), { icon: "file-text" })]
         : []),
-      item({ type: "cancel-edit" }, "Cancel edit", { icon: "x", separatorBefore: true }),
+      item({ type: "cancel-edit" }, resolve(msg("Cancel edit")), {
+        icon: "x",
+        separatorBefore: true,
+      }),
     ];
   }
 
   const draftItems = input.drafts.map((draft) =>
-    item({ type: "open-draft", draftId: draft.id }, draftMenuLabel(draft.text), {
+    item({ type: "open-draft", draftId: draft.id }, draftMenuLabel(draft.text, resolve), {
       icon: "file-text",
     }),
   );
 
   if (!input.hasContent) {
     if (draftItems.length === 0) return [];
-    return [{ id: "drafts-header", label: "Drafts in this thread", header: true }, ...draftItems];
+    return [
+      { id: "drafts-header", label: resolve(msg("Drafts in this thread")), header: true },
+      ...draftItems,
+    ];
   }
 
   const items: ComposerSendMenuItem[] = [];
   if (input.running && input.canSteer) {
     items.push(
-      item({ type: "queue" }, "Queue", {
+      item({ type: "queue" }, resolve(msg("Queue", { $context: "verb, queue a message" })), {
         checked: input.activeTurnDefault === "queue",
         ...sendState,
       }),
-      item({ type: "steer" }, "Steer now", {
+      item({ type: "steer" }, resolve(msg("Steer now")), {
         checked: input.activeTurnDefault === "steer",
         ...sendState,
       }),
     );
   } else {
     items.push(
-      item({ type: input.running ? "queue" : "send" }, input.running ? "Queue" : "Send", {
-        icon: input.running ? "list-plus" : "arrow-up",
-        ...sendState,
-      }),
+      item(
+        { type: input.running ? "queue" : "send" },
+        input.running
+          ? resolve(msg("Queue", { $context: "verb, queue a message" }))
+          : resolve(msg("Send", { $context: "verb, send a message" })),
+        { icon: input.running ? "list-plus" : "arrow-up", ...sendState },
+      ),
     );
   }
   if (input.canSendInNewThread) {
     items.push(
-      item({ type: "send-in-new-thread" }, "Send and start new thread", {
+      item({ type: "send-in-new-thread" }, resolve(msg("Send and start new thread")), {
         icon: "message-square-plus",
         ...sendState,
       }),
     );
   }
   if (input.canSaveDraft) {
-    items.push({ ...SAVE_DRAFT_MENU_ITEM, separatorBefore: true });
+    items.push({ ...saveDraftMenuItem(resolve), separatorBefore: true });
     if (draftItems.length > 0) {
       items.push({
         id: "open-draft",
-        label: `Open draft (${draftItems.length})`,
+        label: resolve(msg("Open draft ({count})", { count: draftItems.length })),
         icon: "pencil",
         children: draftItems,
       });

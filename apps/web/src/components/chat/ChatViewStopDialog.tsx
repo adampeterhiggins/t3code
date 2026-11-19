@@ -1,3 +1,5 @@
+import { T, useMessages } from "gt-react";
+
 import {
   AlertDialog,
   AlertDialogClose,
@@ -23,17 +25,19 @@ export function ChatViewStopDialog({
   canOperateThread: boolean;
   stopThread: (keepBackgroundWork: boolean) => Promise<void>;
 }) {
+  const m = useMessages();
+  const stopChoice = presentStopChoice(runningWorkers, m);
   return (
     <AlertDialog open={stopChoiceOpen} onOpenChange={setStopChoiceOpen}>
       <AlertDialogPopup>
         <AlertDialogHeader>
-          <AlertDialogTitle>{presentStopChoice(runningWorkers).title}</AlertDialogTitle>
-          <AlertDialogDescription>
-            {presentStopChoice(runningWorkers).description}
-          </AlertDialogDescription>
+          <AlertDialogTitle>{stopChoice.title}</AlertDialogTitle>
+          <AlertDialogDescription>{stopChoice.description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+          <AlertDialogClose render={<Button variant="outline" />}>
+            <T>Cancel</T>
+          </AlertDialogClose>
           <Button
             variant="destructive-outline"
             disabled={!canOperateThread}
@@ -42,7 +46,7 @@ export function ChatViewStopDialog({
               void stopThread(false);
             }}
           >
-            Stop everything
+            <T>Stop everything</T>
           </Button>
           <Button
             variant="default"
@@ -52,7 +56,7 @@ export function ChatViewStopDialog({
               void stopThread(true);
             }}
           >
-            Stop turn only
+            <T>Stop turn only</T>
           </Button>
         </AlertDialogFooter>
       </AlertDialogPopup>

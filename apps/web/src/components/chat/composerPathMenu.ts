@@ -1,4 +1,6 @@
 import type { ThreadId, ThreadTabGroup } from "@t3tools/contracts";
+import { msg } from "gt-react";
+import { m, type MessageResolver } from "~/i18n/messages";
 import type { ComposerCommandItem } from "./ComposerCommandMenu";
 
 export type ComposerPathTab = "files" | "chats" | "agents" | "models";
@@ -8,11 +10,13 @@ export function composerPathChatItems({
   threadTabs,
   activeThreadId,
   items,
+  resolve = m,
 }: {
   query: string;
   threadTabs: ThreadTabGroup["tabs"];
   activeThreadId: ThreadId | null;
   items: ReadonlyArray<ComposerCommandItem>;
+  resolve?: MessageResolver;
 }): ComposerCommandItem[] {
   const tabQuery = query.trim().toLowerCase();
   const tabs = threadTabs;
@@ -27,7 +31,7 @@ export function composerPathChatItems({
         type: "thread-tab" as const,
         threadId: tab.threadId,
         label: tab.title,
-        description: "Chat tab",
+        description: resolve(msg("Chat tab")),
       })),
     ...items.filter((item) => item.type === "thread" && !tabThreadIds.has(item.thread.threadId)),
   ];

@@ -2,6 +2,7 @@ import { Extension } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import { T, Var } from "gt-react";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 
 import { COLOR_CODE, mayBeIssueReference, wholeColorCode } from "~/lib/colorCodes";
@@ -77,6 +78,7 @@ export function useComposerColorCodeHover() {
     window.clearTimeout(openTimer.current);
     window.clearTimeout(closeTimer.current);
   };
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- clears pending hover timers on unmount
   useEffect(
     () => () => {
       window.clearTimeout(openTimer.current);
@@ -131,7 +133,11 @@ export function useComposerColorCodeHover() {
         onPointerEnter={() => window.clearTimeout(closeTimer.current)}
         onPointerLeave={scheduleClose}
       >
-        <PopoverTitle className="sr-only">Colour {target?.code}</PopoverTitle>
+        <PopoverTitle className="sr-only">
+          <T>
+            Colour <Var>{target?.code}</Var>
+          </T>
+        </PopoverTitle>
         {target ? <ColorCodePreview code={target.code} /> : null}
       </PopoverPopup>
     </Popover>

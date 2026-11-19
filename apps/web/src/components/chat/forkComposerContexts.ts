@@ -5,6 +5,8 @@ import type {
   ThreadContextRecord,
   ThreadId,
 } from "@t3tools/contracts";
+import { msg } from "gt-react";
+import { m } from "../../i18n/messages";
 import { collectInlineContextIds } from "../../lib/composerContextReferences";
 import {
   buildMessageContext,
@@ -109,7 +111,7 @@ export async function prepareTextMessage(input: {
     environmentId: input.environmentId,
     attachments,
     draftTarget: input.draftTarget,
-    failedUploadMessage: "Retry or remove failed uploads before sending.",
+    failedUploadMessage: m(msg("Retry or remove failed uploads before sending.")),
   });
   const context = buildMessageContext({
     terminalContexts: content?.terminalContexts ?? [],

@@ -26,7 +26,10 @@ import type {
   ThreadId,
 } from "@t3tools/contracts";
 
+import { msg } from "gt-react";
+
 import { useComposerDraftStore } from "~/composerDraftStore";
+import { m } from "~/i18n/messages";
 import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { useIssueContextStore } from "~/issueContextStore";
 import {
@@ -170,8 +173,8 @@ export async function attachAgentToChat(
   if (record === null) {
     toastManager.add({
       type: "error",
-      title: "Could not attach the agent",
-      description: "Its record isn't available yet. Try again in a moment.",
+      title: m(msg("Could not attach the agent")),
+      description: m(msg("Its record isn't available yet. Try again in a moment.")),
     });
     return false;
   }
@@ -186,7 +189,7 @@ export async function attachAgentToChat(
 
 export function copyAgentHandle(handle: string): void {
   void writeTextToClipboard(`@${handle}`).then(
-    () => toastManager.add({ type: "success", title: `Copied @${handle}` }),
-    () => toastManager.add({ type: "error", title: "Could not copy the handle" }),
+    () => toastManager.add({ type: "success", title: m(msg("Copied @{handle}"), { handle }) }),
+    () => toastManager.add({ type: "error", title: m(msg("Could not copy the handle")) }),
   );
 }

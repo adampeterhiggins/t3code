@@ -153,7 +153,7 @@ const run = <A, E>(
             } as unknown as ProviderAdapter.ProviderAdapterV2["Service"]),
         }),
       ),
-      Layer.mock(ProjectService.ProjectService)({}),
+      Layer.mock(ProjectService.ProjectService)({ getById: () => Effect.succeedNone }),
       Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
       Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
       Layer.mock(SecretRequests.SecretRequests)({}),

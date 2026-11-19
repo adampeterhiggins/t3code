@@ -4,8 +4,10 @@ import {
   SAVE_DRAFT_MENU_ITEM,
   findComposerSendMenuAction,
   resolveComposerSendMenu,
+  saveDraftMenuItem,
 } from "@t3tools/client-runtime/state/send-menu";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
+import { msg } from "gt-react";
 import { useEffect, type RefObject } from "react";
 import {
   collapseExpandedComposerCursor,
@@ -14,6 +16,7 @@ import {
 import { composerDraftHasUserContent, useComposerDraftStore } from "../../composerDraftStore";
 import { useComposerSubmitRequestStore } from "../../composerSubmitRequestStore";
 import { useStableCallback } from "../../hooks/useStableCallback";
+import { m } from "../../i18n/messages";
 import { readLocalApi } from "../../localApi";
 import { messageDraftEnvironment, useThreadMessageDrafts } from "../../state/messageDrafts";
 import { formatInlineContextReference } from "~/lib/composerContextReferences";
@@ -138,16 +141,16 @@ export function useComposerDraftActions(
     if (countPreparingComposerImages(attachmentTargetKey) > 0) {
       toastManager.add({
         type: "info",
-        title: "Still compressing a pasted image.",
-        description: "Save again once its thumbnail appears.",
+        title: m(msg("Still compressing a pasted image.")),
+        description: m(msg("Save again once its thumbnail appears.")),
       });
       return false;
     }
     if (pendingDraftWork.has(attachmentTargetKey)) {
       toastManager.add({
         type: "info",
-        title: "Still bringing attached context into this message.",
-        description: "Save again once its chip resolves.",
+        title: m(msg("Still bringing attached context into this message.")),
+        description: m(msg("Save again once its chip resolves.")),
       });
       return false;
     }
@@ -186,8 +189,10 @@ export function useComposerDraftActions(
     if (isEditingQueuedMessage) {
       toastManager.add({
         type: "info",
-        title: "Finish editing the queued message first",
-        description: "Update it, move it to drafts, or cancel the edit, then open the draft.",
+        title: m(msg("Finish editing the queued message first")),
+        description: m(
+          msg("Update it, move it to drafts, or cancel the edit, then open the draft."),
+        ),
       });
       return;
     }
@@ -242,14 +247,24 @@ export function useComposerDraftActions(
       const items: ContextMenuItem[] =
         surface === "plan-refine"
           ? [
-              { id: "send", label: "Refine", icon: "arrow-up", disabled: sendDisabled },
-              ...(canSaveMessageDraft ? [{ ...SAVE_DRAFT_MENU_ITEM, separatorBefore: true }] : []),
+              {
+                id: "send",
+                label: m(msg("Refine", { $context: "verb, refine the plan" })),
+                icon: "arrow-up",
+                disabled: sendDisabled,
+              },
+              ...(canSaveMessageDraft ? [{ ...saveDraftMenuItem(m), separatorBefore: true }] : []),
             ]
           : [
-              { id: "send", label: "Implement", icon: "arrow-up", disabled: sendDisabled },
+              {
+                id: "send",
+                label: m(msg("Implement", { $context: "verb, implement the plan" })),
+                icon: "arrow-up",
+                disabled: sendDisabled,
+              },
               {
                 id: "implement-in-new-thread",
-                label: "Implement in a new thread",
+                label: m(msg("Implement in a new thread")),
                 icon: "message-square-plus",
                 disabled: sendDisabled,
               },
@@ -260,17 +275,20 @@ export function useComposerDraftActions(
       else if (selected === SAVE_DRAFT_MENU_ITEM.id) void saveMessageDraft();
       return;
     }
-    const items = resolveComposerSendMenu({
-      hasContent: composerSendState.hasSendableContent,
-      running,
-      canSteer: !isCompacting,
-      activeTurnDefault: followUpBehavior,
-      canSendInNewThread: routeKind !== "draft",
-      canSaveDraft: canSaveMessageDraft,
-      isEditingQueuedMessage,
-      sendDisabled,
-      drafts: canSaveMessageDraft ? threadMessageDrafts : [],
-    });
+    const items = resolveComposerSendMenu(
+      {
+        hasContent: composerSendState.hasSendableContent,
+        running,
+        canSteer: !isCompacting,
+        activeTurnDefault: followUpBehavior,
+        canSendInNewThread: routeKind !== "draft",
+        canSaveDraft: canSaveMessageDraft,
+        isEditingQueuedMessage,
+        sendDisabled,
+        drafts: canSaveMessageDraft ? threadMessageDrafts : [],
+      },
+      m,
+    );
     if (items.length === 0) return;
     const action = findComposerSendMenuAction(items, await api.contextMenu.show(items, position));
     switch (action?.type) {

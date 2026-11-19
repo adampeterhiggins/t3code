@@ -4,6 +4,7 @@ import {
   type AgentListView,
   type AgentStatusFilter,
 } from "@t3tools/client-runtime/state/agent-list-view";
+import { msg, T, useGT, useMessages } from "gt-react";
 import { ArrowDownUpIcon, CircleDotIcon, ListFilterIcon, XIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -22,18 +23,18 @@ import {
 } from "../ui/menu";
 
 const STATUS_LABELS: Record<AgentStatusFilter, string> = {
-  working: "Working",
-  idle: "Idle",
-  done: "Completed",
-  failed: "Failed",
-  stopped: "Stopped",
+  working: msg("Working", { $context: "agent status" }),
+  idle: msg("Idle", { $context: "agent status" }),
+  done: msg("Completed", { $context: "agent status" }),
+  failed: msg("Failed", { $context: "agent status" }),
+  stopped: msg("Stopped", { $context: "agent status" }),
 };
 
 const SORT_LABELS: Record<AgentListSort, string> = {
-  spawn: "Spawn order",
-  status: "Status",
-  tokens: "Tokens",
-  duration: "Duration",
+  spawn: msg("Spawn order"),
+  status: msg("Status", { $context: "sort agents by status" }),
+  tokens: msg("Tokens", { $context: "sort agents by token usage" }),
+  duration: msg("Duration", { $context: "sort agents by duration" }),
 };
 
 /**
@@ -47,6 +48,8 @@ export function AgentListToolbar(props: {
   onChange: (view: AgentListView) => void;
 }) {
   const { view } = props;
+  const gt = useGT();
+  const m = useMessages();
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const statuses = (Object.keys(STATUS_LABELS) as AgentStatusFilter[]).filter((status) =>
     props.statusCounts.has(status),
@@ -66,8 +69,8 @@ export function AgentListToolbar(props: {
           size="compact"
           type="search"
           value={view.query}
-          placeholder="Search agents"
-          aria-label="Search agents"
+          placeholder={gt("Search agents")}
+          aria-label={gt("Search agents")}
           onChange={(event) => props.onChange({ ...view, query: event.target.value })}
           className="min-w-0 flex-1"
         />
@@ -78,14 +81,18 @@ export function AgentListToolbar(props: {
                 type="button"
                 size="xs"
                 variant={view.statuses.length > 0 ? "outline" : "ghost"}
-                aria-label="Filter agents by status"
+                aria-label={gt("Filter agents by status")}
               />
             }
           >
             <ListFilterIcon />
           </MenuTrigger>
           <MenuPopup align="end">
-            {statuses.length === 0 ? <MenuItem disabled>No agents match</MenuItem> : null}
+            {statuses.length === 0 ? (
+              <MenuItem disabled>
+                <T>No agents match</T>
+              </MenuItem>
+            ) : null}
             {statuses.map((status) => (
               <MenuCheckboxItem
                 key={status}
@@ -94,7 +101,7 @@ export function AgentListToolbar(props: {
               >
                 <span className="flex w-full min-w-0 items-center gap-2">
                   <MenuChoiceLabel
-                    label={STATUS_LABELS[status]}
+                    label={m(STATUS_LABELS[status])}
                     onOnly={() => {
                       // "Only" settles the filter, so it also closes the menu.
                       props.onChange({ ...view, statuses: [status] });
@@ -116,7 +123,7 @@ export function AgentListToolbar(props: {
                 type="button"
                 size="xs"
                 variant="ghost"
-                aria-label={`Sort agents: ${SORT_LABELS[view.sort]}`}
+                aria-label={gt("Sort agents: {sort}", { sort: m(SORT_LABELS[view.sort]) })}
               />
             }
           >
@@ -129,7 +136,7 @@ export function AgentListToolbar(props: {
             >
               {(Object.keys(SORT_LABELS) as AgentListSort[]).map((sort) => (
                 <MenuRadioItem key={sort} value={sort}>
-                  {SORT_LABELS[sort]}
+                  {m(SORT_LABELS[sort])}
                 </MenuRadioItem>
               ))}
             </MenuRadioGroup>
@@ -140,7 +147,7 @@ export function AgentListToolbar(props: {
             type="button"
             size="icon-xs"
             variant="ghost-muted"
-            aria-label="Reset agent filters"
+            aria-label={gt("Reset agent filters")}
             onClick={() => props.onChange(DEFAULT_AGENT_LIST_VIEW)}
           >
             <XIcon />
@@ -153,7 +160,7 @@ export function AgentListToolbar(props: {
             <FilterPill
               key={status}
               icon={<CircleDotIcon />}
-              label={STATUS_LABELS[status]}
+              label={m(STATUS_LABELS[status])}
               onRemove={() => toggleStatus(status, false)}
             />
           ))}

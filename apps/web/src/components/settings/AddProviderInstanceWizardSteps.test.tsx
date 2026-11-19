@@ -1,6 +1,14 @@
 import { Children, isValidElement, type ReactElement } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 
+// Called as a plain function below, outside any render, so GT's hooks have no provider.
+vi.mock("gt-react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("gt-react")>();
+  const resolve = (text: string, values: Record<string, unknown> = {}) =>
+    actual.gtFallback(actual.decodeMsg(text), { ...values, $locale: "en" });
+  return { ...actual, useGT: () => resolve, useMessages: () => resolve };
+});
+
 import { WizardSteps } from "../ui/wizard";
 import { ADD_PROVIDER_WIZARD_STEPS } from "./AddProviderInstanceDialog.logic";
 import { AddProviderInstanceWizardSteps } from "./AddProviderInstanceWizardSteps";

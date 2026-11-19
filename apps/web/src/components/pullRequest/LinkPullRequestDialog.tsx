@@ -11,8 +11,10 @@ import {
   visibleThreadPullRequests,
 } from "@t3tools/client-runtime/thread-pull-requests";
 import { useAtomValue } from "@effect/atom-react";
+import { msg, T, useGT, useMessages } from "gt-react";
 import { type ReactNode, useState } from "react";
 
+import { m, type MessageResolver } from "~/i18n/messages";
 import { cn, isMacPlatform } from "~/lib/utils";
 
 import { useProjects, useServerConfigs, useThreadShell } from "~/state/entities";
@@ -65,12 +67,18 @@ export function LinkPullRequestDialogHost() {
   );
 }
 
-function applyLabel(plan: ReturnType<typeof planLinkSelection>): string {
-  const parts = [
-    plan.link.length > 0 ? `Link ${plan.link.length}` : null,
-    plan.unlink.length > 0 ? `Unlink ${plan.unlink.length}` : null,
-  ].filter((part) => part !== null);
-  return parts.length > 0 ? parts.join(" · ") : "No changes";
+function applyLabel(
+  plan: ReturnType<typeof planLinkSelection>,
+  resolve: MessageResolver = m,
+): string {
+  const linkCount = plan.link.length;
+  const unlinkCount = plan.unlink.length;
+  if (linkCount > 0 && unlinkCount > 0) {
+    return resolve(msg("Link {linkCount} · Unlink {unlinkCount}", { linkCount, unlinkCount }));
+  }
+  if (linkCount > 0) return resolve(msg("Link {count}", { count: linkCount }));
+  if (unlinkCount > 0) return resolve(msg("Unlink {count}", { count: unlinkCount }));
+  return resolve(msg("No changes"));
 }
 
 const SEARCH_DEBOUNCE_MS = 300;
@@ -99,6 +107,8 @@ function LinkPullRequestPicker({
   threadRef: ScopedThreadRef;
   onClose: () => void;
 }) {
+  const gt = useGT();
+  const messages = useMessages();
   const thread = useThreadShell(threadRef);
   const projectId = thread?.projectId ?? null;
   const linking = usePullRequestLinking(threadRef.environmentId);
@@ -253,7 +263,7 @@ function LinkPullRequestPicker({
       }
     } catch (error) {
       setPending(false);
-      setApplyError(error instanceof Error ? error.message : "Could not update the links.");
+      setApplyError(error instanceof Error ? error.message : gt("Could not update the links."));
       return;
     }
     setPending(false);
@@ -266,10 +276,10 @@ function LinkPullRequestPicker({
       : pasted !== null && "error" in pasted
         ? pasted.error
         : targets.length === 0
-          ? "Paste a pull request URL or enter 123 / #123."
+          ? gt("Paste a pull request URL or enter 123 / #123.")
           : pullRequests.isPending || trimmedQuery !== debouncedQuery
-            ? "Loading pull requests…"
-            : (pullRequests.error?.message ?? "No pull requests match these filters.");
+            ? gt("Loading pull requests…")
+            : (pullRequests.error?.message ?? gt("No pull requests match these filters."));
 
   const renderRow = (
     candidate: LinkCandidate,
@@ -309,10 +319,10 @@ function LinkPullRequestPicker({
         if (!open && !pending) onClose();
       }}
     >
-      <CommandDialogPopup aria-label="Link pull requests" className="overflow-hidden">
+      <CommandDialogPopup aria-label={gt("Link pull requests")} className="overflow-hidden">
         <CommandPaletteContent
           inputProps={{
-            placeholder: "Search pull requests, or paste a URL or #123",
+            placeholder: gt("Search pull requests, or paste a URL or #123"),
             startAddon: <PullRequestGlyph.link />,
             onKeyDown: (event) => {
               if (event.key !== "Enter" || !(event.metaKey || event.ctrlKey)) return;
@@ -335,7 +345,7 @@ function LinkPullRequestPicker({
               />
             ) : null
           }
-          footerActionLabel="Select"
+          footerActionLabel={gt("Select", { $context: "verb, toggles the highlighted row" })}
           footerTrailing={
             <span className="flex items-center gap-3">
               {applyError !== null ? (
@@ -346,7 +356,7 @@ function LinkPullRequestPicker({
                 <Kbd>Enter</Kbd>
               </KbdGroup>
               <Button size="xs" disabled={pending || !hasChanges} onClick={() => void apply()}>
-                {pending ? "Saving…" : applyLabel(plan)}
+                {pending ? gt("Saving…") : applyLabel(plan, messages)}
               </Button>
             </span>
           }
@@ -375,7 +385,9 @@ function LinkPullRequestPicker({
               ) : null}
               {pinned.length > 0 ? (
                 <CommandGroup items={pinned}>
-                  <CommandGroupLabel>This thread</CommandGroupLabel>
+                  <CommandGroupLabel>
+                    <T>This thread</T>
+                  </CommandGroupLabel>
                   <CommandCollection>
                     {(candidate: LinkCandidate) =>
                       renderRow(
@@ -393,7 +405,11 @@ function LinkPullRequestPicker({
               ) : null}
               {listedRows.length > 0 ? (
                 <CommandGroup items={listedRows}>
-                  {pinned.length > 0 ? <CommandGroupLabel>Pull requests</CommandGroupLabel> : null}
+                  {pinned.length > 0 ? (
+                    <CommandGroupLabel>
+                      <T>Pull requests</T>
+                    </CommandGroupLabel>
+                  ) : null}
                   <CommandCollection>
                     {(entry: EnvironmentPullRequestEntry) => {
                       const presentation =
@@ -402,7 +418,7 @@ function LinkPullRequestPicker({
                         entryCandidate(entry),
                         <span className="w-24 shrink-0 truncate text-end text-muted-foreground/70 text-xs">
                           {entry.headBranch === thread?.branch
-                            ? "this branch"
+                            ? gt("this branch")
                             : (entry.author?.login ?? "")}
                         </span>,
                         <presentation.Icon
@@ -415,7 +431,7 @@ function LinkPullRequestPicker({
               ) : targets.length > 0 &&
                 (pullRequests.isPending || trimmedQuery !== debouncedQuery) ? (
                 <div className="px-2 py-3 text-muted-foreground text-xs">
-                  Loading pull requests…
+                  <T>Loading pull requests…</T>
                 </div>
               ) : null}
             </CommandList>

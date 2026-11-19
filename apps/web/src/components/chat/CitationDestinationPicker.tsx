@@ -14,6 +14,7 @@ import type {
 } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
 import * as Option from "effect/Option";
+import { T, useGT } from "gt-react";
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -167,10 +168,15 @@ function TabCountToggle({
   open: boolean;
   onToggle: () => void;
 }) {
+  const gt = useGT();
   return (
     <button
       type="button"
-      aria-label={open ? "Hide tabs" : count === 1 ? "Show tab" : `Show ${count} tabs`}
+      aria-label={
+        open
+          ? gt("Hide tabs")
+          : gt("{count, plural, =1 {Show tab} other {Show {count} tabs}}", { count })
+      }
       aria-expanded={open}
       onPointerDown={(event) => event.preventDefault()}
       onClick={(event) => {
@@ -226,6 +232,7 @@ export function CitationDestinationPicker({
   /** Picking a model closes the menu; the panel takes focus back rather than the composer. */
   onModelPicked: () => void;
 }) {
+  const gt = useGT();
   const [open, setOpen] = useState(false);
   const [page, setPage] = useState<"destinations" | "new-thread">("destinations");
   const [query, setQuery] = useState("");
@@ -272,7 +279,7 @@ export function CitationDestinationPicker({
       name: resolved ? getTriggerDisplayModelName(resolved, entry?.driverKind) : selection.model,
     };
   };
-  const projectTitle = newThreadProject?.title ?? "Unknown project";
+  const projectTitle = newThreadProject?.title ?? gt("Unknown project");
 
   const groups = open
     ? groupCitationDestinations({ threads, memberships, environmentId, currentThreadId })
@@ -365,7 +372,9 @@ export function CitationDestinationPicker({
         openedAt={undefined}
       />
       {tab.id === currentThreadId ? (
-        <span className="shrink-0 text-xs text-secondary-label">This tab</span>
+        <span className="shrink-0 text-xs text-secondary-label">
+          <T>This tab</T>
+        </span>
       ) : null}
       {isPicked(tab) ? <SelectedMark /> : null}
     </CommandItem>
@@ -410,7 +419,7 @@ export function CitationDestinationPicker({
             />
           ) : null}
           <span className="shrink-0 text-xs tabular-nums text-secondary-label">
-            {group.current ? "This thread" : threadTimeLabel(newest)}
+            {group.current ? gt("This thread") : threadTimeLabel(newest)}
           </span>
           {only && !groupOpen && isPicked(only) ? <SelectedMark /> : null}
         </CommandItem>
@@ -419,7 +428,9 @@ export function CitationDestinationPicker({
             {group.tabs.map((tab) => tabRow(group, tab, false))}
             <CommandItem value={`new-tab:${group.key}`} onClick={() => pickNewTab(group)}>
               <PlusIcon aria-hidden className="size-3.5 shrink-0" />
-              <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">New tab</span>
+              <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
+                <T>New tab</T>
+              </span>
               {newTabPickedIn(group) ? <SelectedMark /> : null}
             </CommandItem>
           </div>
@@ -439,7 +450,9 @@ export function CitationDestinationPicker({
     >
       <SquarePenIcon aria-hidden className="size-4 shrink-0" />
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate">New thread</span>
+        <span className="truncate">
+          <T>New thread</T>
+        </span>
         <span className="truncate text-xs text-muted-foreground">
           {projectTitle} · {newThreadModel.name}
         </span>
@@ -469,7 +482,9 @@ export function CitationDestinationPicker({
           <PlusIcon aria-hidden="true" />
           <span className="truncate">{destination.title}</span>
           <span className="text-muted-foreground">/</span>
-          <span className="shrink-0">New tab</span>
+          <span className="shrink-0">
+            <T>New tab</T>
+          </span>
           <TriggerProviderIcon entry={modelLabel(destination.modelSelection).entry} />
         </>
       );
@@ -478,19 +493,27 @@ export function CitationDestinationPicker({
       <>
         <MessageSquareIcon aria-hidden="true" />
         <span className="truncate">
-          {destination.kind === "here" ? "This thread" : destination.title || "Untitled thread"}
+          {destination.kind === "here"
+            ? gt("This thread")
+            : destination.title || gt("Untitled thread")}
         </span>
       </>
     );
   };
   const label =
     destination.kind === "here"
-      ? "This thread"
+      ? gt("This thread")
       : destination.kind === "new-thread"
-        ? `New thread in ${projectTitle} with ${newThreadModel.name}`
+        ? gt("New thread in {project} with {model}", {
+            project: projectTitle,
+            model: newThreadModel.name,
+          })
         : destination.kind === "new-tab"
-          ? `New tab in ${destination.title} with ${modelLabel(destination.modelSelection).name}`
-          : destination.title || "Untitled thread";
+          ? gt("New tab in {thread} with {model}", {
+              thread: destination.title,
+              model: modelLabel(destination.modelSelection).name,
+            })
+          : destination.title || gt("Untitled thread");
 
   return (
     <Popover
@@ -501,7 +524,7 @@ export function CitationDestinationPicker({
       }}
     >
       <PopoverTrigger
-        aria-label={`Send citation to: ${label}`}
+        aria-label={gt("Send citation to: {destination}", { destination: label })}
         render={<Button variant="ghost" size="xs" className="min-w-0 max-w-72" />}
       >
         {triggerBody()}
@@ -514,7 +537,7 @@ export function CitationDestinationPicker({
           align="start"
           width="lg"
           padding="none"
-          aria-label="Choose where the citation goes"
+          aria-label={gt("Choose where the citation goes")}
           finalFocus={() => {
             if (!returnFocusToPanel.current) return true;
             returnFocusToPanel.current = false;
@@ -528,15 +551,17 @@ export function CitationDestinationPicker({
                 mode="none"
                 value={query}
                 onValueChange={setQuery}
-                aria-label="Choose where the citation goes"
+                aria-label={gt("Choose where the citation goes")}
               >
-                <CommandInput placeholder="Search threads and tabs..." />
+                <CommandInput placeholder={gt("Search threads and tabs...")} />
                 <CommandList className="flex max-h-96 flex-col">
                   <div className="min-h-0 overflow-y-auto">
                     {search.length > 0 ? (
                       matches.length > 0 ? (
                         <CommandGroup>
-                          <CommandGroupLabel>Tabs</CommandGroupLabel>
+                          <CommandGroupLabel>
+                            <T>Tabs</T>
+                          </CommandGroupLabel>
                           {matches.map(({ group, tab }) => tabRow(group, tab, true))}
                         </CommandGroup>
                       ) : null
@@ -544,13 +569,17 @@ export function CitationDestinationPicker({
                       <>
                         {groups[0]?.current ? (
                           <CommandGroup>
-                            <CommandGroupLabel>This thread</CommandGroupLabel>
+                            <CommandGroupLabel>
+                              <T>This thread</T>
+                            </CommandGroupLabel>
                             {groupRow(groups[0])}
                           </CommandGroup>
                         ) : null}
                         {groups.some((group) => !group.current) ? (
                           <CommandGroup>
-                            <CommandGroupLabel>Threads</CommandGroupLabel>
+                            <CommandGroupLabel>
+                              <T>Threads</T>
+                            </CommandGroupLabel>
                             {groups.filter((group) => !group.current).map(groupRow)}
                           </CommandGroup>
                         ) : null}
@@ -570,7 +599,9 @@ export function CitationDestinationPicker({
               </Command>
               {destination.kind === "new-tab" ? (
                 <div className="flex items-center gap-2 border-t border-border py-1.5 ps-3 pe-1.5">
-                  <span className="text-xs text-muted-foreground">New tab model</span>
+                  <span className="text-xs text-muted-foreground">
+                    <T>New tab model</T>
+                  </span>
                   <div className="ms-auto flex min-w-0">
                     <NewModelPicker
                       environmentId={environmentId}
@@ -595,16 +626,20 @@ export function CitationDestinationPicker({
                 mode="none"
                 value={query}
                 onValueChange={setQuery}
-                aria-label="Choose the new thread's project"
+                aria-label={gt("Choose the new thread's project")}
               >
-                <CommandInput placeholder="Search projects..." />
+                <CommandInput placeholder={gt("Search projects...")} />
                 <CommandList className="max-h-72 overflow-y-auto">
                   <CommandItem value="back" onClick={() => showPage("destinations")}>
                     <ChevronLeftIcon aria-hidden className="size-4 shrink-0" />
-                    <span className="flex-1 truncate">New thread</span>
+                    <span className="flex-1 truncate">
+                      <T>New thread</T>
+                    </span>
                   </CommandItem>
                   <CommandGroup>
-                    <CommandGroupLabel>Project</CommandGroupLabel>
+                    <CommandGroupLabel>
+                      <T context="field label">Project</T>
+                    </CommandGroupLabel>
                     {projectChoices.map((project) => (
                       <CommandItem
                         key={project.id}
@@ -616,7 +651,7 @@ export function CitationDestinationPicker({
                           <span className="truncate">{project.title}</span>
                           {project.id === defaultProjectId ? (
                             <span className="truncate text-xs text-muted-foreground">
-                              This thread's project
+                              <T>This thread's project</T>
                             </span>
                           ) : null}
                         </span>
@@ -632,7 +667,9 @@ export function CitationDestinationPicker({
                 </CommandList>
               </Command>
               <div className="flex items-center gap-2 border-t border-border py-1.5 ps-3 pe-1.5">
-                <span className="text-xs text-muted-foreground">Model</span>
+                <span className="text-xs text-muted-foreground">
+                  <T context="field label">Model</T>
+                </span>
                 <div className="ms-auto flex min-w-0">
                   <NewModelPicker
                     environmentId={environmentId}

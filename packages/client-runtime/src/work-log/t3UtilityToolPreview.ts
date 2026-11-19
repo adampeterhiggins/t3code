@@ -1,3 +1,6 @@
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
+
 import type {
   PreviewRecord,
   ProviderCapabilitiesToolPreview,
@@ -51,7 +54,7 @@ function rows(pairs: ReadonlyArray<readonly [string, unknown]>): Array<readonly 
   });
 }
 
-function projectCard(project: Record_): ToolPreview {
+function projectCard(project: Record_, resolve: MFunctionType): ToolPreview {
   const scripts = Array.isArray(project.scripts) ? project.scripts.filter(isRecord) : [];
   const model = isRecord(project.defaultModelSelection)
     ? str(project.defaultModelSelection.model)
@@ -70,7 +73,10 @@ function projectCard(project: Record_): ToolPreview {
       ],
       ["Deleted", str(project.deletedAt) ? "yes" : null],
     ]),
-    { title: str(project.title) ?? "Project", notes: [str(project.commitError)] },
+    {
+      title: str(project.title) ?? resolve(msg("Project", { $context: "noun" })),
+      notes: [str(project.commitError)],
+    },
   );
 }
 
@@ -100,7 +106,10 @@ function threadLinkRecord(source: string, link: Record_): PreviewRecord {
 // The card names a few models per provider; the count says how many there are.
 const MAX_CAPABILITY_MODELS = 4;
 
-function capabilitiesPreview(data: Record_): ProviderCapabilitiesToolPreview {
+function capabilitiesPreview(
+  data: Record_,
+  resolve: MFunctionType,
+): ProviderCapabilitiesToolPreview {
   const inheritedId = str(data.inheritedProviderInstanceId);
   const inheritedModel = str(data.inheritedModel);
   const rawProviders = Array.isArray(data.providers) ? data.providers.filter(isRecord) : [];
@@ -127,7 +136,7 @@ function capabilitiesPreview(data: Record_): ProviderCapabilitiesToolPreview {
       current: id === inheritedId,
       unavailableReason:
         provider.canRunChildTask === false
-          ? constraints.join(" ") || "Can't run child tasks."
+          ? constraints.join(" ") || resolve(msg("Can't run child tasks."))
           : null,
     };
   });
@@ -143,10 +152,10 @@ function capabilitiesPreview(data: Record_): ProviderCapabilitiesToolPreview {
 }
 
 const QUEUE_ACTIONS: Readonly<Record<string, string>> = {
-  t3_queue_edit: "Edited a queued message",
-  t3_queue_cancel: "Cancelled a queued message",
-  t3_queue_reorder: "Reordered the queue",
-  t3_queue_promote_to_steer: "Sent a queued message into the running turn",
+  t3_queue_edit: msg("Edited a queued message"),
+  t3_queue_cancel: msg("Cancelled a queued message"),
+  t3_queue_reorder: msg("Reordered the queue"),
+  t3_queue_promote_to_steer: msg("Sent a queued message into the running turn"),
 };
 
 /** T3 tools outside thread, task, PR, browser and schedule cards. */
@@ -154,52 +163,68 @@ export function t3UtilityToolPreview(
   tool: string,
   input: Record_,
   result: unknown,
+  resolve: MFunctionType = mFallback,
 ): ToolPreview | null {
   const data = isRecord(result) ? result : null;
   switch (tool) {
     case "orchestrator_capabilities":
-      return data ? capabilitiesPreview(data) : null;
+      return data ? capabilitiesPreview(data, resolve) : null;
     case "run_scheduled_task_now":
       // The run starts after the call returns, so its outcome is not known yet.
-      return action("Scheduled run requested", {
+      return action(resolve(msg("Scheduled run requested")), {
         status: str(data?.lastRunStatus),
-        details: [typeof data?.runCount === "number" ? `Run ${data.runCount}` : null],
+        details: [
+          typeof data?.runCount === "number"
+            ? resolve(msg("Run {number}", { number: data.runCount }))
+            : null,
+        ],
         threadId: str(data?.threadId),
       });
     case "delete_scheduled_task":
       return action(
-        data?.deleted === false ? "Scheduled task not deleted" : "Deleted a scheduled task",
+        data?.deleted === false
+          ? resolve(msg("Scheduled task not deleted"))
+          : resolve(msg("Deleted a scheduled task")),
         {
           status: data?.deleted === false ? "failed" : "completed",
         },
       );
     case "request_secret": {
       const outcome = str(data?.status);
-      return action(`Asked for “${str(input.label) ?? "a secret"}”`, {
-        status: outcome === "saved" ? "completed" : outcome,
-        details: [str(input.reason)],
-      });
+      return action(
+        str(input.label)
+          ? resolve(msg("Asked for “{label}”", { label: str(input.label) }))
+          : resolve(msg("Asked for “a secret”")),
+        {
+          status: outcome === "saved" ? "completed" : outcome,
+          details: [str(input.reason)],
+        },
+      );
     }
     case "t3_approval_respond":
       return action(
-        `Answered an approval: ${humanKey(str(input.decision) ?? "responded").toLowerCase()}`,
+        resolve(
+          msg("Answered an approval: {decision}", {
+            decision: humanKey(str(input.decision) ?? "responded").toLowerCase(),
+          }),
+        ),
         {
           threadId: str(input.threadId),
         },
       );
     case "t3_workflow_stop":
-      return action("Stop requested", { threadId: str(input.threadId) });
+      return action(resolve(msg("Stop requested")), { threadId: str(input.threadId) });
     case "t3_thread_delete":
       return action(
         data && typeof data.sequence === "number"
-          ? "Deleted a thread"
-          : "Requested a thread deletion",
+          ? resolve(msg("Deleted a thread"))
+          : resolve(msg("Requested a thread deletion")),
       );
     case "t3_draft_list": {
       const drafts = Array.isArray(data?.drafts) ? data.drafts.filter(isRecord) : [];
       return records(
         drafts.map((draft, index) => {
-          const text = str(draft.text) ?? "Empty draft";
+          const text = str(draft.text) ?? resolve(msg("Empty draft"));
           const title = firstLine(text);
           return record({
             key: str(draft.id) ?? String(index),
@@ -208,20 +233,30 @@ export function t3UtilityToolPreview(
             threadId: str(draft.threadId),
           });
         }),
-        { summary: `${drafts.length} draft${drafts.length === 1 ? "" : "s"}` },
+        {
+          summary: resolve(
+            msg("{count, plural, one {{count} draft} other {{count} drafts}}", {
+              count: drafts.length,
+            }),
+          ),
+        },
       );
     }
     case "t3_draft_create":
-      return documentPreview(str(data?.text) ?? str(input.text) ?? "", { title: "Saved a draft" });
+      return documentPreview(str(data?.text) ?? str(input.text) ?? "", {
+        title: resolve(msg("Saved a draft")),
+      });
     case "t3_draft_send":
-      return action("Sent a draft", { threadId: str(data?.threadId) ?? str(input.threadId) });
+      return action(resolve(msg("Sent a draft")), {
+        threadId: str(data?.threadId) ?? str(input.threadId),
+      });
     case "t3_draft_delete":
-      return action("Deleted a draft", { threadId: str(input.threadId) });
+      return action(resolve(msg("Deleted a draft")), { threadId: str(input.threadId) });
     case "t3_queue_list": {
       const items = Array.isArray(data?.items) ? data.items.filter(isRecord) : [];
       return records(
         items.map((item, index) => {
-          const text = str(item.text) ?? "Queued message";
+          const text = str(item.text) ?? resolve(msg("Queued message"));
           const title = firstLine(text);
           // Only a message longer than its first line needs the rest below it.
           return record({
@@ -230,26 +265,39 @@ export function t3UtilityToolPreview(
             body: text.trim() === title ? null : text,
           });
         }),
-        { summary: `${items.length} queued` },
+        { summary: resolve(msg("{count} queued", { count: items.length })) },
       );
     }
     case "t3_queue_read":
-      return data ? documentPreview(str(data.text) ?? "", { title: "Queued message" }) : null;
+      return data
+        ? documentPreview(str(data.text) ?? "", { title: resolve(msg("Queued message")) })
+        : null;
     case "t3_queue_edit":
     case "t3_queue_cancel":
     case "t3_queue_reorder":
     case "t3_queue_promote_to_steer":
       return tool === "t3_queue_edit" && str(input.text)
-        ? documentPreview(str(input.text) ?? "", { summary: QUEUE_ACTIONS[tool] ?? null })
-        : action(QUEUE_ACTIONS[tool] ?? "Updated the queue", { threadId: str(input.threadId) });
+        ? documentPreview(str(input.text) ?? "", {
+            summary: QUEUE_ACTIONS[tool] === undefined ? null : resolve(QUEUE_ACTIONS[tool]),
+          })
+        : action(resolve(QUEUE_ACTIONS[tool] ?? msg("Updated the queue")), {
+            threadId: str(input.threadId),
+          });
     case "t3_pending_request_list": {
       const ids = Array.isArray(data?.requestIds)
         ? data.requestIds.filter((id) => typeof id === "string")
         : [];
       return action(
         ids.length === 0
-          ? "No pending requests"
-          : `${ids.length} pending request${ids.length === 1 ? "" : "s"}`,
+          ? resolve(msg("No pending requests"))
+          : resolve(
+              msg(
+                "{count, plural, one {{count} pending request} other {{count} pending requests}}",
+                {
+                  count: ids.length,
+                },
+              ),
+            ),
         {
           threadId: str(input.threadId),
         },
@@ -278,7 +326,7 @@ export function t3UtilityToolPreview(
     }
     case "t3_pending_request_respond": {
       const answers = isRecord(input.answers) ? input.answers : {};
-      return action("Answered a pending request", {
+      return action(resolve(msg("Answered a pending request")), {
         details: Object.values(answers).map(
           (answer) => scalarText(answer) ?? (Array.isArray(answer) ? answer.join(", ") : null),
         ),
@@ -287,15 +335,20 @@ export function t3UtilityToolPreview(
     }
     case "t3_attachment_prepare_upload": {
       const upload = isRecord(input.upload) ? input.upload : {};
-      return action(`Prepared an upload: ${str(upload.name) ?? "file"}`, {
-        details: [
-          str(upload.mimeType),
-          typeof upload.sizeBytes === "number" ? `${Math.round(upload.sizeBytes / 1024)} KB` : null,
-        ],
-      });
+      return action(
+        resolve(msg("Prepared an upload: {name}", { name: str(upload.name) ?? "file" })),
+        {
+          details: [
+            str(upload.mimeType),
+            typeof upload.sizeBytes === "number"
+              ? `${Math.round(upload.sizeBytes / 1024)} KB`
+              : null,
+          ],
+        },
+      );
     }
     case "t3_attachment_discard":
-      return action("Discarded an attachment");
+      return action(resolve(msg("Discarded an attachment")));
     case "device_list": {
       const devices = Array.isArray(data?.devices) ? data.devices.filter(isRecord) : [];
       const open = Array.isArray(data?.open) ? data.open.filter(isRecord) : [];
@@ -303,16 +356,18 @@ export function t3UtilityToolPreview(
         devices.map((device, index) =>
           record({
             key: `${str(device.hostId) ?? ""}:${str(device.id) ?? index}`,
-            title: str(device.name) ?? "Device",
+            title: str(device.name) ?? resolve(msg("Device")),
             subtitle: open.some((entry) => entry.deviceId === device.id)
-              ? "open"
+              ? resolve(msg("open", { $context: "device state" }))
               : device.booted === true
-                ? "booted"
+                ? resolve(msg("booted", { $context: "device state" }))
                 : null,
             meta: present([
               str(device.platform),
               str(device.version),
-              device.physical === true ? "physical" : null,
+              device.physical === true
+                ? resolve(msg("physical", { $context: "device kind" }))
+                : null,
             ]),
           }),
         ),
@@ -323,7 +378,13 @@ export function t3UtilityToolPreview(
       const device = isRecord(data?.device) ? data.device : null;
       const screenshot = isRecord(data?.screenshot) ? data.screenshot : null;
       return action(
-        `${tool === "device_open" ? "Opened" : "Captured"} ${str(device?.name) ?? "a device"}`,
+        tool === "device_open"
+          ? str(device?.name)
+            ? resolve(msg("Opened {device}", { device: str(device?.name) }))
+            : resolve(msg("Opened a device"))
+          : str(device?.name)
+            ? resolve(msg("Captured {device}", { device: str(device?.name) }))
+            : resolve(msg("Captured a device")),
         {
           details: [
             present([str(device?.platform), str(device?.version)]).join(" ") || null,
@@ -333,7 +394,11 @@ export function t3UtilityToolPreview(
       );
     }
     case "device_close":
-      return action(input.shutdown === true ? "Shut down the device" : "Closed the device");
+      return action(
+        input.shutdown === true
+          ? resolve(msg("Shut down the device"))
+          : resolve(msg("Closed the device")),
+      );
     case "t3_environment_read":
     case "t3_environment_preferences_update": {
       const prefs =
@@ -360,8 +425,8 @@ export function t3UtilityToolPreview(
         {
           title:
             tool === "t3_environment_read"
-              ? (str(data?.label) ?? "Environment")
-              : "Updated preferences",
+              ? (str(data?.label) ?? resolve(msg("Environment")))
+              : resolve(msg("Updated preferences")),
         },
       );
     }
@@ -372,12 +437,12 @@ export function t3UtilityToolPreview(
           const nav = isRecord(session.navStatus) ? session.navStatus : {};
           return record({
             key: str(session.tabId) ?? String(index),
-            title: str(nav.title) ?? str(nav.url) ?? "Preview tab",
+            title: str(nav.title) ?? str(nav.url) ?? resolve(msg("Preview tab")),
             subtitle:
               str(nav._tag) === "LoadFailed"
-                ? "failed"
+                ? resolve(msg("failed", { $context: "preview tab state" }))
                 : str(nav._tag) === "Loading"
-                  ? "loading"
+                  ? resolve(msg("loading", { $context: "preview tab state" }))
                   : null,
             meta: present([str(nav.url)]),
             threadId: str(session.threadId),
@@ -386,14 +451,14 @@ export function t3UtilityToolPreview(
       );
     }
     case "t3_preview_close":
-      return action("Closed a preview tab");
+      return action(resolve(msg("Closed a preview tab")));
     case "t3_project_list": {
       const projects = Array.isArray(data?.projects) ? data.projects.filter(isRecord) : [];
       return records(
         projects.map((project, index) =>
           record({
             key: str(project.id) ?? String(index),
-            title: str(project.title) ?? "Project",
+            title: str(project.title) ?? resolve(msg("Project", { $context: "noun" })),
             meta: present([
               isRecord(project.defaultModelSelection)
                 ? str(project.defaultModelSelection.model)
@@ -408,11 +473,17 @@ export function t3UtilityToolPreview(
     case "t3_project_create":
     case "t3_project_update":
     case "t3_project_delete":
-      return data ? projectCard(data) : null;
+      return data ? projectCard(data, resolve) : null;
     case "t3_project_clone": {
       const repository = isRecord(data?.repository) ? data.repository : null;
       return action(
-        `Cloned ${str(repository?.nameWithOwner) ?? str(input.repository) ?? "a repository"}`,
+        (str(repository?.nameWithOwner) ?? str(input.repository))
+          ? resolve(
+              msg("Cloned {repository}", {
+                repository: str(repository?.nameWithOwner) ?? str(input.repository),
+              }),
+            )
+          : resolve(msg("Cloned a repository")),
         {
           details: [str(data?.cwd), str(data?.remoteUrl)],
         },
@@ -422,18 +493,35 @@ export function t3UtilityToolPreview(
       const setup = isRecord(data?.setupScript) ? data.setupScript : {};
       const continuation = isRecord(data?.continuation) ? data.continuation : {};
       return action(
-        `${data?.created === true ? "Created" : "Moved to"} worktree ${str(data?.branch) ?? str(input.branch) ?? ""}`.trim(),
+        (data?.created === true
+          ? resolve(
+              msg("Created worktree {branch}", {
+                branch: str(data?.branch) ?? str(input.branch) ?? "",
+              }),
+            )
+          : resolve(
+              msg("Moved to worktree {branch}", {
+                branch: str(data?.branch) ?? str(input.branch) ?? "",
+              }),
+            )
+        ).trim(),
         {
           details: [
             str(data?.worktreePath),
-            str(data?.baseRef) ? `from ${str(data?.baseRef)}` : null,
+            str(data?.baseRef) ? resolve(msg("from {ref}", { ref: str(data?.baseRef) })) : null,
             str(setup.status) === "started"
-              ? `Setup: ${str(setup.scriptName) ?? "running"}`
+              ? str(setup.scriptName)
+                ? resolve(msg("Setup: {script}", { script: str(setup.scriptName) }))
+                : resolve(msg("Setup: running"))
               : str(setup.status) === "failed"
-                ? `Setup failed: ${str(setup.detail) ?? ""}`
+                ? resolve(msg("Setup failed: {detail}", { detail: str(setup.detail) ?? "" }))
                 : null,
             str(continuation.status) === "scheduled"
-              ? `Continuing (${str(continuation.delivery) ?? "scheduled"})`
+              ? resolve(
+                  msg("Continuing ({delivery})", {
+                    delivery: str(continuation.delivery) ?? "scheduled",
+                  }),
+                )
               : null,
           ],
         },
@@ -443,8 +531,8 @@ export function t3UtilityToolPreview(
       return data
         ? action(
             data.attached === true
-              ? `On worktree ${str(data.branch) ?? ""}`.trim()
-              : "In the project root",
+              ? resolve(msg("On worktree {branch}", { branch: str(data.branch) ?? "" })).trim()
+              : resolve(msg("In the project root")),
             {
               details: [str(data.worktreePath) ?? str(data.projectWorkspaceRoot)],
             },
@@ -455,13 +543,21 @@ export function t3UtilityToolPreview(
       const link = isRecord(data?.link) ? data.link : null;
       if (!link) return null;
       return records([threadLinkRecord(tool === "link_linear_issue" ? "linear" : "github", link)], {
-        notes: [str(data?.replacedUrl) ? `Replaced ${str(data?.replacedUrl)}` : null],
+        notes: [
+          str(data?.replacedUrl)
+            ? resolve(msg("Replaced {url}", { url: str(data?.replacedUrl) }))
+            : null,
+        ],
       });
     }
     case "unlink_linear_issue":
     case "unlink_github_issue":
       return typeof data?.wasLinked === "boolean"
-        ? action(data.wasLinked ? "Unlinked the issue" : "No issue was linked")
+        ? action(
+            data.wasLinked
+              ? resolve(msg("Unlinked the issue"))
+              : resolve(msg("No issue was linked")),
+          )
         : null;
     case "list_thread_links":
       return data
@@ -478,13 +574,28 @@ export function t3UtilityToolPreview(
         refs.map((ref, index) =>
           record({
             key: str(ref.name) ?? String(index),
-            title: str(ref.name) ?? "Branch",
-            subtitle: ref.current === true ? "current" : ref.isDefault === true ? "default" : null,
-            meta: present([ref.isRemote === true ? (str(ref.remoteName) ?? "remote") : null]),
+            title: str(ref.name) ?? resolve(msg("Branch", { $context: "git branch" })),
+            subtitle:
+              ref.current === true
+                ? resolve(msg("current", { $context: "git branch" }))
+                : ref.isDefault === true
+                  ? resolve(msg("default", { $context: "git branch" }))
+                  : null,
+            meta: present([
+              ref.isRemote === true
+                ? (str(ref.remoteName) ?? resolve(msg("remote", { $context: "git branch" })))
+                : null,
+            ]),
             body: str(ref.worktreePath),
           }),
         ),
-        { notes: [typeof data?.totalCount === "number" ? `${data.totalCount} branches` : null] },
+        {
+          notes: [
+            typeof data?.totalCount === "number"
+              ? resolve(msg("{count} branches", { count: data.totalCount }))
+              : null,
+          ],
+        },
       );
     }
     default:

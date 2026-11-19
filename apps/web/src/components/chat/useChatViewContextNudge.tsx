@@ -6,6 +6,7 @@ import {
 import { Button } from "../ui/button";
 import { GaugeIcon } from "lucide-react";
 import * as Schema from "effect/Schema";
+import { T, useGT } from "gt-react";
 import { useEffect, useRef } from "react";
 import type { ComposerBannerStackItem } from "./ComposerBannerStack";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
@@ -30,6 +31,7 @@ export function useChatViewContextNudge(input: {
     compactDisabled,
     hasThreadTabs,
   } = input;
+  const gt = useGT();
   // Near a full window, suggest compacting or carrying a summary into a new tab. Dismissal is
   // per thread and lasts until the provider reports the window back under the threshold.
   const [contextNudgeDismissed, setContextNudgeDismissed] = useLocalStorage(
@@ -62,7 +64,7 @@ export function useChatViewContextNudge(input: {
       variant: "info",
       compact: true,
       icon: <GaugeIcon />,
-      title: `Context ${contextNudgePercent}% full`,
+      title: gt("Context {percent}% full", { percent: contextNudgePercent }),
       actions:
         contextNudgeCanCompact || contextNudgeCanContinue ? (
           <>
@@ -73,7 +75,7 @@ export function useChatViewContextNudge(input: {
                 disabled={contextNudgeCompactDisabled}
                 onClick={() => contextNudgeActionsRef.current.compact()}
               >
-                Compact
+                <T context="verb, compacts the conversation context">Compact</T>
               </Button>
             ) : null}
             {contextNudgeCanContinue ? (
@@ -82,12 +84,12 @@ export function useChatViewContextNudge(input: {
                 variant="ghost"
                 onClick={() => contextNudgeActionsRef.current.continueInNewTab()}
               >
-                Continue in new tab
+                <T>Continue in new tab</T>
               </Button>
             ) : null}
           </>
         ) : null,
-      dismissLabel: "Dismiss context notice",
+      dismissLabel: gt("Dismiss context notice"),
       onDismiss: () => setContextNudgeDismissed(true),
     };
   })() as ComposerBannerStackItem | null;

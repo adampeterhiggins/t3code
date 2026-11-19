@@ -51,6 +51,8 @@ import { remarkThoughtPreview, THOUGHT_PREVIEW_MAX_LENGTH } from "./TimelineWork
 import { TimelineRowCtx } from "./timelineRowContext";
 import { parseMarkdownWithMath } from "@t3tools/shared/markdownMath";
 import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
+import { searchableMessageSegments } from "@t3tools/shared/threadFindText";
+import { countThreadSearchOccurrences } from "@t3tools/shared/threadSearch";
 import { collectThreadFindRanges } from "./threadFindHighlights";
 import { toastManager } from "../ui/toast";
 import type { CitedHistory } from "./citationProcedure";
@@ -1255,6 +1257,30 @@ describe("MessagesTimeline messages", () => {
     expect(screen.text()).toContain("@researcher");
     await click(screen.button("Attach to parent chat"));
     expect(onAttach).toHaveBeenCalledOnce();
+  });
+
+  it("shows the spaces typed at the start of user lines, where find also matches them", async () => {
+    const source = "Plan\n   Step one\n\tDetail";
+    await using screen = await renderTimeline([
+      message(source),
+      message(source, { role: "assistant" }, "assistant-1"),
+    ]);
+    const [user, assistant] = screen.container.querySelectorAll<HTMLElement>(
+      "[data-timeline-row-kind=message]",
+    );
+    expect(user?.querySelector<HTMLElement>("[data-user-message-body]")?.innerText).toBe(source);
+    expect(assistant?.querySelector<HTMLElement>(".chat-markdown")?.innerText).toBe(
+      "Plan Step one Detail",
+    );
+    const query = "   Step one";
+    const indexed = searchableMessageSegments({ role: "user", text: source, streaming: false });
+    const ranges = collectThreadFindRanges(screen.container, query);
+    expect(ranges.map(({ rowId, range }) => [rowId, range.toString()])).toEqual([
+      [user?.closest("[data-timeline-row-id]")?.getAttribute("data-timeline-row-id"), query],
+    ]);
+    expect(
+      indexed?.reduce((count, segment) => count + countThreadSearchOccurrences(segment, query), 0),
+    ).toBe(ranges.length);
   });
 
   it("keeps single tildes in user paths literal without changing double tildes or assistant text", async () => {

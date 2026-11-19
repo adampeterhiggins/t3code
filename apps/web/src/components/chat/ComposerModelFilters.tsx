@@ -1,4 +1,5 @@
 import type { ProviderInstanceId } from "@t3tools/contracts";
+import { T, useGT } from "gt-react";
 
 import type { ProviderInstanceEntry } from "~/providerInstances";
 
@@ -14,11 +15,12 @@ export function ComposerModelFilters(props: {
   selected: ProviderInstanceId | null;
   onSelect: (instanceId: ProviderInstanceId | null) => void;
 }) {
+  const gt = useGT();
   if (props.instances.length < 2) return null;
   return (
     <div
       role="group"
-      aria-label="Filter models by provider"
+      aria-label={gt("Filter models by provider")}
       className="flex gap-1 overflow-x-auto px-3 pt-1.5 [scrollbar-width:none]"
     >
       <Button
@@ -29,7 +31,7 @@ export function ComposerModelFilters(props: {
         onMouseDown={(event) => event.preventDefault()}
         onClick={() => props.onSelect(null)}
       >
-        All providers
+        <T>All providers</T>
       </Button>
       {props.instances.map((entry) => {
         const active = props.selected === entry.instanceId;

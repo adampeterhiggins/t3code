@@ -14,10 +14,12 @@ import type {
   SlackResourceContextRecord,
   SlackThreadContextRecord,
 } from "@t3tools/contracts";
+import { msg } from "gt-react";
 import { FolderGit2Icon, MessageSquareTextIcon } from "lucide-react";
 import type { MouseEvent } from "react";
 
 import { useLinearLinkClickHandler } from "~/browser/useLinearLinkClickHandler";
+import { m, type MessageResolver } from "~/i18n/messages";
 import {
   DiscordThreadDetails,
   GitHubIssueDetails,
@@ -111,55 +113,58 @@ export function linkedObjectIcon(record: LinkedObjectContextRecord) {
 }
 
 const SLACK_RESOURCE_KIND_LABELS: Record<SlackResourceContextRecord["resourceType"], string> = {
-  canvas: "Slack canvas",
-  list: "Slack list",
-  file: "Slack file",
-  user: "Slack profile",
+  canvas: msg("Slack canvas"),
+  list: msg("Slack list"),
+  file: msg("Slack file"),
+  user: msg("Slack profile"),
+};
+
+const GOOGLE_FILE_KIND_LABELS: Record<GoogleFileContextRecord["fileType"], string> = {
+  email: msg("Gmail conversation"),
+  event: msg("Google Calendar event"),
+  sheet: msg("Google Sheet"),
+  doc: msg("Google Doc"),
+  folder: msg("Google Drive folder"),
+  slides: msg("Google Slides"),
+  drive: msg("Google Drive file"),
 };
 
 /** What the record is, for screen readers: "Linear issue", "Slack message", and so on. */
-export function linkedObjectKindLabel(record: LinkedObjectContextRecord): string {
+export function linkedObjectKindLabel(
+  record: LinkedObjectContextRecord,
+  resolve: MessageResolver = m,
+): string {
   switch (record.kind) {
     case "linear-issue":
-      return "Linear issue";
+      return resolve(msg("Linear issue"));
     case "linear-object":
-      return linearObjectKindLabel(record.objectType);
+      return linearObjectKindLabel(record.objectType, resolve);
     case "github-issue":
-      return "GitHub issue";
+      return resolve(msg("GitHub issue"));
     case "github-ref":
       return gitHubRefKindLabel(record.refType);
     case "repository":
-      return "Repository";
+      return resolve(msg("Repository"));
     case "notion-page":
-      return "Notion page";
+      return resolve(msg("Notion page"));
     case "google-file":
-      return record.fileType === "email"
-        ? "Gmail conversation"
-        : record.fileType === "event"
-          ? "Google Calendar event"
-          : record.fileType === "sheet"
-            ? "Google Sheet"
-            : record.fileType === "doc"
-              ? "Google Doc"
-              : record.fileType === "folder"
-                ? "Google Drive folder"
-                : record.fileType === "slides"
-                  ? "Google Slides"
-                  : "Google Drive file";
+      return resolve(GOOGLE_FILE_KIND_LABELS[record.fileType]);
     case "granola-note":
-      return "Granola note";
+      return resolve(msg("Granola note"));
     case "prompt-link":
-      return "T3 Code prompt link";
+      return resolve(msg("T3 Code prompt link"));
     case "slack-thread":
       return record.scope === "thread"
-        ? "Slack thread"
+        ? resolve(msg("Slack thread"))
         : record.scope === "channel"
-          ? "Slack channel"
-          : "Slack message";
+          ? resolve(msg("Slack channel"))
+          : resolve(msg("Slack message"));
     case "slack-resource":
-      return SLACK_RESOURCE_KIND_LABELS[record.resourceType];
+      return resolve(SLACK_RESOURCE_KIND_LABELS[record.resourceType]);
     case "discord-thread":
-      return record.scope === "thread" ? "Discord thread" : "Discord message";
+      return record.scope === "thread"
+        ? resolve(msg("Discord thread"))
+        : resolve(msg("Discord message"));
   }
 }
 

@@ -11,6 +11,7 @@ import type {
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { Atom } from "effect/reactivity";
+import { T, useGT, useMessages } from "gt-react";
 import { MessageSquareIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -78,6 +79,8 @@ export function ThreadAttachPickerHost() {
 }
 
 function ThreadAttachPickerDialog({ threadRef }: { threadRef: ScopedThreadRef }) {
+  const gt = useGT();
+  const resolve = useMessages();
   const threads = useThreadShells();
   const projects = useProjects();
   const providersByEnvironment = useEnvironmentProviders();
@@ -134,6 +137,7 @@ function ThreadAttachPickerDialog({ threadRef }: { threadRef: ScopedThreadRef })
     query,
     limit: THREAD_PICKER_LIMIT,
     view,
+    resolve,
     ...(memberships ? { tabMemberships: memberships } : {}),
   });
   const groups = groupThreadAttachPickerItems(entries);
@@ -163,6 +167,7 @@ function ThreadAttachPickerDialog({ threadRef }: { threadRef: ScopedThreadRef })
     excludeThreadIds: new Set([threadRef.threadId]),
     query,
     view,
+    resolve,
     ...(memberships ? { tabMemberships: memberships } : {}),
   });
   const providerName = (value: ProviderInstanceId) =>
@@ -196,7 +201,7 @@ function ThreadAttachPickerDialog({ threadRef }: { threadRef: ScopedThreadRef })
     } catch (cause) {
       toastManager.add({
         type: "error",
-        title: "Could not attach that thread",
+        title: gt("Could not attach that thread"),
         description: cause instanceof Error ? cause.message : undefined,
       });
     }
@@ -211,10 +216,13 @@ function ThreadAttachPickerDialog({ threadRef }: { threadRef: ScopedThreadRef })
         if (!open) closeThreadAttachPicker();
       }}
     >
-      <CommandDialogPopup aria-label="Attach thread" className="overflow-hidden">
+      <CommandDialogPopup aria-label={gt("Attach thread")} className="overflow-hidden">
         <CommandPaletteContent
-          inputProps={{ placeholder: "Search threads by title", startAddon: <MessageSquareIcon /> }}
-          footerActionLabel={attaching ? "Attaching…" : "Attach"}
+          inputProps={{
+            placeholder: gt("Search threads by title"),
+            startAddon: <MessageSquareIcon />,
+          }}
+          footerActionLabel={attaching ? gt("Attaching…") : gt("Attach", { $context: "verb" })}
           inputAccessory={
             <ThreadAttachPickerFilterBar {...filterOptions} view={view} onChange={setView} />
           }
@@ -224,13 +232,13 @@ function ThreadAttachPickerDialog({ threadRef }: { threadRef: ScopedThreadRef })
         >
           {!membershipsReady ? (
             <div className="py-10 text-center text-muted-foreground text-sm">
-              Loading thread tabs…
+              <T>Loading thread tabs…</T>
             </div>
           ) : entries.length === 0 ? (
             <div className="py-10 text-center text-muted-foreground text-sm">
               {query.trim() || view.projectIds.length > 0 || view.providerInstanceIds.length > 0
-                ? "No threads match these filters."
-                : "No other threads to attach."}
+                ? gt("No threads match these filters.")
+                : gt("No other threads to attach.")}
             </div>
           ) : (
             <CommandList>
@@ -323,6 +331,7 @@ function ThreadProviderIcon(props: {
 
 /** The sidebar's status and last-activity time, so rows read the same in both places. */
 function ThreadActivityMeta({ thread }: { thread: EnvironmentThreadShell | undefined }) {
+  const messages = useMessages();
   const threadKey = thread
     ? scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))
     : null;
@@ -334,6 +343,7 @@ function ThreadActivityMeta({ thread }: { thread: EnvironmentThreadShell | undef
     resolveSidebarThreadStatus(thread),
     false,
     hasUnseenCompletion({ ...thread, lastVisitedAt }),
+    messages,
   );
   const time = formatRelativeTimeLabel(thread.latestUserMessageAt ?? thread.updatedAt);
   return (

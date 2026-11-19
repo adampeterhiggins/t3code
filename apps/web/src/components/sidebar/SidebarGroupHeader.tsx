@@ -1,3 +1,4 @@
+import { T, useGT } from "gt-react";
 import type { ThreadGroup } from "@t3tools/contracts/settings";
 import { PencilIcon, ChevronDownIcon } from "lucide-react";
 import { cn } from "../../lib/utils";
@@ -14,6 +15,7 @@ export function SidebarGroupHeader(props: {
   onEdit: (name: string) => void;
   onToggle: () => void;
 }) {
+  const gt = useGT();
   const accent = props.style?.accent;
   return (
     <div
@@ -36,14 +38,16 @@ export function SidebarGroupHeader(props: {
           {props.name}
         </span>
         {props.count === 0 ? (
-          <span className="shrink-0 font-normal text-muted-foreground/70">Empty</span>
+          <span className="shrink-0 font-normal text-muted-foreground/70">
+            <T context="thread group with no threads">Empty</T>
+          </span>
         ) : props.collapsed ? (
           <span className="shrink-0 font-normal text-muted-foreground/70">{props.count}</span>
         ) : null}
       </button>
       <button
         type="button"
-        aria-label={`Edit group ${props.name}`}
+        aria-label={gt("Edit group {name}", { name: props.name })}
         className="invisible shrink-0 cursor-pointer rounded-sm p-0.5 text-muted-foreground outline-none group-hover/group-header:visible hover:text-foreground focus-visible:visible focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         onClick={() => props.onEdit(props.name)}
       >

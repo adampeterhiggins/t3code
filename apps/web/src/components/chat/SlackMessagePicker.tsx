@@ -15,10 +15,12 @@ import type {
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
+import { msg, T, useGT } from "gt-react";
 import { AtSignIcon, HashIcon } from "lucide-react";
 import { useState } from "react";
 
 import { useComposerDraftStore } from "~/composerDraftStore";
+import { m } from "~/i18n/messages";
 import { useIssueContextStore } from "~/issueContextStore";
 import { useEnvironmentSettings } from "~/hooks/useSettings";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
@@ -100,7 +102,7 @@ export function useAttachSlackMessage() {
         const failure = squashAtomCommandFailure(result);
         toastManager.add({
           type: "error",
-          title: "Could not attach the Slack message",
+          title: m(msg("Could not attach the Slack message")),
           description: failure instanceof Error ? failure.message : undefined,
         });
       }
@@ -136,7 +138,7 @@ function useLinkSlackThread() {
         const failure = squashAtomCommandFailure(result);
         toastManager.add({
           type: "error",
-          title: "Could not link the Slack thread",
+          title: m(msg("Could not link the Slack thread")),
           description: failure instanceof Error ? failure.message : undefined,
         });
       }
@@ -159,7 +161,9 @@ function SlackMessageRow(props: { message: SlackMessageSummary }) {
       </span>
       <span className="min-w-0 flex-1 truncate text-muted-foreground text-sm">{message.text}</span>
       {message.threadTs === null ? null : (
-        <span className="shrink-0 text-muted-foreground/70 text-xs">in thread</span>
+        <span className="shrink-0 text-muted-foreground/70 text-xs">
+          <T context="a Slack message posted as a thread reply">in thread</T>
+        </span>
       )}
       <span className="w-16 shrink-0 truncate text-end text-muted-foreground/70 text-xs">
         {formatRelativeTimeLabel(message.postedAt)}
@@ -194,10 +198,6 @@ function SlackMessageHoverPreview(props: {
   );
 }
 
-function scopeLabel(scope: SlackSearchScope): string {
-  return scope.kind === "channel" ? `in ${scope.label}` : `from ${scope.label}`;
-}
-
 function ScopeIcon(props: { scope: SlackSearchScope }) {
   return props.scope.kind === "channel" ? <HashIcon /> : <AtSignIcon />;
 }
@@ -214,6 +214,7 @@ function SlackMessagePickerDialog(props: {
   mode: SlackMessagePickerMode;
 }) {
   const { threadRef, mode } = props;
+  const gt = useGT();
   const environmentId = threadRef.environmentId;
   const slackEnabled = useEnvironmentSettings(environmentId, (s) => s.enableSlackIntegration);
   const navigate = useNavigate();
@@ -267,19 +268,19 @@ function SlackMessagePickerDialog(props: {
 
   const status =
     connection.data === null
-      ? "Reading Slack status…"
+      ? gt("Reading Slack status…")
       : suggesting
         ? suggestedThreads.length > 0
           ? null
           : suggestionsQuery.isPending
-            ? "Loading suggestions…"
-            : "Search Slack. Try in:#channel, from:@name, or a phrase."
+            ? gt("Loading suggestions…")
+            : gt("Search Slack. Try in:#channel, from:@name, or a phrase.")
         : messagesQuery.error !== null && messages.length === 0
           ? messagesQuery.error
           : messages.length === 0
             ? searching
-              ? "Searching Slack…"
-              : "No messages match."
+              ? gt("Searching Slack…")
+              : gt("No messages match.")
             : null;
 
   if (!slackEnabled) return null;
@@ -291,7 +292,7 @@ function SlackMessagePickerDialog(props: {
       }}
     >
       <CommandDialogPopup
-        aria-label={mode === "link" ? "Link Slack thread" : "Attach Slack message"}
+        aria-label={mode === "link" ? gt("Link Slack thread") : gt("Attach Slack message")}
         className="overflow-hidden"
       >
         {connected || connection.data === null ? (
@@ -311,7 +312,11 @@ function SlackMessagePickerDialog(props: {
             <CommandPaletteContent
               inputProps={{
                 placeholder:
-                  scope === null ? "Search Slack messages" : `Search messages ${scopeLabel(scope)}`,
+                  scope === null
+                    ? gt("Search Slack messages")
+                    : scope.kind === "channel"
+                      ? gt("Search messages in {label}", { label: scope.label })
+                      : gt("Search messages from {label}", { label: scope.label }),
                 startAddon: <SlackIcon />,
                 onKeyDown: (event) => {
                   if (event.key === "Backspace" && query.length === 0 && scope !== null) {
@@ -325,7 +330,11 @@ function SlackMessagePickerDialog(props: {
                   <div className="flex px-3 pb-2">
                     <FilterPill
                       icon={<ScopeIcon scope={scope} />}
-                      label={scope.kind === "channel" ? `In ${scope.label}` : `From ${scope.label}`}
+                      label={
+                        scope.kind === "channel"
+                          ? gt("In {label}", { label: scope.label })
+                          : gt("From {label}", { label: scope.label })
+                      }
                       onRemove={() => setScope(null)}
                     />
                   </div>
@@ -351,11 +360,11 @@ function SlackMessagePickerDialog(props: {
               footerActionLabel={
                 mode === "link"
                   ? attaching
-                    ? "Linking…"
-                    : "Link thread"
+                    ? gt("Linking…")
+                    : gt("Link thread")
                   : attaching
-                    ? "Attaching…"
-                    : "Attach thread"
+                    ? gt("Attaching…")
+                    : gt("Attach thread")
               }
               mode="none"
               value={query}
@@ -367,7 +376,9 @@ function SlackMessagePickerDialog(props: {
                 <ContextMenu.Trigger render={<CommandList />}>
                   <CommandGroup items={[...messages]}>
                     {suggesting ? (
-                      <CommandGroupLabel>Threads you posted in</CommandGroupLabel>
+                      <CommandGroupLabel>
+                        <T>Threads you posted in</T>
+                      </CommandGroupLabel>
                     ) : null}
                     <CommandCollection>
                       {(message: SlackMessageSummary) => (
@@ -395,10 +406,10 @@ function SlackMessagePickerDialog(props: {
               {menuMessage === null ? null : (
                 <>
                   <MenuItem onClick={() => void select(menuMessage, "thread")}>
-                    Attach thread
+                    <T>Attach thread</T>
                   </MenuItem>
                   <MenuItem onClick={() => void select(menuMessage, "message")}>
-                    Attach only this message
+                    <T>Attach only this message</T>
                   </MenuItem>
                 </>
               )}
@@ -408,8 +419,10 @@ function SlackMessagePickerDialog(props: {
           <div className="flex flex-col items-center gap-3 px-6 py-10 text-center text-sm">
             <p className="text-muted-foreground">
               {mode === "link"
-                ? "Connect Slack to link a thread. T3 Code reads it as you and never posts."
-                : "Connect Slack to attach messages. T3 Code reads them as you and never posts."}
+                ? gt("Connect Slack to link a thread. T3 Code reads it as you and never posts.")
+                : gt(
+                    "Connect Slack to attach messages. T3 Code reads them as you and never posts.",
+                  )}
             </p>
             <Button
               size="sm"
@@ -418,7 +431,7 @@ function SlackMessagePickerDialog(props: {
                 void navigate({ to: "/settings/integrations" });
               }}
             >
-              Connect Slack
+              <T>Connect Slack</T>
             </Button>
           </div>
         )}

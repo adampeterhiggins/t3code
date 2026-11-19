@@ -22,6 +22,7 @@ import {
   slackResourceContextRecord,
   slackThreadContextRecord,
 } from "@t3tools/source-control-definitions/integrationContextRecords";
+import { useGT } from "gt-react";
 import { useRef, useState, type ComponentProps, type ReactElement, type ReactNode } from "react";
 
 import { useLinkClickHandler } from "~/browser/useOpenLink";
@@ -253,6 +254,7 @@ export function LinkedObjectLinkPreview(props: {
   environmentId: EnvironmentId;
   threadRef: ScopedThreadRef | null;
 }) {
+  const gt = useGT();
   const [open, setOpen] = useState(false);
   const cursorAnchor = useCursorAnchor();
   const previewActionsRef = useRef<PreviewCardPrimitive.Root.Actions | null>(null);
@@ -308,7 +310,11 @@ export function LinkedObjectLinkPreview(props: {
         <PreviewCardPopup {...cursorAnchor.popupProps} className="w-96 max-w-[calc(100vw-2rem)]">
           <div className="px-3 py-2">
             {record === null ? (
-              <div role="status" aria-label="Loading preview" className="flex flex-col gap-2 py-1">
+              <div
+                role="status"
+                aria-label={gt("Loading preview")}
+                className="flex flex-col gap-2 py-1"
+              >
                 <Skeleton className="h-4 w-2/3" />
                 <Skeleton className="h-3 w-full" />
                 <Skeleton className="h-3 w-5/6" />

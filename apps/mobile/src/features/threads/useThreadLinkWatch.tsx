@@ -2,6 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { threadLinkWatchFor } from "@t3tools/client-runtime/state/threadLinkWatches";
 import type { EnvironmentId, ThreadId, ThreadLinkKind } from "@t3tools/contracts";
+import { useGT } from "gt-react-native";
 import { Alert } from "react-native";
 
 import { SymbolView } from "../../components/ui/AppSymbol";
@@ -22,6 +23,7 @@ export function useThreadLinkWatch(input: {
   readonly url: string;
 }) {
   const { environmentId, threadId, kind } = input;
+  const gt = useGT();
   const watches = useEnvironmentQuery(
     threadLinkWatchEnvironment.watches({ environmentId, input: {} }),
   ).data;
@@ -44,8 +46,8 @@ export function useThreadLinkWatch(input: {
     if (result._tag !== "Failure") return;
     const error = squashAtomCommandFailure(result);
     Alert.alert(
-      watching ? "Could not stop watching" : "Could not watch for changes",
-      error instanceof Error && error.message.trim() ? error.message : "Try again.",
+      watching ? gt("Could not stop watching") : gt("Could not watch for changes"),
+      error instanceof Error && error.message.trim() ? error.message : gt("Try again."),
     );
   };
 
@@ -56,7 +58,7 @@ export function useThreadLinkWatch(input: {
         ? [
             {
               id: WATCH_ACTION,
-              title: watching ? "Stop watching" : "Watch for changes",
+              title: watching ? gt("Stop watching") : gt("Watch for changes"),
               image: watching ? "eye.slash" : "eye",
             },
           ]

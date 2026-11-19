@@ -74,6 +74,10 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
+import { msg, T, useGT, useMessages } from "gt-react";
+
+import { m as resolveNow, type MessageResolver } from "../../i18n/messages";
+
 import { useRightPanelStore } from "../../rightPanelStore";
 import { cn } from "~/lib/utils";
 import { textDirection } from "~/textDirection";
@@ -84,9 +88,9 @@ import { useNowMinute } from "../../hooks/useNowMinute";
 import { useNowSecond } from "../../hooks/useNowSecond";
 import { type ProviderEntrySummary } from "../../state/providerEntries";
 import { readEnvironmentScope, useEnvironmentScope } from "../../state/session";
-import { formatRelativeTimeLabel, parseTimestampDate } from "../../timestampFormat";
+import { useLinkedIssueDetail } from "../../state/issues";
+import { formatRelativeTime, parseTimestampDate } from "../../timestampFormat";
 import { resolveSidebarTopStatus, SidebarTopStatusIcon } from "./SidebarTopStatus";
-import { compactSidebarTimeLabel, threadTimeLabel } from "./SidebarTabSummary";
 import { type SidebarThreadSummary } from "../../types";
 import { type EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
@@ -113,6 +117,8 @@ import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
 import { shouldShowInstanceBadge } from "../../providerInstances";
 import { useThreadRunningTerminalIds } from "../../state/terminalSessions";
 import { InlineButton } from "../ui/button";
+import { ThreadDetailsIssueRows } from "../chat/ThreadDetailsIssueRows";
+import { IssueGlyph, issueStatePresentation } from "../issue/issuePresentation";
 import { Kbd } from "../ui/kbd";
 import { Menu, MenuItem, MenuItemDetail, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -127,19 +133,30 @@ export const SIDEBAR_THREAD_PREVIEW_PLACEMENT: ContextPreviewPlacement = {
   align: "start",
   sideOffset: 4,
 };
-function settledTimeLabel(thread: SidebarThreadSummary): string {
+function compactSidebarTimeLabel(timestamp: string, nowMs: number, resolve: MessageResolver) {
+  const parts = formatRelativeTime(timestamp, nowMs, resolve);
+  if (parts === null) return "";
+  return parts.suffix === null ? resolve(msg("now", { $context: "relative time" })) : parts.value;
+}
+function threadTimeLabel(thread: SidebarThreadSummary, resolve: MessageResolver): string {
+  return compactSidebarTimeLabel(
+    thread.latestUserMessageAt ?? thread.updatedAt,
+    Date.now(),
+    resolve,
+  );
+}
+function settledTimeLabel(thread: SidebarThreadSummary, resolve: MessageResolver): string {
   const timestamp = resolveSettledThreadTimestamp(thread);
-  return timestamp === null ? "" : compactSidebarTimeLabel(formatRelativeTimeLabel(timestamp));
+  return timestamp === null ? "" : compactSidebarTimeLabel(timestamp, Date.now(), resolve);
 }
 // Subscribes to the minute tick itself, so only the label re-renders each
 // minute. The minute is passed as the clock so it is the formatter's input.
 function RelativeTimeLabel(props: { timestamp: string | null }) {
   const nowMinute = useNowMinute();
+  const m = useMessages();
   return props.timestamp === null
     ? null
-    : compactSidebarTimeLabel(
-        formatRelativeTimeLabel(props.timestamp, Date.parse(`${nowMinute}:00.000Z`)),
-      );
+    : compactSidebarTimeLabel(props.timestamp, Date.parse(`${nowMinute}:00.000Z`), m);
 }
 export function JumpHintBadge(props: { label: string }) {
   return (
@@ -164,8 +181,13 @@ function WorkingDurationLabel(props: { environmentId: EnvironmentId; startedMs: 
     </span>
   );
 }
-export function terminalProcessLabel(count: number): string {
-  return `${count} terminal ${count === 1 ? "process" : "processes"} running`;
+export function terminalProcessLabel(count: number, resolve: MessageResolver = resolveNow): string {
+  return resolve(
+    msg(
+      "{count, plural, one {{count} terminal process running} other {{count} terminal processes running}}",
+      { count },
+    ),
+  );
 }
 function SidebarProviderStack(props: {
   thread: SidebarThreadSummary;
@@ -232,9 +254,11 @@ function SnoozeMenuButton(props: {
   environmentId: EnvironmentId;
 }) {
   const { open, onOpenChange, onSnooze, timestampFormat, environmentId } = props;
+  const gt = useGT();
+  const messages = useMessages();
   const presets = open
     ? // oxlint-disable-next-line react/purity -- Presets are resolved only while the menu is open, so each opening reads a fresh time.
-      resolveSnoozePresets(new Date(), timestampFormat, environmentId)
+      resolveSnoozePresets(new Date(), timestampFormat, environmentId, messages)
     : [];
   return (
     <Menu open={open} onOpenChange={onOpenChange}>
@@ -245,7 +269,7 @@ function SnoozeMenuButton(props: {
               render={
                 <button
                   type="button"
-                  aria-label="Snooze thread"
+                  aria-label={gt("Snooze thread")}
                   onClick={(event) => event.stopPropagation()}
                   onDoubleClick={(event) => event.stopPropagation()}
                   className="inline-flex h-full cursor-pointer items-center gap-0.5 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
@@ -256,7 +280,9 @@ function SnoozeMenuButton(props: {
         >
           <ClockIcon className="size-3" />
         </TooltipTrigger>
-        <TooltipPopup>Snooze thread</TooltipPopup>
+        <TooltipPopup>
+          <T>Snooze thread</T>
+        </TooltipPopup>
       </Tooltip>
       <MenuPopup side="bottom" align="end">
         {presets.map((preset) => (
@@ -280,7 +306,7 @@ function SnoozeMenuButton(props: {
             if (choice) onSnooze(choice);
           }}
         >
-          Custom…
+          <T>Custom…</T>
         </MenuItem>
       </MenuPopup>
     </Menu>
@@ -385,31 +411,31 @@ const dropVerbBadge: Record<SidebarDropVerb, ReactNode> = {
   pin: (
     <>
       <PinIcon aria-hidden className="size-3" />
-      Pin
+      <T>Pin</T>
     </>
   ),
   unpin: (
     <>
       <PinOffIcon aria-hidden className="size-3" />
-      Unpin
+      <T>Unpin</T>
     </>
   ),
   settle: (
     <>
       <CircleCheckIcon aria-hidden className="size-3" />
-      Settle
+      <T>Settle</T>
     </>
   ),
   unsettle: (
     <>
       <Undo2Icon aria-hidden className="size-3" />
-      Un-settle
+      <T>Un-settle</T>
     </>
   ),
   wake: (
     <>
       <AlarmClockOffIcon aria-hidden className="size-3" />
-      Wake
+      <T>Wake</T>
     </>
   ),
 };
@@ -506,6 +532,8 @@ type SidebarThreadRowProps = {
 };
 
 const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowProps) {
+  const gt = useGT();
+  const messages = useMessages();
   const {
     isRenaming,
     onCancelRename,
@@ -619,14 +647,17 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     isActive: props.isActive || props.groupFocused === true,
     isSelected,
   });
-  const resolvedTopStatus = resolveSidebarTopStatus(status, isWoke, isUnread);
+  const resolvedTopStatus = resolveSidebarTopStatus(status, isWoke, isUnread, messages);
   // A native /goal keeps the agent going across turns until it is met.
   const topStatus =
     resolvedTopStatus !== null && status === "working" && thread.goal?.status === "active"
-      ? { ...resolvedTopStatus, label: "Goal" }
+      ? {
+          ...resolvedTopStatus,
+          label: gt("Goal", { $context: "thread status: working on a goal" }),
+        }
       : resolvedTopStatus;
   const isWokeStatus = topStatus?.icon === "woke";
-  const prStatus = prStatusIndicator(pr, linkedPullRequestStatus?.sourceControlProvider);
+  const prStatus = prStatusIndicator(pr, linkedPullRequestStatus?.sourceControlProvider, messages);
   // An unsent composer pick wins, so the icon follows the composer before the next turn.
   const draftModelSelection = useComposerDraftActiveModelSelection(threadRef);
   const isRemote = thread.environmentId !== props.currentEnvironmentId;
@@ -728,31 +759,31 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const rowAction =
     variantAction === "unhide"
       ? {
-          label: "Unhide thread",
-          text: "Unhide",
+          label: gt("Unhide thread"),
+          text: gt("Unhide", { $context: "verb, a sidebar thread action" }),
           Icon: EyeIcon,
           onClick: handleUnhideClick,
           supported: true,
         }
       : variantAction === "unsnooze"
         ? {
-            label: "Wake thread now",
-            text: "Wake",
+            label: gt("Wake thread now"),
+            text: gt("Wake", { $context: "verb, a sidebar thread action" }),
             Icon: AlarmClockOffIcon,
             onClick: handleUnsnoozeClick,
             supported: props.snoozeSupported,
           }
         : variantAction === "unsettle"
           ? {
-              label: "Un-settle thread",
-              text: "Un-settle",
+              label: gt("Un-settle thread"),
+              text: gt("Un-settle"),
               Icon: Undo2Icon,
               onClick: handleUnsettleClick,
               supported: props.settlementSupported,
             }
           : {
-              label: "Settle thread",
-              text: "Settle",
+              label: gt("Settle thread"),
+              text: gt("Settle"),
               Icon: CheckIcon,
               onClick: handleSettleClick,
               supported: props.settlementSupported,
@@ -945,7 +976,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const prBadgeShape = supportsMultiplePullRequests
     ? resolveThreadPullRequestBadge(thread.pullRequests)
     : null;
-  const handlePrListClick = () => {
+  const openLinkedItems = () => {
     useRightPanelStore.getState().open(threadRef, "pull-requests");
     if (!props.isRouteThread) onThreadActivate(threadRef);
   };
@@ -958,10 +989,72 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         number={pr?.number ?? currentLinkedPr?.number}
         url={pr?.url ?? currentLinkedPr?.url}
         status={prStatus}
-        onOpenList={handlePrListClick}
+        onOpenList={openLinkedItems}
         onOpenPullRequest={handlePrClick}
       />
     ) : null;
+  const firstIssue = thread.issues?.[0];
+  const issueCount = thread.issues?.length ?? 0;
+  const issueDetail = useLinkedIssueDetail(
+    thread.environmentId,
+    leaseLiveStatus && issueCount === 1 ? firstIssue : undefined,
+    "sidebar",
+  );
+  const issueStatus = issueDetail === null ? null : issueStatePresentation(issueDetail.state);
+  const IssueIcon = issueStatus?.Icon ?? IssueGlyph.issue;
+  const issueLabel =
+    issueCount === 1 && firstIssue
+      ? issueStatus
+        ? gt("Issue {key}: {title}, {state}", {
+            key: firstIssue.displayKey,
+            title: firstIssue.title,
+            state: issueStatus.label,
+          })
+        : gt("Issue {key}: {title}", { key: firstIssue.displayKey, title: firstIssue.title })
+      : gt("{count, plural, one {{count} linked issue} other {{count} linked issues}}", {
+          count: issueCount,
+        });
+  const issueBadge = firstIssue ? (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <InlineButton
+            tone="muted"
+            aria-label={issueLabel}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              openLinkedItems();
+            }}
+          />
+        }
+      >
+        <IssueIcon aria-hidden className={cn("size-3 shrink-0", issueStatus?.toneClassName)} />
+        <span className="max-w-16 truncate text-xs font-normal text-secondary-label tabular-nums">
+          {issueCount === 1 ? firstIssue.displayKey : issueCount}
+        </span>
+      </TooltipTrigger>
+      <TooltipPopup
+        side="top"
+        sideOffset={0}
+        variant="glass"
+        className="pointer-events-auto w-80 max-w-[calc(100vw-2rem)] text-left whitespace-normal"
+        onContextMenu={(event) => event.stopPropagation()}
+      >
+        <div className="-mx-1 max-h-[calc(var(--available-height)-0.5rem-2px)] overflow-y-auto overscroll-contain">
+          <ThreadDetailsIssueRows
+            links={thread.issues ?? []}
+            threadRef={threadRef}
+            compact={false}
+            mountScope="sidebar-tooltip"
+            onOpen={() => {
+              if (!props.isRouteThread) onThreadActivate(threadRef);
+            }}
+          />
+        </div>
+      </TooltipPopup>
+    </Tooltip>
+  ) : null;
   const terminalStatusIcon = (
     <ThreadTerminalStatusButton
       threadRef={threadRef}
@@ -975,7 +1068,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         render={
           <span
             role="img"
-            aria-label="Unsent draft"
+            aria-label={gt("Unsent draft")}
             data-testid={`sidebar-draft-indicator-${thread.id}`}
             className="inline-flex shrink-0 items-center"
           />
@@ -983,7 +1076,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       >
         <SquarePenIcon aria-hidden className={draftPenClassName} />
       </TooltipTrigger>
-      <TooltipPopup side="top">Unsent draft</TooltipPopup>
+      <TooltipPopup side="top">
+        <T>Unsent draft</T>
+      </TooltipPopup>
     </Tooltip>
   ) : null;
   const savedDraftsIndicator = <SidebarSavedDraftsIndicator savedDraftCount={savedDraftCount} />;
@@ -1000,7 +1095,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           render={
             <button
               type="button"
-              aria-label="Unpin thread"
+              aria-label={gt("Unpin thread")}
               onClick={handleUnpinClick}
               className={cn(
                 "group/unpin inline-flex cursor-pointer items-center rounded-sm text-muted-foreground/65 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
@@ -1020,11 +1115,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             className="hidden size-3 shrink-0 group-hover/unpin:block group-focus-visible/unpin:block"
           />
         </TooltipTrigger>
-        <TooltipPopup>Unpin thread</TooltipPopup>
+        <TooltipPopup>
+          <T>Unpin thread</T>
+        </TooltipPopup>
       </Tooltip>
     ) : (
       <PinIcon
-        aria-label="Pinned"
+        aria-label={gt("Pinned")}
         role="img"
         className={cn(
           "size-3 shrink-0 text-muted-foreground/65",
@@ -1052,6 +1149,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     !checkoutThread.branch &&
     !showsScratchMachine &&
     prBadge === null &&
+    issueBadge === null &&
     diff === null &&
     runningTerminalIds.length === 0;
   // The two-line folder row's second line; the card keeps its own fuller version below.
@@ -1078,6 +1176,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       )}
       {terminalStatusIcon}
       {prBadge}
+      {issueBadge}
       {diff ? (
         <span className="shrink-0 font-mono">
           <span className="text-diff-addition-foreground">+{formatDiffCount(diff.insertions)}</span>{" "}
@@ -1122,7 +1221,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       >
         <ContextPreviewHover
           kind="thread"
-          accessibleLabel={`Thread, ${thread.title}`}
+          accessibleLabel={gt("Thread, {title}", { title: thread.title })}
           preview={{
             record: {
               environmentId: thread.environmentId,
@@ -1184,10 +1283,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 {savedDraftsIndicator}
                 {isRegeneratingTitle ? (
                   <span role="status" className="sr-only">
-                    Regenerating title
+                    <T>Regenerating title</T>
                   </span>
                 ) : null}
                 {multiline ? null : prBadge}
+                {multiline ? null : issueBadge}
                 {sortable?.isDragging ? (
                   dragDestination
                 ) : (
@@ -1213,16 +1313,20 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                             render={
                               <button
                                 type="button"
-                                aria-label="Dismiss Woke notification"
+                                aria-label={gt("Dismiss Woke notification")}
                                 onClick={handleAcknowledgeWokeClick}
                                 className="inline-flex cursor-pointer items-center gap-1 rounded-sm text-xs font-medium text-warning-foreground outline-none hover:underline focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                               >
                                 <AlarmClockIcon aria-hidden className="size-3" />
-                                <span role="status">Woke</span>
+                                <span role="status">
+                                  <T context="thread status: woke from snooze">Woke</T>
+                                </span>
                               </button>
                             }
                           />
-                          <TooltipPopup side="top">Dismiss Woke notification</TooltipPopup>
+                          <TooltipPopup side="top">
+                            <T>Dismiss Woke notification</T>
+                          </TooltipPopup>
                         </Tooltip>
                       ) : inFolder && topStatus ? (
                         // Folder rows have no status line, so the status takes the time slot.
@@ -1253,7 +1357,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                           render={
                             <button
                               type="button"
-                              aria-label="Unhide thread"
+                              aria-label={gt("Unhide thread")}
                               onClick={handleUnhideClick}
                               className={cn(
                                 "pointer-events-none absolute inset-y-0 right-0 -mr-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
@@ -1264,13 +1368,15 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                         >
                           <EyeIcon className="mb-px size-3.5" />
                         </TooltipTrigger>
-                        <TooltipPopup side="top">Unhide thread</TooltipPopup>
+                        <TooltipPopup side="top">
+                          <T>Unhide thread</T>
+                        </TooltipPopup>
                       </Tooltip>
                     ) : variantAction === "unsnooze" ? (
                       !props.snoozeSupported ? null : (
                         <button
                           type="button"
-                          aria-label="Wake thread now"
+                          aria-label={gt("Wake thread now")}
                           onClick={handleUnsnoozeClick}
                           onPointerDown={handleActionPointerDown}
                           className={cn(
@@ -1288,7 +1394,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                           render={
                             <button
                               type="button"
-                              aria-label="Un-settle thread"
+                              aria-label={gt("Un-settle thread")}
                               onClick={handleUnsettleClick}
                               onPointerDown={handleActionPointerDown}
                               className={cn(
@@ -1300,12 +1406,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                         >
                           <Undo2Icon className="mb-px size-3.5" />
                         </TooltipTrigger>
-                        <TooltipPopup side="top">Un-settle thread</TooltipPopup>
+                        <TooltipPopup side="top">
+                          <T>Un-settle thread</T>
+                        </TooltipPopup>
                       </Tooltip>
                     ) : (
                       <button
                         type="button"
-                        aria-label="Settle thread"
+                        aria-label={gt("Settle thread")}
                         onClick={handleSettleClick}
                         onPointerDown={handleActionPointerDown}
                         className={cn(
@@ -1343,7 +1451,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     >
       <ContextPreviewHover
         kind="thread"
-        accessibleLabel={`Thread, ${thread.title}`}
+        accessibleLabel={gt("Thread, {title}", { title: thread.title })}
         preview={{
           record: { environmentId: thread.environmentId, threadId: thread.id, title: thread.title },
         }}
@@ -1354,6 +1462,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             ref={rowRef}
             role="button"
             tabIndex={0}
+            data-sidebar-row={threadKey}
+            data-sidebar-parent={props.navigationParent}
             aria-label={accessibility.label}
             aria-current={accessibility.current}
             data-testid="sidebar-row-card"
@@ -1421,7 +1531,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                                 render={
                                   <button
                                     type="button"
-                                    aria-label="Dismiss Woke notification"
+                                    aria-label={gt("Dismiss Woke notification")}
                                     onClick={handleAcknowledgeWokeClick}
                                     className={cn(
                                       "inline-flex cursor-pointer items-center gap-1 rounded-sm font-medium outline-none hover:underline focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
@@ -1433,7 +1543,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                                   </button>
                                 }
                               />
-                              <TooltipPopup side="top">Dismiss Woke notification</TooltipPopup>
+                              <TooltipPopup side="top">
+                                <T>Dismiss Woke notification</T>
+                              </TooltipPopup>
                             </Tooltip>
                           ) : (
                             <span
@@ -1468,9 +1580,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                           props.snoozeWakeLabelText !== null ? (
                           props.snoozeWakeLabelText
                         ) : variantAction === "unsettle" ? (
-                          settledTimeLabel(thread)
+                          settledTimeLabel(thread, messages)
                         ) : (
-                          threadTimeLabel(thread)
+                          threadTimeLabel(thread, messages)
                         )}
                       </span>
                       {showHoverActions || onNewTab || showUnpinnedPinAction ? (
@@ -1487,7 +1599,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                                 render={
                                   <button
                                     type="button"
-                                    aria-label="Discard draft"
+                                    aria-label={gt("Discard draft")}
                                     onClick={handleDiscardDraftClick}
                                     className="inline-flex cursor-pointer items-center rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
                                   />
@@ -1495,7 +1607,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                               >
                                 <XIcon className="size-3.5" />
                               </TooltipTrigger>
-                              <TooltipPopup side="top">Discard draft</TooltipPopup>
+                              <TooltipPopup side="top">
+                                <T>Discard draft</T>
+                              </TooltipPopup>
                             </Tooltip>
                           ) : null}
                           {onNewTab ? (
@@ -1504,7 +1618,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                                 render={
                                   <button
                                     type="button"
-                                    aria-label="New tab"
+                                    aria-label={gt("New tab")}
                                     onClick={handleNewTabClick}
                                     className="inline-flex cursor-pointer items-center rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
                                   />
@@ -1512,7 +1626,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                               >
                                 <PlusIcon className="size-3.5" />
                               </TooltipTrigger>
-                              <TooltipPopup side="top">New tab</TooltipPopup>
+                              <TooltipPopup side="top">
+                                <T>New tab</T>
+                              </TooltipPopup>
                             </Tooltip>
                           ) : null}
                           {showSnoozeButton ? (
@@ -1553,7 +1669,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                                 render={
                                   <button
                                     type="button"
-                                    aria-label="Pin thread"
+                                    aria-label={gt("Pin thread")}
                                     onClick={handlePinClick}
                                     onPointerDown={handleActionPointerDown}
                                     className="-mr-1 inline-flex cursor-pointer items-center rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
@@ -1562,7 +1678,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                               >
                                 <PinIcon className="size-3.5" />
                               </TooltipTrigger>
-                              <TooltipPopup>Pin thread</TooltipPopup>
+                              <TooltipPopup>
+                                <T>Pin thread</T>
+                              </TooltipPopup>
                             </Tooltip>
                           ) : null}
                         </span>
@@ -1583,7 +1701,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               )}
               {isRegeneratingTitle ? (
                 <span role="status" className="sr-only">
-                  Regenerating title
+                  <T>Regenerating title</T>
                 </span>
               ) : null}
               <div
@@ -1621,6 +1739,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 {unifyTabs ? null : terminalStatusIcon}
                 {savedDraftsIndicator}
                 {prBadge}
+                {issueBadge}
                 {diff ? (
                   <span className="shrink-0 font-mono">
                     <span className="text-diff-addition-foreground">
@@ -1701,6 +1820,7 @@ export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props
   ) => void;
   onFileDropThreads: (threadRef: ScopedThreadRef, files: File[]) => void;
 }) {
+  const gt = useGT();
   const thread =
     useThreadShell(scopeThreadRef(props.thread.environmentId, props.thread.id)) ?? props.thread;
   const accessibility = resolveSidebarRowAccessibility({
@@ -1753,7 +1873,7 @@ export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props
     >
       <ContextPreviewHover
         kind="thread"
-        accessibleLabel={`Thread, ${thread.title}`}
+        accessibleLabel={gt("Thread, {title}", { title: thread.title })}
         preview={{
           record: { environmentId: thread.environmentId, threadId: thread.id, title: thread.title },
         }}

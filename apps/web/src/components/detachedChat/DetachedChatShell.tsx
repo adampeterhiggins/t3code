@@ -1,6 +1,7 @@
 import "./detachedChat.css";
 
 import { Outlet } from "@tanstack/react-router";
+import { T } from "gt-react";
 import { type CSSProperties, type ReactNode, useLayoutEffect } from "react";
 
 import { useTheme } from "../../hooks/useTheme";
@@ -141,7 +142,7 @@ export function DetachedConnectingNotice() {
         <ComposerSurface.Host>
           <ComposerSurface.Main>
             <p className="px-4 py-4 text-muted-foreground text-sm" role="status">
-              Connecting to T3 Code…
+              <T>Connecting to T3 Code…</T>
             </p>
           </ComposerSurface.Main>
         </ComposerSurface.Host>
@@ -158,7 +159,7 @@ export function DetachedLocalEnvironmentNotice() {
         <ComposerSurface.Host>
           <ComposerSurface.Main>
             <p className="px-4 py-4 text-muted-foreground text-sm">
-              The local environment is unavailable. Turn it on in T3 Code, then try again.
+              <T>The local environment is unavailable. Turn it on in T3 Code, then try again.</T>
             </p>
           </ComposerSurface.Main>
         </ComposerSurface.Host>

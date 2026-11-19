@@ -1,6 +1,7 @@
 import * as Schema from "effect/Schema";
 import { CheckIcon as Check, CopyIcon as Copy } from "lucide-react";
 import { TerminalIcon } from "lucide-react";
+import { msg, T, useGT, Var } from "gt-react";
 import { useEffect, useRef, useState, type ComponentProps } from "react";
 
 import {
@@ -13,6 +14,7 @@ import { Button } from "../ui/button";
 import { useClientSettings } from "../../hooks/useSettings";
 import { useCopyToClipboard, writeTextToClipboard } from "../../hooks/useCopyToClipboard";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
+import { m } from "../../i18n/messages";
 import { readLocalApi } from "~/localApi";
 import { GhosttyTerminalSurface, terminalFontFamily } from "~/terminal/ghostty/surface";
 import type { GhosttyColor } from "~/terminal/ghostty/core";
@@ -29,6 +31,12 @@ const MAX_PREVIEW_COLUMNS = 400;
 const MAX_PREVIEW_ROWS = 16;
 /** DECTCEM off: a read-only excerpt has no insertion point. */
 const HIDE_CURSOR = "\x1b[?25l";
+
+const TERMINAL_SELECTION_CLIPBOARD_TARGET = {
+  target: "terminal selection",
+  unavailableMessage: msg("Clipboard API is unavailable while copying terminal selection."),
+  failureMessage: msg("Failed to copy terminal selection to the clipboard."),
+};
 
 /**
  * The terminal theme lives in CSS, so the compiler can't see it change. Taking the theme as
@@ -119,6 +127,7 @@ function TerminalExcerptPreview({
   text: string;
   styledText?: string | undefined;
 }) {
+  const gt = useGT();
   const [advancedTypography] = useLocalStorage(
     TYPOGRAPHY_ADVANCED_STORAGE_KEY,
     false,
@@ -144,7 +153,11 @@ function TerminalExcerptPreview({
   const terminalTheme = readTerminalTheme(theme, resolvedTheme);
   const { copyToClipboard, isCopied } = useCopyToClipboard({
     timeout: 1500,
-    target: "terminal excerpt",
+    target: {
+      target: "terminal excerpt",
+      unavailableMessage: msg("Clipboard API is unavailable while copying terminal excerpt."),
+      failureMessage: msg("Failed to copy terminal excerpt to the clipboard."),
+    },
   });
   const [status, setStatus] = useState<"loading" | "ready" | "failed">("loading");
   const frameRef = useRef<HTMLDivElement>(null);
@@ -195,14 +208,19 @@ function TerminalExcerptPreview({
         void localApi.contextMenu
           .show(
             [
-              { id: "copy", label: "Copy", disabled: selection.length === 0 },
-              { id: "select-all", label: "Select all" },
+              {
+                id: "copy",
+                label: m(msg("Copy", { $context: "menu item, copies the terminal selection" })),
+                disabled: selection.length === 0,
+              },
+              { id: "select-all", label: m(msg("Select all")) },
             ],
             { x: event.clientX, y: event.clientY },
           )
           .then(
             (clicked) => {
-              if (clicked === "copy") void writeTextToClipboard(selection, "terminal selection");
+              if (clicked === "copy")
+                void writeTextToClipboard(selection, TERMINAL_SELECTION_CLIPBOARD_TARGET);
               if (clicked === "select-all") surfaceRef.current?.selectAll();
             },
             () => {},
@@ -250,12 +268,14 @@ function TerminalExcerptPreview({
           {terminalLabel}
         </span>
         <span className="ml-auto shrink-0 text-secondary-label text-xs">
-          {lineStart === lineEnd ? `Line ${lineStart}` : `Lines ${lineStart}–${lineEnd}`}
+          {lineStart === lineEnd
+            ? gt("Line {lineStart}", { lineStart })
+            : gt("Lines {lineStart}–{lineEnd}", { lineStart, lineEnd })}
         </span>
         <Button
           size="icon-xs"
           variant="ghost"
-          aria-label="Copy selection, or the whole excerpt"
+          aria-label={gt("Copy selection, or the whole excerpt")}
           onClick={() => {
             const selection = surfaceRef.current?.getSelection() ?? "";
             copyToClipboard(selection.length > 0 ? selection : text, undefined);
@@ -310,13 +330,18 @@ export function TerminalChipTrigger({
   label: string;
   expired: boolean;
 }) {
+  const gt = useGT();
   return (
     <ContextChipButton
       kind="terminal"
       {...(expired ? { state: "invalid" as const } : {})}
       icon={<TerminalIcon />}
       label={label}
-      aria-label={`Terminal excerpt, ${label}${expired ? ", expired" : ""}. Show details`}
+      aria-label={
+        expired
+          ? gt("Terminal excerpt, {label}, expired. Show details", { label })
+          : gt("Terminal excerpt, {label}. Show details", { label })
+      }
       data-terminal-context-expired={expired ? "true" : undefined}
       copyMarkdown={copyMarkdown}
       {...props}
@@ -339,12 +364,19 @@ export function TerminalPreview(props: TerminalPreviewProps) {
   if (props.expired) {
     return (
       <p className="px-1 py-0.5 text-sm">
-        Terminal context expired. Remove and re-add {props.label} to include it in your message.
+        <T>
+          Terminal context expired. Remove and re-add <Var>{props.label}</Var> to include it in your
+          message.
+        </T>
       </p>
     );
   }
   if (props.text.length === 0) {
-    return <p className="px-1 py-0.5 text-sm text-muted-foreground">No output was captured.</p>;
+    return (
+      <p className="px-1 py-0.5 text-sm text-muted-foreground">
+        <T>No output was captured.</T>
+      </p>
+    );
   }
   return (
     <TerminalExcerptPreview

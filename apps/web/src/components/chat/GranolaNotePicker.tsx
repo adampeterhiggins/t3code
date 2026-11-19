@@ -8,9 +8,11 @@ import {
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
+import { msg, T, useGT } from "gt-react";
 import { useState } from "react";
 import { useLinkClickHandler } from "~/browser/useOpenLink";
 import { useComposerDraftStore } from "~/composerDraftStore";
+import { m } from "~/i18n/messages";
 import { useEnvironmentSettings } from "~/hooks/useSettings";
 import { useIssueContextStore } from "~/issueContextStore";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
@@ -109,7 +111,7 @@ function useLinkGranolaNote() {
         const failure = squashAtomCommandFailure(result);
         toastManager.add({
           type: "error",
-          title: "Could not link the Granola note",
+          title: m(msg("Could not link the Granola note")),
           description: failure instanceof Error ? failure.message : undefined,
         });
       }
@@ -137,6 +139,7 @@ function GranolaNotePickerDialog({
     threadRef.environmentId,
     (s) => s.enableGranolaIntegration,
   );
+  const gt = useGT();
   const navigate = useNavigate();
   const attachNote = useAttachGranolaNote();
   const linkNote = useLinkGranolaNote();
@@ -170,13 +173,13 @@ function GranolaNotePickerDialog({
     connection.error ??
     result.error ??
     (connection.data === null
-      ? "Reading Granola status…"
+      ? gt("Reading Granola status…")
       : result.isPending && notes.length === 0
-        ? "Loading meetings…"
+        ? gt("Loading meetings…")
         : notes.length === 0
           ? filtered && (loaded?.length ?? 0) > 0
-            ? "No meetings match these filters."
-            : "No meetings in the last 30 days match. Paste a note link to attach an older one."
+            ? gt("No meetings match these filters.")
+            : gt("No meetings in the last 30 days match. Paste a note link to attach an older one.")
           : null);
   if (!granolaEnabled) return null;
   return (
@@ -187,23 +190,23 @@ function GranolaNotePickerDialog({
       }}
     >
       <CommandDialogPopup
-        aria-label={mode === "link" ? "Link Granola note" : "Attach Granola note"}
+        aria-label={mode === "link" ? gt("Link Granola note") : gt("Attach Granola note")}
         className="overflow-hidden"
       >
         {connected || connection.data === null ? (
           <CommandPaletteContent
             inputProps={{
-              placeholder: "Search recent meetings or paste a note link",
+              placeholder: gt("Search recent meetings or paste a note link"),
               startAddon: <GranolaIcon />,
             }}
             footerActionLabel={
               mode === "link"
                 ? attaching
-                  ? "Linking…"
-                  : "Link note"
+                  ? gt("Linking…")
+                  : gt("Link note")
                 : attaching
-                  ? "Attaching…"
-                  : "Attach note"
+                  ? gt("Attaching…")
+                  : gt("Attach note")
             }
             inputAccessory={
               <GranolaNotePickerFilterBar
@@ -266,8 +269,8 @@ function GranolaNotePickerDialog({
           <div className="flex flex-col items-center gap-3 px-6 py-10 text-center text-sm">
             <p className="text-muted-foreground">
               {mode === "link"
-                ? "Connect Granola to link a meeting note."
-                : "Connect Granola to attach meeting notes."}
+                ? gt("Connect Granola to link a meeting note.")
+                : gt("Connect Granola to attach meeting notes.")}
             </p>
             <Button
               size="sm"
@@ -276,7 +279,7 @@ function GranolaNotePickerDialog({
                 void navigate({ to: "/settings/integrations" });
               }}
             >
-              Connect Granola
+              <T>Connect Granola</T>
             </Button>
           </div>
         )}
@@ -296,6 +299,7 @@ function GranolaNotePreview({
   threadRef: ScopedThreadRef;
   note: GranolaNoteSummary;
 }) {
+  const gt = useGT();
   const onOpenLink = useLinkClickHandler(threadRef);
   const full = useEnvironmentQuery(
     granolaEnvironment.note({ environmentId: threadRef.environmentId, input: { id: note.id } }),
@@ -306,7 +310,7 @@ function GranolaNotePreview({
       {note.participants.length > 0 ? (
         <p className="text-muted-foreground">
           {note.participants
-            .map((name) => (name === note.creator ? `${name} (note taker)` : name))
+            .map((name) => (name === note.creator ? gt("{name} (note taker)", { name }) : name))
             .join(", ")}
         </p>
       ) : null}
@@ -315,7 +319,7 @@ function GranolaNotePreview({
           <GranolaNoteDetails record={full.data} onOpenLink={onOpenLink} />
         </div>
       ) : (
-        <p className="text-muted-foreground">{full.error ?? "Loading summary…"}</p>
+        <p className="text-muted-foreground">{full.error ?? gt("Loading summary…")}</p>
       )}
     </div>
   );

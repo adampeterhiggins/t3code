@@ -3,6 +3,7 @@ import {
   resolveComposerPathTab,
   type ComposerPathTab,
 } from "./composerPathMenu";
+import { msg, useGT, useMessages } from "gt-react";
 import { useState } from "react";
 import type { ProviderInstanceId } from "@t3tools/contracts";
 import type { ComposerTrigger } from "../../composer-logic";
@@ -18,10 +19,10 @@ import { useComposerAgentItems } from "./useComposerAgentItems";
 
 /** Fork: the `@` menu's tabs. Agents shows only when the thread has agents. */
 const PATH_MENU_TABS: ReadonlyArray<{ id: ComposerPathTab; label: string }> = [
-  { id: "files", label: "Files" },
-  { id: "chats", label: "Chats" },
-  { id: "agents", label: "Agents" },
-  { id: "models", label: "Models" },
+  { id: "files", label: msg("Files") },
+  { id: "chats", label: msg("Chats") },
+  { id: "agents", label: msg("Agents") },
+  { id: "models", label: msg("Models") },
 ];
 
 export function useComposerPathMenu(
@@ -56,6 +57,8 @@ export function useComposerPathMenu(
     modelOptionsByInstance,
     emptyState,
   } = input;
+  const gt = useGT();
+  const resolve = useMessages();
   const isPathTrigger = composerTrigger?.kind === "path";
   const pathTriggerQuery = isPathTrigger ? composerTrigger.query : "";
   // Fork: the `@` menu splits files from chats. Files lists workspace paths only; Chats lists
@@ -69,6 +72,7 @@ export function useComposerPathMenu(
         threadTabs: threadTabGroup?.tabs ?? [],
         activeThreadId,
         items: composerMenuItemsFromTrigger,
+        resolve,
       })
     : [];
   // A draft has no agents, and its thread does not exist on the server yet.
@@ -130,23 +134,24 @@ export function useComposerPathMenu(
       emptyStateText:
         isPathTrigger && pathTab === "agents"
           ? pathTriggerQuery
-            ? `No agent matches ${pathTriggerQuery}.`
-            : "This thread has no agents."
+            ? gt("No agent matches {query}.", { query: pathTriggerQuery })
+            : gt("This thread has no agents.")
           : isPathTrigger && pathTab === "models"
             ? pathTriggerQuery
-              ? `No model matches ${pathTriggerQuery}.`
-              : "No models available."
+              ? gt("No model matches {query}.", { query: pathTriggerQuery })
+              : gt("No models available.")
             : isPathTrigger && pathTab === "chats"
               ? pathTriggerQuery
-                ? `No chat matches ${pathTriggerQuery}.`
-                : "No other chats yet."
+                ? gt("No chat matches {query}.", { query: pathTriggerQuery })
+                : gt("No other chats yet.")
               : emptyState,
       ...(isPathTrigger
         ? {
             tabs: {
-              options: agentMenu.available
+              options: (agentMenu.available
                 ? PATH_MENU_TABS
-                : PATH_MENU_TABS.filter((tab) => tab.id !== "agents"),
+                : PATH_MENU_TABS.filter((tab) => tab.id !== "agents")
+              ).map((tab) => ({ ...tab, label: resolve(tab.label) })),
               activeId: pathTab,
               onSelect: (id: string) => {
                 const tab = PATH_MENU_TABS.find((option) => option.id === id);

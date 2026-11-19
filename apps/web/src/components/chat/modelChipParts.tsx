@@ -1,4 +1,5 @@
 import type { ModelContextOption, ServerProviderModel } from "@t3tools/contracts";
+import { useGT } from "gt-react";
 import { BrainIcon, ZapIcon } from "lucide-react";
 
 const EFFORT_OPTION = /effort|reasoning|thinking/i;
@@ -15,16 +16,17 @@ export function formatModelContextWindow(tokens: number): string {
  * keeps its slot when absent, so the glyphs line up down a list.
  */
 export function ModelTraitGlyphs(props: { model: ServerProviderModel | null }) {
+  const gt = useGT();
   const descriptors = props.model?.capabilities?.optionDescriptors ?? [];
   const effort = descriptors.some((d) => d.type === "select" && EFFORT_OPTION.test(d.id));
   const fast = descriptors.some((d) => d.type === "boolean" && FAST_OPTION.test(d.id));
   return (
     <span className="flex items-center gap-1">
       <span className="flex size-3 shrink-0">
-        {effort ? <BrainIcon aria-label="Effort levels" className="size-3" /> : null}
+        {effort ? <BrainIcon aria-label={gt("Effort levels")} className="size-3" /> : null}
       </span>
       <span className="flex size-3 shrink-0">
-        {fast ? <ZapIcon aria-label="Fast mode" className="size-3 fill-current" /> : null}
+        {fast ? <ZapIcon aria-label={gt("Fast mode")} className="size-3 fill-current" /> : null}
       </span>
     </span>
   );

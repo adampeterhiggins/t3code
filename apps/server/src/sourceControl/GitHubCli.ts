@@ -138,6 +138,7 @@ function fromGitHubApiError(
     case "GitHubAppSessionError":
       return new GitHubCliAuthenticationError(context);
     case "GitHubCliFailedError":
+    case "GitHubCliTimeoutError":
       return new GitHubCliCommandError(context);
     case "GitHubApiRateLimitError":
       return new GitHubCliRateLimitError({

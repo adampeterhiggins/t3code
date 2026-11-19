@@ -1,5 +1,7 @@
 import type { LegendListRef } from "@legendapp/list/react";
+import { msg } from "gt-react";
 import { useEffect, useEffectEvent, useState, type RefObject } from "react";
+import { m } from "~/i18n/messages";
 import { toastManager } from "../ui/toast";
 import type { AssistantCitationTarget } from "./AssistantCitationSource";
 import type { MessagesTimelineRow } from "./MessagesTimeline.logic";
@@ -36,12 +38,13 @@ export function useTranscriptCitationReveal({
         request.onComplete();
         toastManager.add({
           type: "warning",
-          title: "Could not open the cited excerpt",
-          description: "Click the citation to try again.",
+          title: m(msg("Could not open the cited excerpt")),
+          description: m(msg("Click the citation to try again.")),
         });
       });
   });
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- scrolls the list to the citation and runs the highlight fade timer
   useEffect(() => {
     if (!target?.citation.segments) return;
     reveal(target);

@@ -1,6 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { mergeSharedSettingMaps } from "@t3tools/client-runtime/state/shared-settings";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
+import { useMessages } from "gt-react-native";
 import { useCallback, useMemo, useState } from "react";
 
 import { environmentServerConfigsAtom } from "../../state/server";
@@ -12,6 +13,7 @@ const NO_ORGANISATIONS: ReadonlyArray<string> = [];
 /** The Organisations filter, kept in memory like the project filter. */
 export function useThreadListOrganisations(projects: ReadonlyArray<EnvironmentProject>) {
   const serverConfigs = useAtomValue(environmentServerConfigsAtom);
+  const messages = useMessages();
   // Names are a shared server setting; the first environment to hold one wins.
   const names = useMemo(
     () =>
@@ -20,7 +22,10 @@ export function useThreadListOrganisations(projects: ReadonlyArray<EnvironmentPr
       ),
     [serverConfigs],
   );
-  const organisations = useMemo(() => buildOrganisationOptions(projects, names), [names, projects]);
+  const organisations = useMemo(
+    () => buildOrganisationOptions(projects, names, messages),
+    [names, projects, messages],
+  );
   const [pickedKeys, setPickedKeys] = useState(NO_ORGANISATIONS);
   // Organisations that no longer have a checkout stop narrowing the list.
   const organisationKeys = useMemo(

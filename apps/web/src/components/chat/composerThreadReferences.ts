@@ -14,6 +14,9 @@ import {
   type FilterDimension,
   filterFacets,
 } from "@t3tools/shared/filterFacets";
+import { msg } from "gt-react";
+
+import { m, type MessageResolver } from "../../i18n/messages";
 
 export interface ThreadAttachPickerView {
   readonly projectIds: ReadonlyArray<ProjectId>;
@@ -39,6 +42,8 @@ interface ThreadReferenceInput {
   query: string;
   /** Memberships belong to `environmentId`; omitted by the inline mention menu. */
   tabMemberships?: ReadonlyArray<ThreadTabMembership>;
+  /** Components pass `useMessages()`; defaults to `m`. */
+  resolve?: MessageResolver;
 }
 
 /**
@@ -132,7 +137,9 @@ export function composerThreadReferenceItems(
       type: "thread-tab" as const,
       threadId: thread.id,
       label: thread.title,
-      description: projectTitles.get(thread.projectId) ?? "Thread",
+      description:
+        projectTitles.get(thread.projectId) ??
+        (input.resolve ?? m)(msg("Thread", { $context: "noun, a chat thread" })),
       parentThreadId: groupIdByThreadId.get(thread.id) ?? null,
       parentThreadTitle: parentByThreadId.get(thread.id)?.title ?? null,
     }));
@@ -160,7 +167,13 @@ export function threadAttachPickerFacets(
       const value = choice.value as ProjectId;
       const title = projectTitles.get(value);
       if (title === undefined && !input.view.projectIds.includes(value)) return [];
-      return [{ value, label: title ?? "Unknown project", count: choice.count }];
+      return [
+        {
+          value,
+          label: title ?? (input.resolve ?? m)(msg("Unknown project")),
+          count: choice.count,
+        },
+      ];
     }),
     providers: facets.providers.map((choice) => ({
       value: choice.value as ProviderInstanceId,

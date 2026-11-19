@@ -1,10 +1,12 @@
 import { ArrowDownUpIcon, CalendarIcon, FileIcon, ListFilterIcon, UserIcon } from "lucide-react";
 import type { EnvironmentId, GoogleCalendarSummary } from "@t3tools/contracts";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
 import { useState } from "react";
 
 import { googleEnvironment } from "~/state/google";
 import { useDebouncedValue } from "~/state/queries";
 import { useEnvironmentQuery } from "~/state/query";
+import type { MessageResolver } from "~/i18n/messages";
 
 import { FilterPill } from "../FilterPill";
 import { Button } from "../ui/button";
@@ -40,16 +42,41 @@ type Range = GoogleFilePickerView["range"];
 type Sort = GoogleFilePickerView["sort"];
 
 const RANGE_LABELS = {
-  all: "Any time",
-  week: "Modified in the last 7 days",
-  month: "Modified in the last 30 days",
+  all: msg("Any time"),
+  week: msg("Modified in the last 7 days"),
+  month: msg("Modified in the last 30 days"),
 } as const satisfies Record<Range, string>;
 
 const SORT_LABELS = {
-  newest: "Recently modified",
-  oldest: "Least recently modified",
-  title: "Title A–Z",
+  newest: msg("Recently modified", { $context: "sort order" }),
+  oldest: msg("Least recently modified", { $context: "sort order" }),
+  title: msg("Title A–Z", { $context: "sort order" }),
 } as const satisfies Record<Sort, string>;
+
+type ChecklistNoun = "types" | "senders" | "organizers" | "owners";
+
+const CHECKLIST_COPY = {
+  types: {
+    loading: msg("Loading types…"),
+    empty: msg("No types in these results"),
+    search: msg("Search types"),
+  },
+  senders: {
+    loading: msg("Loading senders…"),
+    empty: msg("No senders in these results"),
+    search: msg("Search senders"),
+  },
+  organizers: {
+    loading: msg("Loading organizers…"),
+    empty: msg("No organizers in these results"),
+    search: msg("Search organizers"),
+  },
+  owners: {
+    loading: msg("Loading owners…"),
+    empty: msg("No owners in these results"),
+    search: msg("Search owners"),
+  },
+} as const satisfies Record<ChecklistNoun, Record<"loading" | "empty" | "search", string>>;
 
 function toggle<T extends string>(values: ReadonlyArray<T>, value: T, checked: boolean) {
   return checked
@@ -65,20 +92,22 @@ function Checklist(props: {
   /** "Only" settles the filter, so it also closes the menu. */
   onOnly: (value: string) => void;
   loading: boolean;
-  noun: string;
+  noun: ChecklistNoun;
 }) {
+  const m = useMessages();
+  const copy = CHECKLIST_COPY[props.noun];
   if (props.options.length === 0) {
     return props.loading ? (
-      <MenuLoadingItem>Loading {props.noun}…</MenuLoadingItem>
+      <MenuLoadingItem>{m(copy.loading)}</MenuLoadingItem>
     ) : (
-      <MenuItem disabled>No {props.noun} in these results</MenuItem>
+      <MenuItem disabled>{m(copy.empty)}</MenuItem>
     );
   }
   return (
     <MenuSearch
       items={props.options}
       getText={(option) => option.label}
-      placeholder={`Search ${props.noun}`}
+      placeholder={m(copy.search)}
     >
       {(matches, query) =>
         matches.map((option) => (
@@ -113,8 +142,8 @@ function defaultCalendarIds(calendars: ReadonlyArray<GoogleCalendarSummary>): st
   return calendars.filter((c) => c.primary || c.selected).map((c) => c.id);
 }
 
-function calendarLabel(calendar: GoogleCalendarSummary) {
-  return calendar.primary ? `${calendar.name} (you)` : calendar.name;
+function calendarLabel(calendar: GoogleCalendarSummary, resolve: MessageResolver) {
+  return calendar.primary ? resolve(msg("{name} (you)", { name: calendar.name })) : calendar.name;
 }
 
 /**
@@ -128,6 +157,8 @@ function CalendarChecklist(props: {
   selected: ReadonlyArray<string>;
   onChange: (selected: ReadonlyArray<string>) => void;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const [value, setValue] = useState("");
   const settled = useDebouncedValue(value.trim(), 250);
   const directory = useEnvironmentQuery(
@@ -135,7 +166,13 @@ function CalendarChecklist(props: {
       ? googleEnvironment.people({ environmentId: props.environmentId, input: { query: settled } })
       : null,
   );
-  if (props.calendars === null) return <MenuLoadingItem>Loading calendars…</MenuLoadingItem>;
+  if (props.calendars === null) {
+    return (
+      <MenuLoadingItem>
+        <T>Loading calendars…</T>
+      </MenuLoadingItem>
+    );
+  }
   const known = new Set(props.calendars.map((c) => c.id));
   // Colleagues added by email are not in the account's calendar list.
   const entries = [
@@ -166,8 +203,8 @@ function CalendarChecklist(props: {
       <MenuSearchInput
         autoFocus
         value={value}
-        placeholder="Search calendars or people"
-        aria-label="Search calendars or people"
+        placeholder={gt("Search calendars or people")}
+        aria-label={gt("Search calendars or people")}
         onChange={(event) => setValue(event.currentTarget.value)}
       />
       {matches.map((calendar) => (
@@ -178,14 +215,16 @@ function CalendarChecklist(props: {
             props.onChange(toggle(props.selected, calendar.id, checked))
           }
         >
-          <span className="min-w-0 flex-1 truncate">{calendarLabel(calendar)}</span>
+          <span className="min-w-0 flex-1 truncate">{calendarLabel(calendar, m)}</span>
         </MenuCheckboxItem>
       ))}
       {settled.length >= 2 ? (
         <>
           {matches.length > 0 ? <MenuSeparator /> : null}
           <MenuGroup>
-            <MenuGroupLabel>People</MenuGroupLabel>
+            <MenuGroupLabel>
+              <T>People</T>
+            </MenuGroupLabel>
             {people.map((person) => (
               <MenuItem key={person.email} onClick={() => add(person.email)}>
                 <span className="min-w-0 flex-1 truncate">{person.name}</span>
@@ -195,21 +234,31 @@ function CalendarChecklist(props: {
               </MenuItem>
             ))}
             {addable ? (
-              <MenuItem onClick={() => add(query)}>Show {query}&apos;s calendar</MenuItem>
+              <MenuItem onClick={() => add(query)}>
+                <T>
+                  Show <Var>{query}</Var>&apos;s calendar
+                </T>
+              </MenuItem>
             ) : null}
             {directory.data === null && directory.error === null ? (
-              <MenuLoadingItem>Searching people…</MenuLoadingItem>
+              <MenuLoadingItem>
+                <T>Searching people…</T>
+              </MenuLoadingItem>
             ) : directory.data?.directoryAvailable === false ? (
-              <MenuItem disabled>Reconnect Google to search your directory</MenuItem>
+              <MenuItem disabled>
+                <T>Reconnect Google to search your directory</T>
+              </MenuItem>
             ) : people.length === 0 && !addable ? (
               <MenuItem disabled>
-                {directory.error ?? "No one matches. Type an email instead."}
+                {directory.error ?? gt("No one matches. Type an email instead.")}
               </MenuItem>
             ) : null}
           </MenuGroup>
         </>
       ) : matches.length === 0 ? (
-        <MenuItem disabled>Type a name or email to find a colleague</MenuItem>
+        <MenuItem disabled>
+          <T>Type a name or email to find a colleague</T>
+        </MenuItem>
       ) : null}
     </>
   );
@@ -236,6 +285,8 @@ export function GoogleFilePickerFilterBar(props: {
   onCalendarIdsChange: (calendarIds: ReadonlyArray<string> | null) => void;
 }) {
   const { view, source } = props;
+  const gt = useGT();
+  const m = useMessages();
   const defaults = DEFAULT_GOOGLE_FILE_PICKER_VIEWS[source];
   const ownerNoun =
     source === "gmail" ? "senders" : source === "calendar" ? "organizers" : "owners";
@@ -256,12 +307,14 @@ export function GoogleFilePickerFilterBar(props: {
         <Menu open={menuOpen} onOpenChange={setMenuOpen}>
           <MenuTrigger render={<Button type="button" size="xs" variant="outline" />}>
             <ListFilterIcon />
-            Filter
+            <T context="verb, opens filter options">Filter</T>
           </MenuTrigger>
           <MenuPopup align="start">
             {source === "calendar" ? (
               <MenuSub>
-                <MenuSubTrigger>Calendars</MenuSubTrigger>
+                <MenuSubTrigger>
+                  <T>Calendars</T>
+                </MenuSubTrigger>
                 <MenuSubPopup>
                   <CalendarChecklist
                     environmentId={props.environmentId}
@@ -280,7 +333,9 @@ export function GoogleFilePickerFilterBar(props: {
             ) : null}
             {source === "drive" ? (
               <MenuSub>
-                <MenuSubTrigger>Type</MenuSubTrigger>
+                <MenuSubTrigger>
+                  <T context="filter by file type">Type</T>
+                </MenuSubTrigger>
                 <MenuSubPopup>
                   <Checklist
                     options={props.types}
@@ -297,7 +352,11 @@ export function GoogleFilePickerFilterBar(props: {
             ) : null}
             <MenuSub>
               <MenuSubTrigger>
-                {source === "gmail" ? "Sender" : source === "calendar" ? "Organizer" : "Owner"}
+                {source === "gmail"
+                  ? gt("Sender")
+                  : source === "calendar"
+                    ? gt("Organizer")
+                    : gt("Owner")}
               </MenuSubTrigger>
               <MenuSubPopup>
                 <Checklist
@@ -312,7 +371,9 @@ export function GoogleFilePickerFilterBar(props: {
             </MenuSub>
             {source === "drive" ? (
               <MenuSub>
-                <MenuSubTrigger>Date</MenuSubTrigger>
+                <MenuSubTrigger>
+                  <T context="filter by date">Date</T>
+                </MenuSubTrigger>
                 <MenuSubPopup>
                   <MenuRadioGroup
                     value={view.range}
@@ -321,7 +382,7 @@ export function GoogleFilePickerFilterBar(props: {
                     {(Object.keys(RANGE_LABELS) as Range[]).map((range) => (
                       <MenuRadioItem key={range} value={range}>
                         <span className="flex w-full min-w-0 items-center gap-2">
-                          <span className="min-w-0 flex-1 truncate">{RANGE_LABELS[range]}</span>
+                          <span className="min-w-0 flex-1 truncate">{m(RANGE_LABELS[range])}</span>
                           {props.loading ? null : (
                             <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                               {props.ranges[range] ?? 0}
@@ -347,14 +408,14 @@ export function GoogleFilePickerFilterBar(props: {
               props.onCalendarIdsChange(null);
             }}
           >
-            Reset
+            <T context="verb, resets filters">Reset</T>
           </Button>
         ) : null}
         {source === "drive" ? (
           <Menu>
             <MenuTrigger render={<Button type="button" size="xs" variant="ghost" />}>
               <ArrowDownUpIcon />
-              {SORT_LABELS[view.sort]}
+              {m(SORT_LABELS[view.sort])}
             </MenuTrigger>
             <MenuPopup align="end">
               <MenuRadioGroup
@@ -363,7 +424,7 @@ export function GoogleFilePickerFilterBar(props: {
               >
                 {(Object.keys(SORT_LABELS) as Sort[]).map((sort) => (
                   <MenuRadioItem key={sort} value={sort}>
-                    {SORT_LABELS[sort]}
+                    {m(SORT_LABELS[sort])}
                   </MenuRadioItem>
                 ))}
               </MenuRadioGroup>
@@ -376,7 +437,7 @@ export function GoogleFilePickerFilterBar(props: {
           {source === "calendar"
             ? shownCalendarIds.map((id) => {
                 const calendar = props.calendars?.find((c) => c.id === id);
-                const label = calendar ? calendarLabel(calendar) : id;
+                const label = calendar ? calendarLabel(calendar, m) : id;
                 return (
                   <FilterPill
                     key={`calendar:${id}`}
@@ -414,10 +475,10 @@ export function GoogleFilePickerFilterBar(props: {
               icon={<UserIcon />}
               label={
                 source === "gmail"
-                  ? `Sent by ${owner}`
+                  ? gt("Sent by {owner}", { owner })
                   : source === "calendar"
-                    ? `Organized by ${owner}`
-                    : `Owned by ${owner}`
+                    ? gt("Organized by {owner}", { owner })
+                    : gt("Owned by {owner}", { owner })
               }
               onRemove={() =>
                 props.onChange({ ...view, owners: view.owners.filter((entry) => entry !== owner) })
@@ -427,7 +488,7 @@ export function GoogleFilePickerFilterBar(props: {
           {rangeFiltered ? (
             <FilterPill
               icon={<CalendarIcon />}
-              label={RANGE_LABELS[view.range]}
+              label={m(RANGE_LABELS[view.range])}
               onRemove={() => props.onChange({ ...view, range: defaults.range })}
             />
           ) : null}

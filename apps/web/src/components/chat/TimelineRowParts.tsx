@@ -1,3 +1,4 @@
+import { useMessages } from "gt-react";
 import { TimelineRowCtx } from "./timelineRowContext";
 import { use, useEffect, useRef, type ReactNode } from "react";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -24,6 +25,7 @@ export function TimelineRowTimestamp({
   className?: string;
   alwaysVisible?: boolean;
 }) {
+  const m = useMessages();
   return (
     <Tooltip>
       <TooltipTrigger
@@ -37,9 +39,9 @@ export function TimelineRowTimestamp({
           />
         }
       >
-        {formatDayAwareTimestamp(createdAt, timestampFormat)}
+        {formatDayAwareTimestamp(createdAt, timestampFormat, undefined, undefined, m)}
       </TooltipTrigger>
-      <TooltipPopup>{formatChatTimestampTooltip(createdAt, timestampFormat)}</TooltipPopup>
+      <TooltipPopup>{formatChatTimestampTooltip(createdAt, timestampFormat, m)}</TooltipPopup>
     </Tooltip>
   );
 }

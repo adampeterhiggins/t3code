@@ -5,6 +5,7 @@ import {
   type AssistantCitation,
   type ScopedThreadRef,
 } from "@t3tools/contracts";
+import { useGT } from "gt-react";
 import { QuoteIcon, XIcon } from "lucide-react";
 import { use, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -256,6 +257,7 @@ export function AssistantSelectionToolbar({
     };
   }, [viewport]);
   const backgroundThread = use(BackgroundThreadContext);
+  const gt = useGT();
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- measures the toolbar DOM node and clamps its position inside the window before paint
   useLayoutEffect(() => {
@@ -412,7 +414,9 @@ export function AssistantSelectionToolbar({
           size="xs"
           variant="glass"
           disabled={tooLong}
-          aria-label={tooLong ? "Selection is too long to cite" : "Cite selection in composer"}
+          aria-label={
+            tooLong ? gt("Selection is too long to cite") : gt("Cite selection in composer")
+          }
           className="fixed z-50 max-w-[calc(100vw-1rem)]"
           style={{ left: selection.position.x, top: selection.position.y }}
           onPointerDown={(event) => event.preventDefault()}
@@ -426,7 +430,9 @@ export function AssistantSelectionToolbar({
           }}
         >
           <QuoteIcon aria-hidden="true" className="size-3.5" />
-          {tooLong ? "Shorten selection" : "Cite"}
+          {tooLong
+            ? gt("Shorten selection")
+            : gt("Cite", { $context: "verb, button that quotes the selected text" })}
         </Button>,
         document.body,
       )}
@@ -448,6 +454,7 @@ function RowSelectionPill({
   onCite: () => void;
   onDismiss: () => void;
 }) {
+  const gt = useGT();
   const tooLong = citation.text.length > ASSISTANT_CITATION_MAX_TEXT_LENGTH;
   const label = assistantCitationLabel(citation);
   return (
@@ -461,18 +468,24 @@ function RowSelectionPill({
           size="xs"
           variant="glass"
           disabled={tooLong}
-          aria-label={tooLong ? "Selection is too long to cite" : `Cite ${label} in composer`}
+          aria-label={
+            tooLong
+              ? gt("Selection is too long to cite")
+              : gt("Cite {label} in composer", { label })
+          }
           className="min-w-0"
           onClick={onCite}
         >
           <QuoteIcon aria-hidden="true" className="size-3.5" />
-          <span className="truncate">{tooLong ? "Shorten selection" : `Cite ${label}`}</span>
+          <span className="truncate">
+            {tooLong ? gt("Shorten selection") : gt("Cite {label}", { label })}
+          </span>
         </Button>
         <Button
           type="button"
           size="icon-xs"
           variant="glass"
-          aria-label="Clear selection"
+          aria-label={gt("Clear selection")}
           onClick={onDismiss}
         >
           <XIcon aria-hidden="true" />

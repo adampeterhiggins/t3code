@@ -1,11 +1,6 @@
 /**
- * Fork: carry a subagent's work into chat, from its agents list row or its agent tab.
- *
- * - Attach to chat lives in `agentReferences.ts`: the agent's `@handle` chip carries its task and
- *   result.
- * - Continue in chat opens a new chat tab whose draft carries the agent's task, outcome and
- *   latest tool calls as a chat-summary chip. It starts a fresh conversation; the agent's own
- *   provider session is not resumed.
+ * Fork: Continue in chat opens a new chat tab whose draft carries the agent's task, outcome and
+ * latest tool calls. It starts a fresh conversation; the agent's provider session is not resumed.
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
@@ -20,7 +15,9 @@ import type {
   ScopedThreadRef,
   ThreadId,
 } from "@t3tools/contracts";
+import { msg } from "gt-react";
 
+import { m } from "~/i18n/messages";
 import { loadThreadProjection } from "~/state/entities";
 import { readPreparedConnection } from "~/state/session";
 
@@ -37,6 +34,7 @@ export function subagentContextSubject(
     status: subagent.status,
     prompt: subagent.prompt.trim() || null,
     result: failed ? null : subagent.result,
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- carried into the agent's continuation context
     error: failed ? (subagent.result ?? "The subagent failed.") : null,
     progress: subagent.progress ?? null,
   };
@@ -61,7 +59,7 @@ export async function continueAgentInChat(input: {
 }): Promise<void> {
   const connection = readPreparedConnection(input.environmentId);
   if (!connection) {
-    toastManager.add({ type: "error", title: "The environment is not connected." });
+    toastManager.add({ type: "error", title: m(msg("The environment is not connected.")) });
     return;
   }
   const childThreadId = input.subagent.childThreadId;
@@ -83,8 +81,8 @@ export async function continueAgentInChat(input: {
   if (context === null) {
     toastManager.add({
       type: "info",
-      title: "Nothing to continue from yet",
-      description: "This agent has no task, result, or tool calls to carry over.",
+      title: m(msg("Nothing to continue from yet")),
+      description: m(msg("This agent has no task, result, or tool calls to carry over.")),
     });
     return;
   }
@@ -106,7 +104,7 @@ export async function continueAgentInChat(input: {
   } catch (cause) {
     toastManager.add({
       type: "error",
-      title: "Could not continue in a new tab",
+      title: m(msg("Could not continue in a new tab")),
       description: cause instanceof Error ? cause.message : undefined,
     });
   }

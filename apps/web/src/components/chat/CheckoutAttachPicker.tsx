@@ -2,9 +2,11 @@ import { useAtomValue } from "@effect/atom-react";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { checkoutPathsEqual, sameCheckoutRepository } from "@t3tools/shared/checkouts";
 import { Atom } from "effect/reactivity";
+import { msg, T, useGT } from "gt-react";
 import { FolderIcon, GitBranchIcon, LaptopIcon, ServerIcon } from "lucide-react";
 import { useState } from "react";
 
+import { m } from "~/i18n/messages";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { useThreadShell } from "~/state/entities";
 import { useEnvironmentProviders } from "~/state/environments";
@@ -64,6 +66,7 @@ function CheckoutAttachPickerDialog(props: {
   onClose: () => void;
 }) {
   const { threadRef, relocateFrom } = props.request;
+  const gt = useGT();
   const [query, setQuery] = useState("");
   const [dirtyOnly, setDirtyOnly] = useState(false);
   const [sort, setSort] = useState<"recent" | "name">("recent");
@@ -109,7 +112,7 @@ function CheckoutAttachPickerDialog(props: {
     const from = comparison.data?.entries[0];
     const target = choices.entries.find((entry) => checkoutPathsEqual(entry.path, item.path));
     if (!sameCheckoutRepository(from, target)) {
-      setLocateError("That folder is not the same repository.");
+      setLocateError(m(msg("That folder is not the same repository.")));
       return;
     }
     void relocate({
@@ -132,13 +135,13 @@ function CheckoutAttachPickerDialog(props: {
         if (!open) props.onClose();
       }}
     >
-      <CommandDialogPopup aria-label="Attach checkout" className="overflow-hidden">
+      <CommandDialogPopup aria-label={gt("Attach checkout")} className="overflow-hidden">
         <CommandPaletteContent
           inputProps={{
-            placeholder: "Search checkouts by name, branch, or path",
+            placeholder: gt("Search checkouts by name, branch, or path"),
             startAddon: <LaptopIcon />,
           }}
-          footerActionLabel="Attach"
+          footerActionLabel={gt("Attach", { $context: "verb, attaches a checkout to the message" })}
           footerTrailing={
             relocateFrom === null ? (
               <Button
@@ -157,11 +160,11 @@ function CheckoutAttachPickerDialog(props: {
                   )}
                   aria-hidden
                 />
-                Also link to thread
+                <T>Also link to thread</T>
               </Button>
             ) : (
               <span className="text-muted-foreground text-xs">
-                {locateError ?? "Choose the folder this checkout moved to."}
+                {locateError ?? gt("Choose the folder this checkout moved to.")}
               </span>
             )
           }
@@ -177,20 +180,28 @@ function CheckoutAttachPickerDialog(props: {
               aria-pressed={dirtyOnly}
               onClick={() => setDirtyOnly((value) => !value)}
             >
-              {dirtyOnly ? "Dirty only" : "Filter"}
+              {dirtyOnly
+                ? gt("Dirty only")
+                : gt("Filter", { $context: "button that toggles a filter" })}
             </Button>
             <div className="flex-1" />
             <Menu>
               <MenuTrigger render={<Button type="button" size="xs" variant="ghost" />}>
-                {sort === "recent" ? "Recently used" : "Name"}
+                {sort === "recent"
+                  ? gt("Recently used", { $context: "sort order" })
+                  : gt("Name", { $context: "sort order" })}
               </MenuTrigger>
               <MenuPopup align="end">
                 <MenuRadioGroup
                   value={sort}
                   onValueChange={(value) => setSort(value === "name" ? "name" : "recent")}
                 >
-                  <MenuRadioItem value="recent">Recently used</MenuRadioItem>
-                  <MenuRadioItem value="name">Name</MenuRadioItem>
+                  <MenuRadioItem value="recent">
+                    <T context="sort order">Recently used</T>
+                  </MenuRadioItem>
+                  <MenuRadioItem value="name">
+                    <T context="sort order">Name</T>
+                  </MenuRadioItem>
                 </MenuRadioGroup>
               </MenuPopup>
             </Menu>
@@ -198,9 +209,9 @@ function CheckoutAttachPickerDialog(props: {
           {rows.length === 0 ? (
             <div className="py-10 text-center text-muted-foreground text-sm">
               {choices.isPending
-                ? "Looking up checkouts…"
+                ? gt("Looking up checkouts…")
                 : (choices.error ??
-                  "No checkouts match. Paste a path to use a folder T3 does not already know.")}
+                  gt("No checkouts match. Paste a path to use a folder T3 does not already know."))}
             </div>
           ) : (
             <CommandList>
@@ -228,12 +239,13 @@ function CheckoutAttachPickerDialog(props: {
 }
 
 function CheckoutPickerRow(props: { item: Extract<ComposerReferenceItem, { type: "checkout" }> }) {
+  const gt = useGT();
   const status =
     props.item.changedFiles === null
       ? ""
       : props.item.changedFiles === 0
-        ? "clean"
-        : `${props.item.changedFiles} changed`;
+        ? gt("clean", { $context: "git working tree has no changes" })
+        : gt("{count} changed", { count: props.item.changedFiles });
   return (
     <span
       className={cn(
@@ -250,7 +262,8 @@ function CheckoutPickerRow(props: { item: Extract<ComposerReferenceItem, { type:
       <span className="hidden w-32 shrink-0 items-center gap-1 truncate text-muted-foreground text-xs sm:flex">
         <GitBranchIcon className="size-3 shrink-0" />
         <span className="truncate font-mono">
-          {props.item.branch ?? (props.item.headSha ? props.item.headSha.slice(0, 7) : "unknown")}
+          {props.item.branch ??
+            (props.item.headSha ? props.item.headSha.slice(0, 7) : gt("unknown"))}
         </span>
       </span>
       <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground/70 text-xs">

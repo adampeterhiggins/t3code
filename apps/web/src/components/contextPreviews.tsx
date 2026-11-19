@@ -15,9 +15,11 @@ import type {
   SubagentContextRecord,
 } from "@t3tools/contracts";
 import { filePreviewKind } from "@t3tools/shared/filePreview";
+import { T, useGT, useMessages, Var } from "gt-react";
 import { PaintbrushIcon } from "lucide-react";
 
 import { formatWorkspaceRelativePath } from "~/filePathDisplay";
+import { previewAnnotationTargetText } from "~/lib/composerContextRecords";
 import type { ReviewCommentContext } from "~/reviewCommentContext";
 import { useProject, useThreadProjection } from "~/state/entities";
 import ChatMarkdown from "./ChatMarkdown";
@@ -75,7 +77,9 @@ export function FilePreview(props: FilePreviewProps) {
   if (props.needsReattach) {
     return (
       <p className="w-96 max-w-full px-3 py-2 text-xs">
-        {props.name} was not saved with this draft. Attach it again to send it.
+        <T>
+          <Var>{props.name}</Var> was not saved with this draft. Attach it again to send it.
+        </T>
       </p>
     );
   }
@@ -143,14 +147,16 @@ export function SkillPreview(props: SkillPreviewProps) {
         <p className="min-w-0 truncate font-medium">{props.label}</p>
         {props.onOpenInstructions ? (
           <PopoverClose render={<PreviewCornerAction />} onClick={props.onOpenInstructions}>
-            View instructions
+            <T>View instructions</T>
           </PopoverClose>
         ) : null}
       </div>
       {props.description ? (
         <ChatMarkdown text={props.description} cwd={undefined} />
       ) : (
-        <p>No description is available for this skill.</p>
+        <T>
+          <p>No description is available for this skill.</p>
+        </T>
       )}
     </div>
   );
@@ -202,7 +208,15 @@ export function ElementPreview({ record }: ElementPreviewProps) {
 export interface PreviewAnnotationPreviewProps {
   record: Pick<
     PreviewAnnotationContextRecord,
-    "pageTitle" | "pageUrl" | "comment" | "targetSummary" | "styleChanges" | "elements"
+    | "pageTitle"
+    | "pageUrl"
+    | "comment"
+    | "targetSummary"
+    | "styleChanges"
+    | "elements"
+    | "elementIds"
+    | "regionCount"
+    | "strokeCount"
   >;
   screenshotUrl: string | null;
   onExpandScreenshot?: (() => void) | undefined;
@@ -210,11 +224,13 @@ export interface PreviewAnnotationPreviewProps {
 
 export function PreviewAnnotationPreview(props: PreviewAnnotationPreviewProps) {
   const { record } = props;
+  const gt = useGT();
+  const messages = useMessages();
   const elements = record.elements ?? [];
   const screenshot = props.screenshotUrl ? (
     <img
       src={props.screenshotUrl}
-      alt="Annotated preview crop"
+      alt={gt("Annotated preview crop")}
       className="max-h-64 w-full object-contain"
     />
   ) : null;
@@ -222,13 +238,13 @@ export function PreviewAnnotationPreview(props: PreviewAnnotationPreviewProps) {
     <div className="max-w-full overflow-hidden rounded-lg border border-border/70 bg-background/70">
       {screenshot === null ? (
         <div className="border-b border-border/70 bg-muted/40 px-3 py-2 text-secondary-label text-xs">
-          Screenshot unavailable
+          <T>Screenshot unavailable</T>
         </div>
       ) : props.onExpandScreenshot ? (
         <button
           type="button"
           className="block max-h-64 w-full cursor-zoom-in overflow-hidden border-b border-border/70 bg-muted"
-          aria-label="Expand annotated screenshot"
+          aria-label={gt("Expand annotated screenshot")}
           onClick={props.onExpandScreenshot}
         >
           {screenshot}
@@ -240,13 +256,15 @@ export function PreviewAnnotationPreview(props: PreviewAnnotationPreviewProps) {
       )}
       <div className="min-w-0 px-3 py-2.5">
         <div className="text-message-foreground text-xs font-medium">
-          {record.pageTitle?.trim() || record.pageUrl || "Preview annotation"}
+          {record.pageTitle?.trim() || record.pageUrl || gt("Preview annotation")}
         </div>
         {record.comment ? (
           <div className="mt-1 whitespace-pre-wrap wrap-break-word text-sm">{record.comment}</div>
         ) : null}
         <div className="mt-1 flex items-center gap-2 text-secondary-label text-3xs">
-          {record.targetSummary ? <span className="truncate">{record.targetSummary}</span> : null}
+          {record.targetSummary ? (
+            <span className="truncate">{previewAnnotationTargetText(record, messages)}</span>
+          ) : null}
           {record.styleChanges.length > 0 ? (
             <span className="inline-flex shrink-0 items-center gap-1">
               <PaintbrushIcon className="size-3" />
@@ -342,6 +360,7 @@ export interface SubagentPreviewProps {
 /** The agent's Agents panel preview, found among its owner's agents. Mounted while open. */
 export function SubagentPreview(props: SubagentPreviewProps) {
   const { record } = props;
+  const gt = useGT();
   const ownerRef = scopeThreadRef(record.environmentId, record.ownerThreadId);
   const owner = useThreadProjection(ownerRef)?.projection ?? null;
   const shells = useEnvironmentShells(record.environmentId);
@@ -365,7 +384,9 @@ export function SubagentPreview(props: SubagentPreviewProps) {
   if (entry === null) {
     return (
       <p className="w-100 max-w-full px-3 py-2.5 text-xs text-muted-foreground">
-        {owner === null ? "Loading agent…" : `@${record.handle} is no longer recorded.`}
+        {owner === null
+          ? gt("Loading agent…")
+          : gt("@{handle} is no longer recorded.", { handle: record.handle })}
       </p>
     );
   }

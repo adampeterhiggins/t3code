@@ -1,4 +1,6 @@
 import * as DateTime from "effect/DateTime";
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
 import type { DocumentToolPreview, PreviewRecord, ToolPreview } from "./toolPreview.ts";
 import { forgeToolPreview } from "./forgeToolPreview.ts";
 import { historyToolPreview } from "./historyToolPreview.ts";
@@ -24,16 +26,21 @@ function notionPageUrl(pageId: string | null): string | null {
   return pageId ? `https://app.notion.com/p/${pageId.replaceAll("-", "")}` : null;
 }
 
-function notionPreview(tool: string, input: Record_, result: unknown): ToolPreview | null {
+function notionPreview(
+  tool: string,
+  input: Record_,
+  result: unknown,
+  resolve: MFunctionType,
+): ToolPreview | null {
   const data = isRecord(result) ? result : null;
   switch (tool) {
     case "notion-update-page": {
       const url = notionPageUrl(str(input.page_id));
-      const pageLink = link("Open page", url);
+      const pageLink = link(resolve(msg("Open page")), url);
       const command = str(input.command);
       if (command === "update_properties" && isRecord(input.properties)) {
         return properties(propertyRows(input.properties), {
-          summary: "Updated properties",
+          summary: resolve(msg("Updated properties")),
           link: pageLink,
         });
       }
@@ -44,17 +51,32 @@ function notionPreview(tool: string, input: Record_, result: unknown): ToolPrevi
           return next ? [next] : [];
         });
         if (updates.length === 0) {
-          return action(`Removed ${edits.length} passage${edits.length === 1 ? "" : "s"}`, []);
+          return action(
+            resolve(
+              msg(
+                "{count, plural, one {Removed {count} passage} other {Removed {count} passages}}",
+                { count: edits.length },
+              ),
+            ),
+            [],
+          );
         }
         return documentPreview(updates.join("\n\n---\n\n"), {
-          summary: `Updated ${updates.length} passage${updates.length === 1 ? "" : "s"}`,
+          summary: resolve(
+            msg("{count, plural, one {Updated {count} passage} other {Updated {count} passages}}", {
+              count: updates.length,
+            }),
+          ),
           link: pageLink,
         });
       }
       const content = str(input.new_str) ?? str(input.content);
       return content
         ? documentPreview(content, {
-            summary: command === "replace_content" ? "Replaced the content" : "Added content",
+            summary:
+              command === "replace_content"
+                ? resolve(msg("Replaced the content"))
+                : resolve(msg("Added content")),
             link: pageLink,
           })
         : properties([["Command", command ?? "update"]], { link: pageLink });
@@ -68,7 +90,7 @@ function notionPreview(tool: string, input: Record_, result: unknown): ToolPrevi
           const props = isRecord(page.properties) ? page.properties : {};
           return {
             key: str(page.id) ?? String(index),
-            title: str(props.title) ?? str(page.title) ?? "Untitled page",
+            title: str(props.title) ?? str(page.title) ?? resolve(msg("Untitled page")),
             subtitle: str(input.creation_mode),
             meta: [],
             url: str(page.url),
@@ -76,7 +98,13 @@ function notionPreview(tool: string, input: Record_, result: unknown): ToolPrevi
             threadId: null,
           };
         }),
-        { summary: `Created ${pages.length} page${pages.length === 1 ? "" : "s"}` },
+        {
+          summary: resolve(
+            msg("{count, plural, one {Created {count} page} other {Created {count} pages}}", {
+              count: pages.length,
+            }),
+          ),
+        },
       );
     }
     // Codex's Notion app names it `fetch`.
@@ -99,7 +127,11 @@ function notionPreview(tool: string, input: Record_, result: unknown): ToolPrevi
       return table(
         columns,
         rows.map((row) => columns.map((column) => cellText(row[column]) ?? "")),
-        { summary: `${rows.length} row${rows.length === 1 ? "" : "s"}` },
+        {
+          summary: resolve(
+            msg("{count, plural, one {{count} row} other {{count} rows}}", { count: rows.length }),
+          ),
+        },
       );
     }
     case "notion-create-file-upload":
@@ -112,7 +144,7 @@ function notionPreview(tool: string, input: Record_, result: unknown): ToolPrevi
             ["Expires", str(data?.expires_at)],
           ] as const
         ).flatMap(([key, value]) => (value ? [[key, value] as const] : [])),
-        { summary: "Prepared a file upload" },
+        { summary: resolve(msg("Prepared a file upload")) },
       );
     case "notion-search": {
       const results = Array.isArray(data?.results) ? data.results.filter(isRecord) : null;
@@ -120,7 +152,7 @@ function notionPreview(tool: string, input: Record_, result: unknown): ToolPrevi
       return records(
         results.map((item, index) => ({
           key: str(item.id) ?? String(index),
-          title: str(item.title) ?? "Untitled",
+          title: str(item.title) ?? resolve(msg("Untitled")),
           subtitle: str(item.type),
           meta: [str(item.timestamp)].filter((meta): meta is string => meta !== null),
           url: str(item.url),
@@ -285,14 +317,21 @@ function eventTime(value: unknown): string | null {
   return str(value.date);
 }
 
-function calendarPreview(tool: string, result: unknown): ToolPreview | null {
+function calendarPreview(
+  tool: string,
+  result: unknown,
+  resolve: MFunctionType,
+): ToolPreview | null {
   const data = isRecord(result) ? result : null;
   if (tool === "list_calendars" && Array.isArray(data?.calendars)) {
     return records(
       data.calendars.filter(isRecord).map((calendar, index) => ({
         key: str(calendar.id) ?? String(index),
-        title: str(calendar.summary) ?? str(calendar.id) ?? "Calendar",
-        subtitle: calendar.primary === true ? "primary" : null,
+        title: str(calendar.summary) ?? str(calendar.id) ?? resolve(msg("Calendar")),
+        subtitle:
+          calendar.primary === true
+            ? resolve(msg("primary", { $context: "primary calendar" }))
+            : null,
         meta: [str(calendar.timeZone), str(calendar.accessRole)].filter(
           (meta): meta is string => meta !== null,
         ),
@@ -310,11 +349,20 @@ function calendarPreview(tool: string, result: unknown): ToolPreview | null {
         const attendees = Array.isArray(event.attendees) ? event.attendees.length : 0;
         return {
           key: str(event.id) ?? String(index),
-          title: str(event.summary) ?? "(No title)",
-          subtitle: str(event.status) === "cancelled" ? "cancelled" : null,
+          title: str(event.summary) ?? resolve(msg("(No title)")),
+          subtitle:
+            str(event.status) === "cancelled"
+              ? resolve(msg("cancelled", { $context: "calendar event status" }))
+              : null,
           meta: [
             start ? `${start}${end ? `–${end.slice(-5)}` : ""}` : null,
-            attendees > 0 ? `${attendees} attendee${attendees === 1 ? "" : "s"}` : null,
+            attendees > 0
+              ? resolve(
+                  msg("{count, plural, one {{count} attendee} other {{count} attendees}}", {
+                    count: attendees,
+                  }),
+                )
+              : null,
           ].filter((meta): meta is string => meta !== null),
           url: str(event.conferenceUrl) ?? str(event.htmlLink),
           body: null,
@@ -440,14 +488,18 @@ function slackPermalink(section: string): string | null {
 }
 
 /** Slack's `### Result n of m` user and channel sections and `1. #channel (C1) - type - …` lines. */
-function slackDirectoryPreview(tool: string, text: string | null): ToolPreview | null {
+function slackDirectoryPreview(
+  tool: string,
+  text: string | null,
+  resolve: MFunctionType,
+): ToolPreview | null {
   if (!text) return null;
   const sections = text.split(/^### Result \d+ of \d+$/m).slice(1);
   if (tool === "slack_search_users") {
     return records(
       sections.map((section, index) => ({
         key: slackField(section, "User ID") ?? String(index),
-        title: slackField(section, "Name") ?? "User",
+        title: slackField(section, "Name") ?? resolve(msg("User", { $context: "Slack user" })),
         subtitle: slackField(section, "Title"),
         meta: [slackField(section, "Email"), slackField(section, "Timezone")].filter(
           (meta): meta is string => meta !== null,
@@ -462,8 +514,12 @@ function slackDirectoryPreview(tool: string, text: string | null): ToolPreview |
     return records(
       sections.map((section, index) => ({
         key: String(index),
-        title: slackField(section, "Name") ?? "Channel",
-        subtitle: slackField(section, "Is Archived") === "true" ? "archived" : null,
+        title:
+          slackField(section, "Name") ?? resolve(msg("Channel", { $context: "Slack channel" })),
+        subtitle:
+          slackField(section, "Is Archived") === "true"
+            ? resolve(msg("archived", { $context: "Slack channel state" }))
+            : null,
         meta: [
           slackField(section, "Creator")?.replace(/ \(<@[A-Z0-9]+>?\)$/, "") ?? null,
           slackField(section, "Created"),
@@ -514,14 +570,17 @@ function slackUserChannelsPreview(text: string | null): ToolPreview | null {
 }
 
 /** Detailed `## Member n` sections, or concise `@handle (Display Name)` lines. */
-function slackMembersPreview(text: string | null): ToolPreview | null {
+function slackMembersPreview(text: string | null, resolve: MFunctionType): ToolPreview | null {
   if (!text) return null;
   const sections = text.split(/^## Member \d+$/m).slice(1);
   if (sections.length > 0) {
     return records(
       sections.map((section, index) => ({
         key: slackField(section, "User ID") ?? String(index),
-        title: slackField(section, "Real Name") ?? slackField(section, "Display Name") ?? "Member",
+        title:
+          slackField(section, "Real Name") ??
+          slackField(section, "Display Name") ??
+          resolve(msg("Member", { $context: "Slack channel member" })),
         subtitle: slackField(section, "Username"),
         meta: [slackField(section, "Email"), slackField(section, "Title")].filter(
           (meta): meta is string => meta !== null,
@@ -570,7 +629,7 @@ function slackReactionsPreview(text: string | null): ToolPreview | null {
 }
 
 /** `Found 3 custom emojis matching "x":` then `:a:, :b: (alias for :c:)`. */
-function slackEmojisPreview(text: string | null): ToolPreview | null {
+function slackEmojisPreview(text: string | null, resolve: MFunctionType): ToolPreview | null {
   if (!text) return null;
   const found = /^(.*):\n([\s\S]+)$/.exec(text.trim());
   if (!found) return documentPreview(text);
@@ -580,7 +639,7 @@ function slackEmojisPreview(text: string | null): ToolPreview | null {
       return {
         key: alias?.[1] ?? emoji.trim(),
         title: alias?.[1] ?? emoji.trim(),
-        subtitle: alias ? `alias for ${alias[2]}` : null,
+        subtitle: alias ? resolve(msg("alias for {emoji}", { emoji: alias[2]! })) : null,
         meta: [],
         url: null,
         body: null,
@@ -604,6 +663,7 @@ function slackToolPreview(
   input: Record_,
   result: unknown,
   text: string | null,
+  resolve: MFunctionType,
 ): ToolPreview | null {
   const data = isRecord(result) ? result : null;
   // Slack's MCP wraps its text in one JSON field, named for what the tool returns.
@@ -619,7 +679,7 @@ function slackToolPreview(
       return content
         ? documentPreview(content, {
             title: str(input.title),
-            link: link("Open canvas", str(data?.canvas_url)),
+            link: link(resolve(msg("Open canvas")), str(data?.canvas_url)),
           })
         : null;
     }
@@ -627,17 +687,17 @@ function slackToolPreview(
       return slackChannelPreview(output);
     case "slack_search_users":
     case "slack_search_channels":
-      return slackDirectoryPreview(tool, output);
+      return slackDirectoryPreview(tool, output, resolve);
     case "slack_list_user_channels":
       return slackUserChannelsPreview(output);
     case "slack_list_channel_members":
-      return slackMembersPreview(output);
+      return slackMembersPreview(output, resolve);
     case "slack_read_user_profile":
       return slackProfilePreview(output);
     case "slack_get_reactions":
       return slackReactionsPreview(output);
     case "slack_search_emojis":
-      return slackEmojisPreview(output);
+      return slackEmojisPreview(output, resolve);
     case "slack_read_file":
       return slackFilePreview(text);
     default:
@@ -645,7 +705,11 @@ function slackToolPreview(
   }
 }
 
-function granolaPreview(text: string | null, result: unknown): ToolPreview | null {
+function granolaPreview(
+  text: string | null,
+  result: unknown,
+  resolve: MFunctionType,
+): ToolPreview | null {
   if (!text) return null;
   const meetings = [...text.matchAll(/<meeting ([^>]*)>([\s\S]*?)<\/meeting>/g)];
   if (meetings.length === 0) {
@@ -668,7 +732,7 @@ function granolaPreview(text: string | null, result: unknown): ToolPreview | nul
         .replaceAll("&gt;", ">");
       return {
         key: attribute("id") ?? String(index),
-        title: attribute("title") ?? "Meeting",
+        title: attribute("title") ?? resolve(msg("Meeting")),
         subtitle: null,
         meta: [attribute("date")].filter((meta): meta is string => meta !== null),
         url: attribute("url"),
@@ -696,7 +760,12 @@ function nameOf(value: unknown): string | null {
   return isRecord(value) ? (str(value.name) ?? str(value.displayName)) : str(value);
 }
 
-function linearRecord(kind: string, item: Record_, index: number): PreviewRecord {
+function linearRecord(
+  kind: string,
+  item: Record_,
+  index: number,
+  resolve: MFunctionType,
+): PreviewRecord {
   const base = { key: str(item.id) ?? String(index), url: str(item.url), threadId: null };
   switch (kind) {
     case "issues":
@@ -704,7 +773,7 @@ function linearRecord(kind: string, item: Record_, index: number): PreviewRecord
         ...base,
         title:
           [str(item.identifier) ?? str(item.id), str(item.title)].filter(Boolean).join(" ") ||
-          "Issue",
+          resolve(msg("Issue", { $context: "Linear issue" })),
         subtitle: nameOf(item.status) ?? nameOf(item.state),
         meta: [
           nameOf(item.assignee),
@@ -716,7 +785,7 @@ function linearRecord(kind: string, item: Record_, index: number): PreviewRecord
     case "projects":
       return {
         ...base,
-        title: str(item.name) ?? "Project",
+        title: str(item.name) ?? resolve(msg("Project", { $context: "Linear project" })),
         subtitle: nameOf(item.status),
         meta: [
           nameOf(item.lead),
@@ -729,15 +798,19 @@ function linearRecord(kind: string, item: Record_, index: number): PreviewRecord
     case "users":
       return {
         ...base,
-        title: str(item.name) ?? str(item.displayName) ?? "User",
-        subtitle: item.isActive === false ? "inactive" : null,
+        title:
+          str(item.name) ??
+          str(item.displayName) ??
+          resolve(msg("User", { $context: "Linear user" })),
+        subtitle:
+          item.isActive === false ? resolve(msg("inactive", { $context: "Linear user" })) : null,
         meta: [str(item.email), str(item.status)].filter((meta): meta is string => meta !== null),
         body: null,
       };
     case "statusUpdates":
       return {
         ...base,
-        title: nameOf(item.project) ?? nameOf(item.initiative) ?? "Status update",
+        title: nameOf(item.project) ?? nameOf(item.initiative) ?? resolve(msg("Status update")),
         subtitle:
           str(item.health)
             ?.replace(/([a-z])([A-Z])/g, "$1 $2")
@@ -750,10 +823,10 @@ function linearRecord(kind: string, item: Record_, index: number): PreviewRecord
     case "notifications":
       return {
         ...base,
-        title: str(item.title) ?? "Notification",
+        title: str(item.title) ?? resolve(msg("Notification")),
         subtitle: str(item.subtitle),
         meta: [
-          item.readAt === null ? "unread" : null,
+          item.readAt === null ? resolve(msg("unread", { $context: "notification state" })) : null,
           str(item.createdAt)?.slice(0, 16).replace("T", " ") ?? null,
         ].filter((meta): meta is string => meta !== null),
         body: null,
@@ -761,7 +834,8 @@ function linearRecord(kind: string, item: Record_, index: number): PreviewRecord
     case "comments":
       return {
         ...base,
-        title: nameOf(item.user) ?? nameOf(item.author) ?? "Comment",
+        title:
+          nameOf(item.user) ?? nameOf(item.author) ?? resolve(msg("Comment", { $context: "noun" })),
         subtitle: null,
         meta: [str(item.createdAt)?.slice(0, 16).replace("T", " ") ?? null].filter(
           (meta): meta is string => meta !== null,
@@ -770,12 +844,23 @@ function linearRecord(kind: string, item: Record_, index: number): PreviewRecord
       };
     default:
       return (
-        recordOf(item, index) ?? { ...base, title: "Item", subtitle: null, meta: [], body: null }
+        recordOf(item, index) ?? {
+          ...base,
+          title: resolve(msg("Item", { $context: "generic list item" })),
+          subtitle: null,
+          meta: [],
+          body: null,
+        }
       );
   }
 }
 
-function linearPreview(tool: string, input: Record_, result: unknown): ToolPreview | null {
+function linearPreview(
+  tool: string,
+  input: Record_,
+  result: unknown,
+  resolve: MFunctionType,
+): ToolPreview | null {
   const data = isRecord(result) ? result : null;
   if (!data) return inferredPreview(result);
   if (
@@ -812,7 +897,7 @@ function linearPreview(tool: string, input: Record_, result: unknown): ToolPrevi
     const raw = data[listKey];
     const list = Array.isArray(raw) ? raw.filter(isRecord) : [];
     return records(
-      list.map((item, index) => linearRecord(listKey, item, index)),
+      list.map((item, index) => linearRecord(listKey, item, index, resolve)),
       {
         summary: str(input.query),
         notes: [data.hasNextPage === true ? "More results on the next page" : null],
@@ -845,12 +930,13 @@ export function integrationToolPreview(
   input: Record_,
   result: unknown,
   text: string | null,
+  resolve: MFunctionType = mFallback,
 ): ToolPreview | null {
   const name = splitIntegrationToolName(toolName);
   if (!name) return null;
   const summary = str(input.command) ?? str(input.query);
   return (
-    serverToolPreview(name.server, name.tool, input, result, text) ??
+    serverToolPreview(name.server, name.tool, input, result, text, resolve) ??
     genericToolPreview(result, text, summary)
   );
 }
@@ -859,12 +945,19 @@ export function integrationToolPreview(
  * Claude Code swaps a result too large for the model's context for a note naming the file it
  * saved the result to; the card says so rather than showing the note as the result.
  */
-export function oversizedResultPreview(text: string | null): ToolPreview | null {
+export function oversizedResultPreview(
+  text: string | null,
+  resolve: MFunctionType = mFallback,
+): ToolPreview | null {
   const match =
     /^Error: result \(([\d,]+) characters\) exceeds maximum allowed tokens\. Output has been saved to (\S+?)\.?\n/.exec(
       text ?? "",
     );
-  return match ? action(`Result too large to show (${match[1]} characters)`, [match[2]!]) : null;
+  return match
+    ? action(resolve(msg("Result too large to show ({count} characters)", { count: match[1]! })), [
+        match[2]!,
+      ])
+    : null;
 }
 
 /** Any tool's result as an inferred card, or its text as a document. */
@@ -890,26 +983,28 @@ function serverToolPreview(
   input: Record_,
   result: unknown,
   text: string | null,
+  resolve: MFunctionType,
 ): ToolPreview | null {
   if (server === "codex_apps") {
     // Codex names connector tools `codex_apps.<app>.<tool>`; GitHub's have their own card below.
     const app = /^([\w-]+)\.(.+)$/.exec(tool);
     const preview = app
-      ? serverToolPreview(app[1]!.toLowerCase(), app[2]!, input, result, text)
+      ? serverToolPreview(app[1]!.toLowerCase(), app[2]!, input, result, text, resolve)
       : null;
     if (preview) return preview;
   }
-  if (server === "notion") return notionPreview(tool, input, result);
+  if (server === "notion") return notionPreview(tool, input, result, resolve);
   if (server === "datadog") return datadogPreview(tool, input, text);
-  if (server === "google_calendar") return calendarPreview(tool, result);
+  if (server === "google_calendar") return calendarPreview(tool, result, resolve);
   if (server === "google_drive") return drivePreview(tool, input, result);
-  if (server === "granola") return granolaPreview(text, result);
-  if (server === "linear") return linearPreview(tool, input, result);
-  if (server === "t3-code-history") return historyToolPreview(tool, input, result);
-  if (server === "forge" || server === "forge-dev") return forgeToolPreview(tool, input, result);
-  const service = serviceToolPreview(server, tool, input, result, text);
+  if (server === "granola") return granolaPreview(text, result, resolve);
+  if (server === "linear") return linearPreview(tool, input, result, resolve);
+  if (server === "t3-code-history") return historyToolPreview(tool, input, result, resolve);
+  if (server === "forge" || server === "forge-dev")
+    return forgeToolPreview(tool, input, result, resolve);
+  const service = serviceToolPreview(server, tool, input, result, text, resolve);
   if (service) return service;
-  if (server === "slack") return slackToolPreview(tool, input, result, text);
+  if (server === "slack") return slackToolPreview(tool, input, result, text, resolve);
   return null;
 }
 
@@ -929,36 +1024,47 @@ export function agentUtilityToolPreview(
   input: Record_,
   result: unknown,
   text: string | null,
+  resolve: MFunctionType = mFallback,
 ): ToolPreview | null {
   const data = isRecord(result) ? result : null;
   switch (toolName) {
     case "TaskStop":
-      return action("Stopped a background task", [
+      return action(resolve(msg("Stopped a background task")), [
         str(data?.command) ?? str(data?.message),
         str(data?.task_type)?.replaceAll("_", " ") ?? null,
       ]);
     case "EnterWorktree":
-      return action("Entered a worktree", [
+      return action(resolve(msg("Entered a worktree")), [
         str(data?.worktreeBranch),
         str(data?.worktreePath) ?? str(input.path),
       ]);
     case "ExitWorktree":
-      return action("Left the worktree", [str(data?.message)]);
+      return action(resolve(msg("Left the worktree")), [str(data?.message)]);
     case "ListAgents": {
       const listing = str(data?.listing) ?? text;
       return listing ? documentPreview(listing, { preformatted: true }) : null;
     }
     case "PushNotification": {
       const delivered = data?.pushSent === true || data?.localSent === true;
-      return action(delivered ? "Sent a notification" : "Notification not delivered", [
-        str(input.message),
-        delivered ? null : (str(data?.disabledReason)?.replaceAll("_", " ") ?? null),
-      ]);
+      return action(
+        delivered
+          ? resolve(msg("Sent a notification"))
+          : resolve(msg("Notification not delivered")),
+        [
+          str(input.message),
+          delivered ? null : (str(data?.disabledReason)?.replaceAll("_", " ") ?? null),
+        ],
+      );
     }
     case "Workflow": {
       const name = str(data?.workflowName) ?? str(input.name);
       return data?.status === "async_launched"
-        ? action(name ? `Started the ${name} workflow` : "Started a workflow", [str(data.summary)])
+        ? action(
+            name
+              ? resolve(msg("Started the {name} workflow", { name }))
+              : resolve(msg("Started a workflow")),
+            [str(data.summary)],
+          )
         : null;
     }
     // Claude's name for a subagent tool result whose call was never seen: the output is all
@@ -982,8 +1088,10 @@ export function agentUtilityToolPreview(
       const running = isRecord(data?.stillRunning) ? data.stillRunning : null;
       const runtime = Number(running?.runtimeMs);
       return running
-        ? action("Task still running", [
-            Number.isFinite(runtime) ? `after ${Math.round(runtime / 1000)}s` : null,
+        ? action(resolve(msg("Task still running")), [
+            Number.isFinite(runtime)
+              ? resolve(msg("after {seconds}s", { seconds: Math.round(runtime / 1000) }))
+              : null,
           ])
         : null;
     }
@@ -999,14 +1107,14 @@ export function agentUtilityToolPreview(
         ? records(
             todos.map((todo, index) => ({
               key: str(todo.id) ?? String(index),
-              title: str(todo.content) ?? "Todo",
+              title: str(todo.content) ?? resolve(msg("Todo", { $context: "noun, to-do item" })),
               subtitle: todoStatus(todo.status),
               meta: [],
               url: null,
               body: null,
               threadId: null,
             })),
-            { summary: `${done} of ${todos.length} done` },
+            { summary: resolve(msg("{done} of {total} done", { done, total: todos.length })) },
           )
         : null;
     }

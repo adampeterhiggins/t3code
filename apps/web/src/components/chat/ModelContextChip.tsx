@@ -3,10 +3,12 @@ import {
   ProviderDriverKind,
   type ModelContextRecord,
 } from "@t3tools/contracts";
+import { msg, T, useGT, useMessages } from "gt-react";
 import { BrainIcon, CpuIcon, ZapIcon } from "lucide-react";
 import type { ComponentProps, CSSProperties } from "react";
 
 import { useClientSettings } from "~/hooks/useSettings";
+import { m as defaultResolve, type MessageResolver } from "~/i18n/messages";
 import { deriveProviderInstanceEntries, type ProviderInstanceEntry } from "~/providerInstances";
 import { useEnvironmentProviders } from "~/state/environments";
 import { formatDayAwareTimestamp } from "~/timestampFormat";
@@ -64,6 +66,8 @@ export function ModelChipTrigger({
   record: ModelChipRecord;
   copyMarkdown?: string | undefined;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const entry = useModelChipInstance(record);
   const accent = entry?.accentColor
     ? ({ "--context-chip-accent": entry.accentColor } as CSSProperties)
@@ -72,7 +76,7 @@ export function ModelChipTrigger({
     <ContextChip
       kind="model"
       render={<button type="button" />}
-      aria-label={`${modelChipAccessibleLabel(record)}. Show details`}
+      aria-label={gt("{label}. Show details", { label: modelChipAccessibleLabel(record, m) })}
       data-markdown-copy={copyMarkdown}
       style={{ ...accent, ...style }}
       {...(entry === null ? { state: "unresolved" as const } : {})}
@@ -133,9 +137,15 @@ export function ComposerModelChip({
   );
 }
 
-export function modelChipAccessibleLabel(record: ModelChipRecord): string {
+export function modelChipAccessibleLabel(
+  record: ModelChipRecord,
+  resolve: MessageResolver = defaultResolve,
+): string {
   const traits = record.options.map((option) => `${option.label} ${option.valueLabel}`);
-  return [`Model ${record.modelName} on ${record.instanceName}`, ...traits].join(", ");
+  const model = resolve(
+    msg("Model {model} on {instance}", { model: record.modelName, instance: record.instanceName }),
+  );
+  return [model, ...traits].join(", ");
 }
 
 export interface ModelPreviewProps {
@@ -146,6 +156,7 @@ const OPTION_ICONS = { effort: BrainIcon, fast: ZapIcon, context: CpuIcon } as c
 
 /** What the user asked for when they wrote the chip. It never changes afterwards. */
 export function ModelPreview({ record }: ModelPreviewProps) {
+  const gt = useGT();
   const entry = useModelChipInstance(record);
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const driverLabel =
@@ -192,11 +203,18 @@ export function ModelPreview({ record }: ModelPreviewProps) {
           })}
         </dl>
       ) : (
-        <p className="text-muted-foreground text-xs">No traits set; uses the model's defaults.</p>
+        <p className="text-muted-foreground text-xs">
+          <T>No traits set; uses the model's defaults.</T>
+        </p>
       )}
       <p className="border-t border-border/70 pt-2 text-muted-foreground text-xs">
-        {writtenAt ? `As written · ${writtenAt}` : "As written"}
-        {entry === null ? " · provider not connected" : ""}
+        {writtenAt
+          ? entry === null
+            ? gt("As written · {time} · provider not connected", { time: writtenAt })
+            : gt("As written · {time}", { time: writtenAt })
+          : entry === null
+            ? gt("As written · provider not connected")
+            : gt("As written")}
       </p>
     </div>
   );

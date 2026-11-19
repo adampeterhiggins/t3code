@@ -78,8 +78,8 @@ export type T3McpToolSummaryAction =
   | "unlink-item"
   | "watch-link"
   | "unwatch-link"
-  | "list-issues"
-  | "read-issue"
+  | "list-links"
+  | "read-linear-issue"
   | "read-link"
   | "search-issues"
   | "search-messages"
@@ -94,6 +94,15 @@ export type T3McpToolSummaryAction =
   | "link-issue"
   | "unlink-issue"
   | "list-thread-issues"
+  | "read-pr"
+  | "list-repo-prs"
+  | "create-pr"
+  | "update-pr"
+  | "respond-pr"
+  | "merge-pr"
+  | "review-pr"
+  | "ci-logs"
+  | "ci-rerun"
   | "browser"
   | "device"
   | "html-preview"
@@ -165,7 +174,7 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   unlink_linear_issue: tool(["Unlink", "Unlinking", "Unlinked", "a Linear issue"], "unlink-issue"),
   link_github_issue: tool(["Link", "Linking", "Linked", "a GitHub issue"], "link-issue"),
   unlink_github_issue: tool(["Unlink", "Unlinking", "Unlinked", "a GitHub issue"], "unlink-issue"),
-  list_thread_links: tool(["Check", "Checking", "Checked", "linked items"], "list-issues"),
+  list_thread_links: tool(["Check", "Checking", "Checked", "linked items"], "list-links"),
   link_thread_link: tool(["Link", "Linking", "Linked", "an item"], "link-item"),
   unlink_thread_link: tool(["Unlink", "Unlinking", "Unlinked", "an item"], "unlink-item"),
   watch_thread_link: tool(["Watch", "Watching", "Watching", "a linked item"], "watch-link"),
@@ -174,7 +183,7 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
     "unwatch-link",
   ),
   read_context_link: tool(["Read", "Reading", "Read", "a linked item"], "read-link"),
-  read_linear_issue: tool(["Read", "Reading", "Read", "a Linear issue"], "read-issue"),
+  read_linear_issue: tool(["Read", "Reading", "Read", "a Linear issue"], "read-linear-issue"),
   search_linear_issues: tool(["Search", "Searching", "Searched", "Linear issues"], "search-issues"),
   search_slack_messages: tool(["Search", "Searching", "Searched", "Slack"], "search-messages"),
   search_google_files: tool(
@@ -212,6 +221,39 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   link_issue: tool(["Link", "Linking", "Linked", "an issue"], "link-issue"),
   unlink_issue: tool(["Unlink", "Unlinking", "Unlinked", "an issue"], "unlink-issue"),
   list_thread_issues: tool(["Check", "Checking", "Checked", "linked issues"], "list-thread-issues"),
+  pull_request_read: tool(["Read", "Reading", "Read", "a pull request"], "read-pr", "pull-request"),
+  pull_request_list: tool(
+    ["List", "Listing", "Listed", "pull requests"],
+    "list-repo-prs",
+    "pull-request",
+  ),
+  pull_request_create: tool(
+    ["Open", "Opening", "Opened", "a pull request"],
+    "create-pr",
+    "pull-request",
+  ),
+  pull_request_update: tool(
+    ["Update", "Updating", "Updated", "a pull request"],
+    "update-pr",
+    "pull-request",
+  ),
+  pull_request_respond: tool(
+    ["Respond", "Responding", "Responded", "on a pull request"],
+    "respond-pr",
+    "pull-request",
+  ),
+  pull_request_review: tool(
+    ["Review", "Reviewing", "Reviewed", "a pull request"],
+    "review-pr",
+    "pull-request",
+  ),
+  ci_logs: tool(["Read", "Reading", "Read", "CI logs"], "ci-logs", "pull-request"),
+  ci_rerun: tool(["Re-run", "Re-running", "Re-ran", "CI"], "ci-rerun", "pull-request"),
+  pull_request_merge: tool(
+    ["Merge", "Merging", "Merged", "a pull request"],
+    "merge-pr",
+    "pull-request",
+  ),
   orchestrator_capabilities: tool(
     ["Get", "Getting", "Got", "orchestration capabilities"],
     "capabilities",

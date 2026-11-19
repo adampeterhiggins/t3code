@@ -19,6 +19,7 @@ import type {
 } from "@t3tools/contracts";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import * as DateTime from "effect/DateTime";
+import { useGT } from "gt-react";
 import {
   BrainIcon,
   ChevronRightIcon,
@@ -123,6 +124,7 @@ function toolDuration(row: Extract<AgentTranscriptRow, { kind: "tool" }>): strin
 
 function ToolRow({ row }: { row: Extract<AgentTranscriptRow, { kind: "tool" }> }) {
   const context = useTranscriptContext();
+  const gt = useGT();
   const expanded = context.expanded.has(row.id);
   const projectedItem = row.entry.projectedItem;
   const toggle = () => context.toggle(row.id);
@@ -140,7 +142,7 @@ function ToolRow({ row }: { row: Extract<AgentTranscriptRow, { kind: "tool" }> }
   );
   const line = (
     <WorkLogRow
-      aria-label={failed ? `${row.label}, failed` : row.label}
+      aria-label={failed ? gt("{label}, failed", { label: row.label }) : row.label}
       {...(projectedItem
         ? {
             role: "button",
@@ -399,6 +401,7 @@ export function AgentTranscriptList(props: {
       if (!expanded.has(row.id)) setExpanded(new Set(expanded).add(row.id));
     }
   }
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- scrolls the imperative LegendList to the focused row
   useEffect(() => {
     if (focusScroll === null) return;
     void listRef.current?.scrollToIndex({

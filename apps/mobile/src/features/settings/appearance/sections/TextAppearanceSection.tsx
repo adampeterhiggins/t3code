@@ -1,3 +1,4 @@
+import { useGT } from "gt-react-native";
 import {
   BASE_FONT_SIZE_STEP,
   MAX_BASE_FONT_SIZE,
@@ -15,6 +16,7 @@ import { SliderRow } from "../../../../components/ui/SliderRow";
 import { MAX_APPEARANCE_CONTRAST, MIN_APPEARANCE_CONTRAST } from "@t3tools/contracts/settings";
 
 export function TextAppearanceSection() {
+  const gt = useGT();
   const {
     isReady,
     appearance,
@@ -26,35 +28,35 @@ export function TextAppearanceSection() {
   } = useAppearancePreferences();
 
   return (
-    <SettingsSection title="Text">
+    <SettingsSection title={gt("Text", { $context: "settings section for text size" })}>
       <TextAppearancePreview fontSize={appearance.baseFontSize} />
       <AppearancePreviewSeparator />
       <FontSizeSliderRow
         disabled={!isReady}
         icon="textformat.size"
-        label="Text size"
+        label={gt("Text size")}
         max={MAX_BASE_FONT_SIZE}
         min={MIN_BASE_FONT_SIZE}
         onChange={setBaseFontSize}
         step={BASE_FONT_SIZE_STEP}
         value={appearance.baseFontSize}
-        valueLabel={`${appearance.baseFontSize} pt`}
+        valueLabel={gt("{size} pt", { size: appearance.baseFontSize })}
       />
       <SliderRow
         disabled={!isReady}
         icon="circle.inset.filled"
-        label="Contrast"
+        label={gt("Contrast", { $context: "appearance setting" })}
         max={MAX_APPEARANCE_CONTRAST}
         min={MIN_APPEARANCE_CONTRAST}
         onChange={setAppearanceContrast}
         step={10}
         value={appearanceContrast}
-        valueLabel={`${appearanceContrast}%`}
+        valueLabel={gt("{percent}%", { percent: appearanceContrast })}
       />
       <SettingsSwitchRow
         disabled={!isReady}
         icon="plusminus"
-        label="Render math"
+        label={gt("Render math")}
         value={mathRenderingEnabled}
         onValueChange={setMathRenderingEnabled}
       />

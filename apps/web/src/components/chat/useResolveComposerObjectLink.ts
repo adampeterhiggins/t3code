@@ -40,8 +40,10 @@ import type {
 } from "@t3tools/contracts";
 import { toKindScopedComposerContextId } from "@t3tools/shared/composerContextReferences";
 import { useAtomValue } from "@effect/atom-react";
+import { msg } from "gt-react";
 
 import { type ComposerThreadTarget, useComposerDraftStore } from "~/composerDraftStore";
+import { m } from "~/i18n/messages";
 import { useIssueContextStore } from "~/issueContextStore";
 import { useEnvironmentSettings } from "~/hooks/useSettings";
 import type { ComposerContextReference } from "~/lib/composerContextReferences";
@@ -84,9 +86,11 @@ function reportUnreadableSlackLink(failure: unknown) {
   }
   toastManager.add({
     type: unavailable ? "info" : "error",
-    title: unavailable ? "Connect Slack to attach messages" : "Could not read that Slack link",
+    title: unavailable
+      ? m(msg("Connect Slack to attach messages"))
+      : m(msg("Could not read that Slack link")),
     description: unavailable
-      ? "The agent gets the link instead. Connect Slack in Settings → Integrations."
+      ? m(msg("The agent gets the link instead. Connect Slack in Settings → Integrations."))
       : failure instanceof Error
         ? failure.message
         : undefined,
@@ -108,10 +112,10 @@ function reportUnreadableDiscordLink(failure: unknown) {
   toastManager.add({
     type: unavailable ? "info" : "error",
     title: unavailable
-      ? "Connect Discord to attach messages"
-      : "Could not read that Discord message",
+      ? m(msg("Connect Discord to attach messages"))
+      : m(msg("Could not read that Discord message")),
     description: unavailable
-      ? "The agent gets the link instead. Connect Discord in Settings → Integrations."
+      ? m(msg("The agent gets the link instead. Connect Discord in Settings → Integrations."))
       : failure instanceof Error
         ? failure.message
         : undefined,
@@ -134,13 +138,13 @@ function reportUnreadableGranolaLink(failure: unknown) {
   toastManager.add({
     type: "info",
     title: unavailable
-      ? "Connect Granola to attach meeting notes"
-      : "Could not attach that Granola note",
+      ? m(msg("Connect Granola to attach meeting notes"))
+      : m(msg("Could not attach that Granola note")),
     description: unavailable
-      ? "The agent gets the link instead. Connect Granola in Settings → Integrations."
+      ? m(msg("The agent gets the link instead. Connect Granola in Settings → Integrations."))
       : failure instanceof Error
-        ? `The agent gets the link instead. ${failure.message}`
-        : "The agent gets the link instead.",
+        ? m(msg("The agent gets the link instead. {error}"), { error: failure.message })
+        : m(msg("The agent gets the link instead.")),
   });
 }
 
@@ -160,24 +164,31 @@ function reportUnreadableNotionLink(
   if (reason !== "not-found") {
     toastManager.add({
       type: "info",
-      title: "Could not attach that Notion page",
+      title: m(msg("Could not attach that Notion page")),
       description:
         failure instanceof Error
-          ? `The agent gets the link instead. ${failure.message}`
-          : "The agent gets the link instead. Check the Notion connection in Settings → Integrations.",
+          ? m(msg("The agent gets the link instead. {error}"), { error: failure.message })
+          : m(
+              msg(
+                "The agent gets the link instead. Check the Notion connection in Settings → Integrations.",
+              ),
+            ),
     });
     return;
   }
   const toastId = toastManager.add({
     type: "info",
-    title: "T3 Code can't read this Notion page",
-    description:
-      "In Notion, open the page's ••• menu → Connections and add your T3 Code connection, then retry.",
+    title: m(msg("T3 Code can't read this Notion page")),
+    description: m(
+      msg(
+        "In Notion, open the page's ••• menu → Connections and add your T3 Code connection, then retry.",
+      ),
+    ),
     timeout: 0,
     ...(retry
       ? {
           actionProps: {
-            children: "Retry",
+            children: m(msg("Retry")),
             onClick: () => {
               toastManager.close(toastId);
               retry();
@@ -189,7 +200,7 @@ function reportUnreadableNotionLink(
       hideCopyButton: true,
       actionLayout: "stacked-end",
       secondaryActionProps: {
-        children: "Open in Notion",
+        children: m(msg("Open in Notion")),
         onClick: () => void ensureLocalApi().shell.openExternal(url),
       },
     },
@@ -208,24 +219,31 @@ function reportUnreadableGoogleLink(
   if (reason !== "not-found") {
     toastManager.add({
       type: "info",
-      title: "Could not attach that Google page",
+      title: m(msg("Could not attach that Google page")),
       description:
         failure instanceof Error
-          ? `The agent gets the link instead. ${failure.message}`
-          : "The agent gets the link instead. Check the Google connection in Settings → Integrations.",
+          ? m(msg("The agent gets the link instead. {error}"), { error: failure.message })
+          : m(
+              msg(
+                "The agent gets the link instead. Check the Google connection in Settings → Integrations.",
+              ),
+            ),
     });
     return;
   }
   const toastId = toastManager.add({
     type: "info",
-    title: "T3 Code can't read this Google page",
-    description:
-      "Check that the Google account connected in Settings → Integrations can open this document, then retry.",
+    title: m(msg("T3 Code can't read this Google page")),
+    description: m(
+      msg(
+        "Check that the Google account connected in Settings → Integrations can open this document, then retry.",
+      ),
+    ),
     timeout: 0,
     ...(retry
       ? {
           actionProps: {
-            children: "Retry",
+            children: m(msg("Retry")),
             onClick: () => {
               toastManager.close(toastId);
               retry();
@@ -237,7 +255,7 @@ function reportUnreadableGoogleLink(
       hideCopyButton: true,
       actionLayout: "stacked-end",
       secondaryActionProps: {
-        children: "Open in Google",
+        children: m(msg("Open in Google")),
         onClick: () => void ensureLocalApi().shell.openExternal(url),
       },
     },

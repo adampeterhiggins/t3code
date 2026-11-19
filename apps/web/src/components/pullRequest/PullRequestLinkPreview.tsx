@@ -6,6 +6,7 @@ import type {
   PullRequestRef,
   ScopedThreadRef,
 } from "@t3tools/contracts";
+import { T, useMessages } from "gt-react";
 import { parsePullRequestAnchor, pullRequestLinkCommit } from "@t3tools/shared/pullRequestAnchor";
 import {
   cloneElement,
@@ -78,6 +79,7 @@ export function PullRequestLinkPreview({
   onOpenFallback?: (url: string) => Promise<void>;
   fallback?: ReactNode;
 }) {
+  const messages = useMessages();
   const [open, setOpen] = useState(false);
   const cursorAnchor = useCursorAnchor();
   const previewActionsRef = useRef<PreviewCardPrimitive.Root.Actions | null>(null);
@@ -143,7 +145,7 @@ export function PullRequestLinkPreview({
   const state =
     card === null
       ? null
-      : resolvePullRequestState({ state: card.state, isDraft: card.isDraft ?? false });
+      : resolvePullRequestState({ state: card.state, isDraft: card.isDraft ?? false }, messages);
 
   const linkedComment =
     activityQuery.data === null ? null : findPullRequestComment(activityQuery.data, originalUrl);
@@ -199,7 +201,7 @@ export function PullRequestLinkPreview({
                       }
                     }}
                   >
-                    Open
+                    <T context="verb, open a link">Open</T>
                   </a>
                 </div>
                 {subject?.kind === "comment" ? (

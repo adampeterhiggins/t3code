@@ -1,3 +1,6 @@
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
+
 import type {
   PreviewRecord,
   PullRequestToolPreview,
@@ -17,8 +20,8 @@ import {
   type Record_,
 } from "./previewBuilders.ts";
 
-function count(value: unknown, noun: string): string | null {
-  return typeof value === "number" ? `${value} ${noun}${value === 1 ? "" : "s"}` : null;
+function count(value: unknown, format: (count: number) => string): string | null {
+  return typeof value === "number" ? format(value) : null;
 }
 
 function diffStat(item: Record_): string | null {
@@ -59,25 +62,29 @@ function record(
   };
 }
 
-function threadRecord(thread: Record_, index: number): PreviewRecord {
+function threadRecord(thread: Record_, index: number, resolve: MFunctionType): PreviewRecord {
   return record({
     key: str(thread.threadId) ?? String(index),
-    title: str(thread.title) ?? "Untitled thread",
+    title: str(thread.title) ?? resolve(msg("Untitled thread")),
     subtitle: str(thread.sessionStatus),
     meta: present([
       str(thread.projectTitle),
       str(thread.model),
       time(thread.lastActivityAt),
-      thread.pullRequestCount ? count(thread.pullRequestCount, "PR") : null,
+      thread.pullRequestCount
+        ? count(thread.pullRequestCount, (n) =>
+            resolve(msg("{count, plural, one {{count} PR} other {{count} PRs}}", { count: n })),
+          )
+        : null,
     ]),
     threadId: str(thread.threadId),
   });
 }
 
-function messageRecord(message: Record_, index: number): PreviewRecord {
+function messageRecord(message: Record_, index: number, resolve: MFunctionType): PreviewRecord {
   return record({
     key: str(message.messageId) ?? String(index),
-    title: str(message.threadTitle) ?? "Message",
+    title: str(message.threadTitle) ?? resolve(msg("Message", { $context: "noun" })),
     subtitle: str(message.role),
     meta: present([time(message.createdAt)]),
     body: str(message.text) ?? str(message.snippet),
@@ -159,6 +166,7 @@ export function historyToolPreview(
   tool: string,
   input: Record_,
   result: unknown,
+  resolve: MFunctionType = mFallback,
 ): ToolPreview | null {
   const data = isRecord(result) ? result : null;
   if (!data) return null;
@@ -169,11 +177,37 @@ export function historyToolPreview(
         rows([
           ["Server version", str(data.serverVersion)],
           ["Time zone", str(data.timeZone)],
-          ["Projects", count(counts.projects, "project")],
-          ["Threads", count(counts.threads, "thread")],
-          ["Archived", count(counts.archivedThreads, "archived thread")],
+          [
+            "Projects",
+            count(counts.projects, (n) =>
+              resolve(
+                msg("{count, plural, one {{count} project} other {{count} projects}}", {
+                  count: n,
+                }),
+              ),
+            ),
+          ],
+          [
+            "Threads",
+            count(counts.threads, (n) =>
+              resolve(
+                msg("{count, plural, one {{count} thread} other {{count} threads}}", { count: n }),
+              ),
+            ),
+          ],
+          [
+            "Archived",
+            count(counts.archivedThreads, (n) =>
+              resolve(
+                msg(
+                  "{count, plural, one {{count} archived thread} other {{count} archived threads}}",
+                  { count: n },
+                ),
+              ),
+            ),
+          ],
         ]),
-        { title: str(data.label) ?? "Environment" },
+        { title: str(data.label) ?? resolve(msg("Environment")) },
       );
     }
     case "get_activity_timeline": {
@@ -182,7 +216,10 @@ export function historyToolPreview(
         entries.map((entry, index) =>
           record({
             key: str(entry.id) ?? String(index),
-            title: line(entry.summary) ?? str(entry.threadTitle) ?? "Event",
+            title:
+              line(entry.summary) ??
+              str(entry.threadTitle) ??
+              resolve(msg("Event", { $context: "timeline entry" })),
             subtitle: TIMELINE_KINDS[str(entry.kind) ?? ""] ?? str(entry.kind),
             meta: present([time(entry.at), str(entry.threadTitle), str(entry.projectTitle)]),
             threadId: str(entry.threadId),
@@ -196,8 +233,17 @@ export function historyToolPreview(
         projects.map((project, index) =>
           record({
             key: str(project.projectId) ?? String(index),
-            title: str(project.title) ?? "Project",
-            meta: present([count(project.threadCount, "thread"), time(project.lastActivityAt)]),
+            title: str(project.title) ?? resolve(msg("Project", { $context: "noun" })),
+            meta: present([
+              count(project.threadCount, (n) =>
+                resolve(
+                  msg("{count, plural, one {{count} thread} other {{count} threads}}", {
+                    count: n,
+                  }),
+                ),
+              ),
+              time(project.lastActivityAt),
+            ]),
             body: str(project.workspaceRoot),
           }),
         ),
@@ -207,23 +253,32 @@ export function historyToolPreview(
       const project = isRecord(data.project) ? data.project : {};
       const threads = Array.isArray(data.recentThreads) ? data.recentThreads.filter(isRecord) : [];
       const scripts = Array.isArray(data.scripts) ? data.scripts.filter(isRecord) : [];
-      return records(threads.map(threadRecord), {
-        summary: str(project.title),
-        notes: [
-          str(project.workspaceRoot),
-          str(data.defaultModel) ? `Default model: ${str(data.defaultModel)}` : null,
-          scripts.length > 0
-            ? `Scripts: ${scripts
-                .map((script) => str(script.name))
-                .filter(Boolean)
-                .join(", ")}`
-            : null,
-        ],
-      });
+      return records(
+        threads.map((thread, index) => threadRecord(thread, index, resolve)),
+        {
+          summary: str(project.title),
+          notes: [
+            str(project.workspaceRoot),
+            str(data.defaultModel)
+              ? resolve(msg("Default model: {model}", { model: str(data.defaultModel) }))
+              : null,
+            scripts.length > 0
+              ? resolve(
+                  msg("Scripts: {scripts}", {
+                    scripts: scripts
+                      .map((script) => str(script.name))
+                      .filter(Boolean)
+                      .join(", "),
+                  }),
+                )
+              : null,
+          ],
+        },
+      );
     }
     case "list_threads": {
       const threads = Array.isArray(data.threads) ? data.threads.filter(isRecord) : [];
-      return records(threads.map(threadRecord));
+      return records(threads.map((thread, index) => threadRecord(thread, index, resolve)));
     }
     case "get_thread": {
       const thread = isRecord(data.thread) ? data.thread : null;
@@ -235,16 +290,30 @@ export function historyToolPreview(
       const preview: ThreadToolPreview = {
         kind: "thread",
         threadId,
-        title: str(thread.title) ?? "Untitled thread",
+        title: str(thread.title) ?? resolve(msg("Untitled thread")),
         status: str(session?.status) ?? str(thread.sessionStatus),
         model: str(thread.model),
         branch: str(thread.branch),
         items: [
           ...(firstPrompt
-            ? [{ key: "prompt", label: "First prompt", text: firstPrompt, activity: false }]
+            ? [
+                {
+                  key: "prompt",
+                  label: resolve(msg("First prompt")),
+                  text: firstPrompt,
+                  activity: false,
+                },
+              ]
             : []),
           ...(latestResponse
-            ? [{ key: "response", label: "Latest reply", text: latestResponse, activity: false }]
+            ? [
+                {
+                  key: "response",
+                  label: resolve(msg("Latest reply")),
+                  text: latestResponse,
+                  activity: false,
+                },
+              ]
             : []),
         ],
         moreItems: 0,
@@ -257,11 +326,17 @@ export function historyToolPreview(
         turns.map((turn, index) =>
           record({
             key: str(turn.turnId) ?? String(index),
-            title: line(turn.prompt) ?? `Turn ${scalarText(turn.turnCount) ?? index + 1}`,
+            title:
+              line(turn.prompt) ??
+              resolve(msg("Turn {number}", { number: scalarText(turn.turnCount) ?? index + 1 })),
             subtitle: str(turn.state),
             meta: present([
               typeof turn.turnCount === "number" ? `#${turn.turnCount}` : null,
-              count(turn.fileCount, "file"),
+              count(turn.fileCount, (n) =>
+                resolve(
+                  msg("{count, plural, one {{count} file} other {{count} files}}", { count: n }),
+                ),
+              ),
               diffStat(turn),
               time(turn.completedAt ?? turn.requestedAt),
             ]),
@@ -275,8 +350,18 @@ export function historyToolPreview(
       const turn = isRecord(data.turn) ? data.turn : null;
       if (!turn) return null;
       return documentPreview(str(turn.response) ?? "", {
-        title: line(turn.prompt) ?? "Turn",
-        notes: [str(turn.state), count(turn.fileCount, "file changed"), diffStat(turn)],
+        title: line(turn.prompt) ?? resolve(msg("Turn", { $context: "noun, one agent turn" })),
+        notes: [
+          str(turn.state),
+          count(turn.fileCount, (n) =>
+            resolve(
+              msg("{count, plural, one {{count} file changed} other {{count} files changed}}", {
+                count: n,
+              }),
+            ),
+          ),
+          diffStat(turn),
+        ],
       });
     }
     case "get_turn_diff": {
@@ -285,7 +370,7 @@ export function historyToolPreview(
         files.map((file, index) =>
           record({
             key: str(file.path) ?? String(index),
-            title: str(file.path) ?? "File",
+            title: str(file.path) ?? resolve(msg("File", { $context: "noun" })),
             subtitle: str(file.kind),
             meta: present([diffStat(file)]),
           }),
@@ -293,15 +378,17 @@ export function historyToolPreview(
         {
           summary:
             typeof data.fromTurnCount === "number" && typeof data.toTurnCount === "number"
-              ? `Turns ${data.fromTurnCount} → ${data.toTurnCount}`
+              ? resolve(
+                  msg("Turns {from} → {to}", { from: data.fromTurnCount, to: data.toTurnCount }),
+                )
               : null,
-          notes: [data.truncated === true ? "Some files were left out" : null],
+          notes: [data.truncated === true ? resolve(msg("Some files were left out")) : null],
         },
       );
     }
     case "list_messages": {
       const messages = Array.isArray(data.messages) ? data.messages.filter(isRecord) : [];
-      return records(messages.map(messageRecord));
+      return records(messages.map((message, index) => messageRecord(message, index, resolve)));
     }
     case "get_message": {
       const message = isRecord(data.message) ? data.message : null;
@@ -314,9 +401,15 @@ export function historyToolPreview(
     case "search": {
       const threads = Array.isArray(data.threads) ? data.threads.filter(isRecord) : [];
       const messages = Array.isArray(data.messages) ? data.messages.filter(isRecord) : [];
-      return records([...threads.map(threadRecord), ...messages.map(messageRecord)], {
-        summary: str(input.query),
-      });
+      return records(
+        [
+          ...threads.map((thread, index) => threadRecord(thread, index, resolve)),
+          ...messages.map((message, index) => messageRecord(message, index, resolve)),
+        ],
+        {
+          summary: str(input.query),
+        },
+      );
     }
     case "list_activities": {
       const activities = Array.isArray(data.activities) ? data.activities.filter(isRecord) : [];
@@ -324,7 +417,10 @@ export function historyToolPreview(
         activities.map((activity, index) =>
           record({
             key: str(activity.activityId) ?? String(index),
-            title: str(activity.summary) ?? str(activity.kind) ?? "Activity",
+            title:
+              str(activity.summary) ??
+              str(activity.kind) ??
+              resolve(msg("Activity", { $context: "noun" })),
             subtitle: str(activity.status),
             meta: present([
               str(activity.kind)?.replaceAll("_", " ") ?? null,
@@ -355,7 +451,7 @@ export function historyToolPreview(
         plans.map((plan, index) =>
           record({
             key: str(plan.planId) ?? String(index),
-            title: str(plan.title) ?? "Plan",
+            title: str(plan.title) ?? resolve(msg("Plan", { $context: "noun" })),
             subtitle: str(plan.status),
             meta: present([str(plan.threadTitle), time(plan.updatedAt)]),
             body: str(plan.preview),
@@ -383,7 +479,7 @@ export function historyToolPreview(
       const preview: ThreadToolPreview = {
         kind: "thread",
         threadId: str(data.childThreadId) ?? "",
-        title: str(data.title) ?? "Subagent",
+        title: str(data.title) ?? resolve(msg("Subagent")),
         status: str(data.status),
         model: null,
         branch: null,
@@ -393,9 +489,9 @@ export function historyToolPreview(
           const kind = str(entry.kind) ?? "entry";
           const label =
             kind === "tool"
-              ? (str(entry.toolName) ?? "Tool")
+              ? (str(entry.toolName) ?? resolve(msg("Tool", { $context: "thread item kind" })))
               : kind === "assistant"
-                ? "Agent"
+                ? resolve(msg("Agent", { $context: "thread message author" }))
                 : kind.charAt(0).toUpperCase() + kind.slice(1);
           return [{ key: String(index), label, text, activity: kind === "tool" }];
         }),

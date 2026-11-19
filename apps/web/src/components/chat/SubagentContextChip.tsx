@@ -1,8 +1,10 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { edgeAgentStatus } from "@t3tools/client-runtime/state/agent-fleet";
 import { useAtomValue } from "@effect/atom-react";
+import { msg, useMessages } from "gt-react";
 import type { ComponentProps } from "react";
 
+import { m, type MessageResolver } from "~/i18n/messages";
 import { useThreadShell } from "~/state/entities";
 import { environmentThreadDetails } from "~/state/threads";
 
@@ -24,6 +26,7 @@ export function SubagentChipTrigger({
   record: SubagentChipRecord;
   copyMarkdown?: string | undefined;
 }) {
+  const resolve = useMessages();
   const ownerRef = scopeThreadRef(record.environmentId, record.ownerThreadId);
   const childShell = useThreadShell(
     record.childThreadId === null
@@ -52,7 +55,7 @@ export function SubagentChipTrigger({
     <ContextChip
       kind="subagent"
       render={<button type="button" />}
-      aria-label={subagentChipAccessibleLabel(record)}
+      aria-label={subagentChipAccessibleLabel(record, resolve)}
       data-markdown-copy={copyMarkdown}
       onClick={() => showAgentInPanel(ownerRef, key)}
       {...props}
@@ -65,6 +68,10 @@ export function SubagentChipTrigger({
 
 export function subagentChipAccessibleLabel(
   record: Pick<SubagentChipRecord, "handle" | "title">,
+  resolve: MessageResolver = m,
 ): string {
-  return `Agent @${record.handle}, ${record.title}. Show in Agents panel`;
+  return resolve(msg("Agent @{handle}, {title}. Show in Agents panel"), {
+    handle: record.handle,
+    title: record.title,
+  });
 }

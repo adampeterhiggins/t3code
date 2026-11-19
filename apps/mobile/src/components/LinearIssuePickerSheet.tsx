@@ -1,3 +1,4 @@
+import { LegendList } from "@legendapp/list/react-native";
 import type {
   EnvironmentId,
   LinearIssueSummary,
@@ -14,10 +15,12 @@ import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
 import { StackActions, useNavigation } from "@react-navigation/native";
+import { msg, T, useGT, useMessages } from "gt-react-native";
 import { useState, type ReactNode } from "react";
-import { ActivityIndicator, Alert, FlatList, Pressable, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { m, type MessageResolver } from "../i18n/messages";
 import { openSettings } from "../features/settings/settings-navigation";
 import { useThreadShells } from "../state/entities";
 import { linearEnvironment } from "../state/linear";
@@ -37,11 +40,15 @@ import { PickerSheet } from "./PickerSheet";
 const SEARCH_DEBOUNCE_MS = 300;
 
 /** Linear's failures carry a reason; a rate limit deserves a clearer hint than its detail. */
-function linearErrorMessage(error: unknown, fallback: string): string {
+function linearErrorMessage(
+  error: unknown,
+  fallback: string,
+  resolve: MessageResolver = m,
+): string {
   if (typeof error === "object" && error !== null && "reason" in error) {
-    if (error.reason === "rate-limited") return "Linear is busy. Try again shortly.";
+    if (error.reason === "rate-limited") return resolve(msg("Linear is busy. Try again shortly."));
     if (error.reason === "not-connected" || error.reason === "revoked") {
-      return "Linear is not connected. Connect it in Settings.";
+      return resolve(msg("Linear is not connected. Connect it in Settings."));
     }
   }
   return error instanceof Error && error.message.trim() ? error.message : fallback;
@@ -138,6 +145,7 @@ export function useLinearIssuePicker(target: LinearIssuePickerTarget | null): {
  * the thread's tab group.
  */
 function LinearIssuePickerSheet(props: OpenedLinearIssuePicker & { readonly onClose: () => void }) {
+  const gt = useGT();
   const connection = useEnvironmentQuery(
     linearEnvironment.connection({ environmentId: props.environmentId, input: {} }),
   );
@@ -146,10 +154,10 @@ function LinearIssuePickerSheet(props: OpenedLinearIssuePicker & { readonly onCl
     <PickerSheet
       title={
         props.mode === "link"
-          ? "Link Linear issue"
+          ? gt("Link Linear issue")
           : props.startFrom
-            ? "Start from issue"
-            : "Linear issue"
+            ? gt("Start from issue")
+            : gt("Linear issue")
       }
       onClose={props.onClose}
     >
@@ -161,7 +169,7 @@ function LinearIssuePickerSheet(props: OpenedLinearIssuePicker & { readonly onCl
             <ActivityIndicator />
           ) : (
             <Text className="text-center text-foreground-muted">
-              {connection.error ?? "Linear is not connected. Connect it in Settings > Linear."}
+              {connection.error ?? gt("Linear is not connected. Connect it in Settings > Linear.")}
             </Text>
           )}
         </View>
@@ -171,6 +179,8 @@ function LinearIssuePickerSheet(props: OpenedLinearIssuePicker & { readonly onCl
 }
 
 function LinearIssueSearch(props: OpenedLinearIssuePicker & { readonly onClose: () => void }) {
+  const gt = useGT();
+  const resolve = useMessages();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const startFrom = props.mode === "attach" ? props.startFrom : undefined;
@@ -203,7 +213,11 @@ function LinearIssueSearch(props: OpenedLinearIssuePicker & { readonly onClose: 
   const pending = settled !== trimmed || result.waiting;
   const error =
     result._tag === "Failure"
-      ? linearErrorMessage(Cause.squash(result.cause), "Could not load Linear issues.")
+      ? linearErrorMessage(
+          Cause.squash(result.cause),
+          resolve(msg("Could not load Linear issues.")),
+          resolve,
+        )
       : null;
 
   const pick = async (issue: LinearIssueSummary) => {
@@ -242,8 +256,8 @@ function LinearIssueSearch(props: OpenedLinearIssuePicker & { readonly onClose: 
       });
       if (linked._tag === "Failure") {
         Alert.alert(
-          "Could not link issue",
-          linearErrorMessage(squashAtomCommandFailure(linked), "Try again."),
+          m(msg("Could not link issue")),
+          linearErrorMessage(squashAtomCommandFailure(linked), m(msg("Try again."))),
         );
         return;
       }
@@ -256,8 +270,8 @@ function LinearIssueSearch(props: OpenedLinearIssuePicker & { readonly onClose: 
     });
     if (fetched._tag === "Failure") {
       Alert.alert(
-        "Could not attach issue",
-        linearErrorMessage(squashAtomCommandFailure(fetched), "Try again."),
+        m(msg("Could not attach issue")),
+        linearErrorMessage(squashAtomCommandFailure(fetched), m(msg("Try again."))),
       );
       return;
     }
@@ -272,7 +286,10 @@ function LinearIssueSearch(props: OpenedLinearIssuePicker & { readonly onClose: 
         props.insertion,
       )
     ) {
-      Alert.alert("Too many context items", "Remove some context from the draft and try again.");
+      Alert.alert(
+        m(msg("Too many context items")),
+        m(msg("Remove some context from the draft and try again.")),
+      );
       return;
     }
     if (startFrom) startFromIssueIds.set(props.draftKey, issue.id);
@@ -288,25 +305,32 @@ function LinearIssueSearch(props: OpenedLinearIssuePicker & { readonly onClose: 
     <View className="flex-1">
       <View className="px-4 pb-3">
         <AppTextInput
-          accessibilityLabel="Search Linear issues"
+          accessibilityLabel={gt("Search Linear issues")}
           autoFocus
           autoCapitalize="none"
           autoCorrect={false}
           clearButtonMode="while-editing"
-          placeholder="Search, or paste ENG-123 or an issue link"
+          placeholder={gt("Search, or paste ENG-123 or an issue link")}
           returnKeyType="search"
           value={query}
           onChangeText={setQuery}
         />
       </View>
-      <FlatList
+      {/* oxlint-disable-next-line t3code/require-registered-list-scroll -- PickerSheet is a Modal with an inline header; there is no navigation header to register with. */}
+      <LegendList
         data={issues}
         keyExtractor={(issue) => issue.id}
+        extraData={{ attaching, pick }}
+        estimatedItemSize={64}
+        recycleItems
+        className="flex-1"
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) }}
         ListHeaderComponent={
           !trimmed && issues.length > 0 ? (
-            <Text className="px-4 pb-2 text-sm text-foreground-muted">Assigned to you</Text>
+            <Text className="px-4 pb-2 text-sm text-foreground-muted">
+              <T>Assigned to you</T>
+            </Text>
           ) : undefined
         }
         ListEmptyComponent={
@@ -320,7 +344,8 @@ function LinearIssueSearch(props: OpenedLinearIssuePicker & { readonly onClose: 
                   error ? "text-center text-danger-foreground" : "text-center text-foreground-muted"
                 }
               >
-                {error ?? (trimmed ? "No matching issues." : "No open issues are assigned to you.")}
+                {error ??
+                  (trimmed ? gt("No matching issues.") : gt("No open issues are assigned to you."))}
               </Text>
             )}
           </View>

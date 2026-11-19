@@ -7,10 +7,12 @@ import { linearIssueContextRecord } from "@t3tools/source-control-definitions/in
 import type { LinearIssueSummary, ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
+import { msg, T, useGT } from "gt-react";
 import { LinearIcon } from "../Icons";
 import { useState } from "react";
 
 import { useComposerDraftStore } from "~/composerDraftStore";
+import { m } from "~/i18n/messages";
 import { useIssueContextStore } from "~/issueContextStore";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { linearEnvironment } from "~/state/linear";
@@ -75,7 +77,7 @@ export function useAttachLinearIssue() {
         const failure = squashAtomCommandFailure(result);
         toastManager.add({
           type: "error",
-          title: "Could not attach the Linear issue",
+          title: m(msg("Could not attach the Linear issue")),
           description: failure instanceof Error ? failure.message : undefined,
         });
       }
@@ -105,7 +107,7 @@ export function useLinkLinearIssue() {
         const failure = squashAtomCommandFailure(result);
         toastManager.add({
           type: "error",
-          title: "Could not link the Linear issue",
+          title: m(msg("Could not link the Linear issue")),
           description: failure instanceof Error ? failure.message : undefined,
         });
       }
@@ -135,6 +137,7 @@ function LinearIssuePickerDialog(props: {
 }) {
   const { threadRef, mode, onClose } = props;
   const environmentId = threadRef.environmentId;
+  const gt = useGT();
   const navigate = useNavigate();
   const attachIssue = useAttachLinearIssue();
   const linkIssue = useLinkLinearIssue();
@@ -175,15 +178,15 @@ function LinearIssuePickerDialog(props: {
 
   const status =
     connection.data === null
-      ? "Reading Linear status…"
+      ? gt("Reading Linear status…")
       : !connected
         ? null
         : issuesQuery.error !== null && issues.length === 0
           ? issuesQuery.error
           : issues.length === 0
             ? searching
-              ? "Searching Linear…"
-              : "No issues match these filters."
+              ? gt("Searching Linear…")
+              : gt("No issues match these filters.")
             : null;
 
   return (
@@ -194,23 +197,23 @@ function LinearIssuePickerDialog(props: {
       }}
     >
       <CommandDialogPopup
-        aria-label={mode === "link" ? "Link Linear issue" : "Attach Linear issue"}
+        aria-label={mode === "link" ? gt("Link Linear issue") : gt("Attach Linear issue")}
         className="overflow-hidden"
       >
         {connected || connection.data === null ? (
           <CommandPaletteContent
             inputProps={{
-              placeholder: "Search Linear issues, or paste ENG-123 or an issue link",
+              placeholder: gt("Search Linear issues, or paste ENG-123 or an issue link"),
               startAddon: <LinearIcon />,
             }}
             footerActionLabel={
               mode === "link"
                 ? attaching
-                  ? "Linking…"
-                  : "Link"
+                  ? gt("Linking…")
+                  : gt("Link", { $context: "verb, links an issue to the thread" })
                 : attaching
-                  ? "Attaching…"
-                  : "Attach"
+                  ? gt("Attaching…")
+                  : gt("Attach", { $context: "verb, attaches an issue to the message" })
             }
             inputAccessory={
               <LinearIssueFilterBar
@@ -254,7 +257,7 @@ function LinearIssuePickerDialog(props: {
                               </span>
                               {/* Fixed widths so assignee and status line up down the list. */}
                               <span className="w-28 shrink-0 truncate text-muted-foreground/70 text-xs">
-                                {issue.assigneeName ?? "Unassigned"}
+                                {issue.assigneeName ?? gt("Unassigned")}
                               </span>
                               <span className="w-24 shrink-0 truncate text-muted-foreground/70 text-xs">
                                 {issue.stateName}
@@ -273,8 +276,8 @@ function LinearIssuePickerDialog(props: {
           <div className="flex flex-col items-center gap-3 px-6 py-10 text-center text-sm">
             <p className="text-muted-foreground">
               {mode === "link"
-                ? "Connect a Linear account to link an issue to this thread."
-                : "Connect a Linear account to attach issues to messages."}
+                ? gt("Connect a Linear account to link an issue to this thread.")
+                : gt("Connect a Linear account to attach issues to messages.")}
             </p>
             <Button
               size="sm"
@@ -283,7 +286,7 @@ function LinearIssuePickerDialog(props: {
                 void navigate({ to: "/settings/integrations" });
               }}
             >
-              Connect Linear
+              <T>Connect Linear</T>
             </Button>
           </div>
         )}

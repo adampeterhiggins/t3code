@@ -1,10 +1,12 @@
 import { useAtomValue } from "@effect/atom-react";
 import { resolveToolPath, toolPathTextParts } from "@t3tools/client-runtime/work-log/tool-paths";
 import type { EnvironmentId } from "@t3tools/contracts";
+import { msg, useGT, useMessages } from "gt-react";
 import { CheckIcon, CopyIcon } from "lucide-react";
 import { useState } from "react";
 
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
+import { m } from "~/i18n/messages";
 import { toolPathRootsAtom } from "~/state/toolPaths";
 import { Button } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
@@ -26,11 +28,16 @@ function ToolPathBreadcrumb({
   /** Drop the checkout name when this file is already in the thread's workspace. */
   omitRoot?: boolean;
 }) {
+  const gt = useGT();
   const [error, setError] = useState<string | null>(null);
   const { copyToClipboard, isCopied } = useCopyToClipboard({
-    target: "full file path",
+    target: {
+      target: "full file path",
+      unavailableMessage: msg("Clipboard API is unavailable while copying full file path."),
+      failureMessage: msg("Failed to copy full file path to the clipboard."),
+    },
     onCopy: () => setError(null),
-    onError: () => setError("Could not copy path. Select it to copy manually."),
+    onError: () => setError(m(msg("Could not copy path. Select it to copy manually."))),
   });
   const hideRoot = omitRoot && path.inWorkspace && path.segments.length > 0;
   const filename = path.segments.at(-1);
@@ -43,7 +50,7 @@ function ToolPathBreadcrumb({
         openOnHover
         delay={300}
         closeDelay={150}
-        aria-label={`Full path: ${path.absolutePath}`}
+        aria-label={gt("Full path: {path}", { path: path.absolutePath })}
         onClick={(event) => event.stopPropagation()}
         onKeyDown={(event) => event.stopPropagation()}
         render={
@@ -100,7 +107,7 @@ function ToolPathBreadcrumb({
               onClick={() => copyToClipboard(path.absolutePath, undefined)}
             >
               {isCopied ? <CheckIcon aria-hidden /> : <CopyIcon aria-hidden />}
-              <span aria-live="polite">{isCopied ? "Copied" : "Copy full path"}</span>
+              <span aria-live="polite">{isCopied ? gt("Copied") : gt("Copy full path")}</span>
             </Button>
           </div>
           {error ? (
@@ -130,7 +137,10 @@ export function ToolPathText(props: {
   singleLine?: boolean;
 }) {
   const roots = useAtomValue(toolPathRootsAtom(props.environmentId));
-  const path = props.pathOnly ? resolveToolPath(props.text, props.workspaceRoot, roots) : null;
+  const messages = useMessages();
+  const path = props.pathOnly
+    ? resolveToolPath(props.text, props.workspaceRoot, roots, messages)
+    : null;
   if (path) {
     const breadcrumb = (
       <ToolPathBreadcrumb
@@ -143,29 +153,34 @@ export function ToolPathText(props: {
     return <span className="flex w-full min-w-0 items-baseline">{breadcrumb}</span>;
   }
   const occurrences = new Map<string, number>();
-  const nodes = toolPathTextParts(props.text, props.workspaceRoot, roots, props.targets).map(
-    (part, index) => {
-      if ("text" in part) {
-        if (!props.singleLine) return part.text;
-        // Activity rows force nowrap on every descendant, which drops the space
-        // between the verb and the path unless this declaration wins.
-        return (
-          <span key={`text:${index}`} className="shrink-0 whitespace-pre!">
-            {part.text}
-          </span>
-        );
-      }
-      const occurrence = (occurrences.get(part.path.absolutePath) ?? 0) + 1;
-      occurrences.set(part.path.absolutePath, occurrence);
+  const nodes = toolPathTextParts(
+    props.text,
+    props.workspaceRoot,
+    roots,
+    props.targets,
+    messages,
+  ).map((part, index) => {
+    if ("text" in part) {
+      if (!props.singleLine) return part.text;
+      // Activity rows force nowrap on every descendant, which drops the space
+      // between the verb and the path unless this declaration wins.
       return (
-        <ToolPathBreadcrumb
-          key={`${part.path.absolutePath}:${occurrence}`}
-          path={part.path}
-          singleLine={props.singleLine ?? false}
-        />
+        // oxlint-disable-next-line react/no-array-index-key -- text parts have no identity; their order is fixed for a given text
+        <span key={`text:${index}`} className="shrink-0 whitespace-pre!">
+          {part.text}
+        </span>
       );
-    },
-  );
+    }
+    const occurrence = (occurrences.get(part.path.absolutePath) ?? 0) + 1;
+    occurrences.set(part.path.absolutePath, occurrence);
+    return (
+      <ToolPathBreadcrumb
+        key={`${part.path.absolutePath}:${occurrence}`}
+        path={part.path}
+        singleLine={props.singleLine ?? false}
+      />
+    );
+  });
   if (!props.singleLine) return nodes;
   return <span className="flex w-full min-w-0 items-baseline">{nodes}</span>;
 }

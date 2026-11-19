@@ -1,5 +1,6 @@
 import type { FileDiffMetadata, FileDiffOptions } from "@pierre/diffs";
 import { FileDiff } from "@pierre/diffs/react";
+import { useGT } from "gt-react";
 import { useState } from "react";
 
 import { useTheme } from "~/hooks/useTheme";
@@ -36,6 +37,7 @@ export function ToolCallBody({ text, className }: { text: string; className?: st
 /** A tool patch that falls back to its plain text if the diff renderer fails. */
 function ToolDiff(props: { patch: string; files: ReadonlyArray<FileDiffMetadata> }) {
   const { resolvedTheme } = useTheme();
+  const gt = useGT();
   const [failed, setFailed] = useState(false);
   const options: FileDiffOptions<undefined, false> = {
     diffStyle: "unified",
@@ -57,7 +59,10 @@ function ToolDiff(props: { patch: string; files: ReadonlyArray<FileDiffMetadata>
   }
   return (
     <DiffWorkerPoolProvider>
-      <div aria-label="Edit diff" className="overflow-hidden rounded-md border">
+      <div
+        aria-label={gt("Edit diff", { $context: "diff of a file edit" })}
+        className="overflow-hidden rounded-md border"
+      >
         {props.files.map((file) => (
           <FileDiff key={file.name} fileDiff={file} options={options} />
         ))}

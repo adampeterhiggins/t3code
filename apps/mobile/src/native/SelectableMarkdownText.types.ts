@@ -79,6 +79,7 @@ export interface SelectableMarkdownTextProps {
   /** Draws file-path inline code as file links. Off for the user's own text, where backticks mean literal code. */
   readonly inlineCodeFileLinks?: boolean;
   readonly onLinkPress?: (href: string) => void;
+  readonly onCiteText?: (text: string) => void;
   readonly fileContextMenu?: (href: string) => MarkdownFileContextMenu | undefined;
   readonly onFileContextMenuAction?: (href: string, actionId: string) => void;
   readonly linkCustomization?: (href: string) => MarkdownLinkCustomization | undefined;

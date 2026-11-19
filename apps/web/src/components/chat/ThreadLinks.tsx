@@ -1,6 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { isGitHubProject } from "@t3tools/client-runtime/state/github-issues";
 import type { ProjectId, ScopedThreadRef } from "@t3tools/contracts";
+import { useGT } from "gt-react";
 import { PlusIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -43,6 +44,7 @@ import { ThreadDetailsSection } from "./ThreadDetailsSection";
 /** The issues, conversations, pages, and notes linked to the thread's tab group. */
 export function ThreadLinks(props: { threadRef: ScopedThreadRef; projectId: ProjectId }) {
   const { threadRef } = props;
+  const gt = useGT();
   const { environmentId } = threadRef;
   const linear = useThreadLinearLink(threadRef);
   const github = useThreadGitHubIssueLink(threadRef);
@@ -74,7 +76,7 @@ export function ThreadLinks(props: { threadRef: ScopedThreadRef; projectId: Proj
     addOptions.push({
       key: "linear",
       icon: <LinearIcon />,
-      label: "Linear issue…",
+      label: gt("Linear issue…"),
       open: () => openLinearIssuePicker(threadRef, "link"),
     });
   }
@@ -82,7 +84,7 @@ export function ThreadLinks(props: { threadRef: ScopedThreadRef; projectId: Proj
     addOptions.push({
       key: "github",
       icon: <GitHubIcon />,
-      label: "GitHub issue…",
+      label: gt("GitHub issue…"),
       open: () => openGitHubIssuePicker(threadRef, "link"),
     });
   }
@@ -90,7 +92,7 @@ export function ThreadLinks(props: { threadRef: ScopedThreadRef; projectId: Proj
     addOptions.push({
       key: "slack",
       icon: <SlackIcon />,
-      label: "Slack thread…",
+      label: gt("Slack thread…"),
       open: () => openSlackMessagePicker(threadRef, "link"),
     });
   }
@@ -98,7 +100,7 @@ export function ThreadLinks(props: { threadRef: ScopedThreadRef; projectId: Proj
     addOptions.push({
       key: "discord",
       icon: <DiscordIcon />,
-      label: "Discord thread…",
+      label: gt("Discord thread…"),
       open: () => openDiscordMessagePicker(threadRef, "link"),
     });
   }
@@ -106,7 +108,7 @@ export function ThreadLinks(props: { threadRef: ScopedThreadRef; projectId: Proj
     addOptions.push({
       key: "notion",
       icon: <NotionIcon />,
-      label: "Notion page…",
+      label: gt("Notion page…"),
       open: () => openNotionPagePicker(threadRef, "link"),
     });
   }
@@ -114,7 +116,7 @@ export function ThreadLinks(props: { threadRef: ScopedThreadRef; projectId: Proj
     addOptions.push({
       key: "google",
       icon: <GoogleIcon />,
-      label: "Google page…",
+      label: gt("Google page…"),
       open: () => openGoogleFilePicker(threadRef, "link"),
     });
   }
@@ -122,7 +124,7 @@ export function ThreadLinks(props: { threadRef: ScopedThreadRef; projectId: Proj
     addOptions.push({
       key: "granola",
       icon: <GranolaIcon />,
-      label: "Granola note…",
+      label: gt("Granola note…"),
       open: () => openGranolaNotePicker(threadRef, "link"),
     });
   }
@@ -133,13 +135,18 @@ export function ThreadLinks(props: { threadRef: ScopedThreadRef; projectId: Proj
   return (
     <ThreadDetailsSection
       headingId="thread-details-links-heading"
-      title="Links"
+      title={gt("Links", { $context: "section heading, links attached to a thread" })}
       actions={
         addOptions.length > 0 ? (
           <Menu>
             <MenuTrigger
               render={
-                <Button type="button" size="icon-xs" variant="ghost" aria-label="Add a link" />
+                <Button
+                  type="button"
+                  size="icon-xs"
+                  variant="ghost"
+                  aria-label={gt("Add a link")}
+                />
               }
             >
               <PlusIcon />

@@ -1,4 +1,5 @@
 import type { ChatThreadMessage } from "@t3tools/contracts";
+import { useGT } from "gt-react";
 import { ArrowUpRightIcon, FileIcon } from "lucide-react";
 import { useState, type MouseEvent, type ReactNode } from "react";
 
@@ -29,16 +30,17 @@ export function ChatThreadDetails(props: {
   fallback: ReactNode;
 }) {
   const { record } = props;
+  const gt = useGT();
   return (
     <div className="flex flex-col">
       <div className="flex h-8 items-center gap-1.5 border-b border-border/70 pb-2 [&>svg]:size-3.5 [&>svg]:shrink-0 [&>svg]:text-muted-foreground">
         {props.icon}
         <span className="text-sm font-semibold">
           {record.scope === "thread"
-            ? "Thread"
+            ? gt("Thread", { $context: "chat thread" })
             : record.scope === "channel"
-              ? "Channel"
-              : "Message"}
+              ? gt("Channel", { $context: "chat channel" })
+              : gt("Message", { $context: "chat message" })}
         </span>
         <span className="min-w-0 truncate text-xs text-muted-foreground">
           {record.channelLabel}
@@ -68,6 +70,7 @@ function ChatThreadMessages(props: {
   replyCount: number;
 }) {
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
+  const gt = useGT();
   return (
     <div className="-mx-2 max-h-80 overflow-y-auto pt-1.5">
       {chatThreadRows(props.messages, props.replyCount).map((row) => {
@@ -78,7 +81,9 @@ function ChatThreadMessages(props: {
                 key="replies"
                 className="flex items-center gap-2.5 px-2 pt-2 pb-1 text-xs text-muted-foreground after:h-px after:flex-1 after:bg-border"
               >
-                {row.count} {row.count === 1 ? "reply" : "replies"}
+                {gt("{count, plural, one {{count} reply} other {{count} replies}}", {
+                  count: row.count,
+                })}
               </div>
             );
           case "omitted":
@@ -87,7 +92,10 @@ function ChatThreadMessages(props: {
                 key={`omitted-${row.from}`}
                 className="py-0.5 pr-2 pl-12.5 text-2xs text-muted-foreground italic"
               >
-                {row.count} {row.count === 1 ? "message" : "messages"} omitted
+                {gt(
+                  "{count, plural, one {{count} message omitted} other {{count} messages omitted}}",
+                  { count: row.count },
+                )}
               </p>
             );
           case "message": {

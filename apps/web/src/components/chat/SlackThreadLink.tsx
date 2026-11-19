@@ -1,6 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { slackLinkForThread } from "@t3tools/client-runtime/state/slack";
 import type { EnvironmentId, ScopedThreadRef, SlackThreadLink } from "@t3tools/contracts";
+import { T, useGT } from "gt-react";
 import { ExternalLinkIcon, PencilIcon, UnlinkIcon } from "lucide-react";
 
 import { useLinkClickHandler } from "~/browser/useOpenLink";
@@ -41,6 +42,7 @@ export function useUnlinkSlackThread() {
  */
 export function SlackThreadLinkRow(props: { threadRef: ScopedThreadRef; link: SlackThreadLink }) {
   const { threadRef, link } = props;
+  const gt = useGT();
   const slackEnabled = useEnvironmentSettings(
     threadRef.environmentId,
     (s) => s.enableSlackIntegration,
@@ -48,7 +50,6 @@ export function SlackThreadLinkRow(props: { threadRef: ScopedThreadRef; link: Sl
   const canEdit = useAtomValue(slackEnvironment.linkThread.permissionAtom(threadRef.environmentId));
   const openLink = useLinkClickHandler(threadRef);
   const unlink = useUnlinkSlackThread();
-  const description = `${link.authorName}: ${link.title}`;
 
   return (
     <ThreadLinkRow
@@ -56,7 +57,11 @@ export function SlackThreadLinkRow(props: { threadRef: ScopedThreadRef; link: Sl
       linkUrl={link.url}
       icon={<SlackIcon className="size-4 shrink-0" />}
       label={link.title}
-      accessibleLabel={`Linked Slack thread in ${link.channelLabel}: ${description}`}
+      accessibleLabel={gt("Linked Slack thread in {channel}: {author}: {title}", {
+        channel: link.channelLabel,
+        author: link.authorName,
+        title: link.title,
+      })}
       threadRef={threadRef}
       url={link.url}
       trailing={
@@ -70,12 +75,12 @@ export function SlackThreadLinkRow(props: { threadRef: ScopedThreadRef; link: Sl
         onClick={(event) => openLink(event, link.url)}
       >
         <ExternalLinkIcon />
-        Open in Slack
+        <T>Open in Slack</T>
       </MenuItem>
       {slackEnabled && canEdit ? (
         <MenuItem onClick={() => openSlackMessagePicker(threadRef, "link")}>
           <PencilIcon />
-          Change Slack thread…
+          <T>Change Slack thread…</T>
         </MenuItem>
       ) : null}
       {canEdit ? (
@@ -83,7 +88,7 @@ export function SlackThreadLinkRow(props: { threadRef: ScopedThreadRef; link: Sl
           <MenuSeparator />
           <MenuItem onClick={() => void unlink(threadRef)}>
             <UnlinkIcon />
-            Unlink Slack thread
+            <T>Unlink Slack thread</T>
           </MenuItem>
         </>
       ) : null}

@@ -2,15 +2,16 @@ import { orchestrationEnvironment } from "../../state/orchestration";
 import { useEnvironmentQuery } from "../../state/query";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { type EnvironmentId } from "@t3tools/contracts";
+import { useGT, useMessages } from "gt-react";
 import {
   formatHostedThreadLink,
   guessThreadLinkRef,
   threadLinkCandidates,
   type ThreadLink,
-  unknownThreadLinkLabel,
 } from "@t3tools/shared/threadLinks";
 import { Link } from "@tanstack/react-router";
 import { MessageSquareTextIcon } from "lucide-react";
+import { unknownThreadLinkLabel } from "@t3tools/shared/threadLinksCopy";
 
 import { useProject, useThreadRefs, useThreadShell } from "../../state/entities";
 import { configuredHostedAppUrl } from "../../hostedPairing";
@@ -27,6 +28,8 @@ export function MarkdownThreadLink(props: {
   readonly link: ThreadLink;
   readonly label: string | null;
 }) {
+  const gt = useGT();
+  const messages = useMessages();
   const candidates = threadLinkCandidates(props.link, props.environmentId);
   const writtenRef = candidates[0]!;
   const written = useThreadShell(writtenRef);
@@ -69,18 +72,18 @@ export function MarkdownThreadLink(props: {
       : null,
   );
   if (missing && resolved === null) {
-    const unknown = unknownThreadLinkLabel(props.link, props.environmentId);
+    const unknown = unknownThreadLinkLabel(props.link, props.environmentId, messages);
     return <UnresolvedChip label={props.label ?? unknown} tooltip={unknown} />;
   }
-  const title = resolved?.metadata.title.trim() || props.label || "Thread";
+  const title = resolved?.metadata.title.trim() || props.label || gt("Thread");
   return (
     <ContextPreviewHover
       kind="thread"
-      accessibleLabel={`Thread, ${title}`}
+      accessibleLabel={gt("Thread, {title}", { title })}
       preview={{ record: { environmentId, threadId, title } }}
       trigger={
         <Link
-          aria-label={`Thread, ${title}`}
+          aria-label={gt("Thread, {title}", { title })}
           to="/$environmentId/$threadId"
           params={{ environmentId, threadId }}
           data-markdown-copy={formatHostedThreadLink(

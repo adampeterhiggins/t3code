@@ -9,8 +9,10 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
+import { msg } from "gt-react";
 
 import { openCommandPalette } from "../commandPaletteBus";
+import { m } from "../i18n/messages";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import { readThreadVisibleTurnItems } from "../state/entities";
 import { serverEnvironment } from "../state/server";
@@ -40,7 +42,7 @@ export function useRunScheduledTask() {
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: `Could not run ${task.title}`,
+            title: m(msg("Could not run {title}", { title: task.title })),
             description: result.value.task.lastRunError ?? undefined,
           }),
         );
@@ -48,7 +50,7 @@ export function useRunScheduledTask() {
       }
       toastManager.add({
         type: "success",
-        title: "Scheduled task started",
+        title: m(msg("Scheduled task started")),
         description: task.title,
       });
       return { threadId: result.value.threadId ?? null };
@@ -58,7 +60,7 @@ export function useRunScheduledTask() {
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: `Could not run ${task.title}`,
+          title: m(msg("Could not run {title}", { title: task.title })),
           description: error instanceof Error ? error.message : String(error),
         }),
       );
@@ -87,7 +89,7 @@ export function useRunThreadScheduledTask() {
       readThreadVisibleTurnItems(threadRef),
     );
     if (tasks.length === 0) {
-      toastManager.add({ type: "info", title: "No scheduled tasks run in this thread" });
+      toastManager.add({ type: "info", title: m(msg("No scheduled tasks run in this thread")) });
     } else if (tasks.length === 1) {
       await runTask(threadRef.environmentId, tasks[0]!);
     } else {

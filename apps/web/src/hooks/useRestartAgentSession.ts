@@ -1,8 +1,10 @@
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import type { ScopedThreadRef } from "@t3tools/contracts";
+import { msg } from "gt-react";
 
 import { toastManager } from "../components/ui/toast";
+import { m } from "../i18n/messages";
 import { readProject, readThreadShell } from "../state/entities";
 import { serverEnvironment } from "../state/server";
 import { threadEnvironment } from "../state/threads";
@@ -37,8 +39,8 @@ export function useRestartAgentSession() {
     // stop shows in the thread.
     toastManager.add({
       type: "success",
-      title: "Agent session will restart",
-      description: "Your next message starts a fresh session.",
+      title: m(msg("Agent session will restart")),
+      description: m(msg("Your next message starts a fresh session.")),
     });
     const project = readProject(scopeProjectRef(environmentId, thread.projectId));
     if (!project) return;
@@ -63,7 +65,7 @@ export function useRestartAgentSessionWithToast() {
     } catch (cause) {
       toastManager.add({
         type: "error",
-        title: "Could not restart agent session",
+        title: m(msg("Could not restart agent session")),
         description: cause instanceof Error ? cause.message : undefined,
       });
     }

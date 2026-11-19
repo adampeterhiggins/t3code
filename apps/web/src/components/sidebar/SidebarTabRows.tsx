@@ -26,6 +26,7 @@ import {
   type SidebarTabSortOrder,
 } from "@t3tools/contracts/settings";
 
+import { useGT, useMessages } from "gt-react";
 import { ChevronDownIcon } from "lucide-react";
 import { ChevronUpIcon, TerminalIcon, XIcon } from "lucide-react";
 import {
@@ -251,6 +252,7 @@ function SidebarTabPreviewList(props: {
   openedAtByThreadKey: Readonly<Record<string, number>>;
   onOpenTab: (threadRef: ScopedThreadRef) => void;
 }) {
+  const gt = useGT();
   return (
     <ul
       aria-label={props.label}
@@ -265,7 +267,7 @@ function SidebarTabPreviewList(props: {
           <li key={threadKey} className="list-none">
             <ContextPreviewHover
               kind="thread"
-              accessibleLabel={`Thread, ${thread.title}`}
+              accessibleLabel={gt("Thread, {title}", { title: thread.title })}
               preview={{
                 record: {
                   environmentId: thread.environmentId,
@@ -352,6 +354,8 @@ export function SidebarTabOverflowRow(props: {
   onPreviewOpenChange?: ((open: boolean) => void) | undefined;
 }) {
   const { hidden, providerEntriesByEnvironment } = props;
+  const gt = useGT();
+  const messages = useMessages();
   const summary = (() => {
     // Most urgent first, the same precedence as a row's own status.
     const precedence = [
@@ -369,7 +373,8 @@ export function SidebarTabOverflowRow(props: {
       counts.set(status, (counts.get(status) ?? 0) + 1);
     }
     const status = precedence.find((candidate) => counts.has(candidate)) ?? null;
-    const topStatus = status === null ? null : resolveSidebarTopStatus(status, false, false);
+    const topStatus =
+      status === null ? null : resolveSidebarTopStatus(status, false, false, messages);
     const providers = new Map<
       string,
       {
@@ -490,7 +495,7 @@ export function SidebarTabOverflowRow(props: {
             <div className="p-1">
               <SidebarTabPreviewList
                 tabs={hidden}
-                label={`${hidden.length} more tabs`}
+                label={gt("{count, plural, other {{count} more tabs}}", { count: hidden.length })}
                 testId="sidebar-tab-overflow-preview"
                 providerEntriesByEnvironment={providerEntriesByEnvironment}
                 tabSortOrder={props.tabSortOrder}
@@ -550,6 +555,8 @@ export const SidebarTabRow = memo(function SidebarTabRow(props: {
   sortable?: SortableThreadRowBag | undefined;
 }) {
   const { thread, onFileDropThreads, sortable } = props;
+  const gt = useGT();
+  const messages = useMessages();
   const threadRef = scopeThreadRef(thread.environmentId, thread.id);
   const threadKey = scopedThreadKey(threadRef);
   const isPairTarget = useContext(SidebarTabPairTargetContext) === threadKey;
@@ -562,7 +569,7 @@ export const SidebarTabRow = memo(function SidebarTabRow(props: {
   const terminalStatus = terminalStatusFromRunningIds(runningTerminalIds);
   const isUnread = hasUnseenCompletion({ ...thread, lastVisitedAt });
   const status = resolveSidebarThreadStatus(thread);
-  const topStatus = resolveSidebarTopStatus(status, false, isUnread);
+  const topStatus = resolveSidebarTopStatus(status, false, isUnread, messages);
   const shouldRecede = shouldRecedeSidebarThread({
     status,
     isUnread,
@@ -610,7 +617,7 @@ export const SidebarTabRow = memo(function SidebarTabRow(props: {
     >
       <ContextPreviewHover
         kind="thread"
-        accessibleLabel={`Thread, ${thread.title}`}
+        accessibleLabel={gt("Thread, {title}", { title: thread.title })}
         preview={{
           record: { environmentId: thread.environmentId, threadId: thread.id, title: thread.title },
         }}
@@ -714,7 +721,7 @@ export const SidebarTabRow = memo(function SidebarTabRow(props: {
               </span>
               <button
                 type="button"
-                aria-label="Close tab"
+                aria-label={gt("Close tab")}
                 onClick={(event) => {
                   event.preventDefault();
                   event.stopPropagation();

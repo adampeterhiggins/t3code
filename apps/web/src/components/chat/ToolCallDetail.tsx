@@ -1,5 +1,6 @@
 import type { TurnItemSource } from "./timelineRowContext";
 import { ThreadId } from "@t3tools/contracts";
+import { useGT, useMessages } from "gt-react";
 import { claudeSkillInvocation } from "@t3tools/shared/toolActivity";
 import { turnItemNeedsDetailFetch } from "@t3tools/client-runtime/work-log/item-detail";
 import { resolveToolPreview } from "@t3tools/client-runtime/work-log/tool-preview";
@@ -8,6 +9,7 @@ import {
   workEntryViewedImagePath,
 } from "@t3tools/client-runtime/work-log/presentation";
 import { workEntryReadOutput } from "./MessagesTimeline.logic";
+import { m, type MessageResolver } from "../../i18n/messages";
 import type { ReactNode, ComponentProps } from "react";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import {
@@ -210,6 +212,8 @@ function WorkEntryDetailBody(
 function ToolCallPreviewContent(
   props: WorkEntryDetailProps & { previewText: string; icon: ReactNode },
 ) {
+  const gt = useGT();
+  const messages = useMessages();
   const { timestampFormat, activeThreadEnvironmentId } = props;
   const { workEntry, workspaceRoot, plainOutput } = props;
   const heading = toolCallPreviewHeading(workEntry, workspaceRoot, props.previewText);
@@ -254,7 +258,7 @@ function ToolCallPreviewContent(
         })
       : null;
   const item = workEntry.projectedItem?.item;
-  const toolPreview = item ? resolveToolPreview(item) : null;
+  const toolPreview = item ? resolveToolPreview(item, messages) : null;
   // A tool preview ends in its own footer, which carries the time and state beside Raw call.
   const showsToolPreview = toolPreview !== null && plainOutput === undefined;
   const footer = [
@@ -273,22 +277,22 @@ function ToolCallPreviewContent(
     ? null
     : item?.type === "file_change" && item.runId !== null && props.onOpenTurnDiff !== undefined
       ? {
-          label: "Open diff",
+          label: gt("Open diff"),
           onClick: () => props.onOpenTurnDiff?.(item.runId!, item.fileName),
         }
       : item?.type === "fork"
         ? {
-            label: "Open fork",
+            label: gt("Open fork"),
             onClick: () => props.onOpenThread(item.targetThreadId),
           }
         : item?.type === "subagent" && item.childThreadId !== null
           ? {
-              label: "Open subagent thread",
+              label: gt("Open subagent thread"),
               onClick: () => props.onOpenThread(item.childThreadId!),
             }
           : openThreadId
             ? {
-                label: "Open thread",
+                label: gt("Open thread"),
                 onClick: () => props.onOpenThread(ThreadId.make(openThreadId)),
               }
             : null;
@@ -384,7 +388,12 @@ export function ToolCallDetails(
   },
 ) {
   const { workEntry, workspaceRoot } = props;
-  const { plainOutput, plainOutputFetches } = toolCallDetailOutput(workEntry, workspaceRoot);
+  const messages = useMessages();
+  const { plainOutput, plainOutputFetches } = toolCallDetailOutput(
+    workEntry,
+    workspaceRoot,
+    messages,
+  );
   if (props.preview)
     return (
       <ToolCallPreviewContent
@@ -411,7 +420,11 @@ export function ToolCallDetails(
 }
 
 /** Output selection is shared as well as its renderer. */
-export function toolCallDetailOutput(workEntry: WorkLogEntry, workspaceRoot: string | undefined) {
+export function toolCallDetailOutput(
+  workEntry: WorkLogEntry,
+  workspaceRoot: string | undefined,
+  resolve: MessageResolver = m,
+) {
   const payload = workEntry.structuredPayload;
   const skill =
     payload?.type === "dynamic_tool"
@@ -419,7 +432,7 @@ export function toolCallDetailOutput(workEntry: WorkLogEntry, workspaceRoot: str
       : undefined;
   const plainOutput =
     toolGroupAction(workEntry) === "read"
-      ? workEntryReadOutput(workEntry, workspaceRoot)
+      ? workEntryReadOutput(workEntry, workspaceRoot, resolve)
       : skill
         ? (skill.args ?? null)
         : undefined;

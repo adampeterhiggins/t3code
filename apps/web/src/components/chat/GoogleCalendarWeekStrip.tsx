@@ -1,3 +1,4 @@
+import { T, useGT } from "gt-react";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 
 import { cn } from "~/lib/utils";
@@ -18,6 +19,7 @@ export function GoogleCalendarWeekStrip(props: {
   onSelectDay: (day: string | null) => void;
   onWeekStartChange: (weekStart: Date) => void;
 }) {
+  const gt = useGT();
   const days = Array.from({ length: 7 }, (_, index) => addDays(props.weekStart, index));
   const month = addDays(props.weekStart, 3).toLocaleDateString(undefined, {
     month: "long",
@@ -38,14 +40,14 @@ export function GoogleCalendarWeekStrip(props: {
               props.onSelectDay(props.today);
             }}
           >
-            Today
+            <T>Today</T>
           </Button>
         )}
         <Button
           type="button"
           size="icon-xs"
           variant="ghost"
-          aria-label="Previous week"
+          aria-label={gt("Previous week")}
           onClick={() => props.onWeekStartChange(addDays(props.weekStart, -7))}
         >
           <ChevronLeftIcon />
@@ -54,7 +56,7 @@ export function GoogleCalendarWeekStrip(props: {
           type="button"
           size="icon-xs"
           variant="ghost"
-          aria-label="Next week"
+          aria-label={gt("Next week")}
           onClick={() => props.onWeekStartChange(addDays(props.weekStart, 7))}
         >
           <ChevronRightIcon />
@@ -70,7 +72,17 @@ export function GoogleCalendarWeekStrip(props: {
               key={day}
               type="button"
               aria-pressed={selected}
-              aria-label={`${date.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}, ${count === 1 ? "1 event" : `${count} events`}`}
+              aria-label={gt(
+                "{date}, {count, plural, one {{count} event} other {{count} events}}",
+                {
+                  date: date.toLocaleDateString(undefined, {
+                    weekday: "long",
+                    day: "numeric",
+                    month: "long",
+                  }),
+                  count,
+                },
+              )}
               className={cn(
                 "flex cursor-pointer flex-col items-center gap-0.5 rounded-md py-1 outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
                 selected && "bg-accent text-accent-foreground",

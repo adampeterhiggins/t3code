@@ -10,6 +10,7 @@ import { randomUUID } from "../../lib/utils";
 import { editorLabelForPlatform } from "../../editorLabels";
 import { Textarea } from "../ui/textarea";
 import { useState } from "react";
+import { T, useGT } from "gt-react";
 import { useEnvironments } from "../../state/environments";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
@@ -20,6 +21,7 @@ import { useSettingsScope } from "./SettingsScopeContext";
 import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
 
 export function OpenInSettings() {
+  const gt = useGT();
   const settings = useScopedSettings();
   const update = useUpdateScopedSettings();
   const { targets, scope } = useSettingsScope();
@@ -40,12 +42,12 @@ export function OpenInSettings() {
   // Commands are machine-specific; select one environment before editing them.
   const disabled = targets.length !== 1 || scope.kind === "project" || scope.kind === "checkout";
   const options: { id: FileOpenTarget; label: string }[] = [
-    { id: "t3", label: "T3 file viewer" },
+    { id: "t3", label: gt("T3 file viewer") },
     ...EDITORS.filter((editor) =>
       environment?.serverConfig?.availableEditors.includes(editor.id),
     ).map((editor) => ({
       id: editor.id,
-      label: editor.id === "file-manager" ? "System default application" : editor.label,
+      label: editor.id === "file-manager" ? gt("System default application") : editor.label,
     })),
     ...settings.customEditors.map((editor) => ({ id: editor.id, label: editor.label })),
   ];
@@ -72,7 +74,7 @@ export function OpenInSettings() {
     >
       <SelectTrigger aria-label={name}>
         <SelectValue>
-          {options.find((option) => option.id === value)?.label ?? "Unavailable application"}
+          {options.find((option) => option.id === value)?.label ?? gt("Unavailable application")}
         </SelectValue>
       </SelectTrigger>
       <SelectPopup>
@@ -108,10 +110,12 @@ export function OpenInSettings() {
     if (editingId === id) resetForm();
   }
   return (
-    <SettingsSection id="open-in" title="Open in">
+    <SettingsSection id="open-in" title={gt("Open in")}>
       <SettingsRow
-        title="Workspace Open button"
-        description="Choose what the Open button and its shortcut use. Last used remembers your most recent pick on each device."
+        title={gt("Workspace Open button")}
+        description={gt(
+          "Choose what the Open button and its shortcut use. Last used remembers your most recent pick on each device.",
+        )}
         control={
           <Select
             value={settings.workspaceOpenDefault ?? "last-used"}
@@ -122,16 +126,18 @@ export function OpenInSettings() {
               if (option) update({ workspaceOpenDefault: option.id });
             }}
           >
-            <SelectTrigger aria-label="Workspace Open button application">
+            <SelectTrigger aria-label={gt("Workspace Open button application")}>
               <SelectValue>
                 {settings.workspaceOpenDefault === null
-                  ? "Last used"
+                  ? gt("Last used")
                   : (workspaceOptions.find((option) => option.id === settings.workspaceOpenDefault)
-                      ?.label ?? "Unavailable application")}
+                      ?.label ?? gt("Unavailable application"))}
               </SelectValue>
             </SelectTrigger>
             <SelectPopup>
-              <SelectItem value="last-used">Last used</SelectItem>
+              <SelectItem value="last-used">
+                <T>Last used</T>
+              </SelectItem>
               {workspaceOptions.map((option) => (
                 <SelectItem key={option.id} value={option.id}>
                   {option.label}
@@ -142,17 +148,21 @@ export function OpenInSettings() {
         }
       />
       <SettingsRow
-        title="File links"
-        description="Choose what opens when you click a file link in chat. Applications run on the environment hosting the file."
+        title={gt("File links")}
+        description={gt(
+          "Choose what opens when you click a file link in chat. Applications run on the environment hosting the file.",
+        )}
         control={picker(
           settings.fileOpenDefault,
           (fileOpenDefault) => update({ fileOpenDefault }),
-          "Default file application",
+          gt("Default file application"),
         )}
       />
       <SettingsRow
-        title="File extensions"
-        description="Override the default for extensions such as .md. Remove a rule to use the default again."
+        title={gt("File extensions")}
+        description={gt(
+          "Override the default for extensions such as .md. Remove a rule to use the default again.",
+        )}
       >
         <div className="space-y-2">
           {settings.fileOpenRules.map((rule, index) => (
@@ -160,30 +170,30 @@ export function OpenInSettings() {
               <span className="flex-1 text-sm">
                 {rule.extension} →{" "}
                 {options.find((option) => option.id === rule.target)?.label ??
-                  "Unavailable application"}
+                  gt("Unavailable application")}
               </span>
               <Button
                 size="xs"
                 variant="outline"
                 disabled={disabled}
-                aria-label={`Remove ${rule.extension} rule`}
+                aria-label={gt("Remove {extension} rule", { extension: rule.extension })}
                 onClick={() =>
                   update({ fileOpenRules: settings.fileOpenRules.filter((_, i) => i !== index) })
                 }
               >
-                Remove
+                <T context="verb, removes a rule">Remove</T>
               </Button>
             </div>
           ))}
           <div className="grid gap-2 sm:grid-cols-[8rem_1fr_auto]">
             <Input
-              aria-label="File extension"
+              aria-label={gt("File extension")}
               placeholder=".md"
               value={extension}
               disabled={disabled}
               onChange={(event) => setExtension(event.target.value)}
             />
-            {picker(ruleTarget, setRuleTarget, "Extension application")}
+            {picker(ruleTarget, setRuleTarget, gt("Extension application"))}
             <Button
               size="sm"
               variant="outline"
@@ -199,17 +209,19 @@ export function OpenInSettings() {
                 setExtension("");
               }}
             >
-              Save rule
+              <T>Save rule</T>
             </Button>
           </div>
         </div>
       </SettingsRow>
       <SettingsRow
-        title="Custom applications"
+        title={gt("Custom applications")}
         description={
           disabled
-            ? "Select a single environment to configure applications."
-            : "Enter an executable and optional arguments, one per line. The file path is appended automatically. For Typora on macOS, use command open and arguments -a and Typora on separate lines. Turn on Run in my shell to use a shell function or alias, such as one from your .zshrc."
+            ? gt("Select a single environment to configure applications.")
+            : gt(
+                "Enter an executable and arguments, one per line; the file path is appended. For Typora on macOS, use command open with arguments -a and Typora. Run in my shell allows aliases and shell functions.",
+              )
         }
       >
         <div className="space-y-2">
@@ -226,8 +238,12 @@ export function OpenInSettings() {
                   }
                 />
                 <span className="flex-1 text-sm">
-                  {editor.label} · {editor.command}
-                  {editor.runInShell ? " (shell)" : ""}
+                  {editor.runInShell
+                    ? gt("{name} · {command} (shell)", {
+                        name: editor.label,
+                        command: editor.command,
+                      })
+                    : `${editor.label} · ${editor.command}`}
                 </span>
                 <Button
                   size="xs"
@@ -242,22 +258,24 @@ export function OpenInSettings() {
                     setIcon(editor.icon ?? "folder");
                   }}
                 >
-                  Edit
+                  <T context="verb">Edit</T>
                 </Button>
                 <Button
                   size="xs"
                   variant="outline"
                   disabled={disabled}
-                  aria-label={`Remove ${editor.label}`}
+                  aria-label={gt("Remove {name}", { name: editor.label })}
                   onClick={() => removeEditor(editor.id)}
                 >
-                  Remove
+                  <T context="verb, removes an application">Remove</T>
                 </Button>
               </div>
             );
           })}
           <div className="space-y-1 text-sm">
-            <span>Icon</span>
+            <span>
+              <T>Icon</T>
+            </span>
             <Select
               value={icon}
               disabled={disabled}
@@ -266,7 +284,7 @@ export function OpenInSettings() {
                 if (option) setIcon(option.value);
               }}
             >
-              <SelectTrigger aria-label="Application icon">
+              <SelectTrigger aria-label={gt("Application icon")}>
                 <SelectValue>
                   <span className="flex items-center gap-2">
                     <selectedIcon.Icon
@@ -301,21 +319,23 @@ export function OpenInSettings() {
             </Select>
           </div>
           <Input
-            aria-label="Application name"
+            aria-label={gt("Application name")}
+            // oxlint-disable-next-line t3code/no-untranslated-copy -- application name
             placeholder="Typora"
             value={label}
             disabled={disabled}
             onChange={(event) => setLabel(event.target.value)}
           />
           <Input
-            aria-label="Application command"
+            aria-label={gt("Application command")}
             placeholder="open"
             value={command}
             disabled={disabled}
             onChange={(event) => setCommand(event.target.value)}
           />
           <Textarea
-            aria-label="Application arguments"
+            aria-label={gt("Application arguments")}
+            // oxlint-disable-next-line t3code/no-untranslated-copy -- command-line arguments
             placeholder={"-a\nTypora"}
             value={args}
             disabled={disabled}
@@ -327,7 +347,7 @@ export function OpenInSettings() {
               disabled={disabled}
               onCheckedChange={(checked) => setRunInShell(checked === true)}
             />
-            Run in my shell (macOS and Linux)
+            <T>Run in my shell (macOS and Linux)</T>
           </label>
           <Button
             size="sm"
@@ -350,11 +370,11 @@ export function OpenInSettings() {
               resetForm();
             }}
           >
-            {editingId ? "Save application" : "Add application"}
+            {editingId ? <T>Save application</T> : <T>Add application</T>}
           </Button>
           {editingId && (
             <Button size="sm" variant="ghost" onClick={resetForm}>
-              Cancel
+              <T>Cancel</T>
             </Button>
           )}
         </div>

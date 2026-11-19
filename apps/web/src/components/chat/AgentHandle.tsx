@@ -1,3 +1,5 @@
+import { T } from "gt-react";
+
 import { cn } from "~/lib/utils";
 
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -34,7 +36,9 @@ export function AgentHandle(props: { handle: string; copyable?: boolean; classNa
       >
         @{props.handle}
       </TooltipTrigger>
-      <TooltipPopup>Copy handle</TooltipPopup>
+      <TooltipPopup>
+        <T>Copy handle</T>
+      </TooltipPopup>
     </Tooltip>
   );
 }

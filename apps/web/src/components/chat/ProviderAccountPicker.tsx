@@ -1,4 +1,5 @@
 import { type ProviderInstanceId } from "@t3tools/contracts";
+import { T, useGT } from "gt-react";
 import { memo } from "react";
 import { CheckIcon, ChevronUpIcon, GitForkIcon } from "lucide-react";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
@@ -24,6 +25,7 @@ export const ProviderAccountPicker = memo(function ProviderAccountPicker(props: 
   requiresFork?: (instanceId: ProviderInstanceId) => boolean;
   disabled?: boolean;
 }) {
+  const gt = useGT();
   const activeEntry =
     props.accounts.find((entry) => entry.instanceId === props.activeInstanceId) ??
     props.accounts[0];
@@ -60,7 +62,9 @@ export const ProviderAccountPicker = memo(function ProviderAccountPicker(props: 
         <TooltipTrigger
           render={
             <span
-              aria-label={`Account: ${triggerLabel}, locked for this thread`}
+              aria-label={gt("Account: {account}, locked for this thread", {
+                account: triggerLabel,
+              })}
               data-account-locked="true"
               data-chat-provider-account-picker="true"
               tabIndex={-1}
@@ -70,7 +74,9 @@ export const ProviderAccountPicker = memo(function ProviderAccountPicker(props: 
         >
           {triggerContent}
         </TooltipTrigger>
-        <TooltipPopup side="top">{`Account: ${triggerLabel} (locked for this thread)`}</TooltipPopup>
+        <TooltipPopup side="top">
+          {gt("Account: {account} (locked for this thread)", { account: triggerLabel })}
+        </TooltipPopup>
       </Tooltip>
     );
   }
@@ -84,7 +90,7 @@ export const ProviderAccountPicker = memo(function ProviderAccountPicker(props: 
               render={
                 <button
                   type="button"
-                  aria-label={`Account: ${triggerLabel}`}
+                  aria-label={gt("Account: {account}", { account: triggerLabel })}
                   data-chat-provider-account-picker="true"
                   disabled={props.disabled}
                   className={cn(
@@ -101,8 +107,10 @@ export const ProviderAccountPicker = memo(function ProviderAccountPicker(props: 
         </TooltipTrigger>
         <TooltipPopup side="top">
           {forksToOtherAccounts
-            ? `Account: ${triggerLabel}. Another account opens in a new tab.`
-            : `Account: ${triggerLabel}`}
+            ? gt("Account: {account}. Another account opens in a new tab.", {
+                account: triggerLabel,
+              })
+            : gt("Account: {account}", { account: triggerLabel })}
         </TooltipPopup>
       </Tooltip>
       <MenuPopup side="top" align="start" {...composerFloatingLayerProps}>
@@ -123,7 +131,7 @@ export const ProviderAccountPicker = memo(function ProviderAccountPicker(props: 
               {forks ? (
                 <span className="flex shrink-0 items-center gap-1 text-muted-foreground text-xs">
                   <GitForkIcon className="size-3" aria-hidden="true" />
-                  New tab
+                  <T>New tab</T>
                 </span>
               ) : null}
             </MenuItem>

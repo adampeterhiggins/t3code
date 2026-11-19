@@ -5,8 +5,10 @@ import {
 } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
+import { msg } from "gt-react";
 import { createContext, useContext } from "react";
 
+import { m } from "../../i18n/messages";
 import { RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY } from "../../rightPanelLayout";
 import { pickSplitPartner, splitPartnerKey, useSplitViewStore } from "../../splitViewStore";
 import { useThreadShell } from "../../state/entities";
@@ -54,8 +56,8 @@ export function useSplitViewActions() {
     if (window.matchMedia(SPLIT_VIEW_HIDDEN_MEDIA_QUERY).matches) {
       toastManager.add({
         type: "info",
-        title: "Widen the window to see both chats",
-        description: "Split view shows two chats side by side on wider windows.",
+        title: m(msg("Widen the window to see both chats")),
+        description: m(msg("Split view shows two chats side by side on wider windows.")),
       });
     }
   };
@@ -93,9 +95,12 @@ export function useSplitViewActions() {
     if (!partner) {
       toastManager.add({
         type: "info",
-        title: "No other tab to show beside this chat",
-        description:
-          "Open a new tab, or right-click a thread in the sidebar and choose Open in split view.",
+        title: m(msg("No other tab to show beside this chat")),
+        description: m(
+          msg(
+            "Open a new tab, or right-click a thread in the sidebar and choose Open in split view.",
+          ),
+        ),
       });
       return;
     }

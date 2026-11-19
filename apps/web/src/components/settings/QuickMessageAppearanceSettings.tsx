@@ -1,6 +1,8 @@
+import { msg, T, useGT, useMessages } from "gt-react";
 import { useState, type CSSProperties } from "react";
 import { BUILT_IN_THEMES } from "@t3tools/shared/themePalettes";
 import { useClientSettings, updateClientSettings } from "../../hooks/useSettings";
+import { m as resolveNow } from "../../i18n/messages";
 import { useTheme } from "../../hooks/useTheme";
 import { useCustomThemes } from "../../hooks/useCustomThemes";
 import { useEnvironmentThemeDefinitions } from "../../hooks/useEnvironmentTheme";
@@ -12,12 +14,24 @@ import {
 } from "../../themePalette";
 import { Select, SelectTrigger, SelectValue, SelectItem, SelectPopup } from "../ui/select";
 import { SettingsRow, SettingsSection, SettingResetButton } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 
-const SOURCES = { app: "Follow app", adapt: "Adapt app theme", theme: "Choose theme" } as const;
-const APPEARANCES = { app: "Same as app", system: "System", light: "Light", dark: "Dark" } as const;
+const SOURCES = {
+  app: msg("Follow app"),
+  adapt: msg("Adapt app theme"),
+  theme: msg("Choose theme"),
+} as const;
+const APPEARANCES = {
+  app: msg("Same as app"),
+  system: msg("System", { $context: "appearance follows the operating system" }),
+  light: msg("Light", { $context: "light appearance" }),
+  dark: msg("Dark", { $context: "dark appearance" }),
+} as const;
 
 export function QuickMessageAppearanceSettings() {
+  const gt = useGT();
+  const m = useMessages();
+  const searchableSetting = useSearchableSetting();
   const settings = useClientSettings();
   const app = useTheme();
   const customThemes = useCustomThemes();
@@ -29,7 +43,7 @@ export function QuickMessageAppearanceSettings() {
   const save = (patch: Parameters<typeof updateClientSettings>[0]) => {
     setError(null);
     void updateClientSettings(patch).catch(() =>
-      setError("Could not save quick message appearance."),
+      setError(resolveNow(msg("Could not save quick message appearance."))),
     );
   };
   const themes = [...BUILT_IN_THEMES, ...environmentThemes, ...customThemes];
@@ -66,20 +80,20 @@ export function QuickMessageAppearanceSettings() {
     ...(!["light", "dark", "system", ...themes.map((theme) => theme.id)].includes(
       settings.quickMessageTheme,
     )
-      ? [{ value: settings.quickMessageTheme, label: "Unavailable theme (following app)" }]
+      ? [{ value: settings.quickMessageTheme, label: gt("Unavailable theme (following app)") }]
       : []),
   ];
   return (
-    <SettingsSection {...searchableSetting("quick-message-appearance")} title="Quick message">
+    <SettingsSection {...searchableSetting("quick-message-appearance")} title={gt("Quick message")}>
       <SettingsRow
-        title="Theme source"
-        description="Only affects the floating quick message window."
+        title={gt("Theme source")}
+        description={gt("Only affects the floating quick message window.")}
         status={error ?? undefined}
         resetAction={
           settings.quickMessageThemeSource !== "app" ? (
             <SettingResetButton
-              label="quick message appearance"
-              tooltip="Follow app theme"
+              ariaLabel={gt("Reset quick message appearance to default")}
+              tooltip={gt("Follow app theme")}
               onClick={() => save({ quickMessageThemeSource: "app" })}
             />
           ) : undefined
@@ -90,12 +104,12 @@ export function QuickMessageAppearanceSettings() {
             onValueChange={(value) => value && save({ quickMessageThemeSource: value })}
           >
             <SelectTrigger>
-              <SelectValue>{SOURCES[settings.quickMessageThemeSource]}</SelectValue>
+              <SelectValue>{m(SOURCES[settings.quickMessageThemeSource])}</SelectValue>
             </SelectTrigger>
             <SelectPopup>
               {Object.entries(SOURCES).map(([value, label]) => (
                 <SelectItem key={value} value={value}>
-                  {label}
+                  {m(label)}
                 </SelectItem>
               ))}
             </SelectPopup>
@@ -104,7 +118,7 @@ export function QuickMessageAppearanceSettings() {
       />
       {settings.quickMessageThemeSource === "theme" && (
         <SettingsRow
-          title="Theme"
+          title={gt("Theme")}
           control={
             <Select
               items={themeItems}
@@ -131,20 +145,20 @@ export function QuickMessageAppearanceSettings() {
       )}
       {settings.quickMessageThemeSource !== "app" && (
         <SettingsRow
-          title="Appearance"
-          description="Themes with only one appearance keep their supported mode."
+          title={gt("Appearance")}
+          description={gt("Themes with only one appearance keep their supported mode.")}
           control={
             <Select
               value={settings.quickMessageAppearance}
               onValueChange={(value) => value && save({ quickMessageAppearance: value })}
             >
               <SelectTrigger>
-                <SelectValue>{APPEARANCES[settings.quickMessageAppearance]}</SelectValue>
+                <SelectValue>{m(APPEARANCES[settings.quickMessageAppearance])}</SelectValue>
               </SelectTrigger>
               <SelectPopup>
                 {Object.entries(APPEARANCES).map(([value, label]) => (
                   <SelectItem key={value} value={value}>
-                    {label}
+                    {m(label)}
                   </SelectItem>
                 ))}
               </SelectPopup>
@@ -154,8 +168,8 @@ export function QuickMessageAppearanceSettings() {
       )}
       {settings.quickMessageThemeSource === "adapt" && (
         <SettingsRow
-          title="Extra contrast"
-          description="Add to the app’s text and border contrast, up to 200%."
+          title={gt("Extra contrast")}
+          description={gt("Add to the app’s text and border contrast, up to 200%.")}
           control={
             <div className="flex w-full items-center gap-3 sm:w-52">
               <output
@@ -166,7 +180,7 @@ export function QuickMessageAppearanceSettings() {
               </output>
               <input
                 id="quick-message-extra-contrast"
-                aria-label="Quick message extra contrast"
+                aria-label={gt("Quick message extra contrast")}
                 className="settings-slider min-w-0 flex-1"
                 type="range"
                 min={0}
@@ -187,15 +201,19 @@ export function QuickMessageAppearanceSettings() {
       )}
       <div className="space-y-3 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-muted-foreground">Preview over another app</p>
+          <p className="text-xs text-muted-foreground">
+            <T>Preview over another app</T>
+          </p>
           <div className="w-32">
             <Select value={backdrop} onValueChange={(value) => value && setBackdrop(value)}>
               <SelectTrigger size="sm">
-                <SelectValue>{backdrop === "light" ? "Light" : "Dark"}</SelectValue>
+                <SelectValue>
+                  {backdrop === "light" ? m(APPEARANCES.light) : m(APPEARANCES.dark)}
+                </SelectValue>
               </SelectTrigger>
               <SelectPopup>
-                <SelectItem value="light">Light</SelectItem>
-                <SelectItem value="dark">Dark</SelectItem>
+                <SelectItem value="light">{m(APPEARANCES.light)}</SelectItem>
+                <SelectItem value="dark">{m(APPEARANCES.dark)}</SelectItem>
               </SelectPopup>
             </Select>
           </div>
@@ -206,17 +224,21 @@ export function QuickMessageAppearanceSettings() {
         >
           <div
             className="quick-message-theme-preview-composer rounded-3xl border p-4 shadow-lg"
-            aria-label="Quick message theme preview"
+            aria-label={gt("Quick message theme preview")}
           >
             <div className="flex items-center justify-between text-xs">
               <span>t3code⌄</span>
               <span>···</span>
             </div>
-            <p className="quick-message-theme-preview-prompt py-5 text-sm">Ask anything…</p>
+            <p className="quick-message-theme-preview-prompt py-5 text-sm">
+              <T>Ask anything…</T>
+            </p>
             <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
-              <span>Model ⌄　 Medium ⌄</span>
+              <span>
+                <T>Model ⌄　 Medium ⌄</T>
+              </span>
               <span className="quick-message-theme-preview-action rounded-full px-3 py-2">
-                Create worktree
+                <T>Create worktree</T>
               </span>
             </div>
           </div>

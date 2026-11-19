@@ -3,6 +3,7 @@ import type { ThreadContextRecord, ProjectId } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
 import { MessagesSquareIcon } from "lucide-react";
 import type { ComponentProps } from "react";
+import { useGT } from "gt-react";
 
 import { useProject, useThreadShell } from "~/state/entities";
 import { orchestrationEnvironment } from "~/state/orchestration";
@@ -23,6 +24,7 @@ export function ThreadChipTrigger({
   copyMarkdown?: string | undefined;
   unreadable?: boolean | undefined;
 }) {
+  const gt = useGT();
   const { environmentId, threadId } = record;
   const shell = useThreadShell({ environmentId, threadId });
   const lookup = useEnvironmentQuery(
@@ -48,7 +50,7 @@ export function ThreadChipTrigger({
           draggable={false}
         />
       }
-      aria-label={`Thread, ${title}`}
+      aria-label={gt("Thread, {title}", { title })}
       data-markdown-copy={copyMarkdown}
       className="no-underline"
       {...props}

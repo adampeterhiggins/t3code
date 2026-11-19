@@ -1,6 +1,7 @@
 import { latestSubagentToolCall } from "@t3tools/client-runtime/state/agent-list-view";
 import type { RuntimeSubagentStatus } from "@t3tools/client-runtime/state/subagentRuntime";
 import type { ScopedThreadRef } from "@t3tools/contracts";
+import { T, useMessages } from "gt-react";
 
 import { useThreadProjection } from "../../state/entities";
 import { TOOL_KIND_ICONS } from "./agentToolKinds";
@@ -8,7 +9,11 @@ import { TOOL_KIND_ICONS } from "./agentToolKinds";
 /** A waiting agent needs the user; a running call shows a static `…`. */
 function StatusMarker(props: { waiting: boolean; running: boolean }) {
   if (props.waiting) {
-    return <span className="shrink-0 font-mono text-2xs text-warning-foreground">waiting</span>;
+    return (
+      <span className="shrink-0 font-mono text-2xs text-warning-foreground">
+        <T context="agent status, waiting for the user">waiting</T>
+      </span>
+    );
   }
   return props.running ? (
     <span className="shrink-0 font-mono text-2xs text-muted-foreground/70">…</span>
@@ -27,6 +32,7 @@ export function SubagentActivityLine(props: {
   readonly progress: string | null;
   readonly workspaceRoot: string | null;
 }) {
+  const messages = useMessages();
   const child = useThreadProjection(props.childRef)?.projection ?? null;
   const childThreadId = props.childRef?.threadId ?? null;
   const latest =
@@ -35,12 +41,13 @@ export function SubagentActivityLine(props: {
       : latestSubagentToolCall(
           child.turnItems.filter((item) => item.threadId === childThreadId),
           props.workspaceRoot,
+          messages,
         );
   const waiting = props.status === "waiting";
   if (latest === null) {
     return (
       <span className="flex min-w-0 items-center gap-1 text-left text-2xs font-normal text-muted-foreground">
-        <span className="min-w-0 flex-1 truncate">{props.progress ?? "Starting…"}</span>
+        <span className="min-w-0 flex-1 truncate">{props.progress ?? <T>Starting…</T>}</span>
         <StatusMarker waiting={waiting} running={false} />
       </span>
     );

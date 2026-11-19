@@ -3,10 +3,12 @@ import type {
   ProviderCapabilitiesToolPreview,
   ToolPreview,
 } from "@t3tools/client-runtime/work-log/tool-preview";
+import { msg, useGT, useMessages } from "gt-react-native";
 import { useState, type ReactNode } from "react";
 import { Pressable, View } from "react-native";
 
 import { AppText as Text } from "../../components/ui/AppText";
+import { m, type MessageResolver } from "../../i18n/messages";
 import { cn } from "../../lib/cn";
 import { tryOpenExternalUrl, type ExternalUrlTarget } from "../../lib/openExternalUrl";
 import {
@@ -51,11 +53,12 @@ function GenericBody(props: {
   readonly onOpenThread: (threadId: string) => void;
 }) {
   const { preview } = props;
+  const gt = useGT();
   switch (preview.kind) {
     case "records": {
       const hidden = Math.max(0, preview.items.length - MAX_RECORDS) + preview.more;
       return preview.items.length === 0 ? (
-        <Muted>No results.</Muted>
+        <Muted>{gt("No results.")}</Muted>
       ) : (
         <>
           {preview.items.slice(0, MAX_RECORDS).map((item) => {
@@ -81,7 +84,7 @@ function GenericBody(props: {
               </View>
             );
           })}
-          {hidden > 0 ? <Muted>{`+${hidden} more`}</Muted> : null}
+          {hidden > 0 ? <Muted>{gt("+{count} more", { count: hidden })}</Muted> : null}
         </>
       );
     }
@@ -89,7 +92,7 @@ function GenericBody(props: {
       const hidden = Math.max(0, preview.rows.length - MAX_TABLE_ROWS) + preview.more;
       // Narrow screens read a table best as one line per row.
       return preview.rows.length === 0 ? (
-        <Muted>No rows.</Muted>
+        <Muted>{gt("No rows.")}</Muted>
       ) : (
         <>
           <Text className="font-mono text-2xs text-foreground-muted">
@@ -107,7 +110,7 @@ function GenericBody(props: {
               {row.join(" · ")}
             </Text>
           ))}
-          {hidden > 0 ? <Muted>{`+${hidden} more rows`}</Muted> : null}
+          {hidden > 0 ? <Muted>{gt("+{count} more rows", { count: hidden })}</Muted> : null}
         </>
       );
     }
@@ -160,20 +163,28 @@ function GenericBody(props: {
   }
 }
 
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+const WEEKDAYS = [
+  msg("Sun", { $context: "weekday abbreviation" }),
+  msg("Mon", { $context: "weekday abbreviation" }),
+  msg("Tue", { $context: "weekday abbreviation" }),
+  msg("Wed", { $context: "weekday abbreviation" }),
+  msg("Thu", { $context: "weekday abbreviation" }),
+  msg("Fri", { $context: "weekday abbreviation" }),
+  msg("Sat", { $context: "weekday abbreviation" }),
+] as const;
 
-function scheduleText(schedule: ScheduledTaskSchedule): string {
-  if (schedule.type === "once") return describeSchedule({ schedule });
-  if (schedule.type === "webhook") return "On webhook";
-  if (schedule.type === "interval") return formatScheduledTaskInterval(schedule.everyMs);
+function scheduleText(schedule: ScheduledTaskSchedule, resolve: MessageResolver = m): string {
+  if (schedule.type === "once") return describeSchedule({ schedule }, undefined, resolve);
+  if (schedule.type === "webhook") return resolve(msg("On webhook"));
+  if (schedule.type === "interval") return formatScheduledTaskInterval(schedule.everyMs, resolve);
   const weekdays = schedule.weekdays ?? [];
   const days =
     weekdays.length === 0
-      ? "Every day"
+      ? resolve(msg("Every day"))
       : weekdays.length === 5 && weekdays.every((day) => day >= 1 && day <= 5)
-        ? "Weekdays"
-        : weekdays.map((day) => WEEKDAYS[day]).join(", ");
-  return `${days} at ${schedule.timeOfDay}`;
+        ? resolve(msg("Weekdays"))
+        : weekdays.map((day) => resolve(WEEKDAYS[day]!)).join(", ");
+  return resolve(msg("{days} at {time}"), { days, time: schedule.timeOfDay });
 }
 
 function Muted(props: { readonly children: string; readonly className?: string }) {
@@ -226,6 +237,7 @@ function OpenThread(props: {
   readonly label?: string;
 }) {
   const { threadId } = props;
+  const gt = useGT();
   if (!threadId) return null;
   return (
     <Pressable
@@ -233,7 +245,7 @@ function OpenThread(props: {
       className="self-start rounded-md border border-border px-2 py-1"
       onPress={() => props.onOpenThread(threadId)}
     >
-      <Text className="text-2xs text-foreground">{props.label ?? "Open thread"}</Text>
+      <Text className="text-2xs text-foreground">{props.label ?? gt("Open thread")}</Text>
     </Pressable>
   );
 }
@@ -243,10 +255,11 @@ function ProviderCapabilitiesView({
 }: {
   readonly preview: ProviderCapabilitiesToolPreview;
 }) {
+  const gt = useGT();
   const available = preview.providers.filter((provider) => !provider.unavailableReason);
   const unavailable = preview.providers.filter((provider) => provider.unavailableReason);
   const inherits = [
-    preview.inheritedModel ? `Inherits ${preview.inheritedModel}` : null,
+    preview.inheritedModel ? gt("Inherits {model}", { model: preview.inheritedModel }) : null,
     preview.inheritedProvider,
     ...preview.modes,
   ].filter(Boolean);
@@ -254,13 +267,17 @@ function ProviderCapabilitiesView({
     <>
       {inherits.length > 0 ? <Muted>{inherits.join(" · ")}</Muted> : null}
       {available.length > 0 ? (
-        <Muted className="uppercase">{`Available · ${available.length}`}</Muted>
+        <Muted className="uppercase">
+          {gt("Available · {count}", { count: available.length })}
+        </Muted>
       ) : null}
       {available.map((provider) => (
         <View key={provider.key} className="flex-row items-start gap-2">
           <View className="mt-1.5 size-1.5 rounded-full bg-adaptive-emerald-500" />
           <View className="flex-1">
-            <Title status={provider.current ? "current" : null}>
+            <Title
+              status={provider.current ? gt("current", { $context: "provider in use" }) : null}
+            >
               {provider.driver ? `${provider.name} · ${provider.driver}` : provider.name}
             </Title>
             {provider.models.length > 0 ? (
@@ -274,7 +291,9 @@ function ProviderCapabilitiesView({
         </View>
       ))}
       {unavailable.length > 0 ? (
-        <Muted className="uppercase">{`Unavailable · ${unavailable.length}`}</Muted>
+        <Muted className="uppercase">
+          {gt("Unavailable · {count}", { count: unavailable.length })}
+        </Muted>
       ) : null}
       {unavailable.map((provider) => (
         <View key={provider.key} className="flex-row items-center gap-2">
@@ -295,6 +314,8 @@ function PreviewBody(props: {
   readonly renderSnapshotImage: (path: string) => ReactNode;
 }) {
   const { preview } = props;
+  const gt = useGT();
+  const messages = useMessages();
   switch (preview.kind) {
     case "thread":
       return (
@@ -303,7 +324,9 @@ function PreviewBody(props: {
           {preview.model || preview.branch ? (
             <Muted>{[preview.model, preview.branch].filter(Boolean).join(" · ")}</Muted>
           ) : null}
-          {preview.moreItems > 0 ? <Muted>{`+${preview.moreItems} earlier`}</Muted> : null}
+          {preview.moreItems > 0 ? (
+            <Muted>{gt("+{count} earlier", { count: preview.moreItems })}</Muted>
+          ) : null}
           {preview.items.map((item) => (
             <Body
               key={item.key}
@@ -316,7 +339,7 @@ function PreviewBody(props: {
     case "task":
       return (
         <>
-          <Title status={preview.status}>{preview.title ?? "Delegated task"}</Title>
+          <Title status={preview.status}>{preview.title ?? gt("Delegated task")}</Title>
           {preview.model ? <Muted>{preview.model}</Muted> : null}
           {preview.summary ? <Body lines={4}>{preview.summary}</Body> : null}
           <OpenThread threadId={preview.threadId} onOpenThread={props.onOpenThread} />
@@ -336,7 +359,12 @@ function PreviewBody(props: {
       return (
         <>
           {preview.query ? (
-            <Muted>{`“${preview.query}” · ${preview.matches.length} matches`}</Muted>
+            <Muted>
+              {gt("“{query}” · {count} matches", {
+                query: preview.query,
+                count: preview.matches.length,
+              })}
+            </Muted>
           ) : null}
           {preview.matches.map((match) => (
             <Pressable
@@ -353,7 +381,7 @@ function PreviewBody(props: {
       );
     case "context-transfers":
       return preview.transfers.length === 0 ? (
-        <Muted>No context transfers.</Muted>
+        <Muted>{gt("No context transfers.")}</Muted>
       ) : (
         <>
           {preview.transfers.map((transfer) => (
@@ -361,13 +389,13 @@ function PreviewBody(props: {
               <OpenThread
                 threadId={transfer.sourceThreadId}
                 onOpenThread={props.onOpenThread}
-                label="Source"
+                label={gt("Source", { $context: "thread a context transfer came from" })}
               />
               <Muted>→</Muted>
               <OpenThread
                 threadId={transfer.targetThreadId}
                 onOpenThread={props.onOpenThread}
-                label="Target"
+                label={gt("Target", { $context: "thread a context transfer went to" })}
               />
               {transfer.status ? <Muted>{transfer.status.replaceAll("_", " ")}</Muted> : null}
             </View>
@@ -376,7 +404,7 @@ function PreviewBody(props: {
       );
     case "threads":
       return preview.threads.length === 0 ? (
-        <Muted>No threads.</Muted>
+        <Muted>{gt("No threads.")}</Muted>
       ) : (
         <>
           {preview.threads.map((thread) => (
@@ -388,7 +416,7 @@ function PreviewBody(props: {
       );
     case "scheduled-tasks":
       return preview.tasks.length === 0 ? (
-        <Muted>No scheduled tasks.</Muted>
+        <Muted>{gt("No scheduled tasks.")}</Muted>
       ) : (
         <>
           {preview.tasks.map((task) => (
@@ -396,8 +424,8 @@ function PreviewBody(props: {
               <Title>{task.title}</Title>
               <Muted>
                 {[
-                  task.schedule ? scheduleText(task.schedule) : null,
-                  task.enabled ? null : "paused",
+                  task.schedule ? scheduleText(task.schedule, messages) : null,
+                  task.enabled ? null : gt("paused", { $context: "automation status" }),
                 ]
                   .filter(Boolean)
                   .join(" · ")}
@@ -408,7 +436,7 @@ function PreviewBody(props: {
       );
     case "pull-requests":
       return preview.pullRequests.length === 0 ? (
-        <Muted>No pull requests.</Muted>
+        <Muted>{gt("No pull requests.")}</Muted>
       ) : (
         <>
           {preview.pullRequests.map((pr) => (
@@ -419,7 +447,12 @@ function PreviewBody(props: {
               </Link>
               {pr.state || pr.headBranch || pr.note ? (
                 <Muted>
-                  {[pr.state && (pr.isDraft ? "draft" : pr.state), pr.headBranch, pr.note]
+                  {[
+                    pr.state &&
+                      (pr.isDraft ? gt("draft", { $context: "pull request state" }) : pr.state),
+                    pr.headBranch,
+                    pr.note,
+                  ]
                     .filter(Boolean)
                     .join(" · ")}
                 </Muted>
@@ -464,7 +497,7 @@ function PreviewBody(props: {
     case "loaded-tools":
       return <Body>{preview.names.join(", ")}</Body>;
     case "slack-messages":
-      if (preview.messages.length === 0) return <Muted>No messages found.</Muted>;
+      if (preview.messages.length === 0) return <Muted>{gt("No messages found.")}</Muted>;
       return (
         <>
           {preview.messages.slice(0, MAX_SLACK_MESSAGES).map((message) => (
@@ -479,7 +512,9 @@ function PreviewBody(props: {
             </View>
           ))}
           {preview.messages.length > MAX_SLACK_MESSAGES ? (
-            <Muted>{`+${preview.messages.length - MAX_SLACK_MESSAGES} more`}</Muted>
+            <Muted>
+              {gt("+{count} more", { count: preview.messages.length - MAX_SLACK_MESSAGES })}
+            </Muted>
           ) : null}
         </>
       );
@@ -502,7 +537,9 @@ function PreviewBody(props: {
                   {`${option.selected ? "●" : "○"} ${option.label}`}
                 </Text>
               ))}
-              {question.otherAnswer ? <Body>{`Answered: ${question.otherAnswer}`}</Body> : null}
+              {question.otherAnswer ? (
+                <Body>{gt("Answered: {answer}", { answer: question.otherAnswer })}</Body>
+              ) : null}
             </View>
           ))}
         </>
@@ -510,7 +547,9 @@ function PreviewBody(props: {
     case "agent-message":
       return (
         <>
-          {preview.recipient ? <Muted>{`To ${preview.recipient}`}</Muted> : null}
+          {preview.recipient ? (
+            <Muted>{gt("To {recipient}", { recipient: preview.recipient })}</Muted>
+          ) : null}
           {preview.summary ? <Title>{preview.summary}</Title> : null}
           {preview.message ? <Body lines={8}>{preview.message}</Body> : null}
           <OpenThread threadId={preview.threadId} onOpenThread={props.onOpenThread} />
@@ -542,7 +581,14 @@ function PreviewBody(props: {
       return (
         <>
           {preview.at ? (
-            <Body>{`Wakes at ${new Date(preview.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}</Body>
+            <Body>
+              {gt("Wakes at {time}", {
+                time: new Date(preview.at).toLocaleTimeString([], {
+                  hour: "numeric",
+                  minute: "2-digit",
+                }),
+              })}
+            </Body>
           ) : null}
           {preview.reason ? <Muted>{preview.reason}</Muted> : null}
           {preview.prompt ? <Body lines={4}>{preview.prompt}</Body> : null}
@@ -571,6 +617,7 @@ function PreviewBody(props: {
 }
 
 function SnapshotText({ text }: { readonly text: string }) {
+  const gt = useGT();
   const [expanded, setExpanded] = useState(false);
   return (
     <View>
@@ -579,7 +626,7 @@ function SnapshotText({ text }: { readonly text: string }) {
         accessibilityState={{ expanded }}
         onPress={() => setExpanded((value) => !value)}
       >
-        <Muted>{expanded ? "Hide captured page text" : "Captured page text"}</Muted>
+        <Muted>{expanded ? gt("Hide captured page text") : gt("Captured page text")}</Muted>
       </Pressable>
       {expanded ? <Body>{text}</Body> : null}
     </View>

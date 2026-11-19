@@ -11,11 +11,13 @@ import {
   type GoogleConnectionState,
 } from "@t3tools/contracts";
 import { ExternalLinkIcon } from "lucide-react";
+import { msg, T, useGT, Var } from "gt-react";
 import { useRef, useState } from "react";
 
 import { isElectron } from "../../env";
 import { writeTextToClipboard } from "../../hooks/useCopyToClipboard";
 import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hooks/useSettings";
+import { m } from "../../i18n/messages";
 import { ensureLocalApi } from "../../localApi";
 import { usePrimaryEnvironment } from "../../state/environments";
 import { googleEnvironment } from "../../state/google";
@@ -26,7 +28,7 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Switch } from "../ui/switch";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import { useSettingsScope } from "./SettingsScopeContext";
 
 /**
@@ -34,6 +36,8 @@ import { useSettingsScope } from "./SettingsScopeContext";
  * the environment, so every client of that environment can attach files.
  */
 export function GoogleSettingsSection() {
+  const gt = useGT();
+  const searchableSetting = useSearchableSetting();
   const { environment: scopedEnvironment } = useSettingsScope();
   const primaryEnvironment = usePrimaryEnvironment();
   // The account belongs to an environment, not a project, so a project or
@@ -46,14 +50,14 @@ export function GoogleSettingsSection() {
     <SettingsSection {...searchableSetting("google")} icon={<GoogleIcon className="size-4" />}>
       {environmentId === null ? (
         <SettingsRow
-          title="Google account"
-          description="Connect to an environment to set up Google."
+          title={gt("Google account")}
+          description={gt("Connect to an environment to set up Google.")}
         />
       ) : (
         <GoogleIntegrationRows
           key={environmentId}
           environmentId={environmentId}
-          environmentLabel={environment?.label ?? "this environment"}
+          environmentLabel={environment?.label ?? gt("this environment")}
         />
       )}
     </SettingsSection>
@@ -64,16 +68,19 @@ function GoogleIntegrationRows(props: {
   readonly environmentId: EnvironmentId;
   readonly environmentLabel: string;
 }) {
+  const gt = useGT();
   const enabled = useEnvironmentSettings(props.environmentId, (s) => s.enableGoogleIntegration);
   const updateSettings = useUpdateEnvironmentSettings(props.environmentId);
   return (
     <>
       <SettingsRow
-        title="Enable Google integration"
-        description="Attach Google Drive files, Calendar events and Gmail conversations. Turn off to keep pasted Google links as links without setup prompts. Your connected account is kept."
+        title={gt("Enable Google integration")}
+        description={gt(
+          "Attach Google Drive files, Calendar events and Gmail conversations. Turn off to keep pasted Google links as links without setup prompts. Your connected account is kept.",
+        )}
         control={
           <Switch
-            aria-label="Enable Google integration"
+            aria-label={gt("Enable Google integration")}
             checked={enabled}
             onCheckedChange={(checked) => updateSettings({ enableGoogleIntegration: checked })}
           />
@@ -84,17 +91,24 @@ function GoogleIntegrationRows(props: {
   );
 }
 
-function describeConnection(state: GoogleConnectionState | null): string {
-  if (state === null) return "Reading Google status.";
+function describeConnection(
+  state: GoogleConnectionState | null,
+  gt: ReturnType<typeof useGT>,
+): string {
+  if (state === null) return gt("Reading Google status.");
   switch (state.phase) {
     case "connected":
-      return state.account ? `Connected to ${state.account.email}.` : "Connected.";
+      return state.account
+        ? gt("Connected to {email}.", { email: state.account.email })
+        : gt("Connected.");
     case "waiting":
-      return "Approve T3 Code on Google's page in your browser.";
+      return gt("Approve T3 Code on Google's page in your browser.");
     case "failed":
-      return state.message ?? "Google sign-in failed.";
+      return state.message ?? gt("Google sign-in failed.");
     case "disconnected":
-      return "Attach Google Drive files, Calendar events and Gmail conversations to messages as context for the agent.";
+      return gt(
+        "Attach Google Drive files, Calendar events and Gmail conversations to messages as context for the agent.",
+      );
   }
 }
 
@@ -105,6 +119,7 @@ function GoogleConnectionRows({
   readonly environmentId: EnvironmentId;
   readonly environmentLabel: string;
 }) {
+  const gt = useGT();
   const connection = useEnvironmentQuery(
     googleEnvironment.connection({ environmentId, input: {} }),
   );
@@ -149,7 +164,7 @@ function GoogleConnectionRows({
     if (result._tag === "Failure") {
       if (!isAtomCommandInterrupted(result)) {
         const failure = squashAtomCommandFailure(result);
-        setError(failure instanceof Error ? failure.message : "Google request failed.");
+        setError(failure instanceof Error ? failure.message : m(msg("Google request failed.")));
       }
       return null;
     }
@@ -160,7 +175,7 @@ function GoogleConnectionRows({
     try {
       await ensureLocalApi().shell.openExternal(url);
     } catch {
-      setError("Could not open the browser. Copy the link and open it yourself.");
+      setError(m(msg("Could not open the browser. Copy the link and open it yourself.")));
     }
   }
 
@@ -190,12 +205,17 @@ function GoogleConnectionRows({
 
   async function confirmDisconnect() {
     const confirmed = await ensureLocalApi().dialogs.confirm(
-      `Disconnect Google from ${environmentLabel}? Pages already attached to messages stay as they are.`,
+      m(
+        msg(
+          "Disconnect Google from {environment}? Pages already attached to messages stay as they are.",
+          { environment: environmentLabel },
+        ),
+      ),
     );
     if (confirmed) await run(() => disconnect({ environmentId, input: {} }));
   }
 
-  const status = error ?? describeConnection(state);
+  const status = error ?? describeConnection(state, gt);
   const statusClass = error !== null || state?.phase === "failed" ? "text-destructive" : undefined;
   const signedOut = state?.phase === "disconnected" || state?.phase === "failed";
   const showCredentials = signedOut && (state.configured === false || editingCredentials);
@@ -204,7 +224,7 @@ function GoogleConnectionRows({
   return (
     <>
       <SettingsRow
-        title="Google account"
+        title={gt("Google account")}
         description={<span className={statusClass}>{status}</span>}
         control={
           state === null ? null : state.phase === "connected" ? (
@@ -214,21 +234,29 @@ function GoogleConnectionRows({
               disabled={pending || !canOperate}
               onClick={confirmDisconnect}
             >
-              Disconnect
+              <T context="button, disconnects the account">Disconnect</T>
             </Button>
           ) : state.phase === "waiting" ? (
             <div className="flex flex-wrap gap-2 sm:justify-end">
               {authorizationUrl ? (
                 <>
                   <Button size="sm" onClick={() => openAuthorization(authorizationUrl)}>
-                    Open Google
+                    <T>Open Google</T>
                   </Button>
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => writeTextToClipboard(authorizationUrl, "Google sign-in link")}
+                    onClick={() =>
+                      writeTextToClipboard(authorizationUrl, {
+                        target: "Google sign-in link",
+                        unavailableMessage: msg(
+                          "Clipboard API is unavailable while copying Google sign-in link.",
+                        ),
+                        failureMessage: msg("Failed to copy Google sign-in link to the clipboard."),
+                      })
+                    }
                   >
-                    Copy link
+                    <T>Copy link</T>
                   </Button>
                 </>
               ) : null}
@@ -240,14 +268,14 @@ function GoogleConnectionRows({
                   flowId ? run(() => cancelLogin({ environmentId, input: { flowId } })) : undefined
                 }
               >
-                Cancel
+                <T context="button, cancels sign-in">Cancel</T>
               </Button>
             </div>
           ) : (
             <div className="flex flex-wrap gap-2 sm:justify-end">
               {state.configured && !editingCredentials ? (
                 <Button size="sm" variant="ghost" onClick={() => setEditingCredentials(true)}>
-                  Change credentials
+                  <T>Change credentials</T>
                 </Button>
               ) : null}
               {editingCredentials ? (
@@ -260,11 +288,11 @@ function GoogleConnectionRows({
                     setClientSecretDraft("");
                   }}
                 >
-                  Cancel
+                  <T context="button, stops editing credentials">Cancel</T>
                 </Button>
               ) : null}
               <Button size="sm" disabled={pending || !canConnect} onClick={connect}>
-                {state.phase === "failed" ? "Reconnect Google" : "Connect Google"}
+                {state.phase === "failed" ? gt("Reconnect Google") : gt("Connect Google")}
               </Button>
             </div>
           )
@@ -279,9 +307,11 @@ function GoogleConnectionRows({
             }}
           >
             <p className="max-w-2xl text-xs leading-relaxed text-muted-foreground">
-              Create a Google Cloud OAuth client for a Web application and enable the Drive, Docs,
-              Sheets, Calendar, Gmail and People APIs. Register this redirect URI, then add its
-              client ID and secret. The secret stays on {environmentLabel}.{" "}
+              <T>
+                Create a Google Cloud OAuth client for a Web application and enable the Drive, Docs,
+                Sheets, Calendar, Gmail and People APIs. Register this redirect URI, then add its
+                client ID and secret. The secret stays on <Var>{environmentLabel}</Var>.
+              </T>{" "}
               <InlineButton
                 render={
                   <a
@@ -291,12 +321,14 @@ function GoogleConnectionRows({
                   />
                 }
               >
-                Create an OAuth client
+                <T>Create an OAuth client</T>
                 <ExternalLinkIcon aria-hidden className="size-3" />
               </InlineButton>
             </p>
             <div className="grid gap-1.5">
-              <Label htmlFor={fieldId("redirect-uri")}>Redirect URI</Label>
+              <Label htmlFor={fieldId("redirect-uri")}>
+                <T>Redirect URI</T>
+              </Label>
               <div className="flex gap-2">
                 <Input
                   id={fieldId("redirect-uri")}
@@ -308,16 +340,24 @@ function GoogleConnectionRows({
                   size="sm"
                   variant="outline"
                   onClick={() =>
-                    writeTextToClipboard(state?.redirectUri ?? GOOGLE_REDIRECT_URI, "Redirect URI")
+                    writeTextToClipboard(state?.redirectUri ?? GOOGLE_REDIRECT_URI, {
+                      target: "redirect URI",
+                      unavailableMessage: msg(
+                        "Clipboard API is unavailable while copying redirect URI.",
+                      ),
+                      failureMessage: msg("Failed to copy redirect URI to the clipboard."),
+                    })
                   }
                 >
-                  Copy
+                  <T context="button, copies the redirect URI">Copy</T>
                 </Button>
               </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="grid gap-1.5">
-                <Label htmlFor={fieldId("client-id")}>Client ID</Label>
+                <Label htmlFor={fieldId("client-id")}>
+                  <T>Client ID</T>
+                </Label>
                 <Input
                   id={fieldId("client-id")}
                   size="sm"
@@ -327,14 +367,16 @@ function GoogleConnectionRows({
                 />
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor={fieldId("client-secret")}>Client secret</Label>
+                <Label htmlFor={fieldId("client-secret")}>
+                  <T>Client secret</T>
+                </Label>
                 <Input
                   id={fieldId("client-secret")}
                   size="sm"
                   type="password"
                   autoComplete="off"
                   placeholder={
-                    state?.configured ? "Saved, enter a new one to replace it" : undefined
+                    state?.configured ? gt("Saved, enter a new one to replace it") : undefined
                   }
                   value={clientSecretDraft}
                   onChange={(event) => setClientSecretDraft(event.target.value)}
@@ -346,8 +388,11 @@ function GoogleConnectionRows({
       </SettingsRow>
       {state?.phase === "waiting" ? (
         <SettingsRow
-          title="Approving from another device?"
-          description={`If the browser can't reach ${environmentLabel}, Google ends on a page that won't load. Paste that page's URL here.`}
+          title={gt("Approving from another device?")}
+          description={gt(
+            "If the browser can't reach {environment}, Google ends on a page that won't load. Paste that page's URL here.",
+            { environment: environmentLabel },
+          )}
           control={
             <form
               className="flex w-full gap-2 sm:w-80"
@@ -358,8 +403,8 @@ function GoogleConnectionRows({
             >
               <Input
                 size="sm"
-                aria-label="Redirect URL from Google"
-                placeholder="Full redirect URL from Google"
+                aria-label={gt("Redirect URL from Google")}
+                placeholder={gt("Full redirect URL from Google")}
                 value={pastedValue}
                 onChange={(event) => setPasted({ flowId, value: event.target.value })}
               />
@@ -368,7 +413,7 @@ function GoogleConnectionRows({
                 type="submit"
                 disabled={pending || !canOperate || !pastedValue.trim()}
               >
-                Submit
+                <T context="button, submits the pasted redirect URL">Submit</T>
               </Button>
             </form>
           }

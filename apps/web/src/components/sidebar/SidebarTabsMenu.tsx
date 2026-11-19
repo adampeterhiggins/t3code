@@ -5,6 +5,7 @@
  * between Hide and whatever was shown last.
  */
 import type { SidebarTabSortDirection, SidebarTabSortOrder } from "@t3tools/contracts/settings";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
 import { CheckIcon, LayersIcon } from "lucide-react";
 import { ContextMenu } from "@base-ui/react/context-menu";
 
@@ -21,6 +22,7 @@ import {
   MenuSubPopup,
   MenuSubTrigger,
 } from "../ui/menu";
+import { m, type MessageResolver } from "../../i18n/messages";
 import { SidebarHeaderIconButton } from "./SidebarThreadHeader";
 
 const TAB_LIMIT_CHOICES = [2, 3, 4, 5, 6, 8, 10];
@@ -34,19 +36,24 @@ export const SIDEBAR_TAB_SORT_ORDERS = [
 ] as const;
 
 export const SIDEBAR_TAB_SORT_ORDER_LABELS: Record<SidebarTabSortOrder, string> = {
-  latest_response: "Latest response",
-  created_at: "Created",
-  last_opened: "Last opened",
-  manual: "Manual",
+  latest_response: msg("Latest response"),
+  created_at: msg("Created"),
+  last_opened: msg("Last opened"),
+  manual: msg("Manual"),
 };
 
 /** Created reads as age; the other timed orders read as recency. */
 export function sidebarTabSortDirectionLabel(
   order: SidebarTabSortOrder,
   direction: SidebarTabSortDirection,
+  resolve: MessageResolver = m,
 ): string {
-  if (order === "created_at") return direction === "desc" ? "Newest first" : "Oldest first";
-  return direction === "desc" ? "Most recent first" : "Least recent first";
+  if (order === "created_at") {
+    return direction === "desc" ? resolve(msg("Newest first")) : resolve(msg("Oldest first"));
+  }
+  return direction === "desc"
+    ? resolve(msg("Most recent first"))
+    : resolve(msg("Least recent first"));
 }
 
 export function SidebarTabsMenu(props: {
@@ -66,7 +73,9 @@ export function SidebarTabsMenu(props: {
     props.limit === null || TAB_LIMIT_CHOICES.includes(props.limit)
       ? TAB_LIMIT_CHOICES
       : [...TAB_LIMIT_CHOICES, props.limit].toSorted((left, right) => left - right);
-  const toggleLabel = props.shown ? "Hide tabs" : "Show tabs";
+  const gt = useGT();
+  const messages = useMessages();
+  const toggleLabel = props.shown ? gt("Hide tabs") : gt("Show tabs");
   // A context menu, so the trigger owns right-click and the context-menu key while a plain
   // click stays the toggle. The popup parts are the same as any other menu's.
   return (
@@ -75,7 +84,14 @@ export function SidebarTabsMenu(props: {
         render={
           <SidebarHeaderIconButton
             label={toggleLabel}
-            tooltip={`${toggleLabel}${props.shortcutLabel ? ` (${props.shortcutLabel})` : ""}. Right-click for options`}
+            tooltip={
+              props.shortcutLabel
+                ? gt("{label} ({shortcut}). Right-click for options", {
+                    label: toggleLabel,
+                    shortcut: props.shortcutLabel,
+                  })
+                : gt("{label}. Right-click for options", { label: toggleLabel })
+            }
             aria-pressed={props.shown}
             isActive={props.shown}
             onClick={props.onToggle}
@@ -86,7 +102,9 @@ export function SidebarTabsMenu(props: {
       </ContextMenu.Trigger>
       <MenuPopup className="min-w-56">
         <MenuGroup>
-          <MenuGroupLabel>Tabs in sidebar</MenuGroupLabel>
+          <MenuGroupLabel>
+            <T>Tabs in sidebar</T>
+          </MenuGroupLabel>
           <MenuRadioGroup
             value={shownValue}
             onValueChange={(value) => {
@@ -96,7 +114,9 @@ export function SidebarTabsMenu(props: {
           >
             <MenuRadioItem value="hide">
               <span className="flex min-w-0 items-center gap-2">
-                <span className="min-w-0 flex-1 truncate">Hide tabs</span>
+                <span className="min-w-0 flex-1 truncate">
+                  <T>Hide tabs</T>
+                </span>
                 {props.shortcutLabel ? <MenuShortcut>{props.shortcutLabel}</MenuShortcut> : null}
                 <MenuRadioItemIndicator />
               </span>
@@ -105,7 +125,13 @@ export function SidebarTabsMenu(props: {
           <MenuSub>
             <MenuSubTrigger>
               <span className="min-w-0 flex-1 truncate">
-                {shownValue === "limit" ? `Show up to ${props.limit}` : "Show up to…"}
+                {shownValue === "limit" ? (
+                  <T>
+                    Show up to <Var>{props.limit}</Var>
+                  </T>
+                ) : (
+                  <T>Show up to…</T>
+                )}
               </span>
               {shownValue === "limit" ? <CheckIcon aria-hidden className="size-3.5" /> : null}
             </MenuSubTrigger>
@@ -135,7 +161,9 @@ export function SidebarTabsMenu(props: {
           >
             <MenuRadioItem value="all">
               <span className="flex min-w-0 items-center gap-2">
-                <span className="min-w-0 flex-1 truncate">Show all</span>
+                <span className="min-w-0 flex-1 truncate">
+                  <T>Show all</T>
+                </span>
                 <MenuRadioItemIndicator />
               </span>
             </MenuRadioItem>
@@ -143,7 +171,9 @@ export function SidebarTabsMenu(props: {
         </MenuGroup>
         <MenuSeparator />
         <MenuGroup>
-          <MenuGroupLabel>Sort tabs by</MenuGroupLabel>
+          <MenuGroupLabel>
+            <T>Sort tabs by</T>
+          </MenuGroupLabel>
           <MenuRadioGroup
             value={props.sortOrder}
             onValueChange={(value) => {
@@ -155,10 +185,12 @@ export function SidebarTabsMenu(props: {
               <MenuRadioItem key={order} value={order}>
                 <span className="flex min-w-0 items-center gap-2">
                   <span className="min-w-0 flex-1 truncate">
-                    {SIDEBAR_TAB_SORT_ORDER_LABELS[order]}
+                    {messages(SIDEBAR_TAB_SORT_ORDER_LABELS[order])}
                   </span>
                   {order === "manual" ? (
-                    <span className="text-secondary-label text-xs">Drag to reorder</span>
+                    <span className="text-secondary-label text-xs">
+                      <T>Drag to reorder</T>
+                    </span>
                   ) : null}
                   <MenuRadioItemIndicator />
                 </span>
@@ -180,7 +212,7 @@ export function SidebarTabsMenu(props: {
                 <MenuRadioItem key={direction} value={direction}>
                   <span className="flex min-w-0 items-center gap-2">
                     <span className="min-w-0 flex-1 truncate">
-                      {sidebarTabSortDirectionLabel(props.sortOrder, direction)}
+                      {sidebarTabSortDirectionLabel(props.sortOrder, direction, messages)}
                     </span>
                     <MenuRadioItemIndicator />
                   </span>

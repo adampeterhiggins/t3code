@@ -1,4 +1,5 @@
 import { useComposerDraft } from "../../state/use-composer-drafts";
+import { T, useGT, Var } from "gt-react-native";
 import { useMemo, useState } from "react";
 import { Pressable, View } from "react-native";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
@@ -22,6 +23,7 @@ export function ThreadUsageNotice(props: {
   readonly compacting: boolean;
   readonly onInsertCompact: () => void;
 }) {
+  const gt = useGT();
   const draft = useComposerDraft(props.draftKey);
   const detail = useThreadProjection(props);
   const threads = detail?.projection.providerThreads;
@@ -64,37 +66,50 @@ export function ThreadUsageNotice(props: {
     return null;
   return (
     <View className="gap-2 px-4 pb-2">
-      <Text className="text-xs text-foreground-muted" accessibilityLabel="Reported thread usage">
+      <Text
+        className="text-xs text-foreground-muted"
+        accessibilityLabel={gt("Reported thread usage")}
+      >
         {usage.mainTokens !== null
-          ? `Thread tokens ${usage.mainTokens.toLocaleString()}${usage.mainPartial ? "+" : ""}`
+          ? gt("Thread tokens {tokens}", {
+              tokens: `${usage.mainTokens.toLocaleString()}${usage.mainPartial ? "+" : ""}`,
+            })
           : ""}
         {usage.subagentTokens !== null
-          ? ` · Subagents ${usage.subagentTokens.toLocaleString()}`
+          ? ` · ${gt("Subagents {tokens}", { tokens: usage.subagentTokens.toLocaleString() })}`
           : ""}
-        {usage.costs.length > 0 ? ` · Reported cost ${formatReportedThreadCost(usage.costs)}` : ""}
+        {usage.costs.length > 0
+          ? ` · ${gt("Reported cost {cost}", { cost: formatReportedThreadCost(usage.costs) })}`
+          : ""}
       </Text>
       {nearFull ? (
         <View className="flex-row items-center gap-3 rounded-2xl bg-card p-3">
           <Text className="min-w-0 flex-1 text-xs text-foreground" accessibilityLiveRegion="polite">
-            Context {Math.round(percent ?? 0)}% full
+            <T>
+              Context <Var>{Math.round(percent ?? 0)}</Var>% full
+            </T>
           </Text>
           {props.canCompact && !draft.text.trim() && draft.attachments.length === 0 ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Insert compact command"
+              accessibilityLabel={gt("Insert compact command")}
               onPress={props.onInsertCompact}
               hitSlop={8}
             >
-              <Text className="text-xs text-accent">Use /compact</Text>
+              <Text className="text-xs text-accent">
+                <T>Use /compact</T>
+              </Text>
             </Pressable>
           ) : null}
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Dismiss context notice"
+            accessibilityLabel={gt("Dismiss context notice")}
             onPress={() => setDismissedThread(props.threadId)}
             hitSlop={8}
           >
-            <Text className="text-xs text-foreground-muted">Dismiss</Text>
+            <Text className="text-xs text-foreground-muted">
+              <T>Dismiss</T>
+            </Text>
           </Pressable>
         </View>
       ) : null}

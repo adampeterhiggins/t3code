@@ -1,3 +1,6 @@
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
+
 import type { PreviewRecord, PullRequestToolPreview, ToolPreview } from "./toolPreview.ts";
 import {
   documentPreview,
@@ -39,7 +42,12 @@ function flagRollout(flag: Record_): string | null {
   return typeof rollout === "number" ? `${rollout}% rollout` : null;
 }
 
-function postHogPreview(input: Record_, result: unknown, text: string | null): ToolPreview | null {
+function postHogPreview(
+  input: Record_,
+  result: unknown,
+  text: string | null,
+  resolve: MFunctionType,
+): ToolPreview | null {
   const command = str(input.command);
   const parsed = command ? parsePostHogCommand(command) : null;
   if (!parsed) return null;
@@ -57,7 +65,11 @@ function postHogPreview(input: Record_, result: unknown, text: string | null): T
     const { columns, rows } = pipeTable(pipeText);
     return table(columns, rows, {
       summary: sql,
-      notes: [`${rows.length} row${rows.length === 1 ? "" : "s"}`],
+      notes: [
+        resolve(
+          msg("{count, plural, one {{count} row} other {{count} rows}}", { count: rows.length }),
+        ),
+      ],
     });
   }
   if (tool.startsWith("feature-flag-get-definition") && isRecord(result)) {
@@ -74,7 +86,10 @@ function postHogPreview(input: Record_, result: unknown, text: string | null): T
         ["Updated", str(flag.updated_at)],
         ["Version", scalarText(flag.version)],
       ].flatMap(([key, value]) => (value ? [[key!, value] as const] : [])),
-      { title: str(flag.name) ?? str(flag.key) ?? "Feature flag", summary: "Feature flag" },
+      {
+        title: str(flag.name) ?? str(flag.key) ?? resolve(msg("Feature flag")),
+        summary: resolve(msg("Feature flag")),
+      },
     );
   }
   if (tool === "feature-flag-get-all") {
@@ -87,21 +102,25 @@ function postHogPreview(input: Record_, result: unknown, text: string | null): T
       return records(
         list.filter(isRecord).map((flag, index) => ({
           key: String(flag.id ?? index),
-          title: str(flag.name) ?? str(flag.key) ?? "Flag",
-          subtitle: flag.active === false ? "inactive" : "active",
+          title:
+            str(flag.name) ?? str(flag.key) ?? resolve(msg("Flag", { $context: "feature flag" })),
+          subtitle:
+            flag.active === false
+              ? resolve(msg("inactive", { $context: "feature flag state" }))
+              : resolve(msg("active", { $context: "feature flag state" })),
           meta: [str(flag.key), flagRollout(flag)].filter((meta): meta is string => meta !== null),
           url: null,
           body: null,
           threadId: null,
         })),
-        { summary: "Feature flags" },
+        { summary: resolve(msg("Feature flags")) },
       );
     }
   }
   return inferredPreview(result, tool) ?? (text ? documentPreview(text, { summary: tool }) : null);
 }
 
-function runRecord(run: Record_, index: number): PreviewRecord {
+function runRecord(run: Record_, index: number, resolve: MFunctionType): PreviewRecord {
   const extra = isRecord(run.extra) ? run.extra : null;
   const params = isRecord(extra?.invocation_params) ? extra.invocation_params : null;
   const start = str(run.start_time);
@@ -109,13 +128,17 @@ function runRecord(run: Record_, index: number): PreviewRecord {
   const seconds = start && end ? (Date.parse(end) - Date.parse(start)) / 1000 : null;
   return {
     key: str(run.id) ?? String(index),
-    title: str(run.name) ?? "Run",
-    subtitle: str(run.status) ?? (str(run.error) ? "error" : null),
+    title: str(run.name) ?? resolve(msg("Run", { $context: "noun, LangSmith run" })),
+    subtitle:
+      str(run.status) ??
+      (str(run.error) ? resolve(msg("error", { $context: "LangSmith run status" })) : null),
     meta: [
       str(run.run_type),
       str(params?.model) ?? str(params?.model_name),
       seconds !== null && Number.isFinite(seconds) ? `${seconds.toFixed(1)}s` : null,
-      typeof run.total_tokens === "number" ? `${run.total_tokens} tokens` : null,
+      typeof run.total_tokens === "number"
+        ? resolve(msg("{count} tokens", { count: run.total_tokens }))
+        : null,
       start?.slice(0, 19).replace("T", " ") ?? null,
     ].filter((meta): meta is string => meta !== null),
     url: null,
@@ -124,11 +147,15 @@ function runRecord(run: Record_, index: number): PreviewRecord {
   };
 }
 
-function langSmithPreview(input: Record_, result: unknown): ToolPreview | null {
+function langSmithPreview(
+  input: Record_,
+  result: unknown,
+  resolve: MFunctionType,
+): ToolPreview | null {
   const data = isRecord(result) ? result : null;
   if (!data) return null;
   const runs = Array.isArray(data.runs) ? data.runs.filter(isRecord) : [];
-  let items = runs.map(runRecord);
+  let items = runs.map((run, index) => runRecord(run, index, resolve));
   // A page over LangSmith's budget arrives as a truncated JSON preview; name its runs anyway.
   const preview = str(data._truncated_preview);
   if (items.length === 0 && preview) {
@@ -179,7 +206,12 @@ function decodeEntities(text: string | null): string | null {
   );
 }
 
-function gmailPreview(tool: string, input: Record_, result: unknown): ToolPreview | null {
+function gmailPreview(
+  tool: string,
+  input: Record_,
+  result: unknown,
+  resolve: MFunctionType,
+): ToolPreview | null {
   const data = isRecord(result) ? result : null;
   // A search that matched nothing returns `{}`.
   const threads = Array.isArray(data?.threads)
@@ -194,8 +226,9 @@ function gmailPreview(tool: string, input: Record_, result: unknown): ToolPrevie
       const first = messages[0] ?? thread;
       return {
         key: str(thread.id) ?? String(index),
-        title: header(first, "Subject") ?? str(thread.snippet) ?? "(No subject)",
-        subtitle: messages.length > 1 ? `${messages.length} messages` : null,
+        title: header(first, "Subject") ?? str(thread.snippet) ?? resolve(msg("(No subject)")),
+        subtitle:
+          messages.length > 1 ? resolve(msg("{count} messages", { count: messages.length })) : null,
         meta: [header(first, "From") ?? str(first.sender), header(first, "Date")].filter(
           (meta): meta is string => meta !== null,
         ),
@@ -245,10 +278,13 @@ export function serviceToolPreview(
   input: Record_,
   result: unknown,
   text: string | null,
+  resolve: MFunctionType = mFallback,
 ): ToolPreview | null {
-  if (server.startsWith("posthog") && tool === "exec") return postHogPreview(input, result, text);
-  if (server === "langsmith" && tool === "fetch_runs") return langSmithPreview(input, result);
-  if (server === "gmail") return gmailPreview(tool, input, result);
+  if (server.startsWith("posthog") && tool === "exec")
+    return postHogPreview(input, result, text, resolve);
+  if (server === "langsmith" && tool === "fetch_runs")
+    return langSmithPreview(input, result, resolve);
+  if (server === "gmail") return gmailPreview(tool, input, result, resolve);
   if (server === "codex_apps") return codexAppPreview(tool, result);
   return null;
 }

@@ -1,27 +1,34 @@
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import type { ScopedThreadRef } from "@t3tools/contracts";
+import { msg, useMessages } from "gt-react";
 import { ChevronDownIcon, ExternalLinkIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { useLinkClickHandler } from "~/browser/useOpenLink";
+import { reviewCommentRangeText, reviewCommentSectionText } from "~/lib/composerContextRecords";
+import type { MessageResolver } from "~/i18n/messages";
 import { cn } from "~/lib/utils";
 import { reviewCommentCodeLines, type ReviewCommentContext } from "~/reviewCommentContext";
 
 import { PULL_REQUEST_STATE_PRESENTATION } from "./pullRequest/pullRequestIcons";
 import { PullRequestActorAvatar } from "./pullRequest/pullRequestPresentation";
 
+const KNOWN_HOST_NAMES: Record<string, string> = {
+  "github.com": "GitHub",
+  "gitlab.com": "GitLab",
+  "bitbucket.org": "Bitbucket",
+};
+
 /** The host's own name for a link, where it is one we know. */
-function hostLinkLabel(url: string): string {
+function hostLinkLabel(url: string, resolve: MessageResolver): string {
   let hostname: string;
   try {
     hostname = new URL(url).hostname.replace(/^www\./u, "");
   } catch {
-    return "Open";
+    return resolve(msg("Open", { $context: "verb, opens a link" }));
   }
-  if (hostname === "github.com") return "View on GitHub";
-  if (hostname === "gitlab.com") return "View on GitLab";
-  if (hostname === "bitbucket.org") return "View on Bitbucket";
-  return `View on ${hostname}`;
+  const host = KNOWN_HOST_NAMES[hostname] ?? hostname;
+  return resolve(msg("View on {host}", { host }));
 }
 
 function splitPath(path: string): { directory: string; name: string } {
@@ -67,6 +74,7 @@ export function ReviewCommentCard(props: {
   threadRef?: ScopedThreadRef | null | undefined;
 }) {
   const { comment } = props;
+  const messages = useMessages();
   const onLinkClick = useLinkClickHandler(props.threadRef ?? null);
   const codeLines = reviewCommentCodeLines(comment);
   const remarks = comment.thread?.comments ?? [];
@@ -86,7 +94,7 @@ export function ReviewCommentCard(props: {
         </span>
         {showRange ? (
           <span className="shrink-0 rounded-full border border-border bg-background px-1.5 font-sans text-2xs text-muted-foreground">
-            {comment.rangeLabel}
+            {reviewCommentRangeText(comment.rangeLabel, messages)}
           </span>
         ) : null}
       </div>
@@ -149,7 +157,7 @@ export function ReviewCommentCard(props: {
         <div className="min-w-0 px-3 py-2.5 text-sm">{props.note}</div>
       ) : null}
       <div className="flex items-center justify-between gap-3 border-t border-border px-3 py-1.5 text-2xs text-muted-foreground">
-        <span className="truncate">{comment.sectionTitle}</span>
+        <span className="truncate">{reviewCommentSectionText(comment.sectionTitle, messages)}</span>
         {url ? (
           <a
             href={url}
@@ -158,7 +166,7 @@ export function ReviewCommentCard(props: {
             className="inline-flex shrink-0 items-center gap-1 text-foreground hover:underline"
             onClick={(event) => onLinkClick(event, url)}
           >
-            {hostLinkLabel(url)}
+            {hostLinkLabel(url, messages)}
             <ExternalLinkIcon aria-hidden className="size-3" />
           </a>
         ) : null}

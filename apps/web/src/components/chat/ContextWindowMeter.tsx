@@ -6,6 +6,7 @@ import {
   formatContextWindowCompactionMessage,
   formatContextWindowCost,
 } from "./ContextWindowMeter.logic";
+import { T, useGT, useLocale, useMessages } from "gt-react";
 import { Minimize2Icon } from "lucide-react";
 import { composerFloatingLayerProps } from "./composerEventScope";
 import type { ThreadUsageSummary } from "@t3tools/client-runtime/thread-usage";
@@ -37,6 +38,9 @@ export function ContextWindowMeter(props: {
     compactDisabledReason,
     threadUsage,
   } = props;
+  const gt = useGT();
+  const m = useMessages();
+  const locale = useLocale();
   // Thread-wide provider-reported cost wins; the active session's cost is the fallback.
   const costs =
     threadUsage && threadUsage.costs.length > 0
@@ -69,8 +73,10 @@ export function ContextWindowMeter(props: {
             className="size-7"
             aria-label={
               usage.maxTokens !== null && usedPercentage
-                ? `Context window ${usedPercentage} used`
-                : `Context window ${formatContextWindowTokens(usage.usedTokens)} tokens used`
+                ? gt("Context window {percentage} used", { percentage: usedPercentage })
+                : gt("Context window {tokens} tokens used", {
+                    tokens: formatContextWindowTokens(usage.usedTokens),
+                  })
             }
           >
             <span className="relative flex size-5 items-center justify-center">
@@ -115,7 +121,9 @@ export function ContextWindowMeter(props: {
       >
         <div className="flex flex-col gap-2 p-(--floating-content-inset)">
           <div className="flex items-center justify-between gap-3">
-            <div className="font-medium text-muted-foreground text-xs">Context Window</div>
+            <div className="font-medium text-muted-foreground text-xs">
+              <T>Context Window</T>
+            </div>
             {usage.maxTokens !== null && usedPercentage ? (
               <div className="text-secondary-label text-2xs tabular-nums">
                 <span>{usedPercentage}</span>
@@ -138,7 +146,7 @@ export function ContextWindowMeter(props: {
               aria-valuemin={0}
               aria-valuemax={100}
               aria-valuenow={Math.round(normalizedPercentage)}
-              aria-label="Context window usage"
+              aria-label={gt("Context window usage")}
             >
               <div
                 className="h-full rounded-full transition-[width,background-color] duration-500 ease-out motion-reduce:transition-none"
@@ -148,7 +156,9 @@ export function ContextWindowMeter(props: {
           ) : null}
           {showTotalProcessed ? (
             <div className="flex items-center justify-between gap-3 text-2xs leading-4">
-              <span className="text-secondary-label">Total processed</span>
+              <span className="text-secondary-label">
+                <T>Total processed</T>
+              </span>
               <span className="font-medium tabular-nums text-secondary-label">
                 {formatContextWindowTokens(totalProcessedTokens)}
               </span>
@@ -156,26 +166,36 @@ export function ContextWindowMeter(props: {
           ) : null}
           {threadUsage?.mainTokens != null ? (
             <MeterRow
-              label="Thread tokens"
-              detail={`${formatContextWindowTokens(threadUsage.mainInputTokens)} in · ${formatContextWindowTokens(threadUsage.mainOutputTokens)} out`}
+              label={gt("Thread tokens")}
+              detail={gt("{input} in · {output} out", {
+                input: formatContextWindowTokens(threadUsage.mainInputTokens),
+                output: formatContextWindowTokens(threadUsage.mainOutputTokens),
+              })}
               value={`${formatContextWindowTokens(threadUsage.mainTokens)}${threadUsage.mainPartial ? "+" : ""}`}
             />
           ) : null}
           {threadUsage?.subagentTokens != null ? (
             <MeterRow
-              label={threadUsage.subagentsWithUsage === 1 ? "Subagent" : "Subagents"}
+              label={gt("{count, plural, =1 {Subagent} other {Subagents}}", {
+                count: threadUsage.subagentsWithUsage,
+              })}
               value={formatContextWindowTokens(threadUsage.subagentTokens)}
             />
           ) : null}
           {costs.length > 0 ? (
             <MeterRow
-              label="Reported cost"
+              label={gt("Reported cost")}
               value={costs.map(formatContextWindowCost).join(" · ")}
             />
           ) : null}
           {usage.compactsAutomatically ? (
             <div className="mt-1 text-pretty text-secondary-label text-2xs font-medium">
-              {formatContextWindowCompactionMessage(modelDisplayName, usage.autoCompactThreshold)}
+              {formatContextWindowCompactionMessage(
+                modelDisplayName,
+                usage.autoCompactThreshold,
+                m,
+                locale,
+              )}
             </div>
           ) : null}
           {onCompact ? (
@@ -188,7 +208,7 @@ export function ContextWindowMeter(props: {
                 onClick={onCompact}
               >
                 <Minimize2Icon aria-hidden="true" />
-                Compact context
+                <T>Compact context</T>
               </Button>
               {compactDisabled && compactDisabledReason ? (
                 <div className="text-pretty text-secondary-label text-2xs">

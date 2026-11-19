@@ -67,6 +67,7 @@ import {
   ThreadPullRequestSnapshot,
   ThreadPullRequestStack,
   ThreadPullRequestWatch,
+  PullRequestWatchUntil,
 } from "./threadPullRequest.ts";
 import {
   ProviderApprovalDecision,
@@ -311,6 +312,8 @@ export const OrchestrationV2TurnCapabilities = Schema.Struct({
   emitsTurnStarted: Schema.Boolean,
   emitsTurnCompleted: Schema.Boolean,
   supportsInterrupt: Schema.Boolean,
+  // Continues an interrupted turn without a new message; absent on sessions recorded before it existed.
+  supportsNativeResume: Schema.optional(Schema.Boolean),
   supportsActiveSteering: Schema.Boolean,
   // Some native steering mechanisms cancel pending tools before consuming the message.
   activeSteeringInterruptsTools: Schema.optional(Schema.Boolean),
@@ -558,6 +561,8 @@ export const OrchestrationV2AppThread = Schema.Struct({
     ),
   ),
   lastTitleRegeneration: Schema.optional(Schema.NullOr(OrchestrationV2LastTitleRegeneration)),
+  /** Set by a rename until a generated title replaces it; absent reads as false. */
+  titleRenamed: Schema.optional(Schema.Boolean),
   rollbackRequestId: Schema.optional(CommandId),
   rollbackFailure: Schema.optional(
     Schema.NullOr(
@@ -1345,6 +1350,8 @@ export const OrchestrationV2ProviderTurn = Schema.Struct({
   nodeId: NodeId,
   runAttemptId: Schema.NullOr(RunAttemptId),
   nativeTurnRef: Schema.NullOr(OrchestrationV2ProviderRef),
+  /** The native session that held this turn, when a provider can move a thread between sessions. */
+  nativeThreadRef: Schema.optional(OrchestrationV2ProviderRef),
   ordinal: PositiveInt,
   status: Schema.Literals([
     "pending",
@@ -3557,6 +3564,10 @@ export const OrchestrationV2Command = Schema.Union([
      * follow-up budget. Absent leaves an existing watch as it is.
      */
     paused: Schema.optional(Schema.Boolean),
+    /** With `watching`, sets how long the watch holds its thread; absent keeps the current one. */
+    until: Schema.optional(PullRequestWatchUntil),
+    /** Whether CI was pending with no failure yet when the watch started, so any failure is news. */
+    checksPending: Schema.optional(Schema.Boolean),
     /** Links the pull request first when starting a watch on one the thread has not linked. */
     link: Schema.optional(
       Schema.Struct({
@@ -4436,6 +4447,8 @@ export const OrchestrationV2ThreadHistoryPage = withRecordIdTable(
     ),
     nextCursor: Schema.NullOr(TrimmedNonEmptyString),
     hasMoreHistory: Schema.Boolean,
+    /** Records of the page's subagent items, which a bounded snapshot can omit. */
+    subagents: Schema.optionalKey(Schema.Array(OrchestrationV2Subagent)),
     idTable: IdTableMarker,
   }),
   () => null,

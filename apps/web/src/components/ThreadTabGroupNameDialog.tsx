@@ -1,3 +1,4 @@
+import { T } from "gt-react";
 import { useEffect, useState } from "react";
 import { create } from "zustand";
 import { Button } from "./ui/button";
@@ -32,6 +33,7 @@ function finish(name: string | null | undefined) {
 
 export function ThreadTabGroupNameDialogHost() {
   const request = useRequest((state) => state.request);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- resolves a pending name request when the host unmounts
   useEffect(() => () => finish(undefined), []);
   return request ? <NameDialog initial={request.name} /> : null;
 }
@@ -54,13 +56,17 @@ function NameDialog({ initial }: { initial: string | null }) {
           }}
         >
           <DialogHeader>
-            <DialogTitle>Name thread group</DialogTitle>
+            <DialogTitle>
+              <T>Name thread group</T>
+            </DialogTitle>
             <DialogDescription>
-              Leave blank to use the most recently opened tab’s title.
+              <T>Leave blank to use the most recently opened tab’s title.</T>
             </DialogDescription>
           </DialogHeader>
           <DialogPanel>
-            <Label htmlFor="tab-group-name">Group name</Label>
+            <Label htmlFor="tab-group-name">
+              <T>Group name</T>
+            </Label>
             <Input
               id="tab-group-name"
               autoFocus
@@ -70,9 +76,11 @@ function NameDialog({ initial }: { initial: string | null }) {
           </DialogPanel>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => finish(undefined)}>
-              Cancel
+              <T>Cancel</T>
             </Button>
-            <Button type="submit">Save</Button>
+            <Button type="submit">
+              <T>Save</T>
+            </Button>
           </DialogFooter>
         </form>
       </DialogPopup>

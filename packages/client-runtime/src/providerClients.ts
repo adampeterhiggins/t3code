@@ -46,13 +46,17 @@ export const providerClients = makeProviderClientRegistry([
   },
   {
     driverKind: ProviderDriverKind.make("devin"),
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- product name
     label: "Devin",
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- registry badge renders raw, like provider-kiro's
     badgeLabel: "Early Access",
     settingsSchema: DevinSettings,
   },
   {
     driverKind: ProviderDriverKind.make("customAcp"),
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- provider name shown wherever providers are listed
     label: "Custom ACP",
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- registry badge renders raw, like provider-kiro's
     badgeLabel: "Early Access",
     settingsSchema: CustomAcpSettings,
     hasDefaultInstance: false,

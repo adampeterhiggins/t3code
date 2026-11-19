@@ -26,10 +26,12 @@ import type {
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
 import { CalendarClockIcon, CalendarPlusIcon, GitBranchIcon } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useState } from "react";
 
 import { useRunScheduledTask } from "~/hooks/useRunThreadScheduledTask";
+import { m } from "~/i18n/messages";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { usePreparePullRequestThreadAction } from "~/state/sourceControlActions";
 import { cn, isMacPlatform } from "~/lib/utils";
@@ -108,20 +110,21 @@ import {
 
 type StartFromTab = "pull-requests" | "branches" | "issues" | "linear" | "automations";
 const ALL_TABS: ReadonlyArray<{ id: StartFromTab; label: string }> = [
-  { id: "pull-requests", label: "PRs" },
-  { id: "branches", label: "Branches" },
-  { id: "issues", label: "Issues" },
+  { id: "pull-requests", label: msg("PRs") },
+  { id: "branches", label: msg("Branches") },
+  { id: "issues", label: msg("Issues") },
+  // oxlint-disable-next-line t3code/no-untranslated-copy -- product name
   { id: "linear", label: "Linear" },
-  { id: "automations", label: "Automations" },
+  { id: "automations", label: msg("Automations") },
 ];
 // Without GitHub, the project has no issues tab of its own.
 const TABS_WITHOUT_GITHUB_ISSUES = ALL_TABS.filter((entry) => entry.id !== "issues");
 const PLACEHOLDERS: Record<StartFromTab, string> = {
-  "pull-requests": "Search pull requests by title, number, or author",
-  branches: "Search branches",
-  issues: "Search GitHub issues, or paste #123 or an issue link",
-  linear: "Search Linear issues, or paste ENG-123 or an issue link",
-  automations: "Search automations by name or prompt",
+  "pull-requests": msg("Search pull requests by title, number, or author"),
+  branches: msg("Search branches"),
+  issues: msg("Search GitHub issues, or paste #123 or an issue link"),
+  linear: msg("Search Linear issues, or paste ENG-123 or an issue link"),
+  automations: msg("Search automations by name or prompt"),
 };
 const NEW_AUTOMATION_VALUE = "automation:new";
 const NEW_AUTOMATION_ITEMS = [NEW_AUTOMATION_VALUE];
@@ -253,7 +256,7 @@ function useApplyStartFrom(props: {
             const failure = squashAtomCommandFailure(result);
             toastManager.add({
               type: "error",
-              title: `Could not check out #${pick.number}`,
+              title: m(msg("Could not check out #{number}"), { number: pick.number }),
               description: failure instanceof Error ? failure.message : undefined,
             });
           }
@@ -268,9 +271,12 @@ function useApplyStartFrom(props: {
         if (!result.value.isOnPullRequestHead) {
           toastManager.add({
             type: "warning",
-            title: "Checked out, but not on the latest commits",
-            description:
-              "The worktree holds uncommitted work or local commits, so it stays behind the pull request.",
+            title: m(msg("Checked out, but not on the latest commits")),
+            description: m(
+              msg(
+                "The worktree holds uncommitted work or local commits, so it stays behind the pull request.",
+              ),
+            ),
           });
         }
         return true;
@@ -307,6 +313,8 @@ interface ExistingThreadsPrompt {
 
 function StartFromPickerDialog(props: StartFromPickerDialogProps) {
   const { environmentId, projectRef, projectId, workspaceRoot, linkThreadRef, onClose } = props;
+  const gt = useGT();
+  const resolve = useMessages();
   const router = useRouter();
   const tabs = props.githubIssuesAvailable ? ALL_TABS : TABS_WITHOUT_GITHUB_ISSUES;
   const [tab, setTab] = useState<StartFromTab>("pull-requests");
@@ -529,8 +537,8 @@ function StartFromPickerDialog(props: StartFromPickerDialogProps) {
       entries.length > 0
         ? null
         : pullRequests.isPending || searching
-          ? "Loading pull requests…"
-          : (pullRequests.error?.message ?? "No pull requests match these filters."),
+          ? gt("Loading pull requests…")
+          : (pullRequests.error?.message ?? gt("No pull requests match these filters.")),
       <CommandGroup items={[...entries]}>
         <CommandCollection>
           {(entry: EnvironmentPullRequestEntry) => {
@@ -560,7 +568,7 @@ function StartFromPickerDialog(props: StartFromPickerDialogProps) {
                       <span className="min-w-0 flex-1 truncate text-sm">{entry.title}</span>
                       {inUse.length > 0 ? (
                         <Badge variant="outline" size="sm">
-                          In use
+                          <T context="already used by another thread">In use</T>
                         </Badge>
                       ) : null}
                       <span className="w-24 shrink-0 truncate text-end text-muted-foreground/70 text-xs">
@@ -581,8 +589,8 @@ function StartFromPickerDialog(props: StartFromPickerDialogProps) {
       refs.length > 0
         ? null
         : branches.isPending || searching
-          ? "Loading branches…"
-          : (branches.error ?? "No branches match."),
+          ? gt("Loading branches…")
+          : (branches.error ?? gt("No branches match.")),
       <CommandGroup items={[...refs]}>
         <CommandCollection>
           {(ref: VcsRef) => {
@@ -605,16 +613,16 @@ function StartFromPickerDialog(props: StartFromPickerDialogProps) {
                       <span className="min-w-0 flex-1 truncate font-mono text-xs">{ref.name}</span>
                       {inUse.length > 0 ? (
                         <Badge variant="outline" size="sm">
-                          In use
+                          <T context="already used by another thread">In use</T>
                         </Badge>
                       ) : null}
                       {ref.current ? (
                         <Badge variant="secondary" size="sm">
-                          current
+                          <T context="git ref badge, the checked-out branch">current</T>
                         </Badge>
                       ) : ref.isRemote ? (
                         <Badge variant="secondary" size="sm">
-                          remote
+                          <T context="git ref badge, a remote branch">remote</T>
                         </Badge>
                       ) : null}
                     </span>
@@ -659,12 +667,12 @@ function StartFromPickerDialog(props: StartFromPickerDialogProps) {
       automations.length > 0
         ? null
         : tasksQuery.error !== null
-          ? `Could not load automations: ${tasksQuery.error}`
+          ? gt("Could not load automations: {error}", { error: tasksQuery.error })
           : tasksQuery.data === null
-            ? "Loading automations…"
+            ? gt("Loading automations…")
             : trimmedQuery.length > 0
-              ? "No automations match."
-              : "No automations in this project yet.";
+              ? gt("No automations match.")
+              : gt("No automations in this project yet.");
     content = (
       <CommandList>
         {onNewAutomation ? (
@@ -679,7 +687,9 @@ function StartFromPickerDialog(props: StartFromPickerDialogProps) {
                   onClick={newAutomationFromDraft}
                 >
                   <CalendarPlusIcon className="size-4 shrink-0 text-muted-foreground" />
-                  <span className="min-w-0 flex-1 truncate text-sm">New automation from draft</span>
+                  <span className="min-w-0 flex-1 truncate text-sm">
+                    <T>New automation from draft</T>
+                  </span>
                 </CommandItem>
               )}
             </CommandCollection>
@@ -691,7 +701,7 @@ function StartFromPickerDialog(props: StartFromPickerDialogProps) {
           <CommandGroup items={automations}>
             <CommandCollection>
               {(task: ScheduledTask) => {
-                const blocker = automationRunBlocker(task);
+                const blocker = automationRunBlocker(task, resolve);
                 return (
                   <CommandItem
                     key={task.id}
@@ -709,16 +719,16 @@ function StartFromPickerDialog(props: StartFromPickerDialogProps) {
                           <span className="min-w-0 flex-1 truncate text-sm">{task.title}</span>
                           {!task.enabled ? (
                             <Badge variant="outline" size="sm">
-                              Paused
+                              <T context="scheduled task state">Paused</T>
                             </Badge>
                           ) : null}
                           {task.lastRunStatus === "failed" ? (
                             <Badge variant="error" size="sm">
-                              Last run failed
+                              <T>Last run failed</T>
                             </Badge>
                           ) : task.lastRunStatus === "running" ? (
                             <Badge variant="info" size="sm">
-                              Running
+                              <T context="scheduled task state">Running</T>
                             </Badge>
                           ) : null}
                           <span className="w-40 shrink-0 truncate text-end text-muted-foreground/70 text-xs">
@@ -738,14 +748,16 @@ function StartFromPickerDialog(props: StartFromPickerDialogProps) {
   } else if (linearConnection.data !== null && !linearConnected) {
     content = (
       <div className="flex flex-col items-center gap-3 px-6 py-10 text-center text-sm">
-        <p className="text-muted-foreground">Connect a Linear account to start from an issue.</p>
+        <p className="text-muted-foreground">
+          <T>Connect a Linear account to start from an issue.</T>
+        </p>
         <Button
           size="sm"
           onClick={() => {
             open(router.buildLocation({ to: "/settings/integrations" }).href);
           }}
         >
-          Connect Linear
+          <T>Connect Linear</T>
         </Button>
       </div>
     );
@@ -754,10 +766,10 @@ function StartFromPickerDialog(props: StartFromPickerDialogProps) {
       issues.length > 0
         ? null
         : linearConnection.data === null
-          ? "Reading Linear status…"
+          ? gt("Reading Linear status…")
           : issuesQuery.isPending || searching
-            ? "Searching Linear…"
-            : (issuesQuery.error ?? "No issues match these filters."),
+            ? gt("Searching Linear…")
+            : (issuesQuery.error ?? gt("No issues match these filters.")),
       <CommandGroup items={[...issues]}>
         <CommandCollection>
           {(issue: LinearIssueSummary) => {
@@ -782,7 +794,7 @@ function StartFromPickerDialog(props: StartFromPickerDialogProps) {
                       <span className="min-w-0 flex-1 truncate text-sm">{issue.title}</span>
                       {inUse.length > 0 ? (
                         <Badge variant="outline" size="sm">
-                          In use
+                          <T context="already used by another thread">In use</T>
                         </Badge>
                       ) : null}
                       <span className="w-24 shrink-0 truncate text-end text-muted-foreground/70 text-xs">
@@ -809,13 +821,13 @@ function StartFromPickerDialog(props: StartFromPickerDialogProps) {
           if (!open) close();
         }}
       >
-        <CommandDialogPopup aria-label="Start from" className="overflow-hidden">
+        <CommandDialogPopup aria-label={gt("Start from")} className="overflow-hidden">
           <CommandPaletteContent
-            inputProps={{ placeholder: PLACEHOLDERS[tab], onKeyDown: onInputKeyDown }}
+            inputProps={{ placeholder: resolve(PLACEHOLDERS[tab]), onKeyDown: onInputKeyDown }}
             inputAccessory={
               <>
                 <SourceTabs
-                  options={tabs}
+                  options={tabs.map((entry) => ({ ...entry, label: resolve(entry.label) }))}
                   activeId={tab}
                   onSelect={setTab}
                   className="flex gap-1 px-3 pb-2"
@@ -849,27 +861,31 @@ function StartFromPickerDialog(props: StartFromPickerDialogProps) {
             footerActionLabel={
               tab === "automations"
                 ? highlighted === NEW_AUTOMATION_VALUE
-                  ? "New automation"
+                  ? gt("New automation")
                   : busy
-                    ? "Starting…"
-                    : "Run now"
+                    ? gt("Starting…")
+                    : gt("Run now")
                 : tab === "issues" || tab === "linear"
                   ? busy
-                    ? "Attaching…"
-                    : "Attach"
+                    ? gt("Attaching…")
+                    : gt("Attach", { $context: "verb" })
                   : busy
-                    ? "Checking out…"
-                    : "Start thread"
+                    ? gt("Checking out…")
+                    : gt("Start thread")
             }
             footerTrailing={
               <span className="flex items-center gap-3">
                 {highlightedTask && canCreateTasks ? (
                   <KbdGroup>
                     <Kbd>{modKey} Enter</Kbd>
-                    <span>Edit</span>
+                    <span>
+                      <T context="verb, edit the automation">Edit</T>
+                    </span>
                   </KbdGroup>
                 ) : null}
-                <span className="text-xs">Tab switches source</span>
+                <span className="text-xs">
+                  <T>Tab switches source</T>
+                </span>
               </span>
             }
             mode="none"
@@ -891,18 +907,27 @@ function StartFromPickerDialog(props: StartFromPickerDialogProps) {
         <AlertDialogPopup>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              <code className="font-medium">{prompt?.subject}</code> already has a thread
+              <T>
+                <code className="font-medium">
+                  <Var>{prompt?.subject}</Var>
+                </code>{" "}
+                already has a thread
+              </T>
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {newestExisting ? `“${newestExisting.title}”` : null}
-              {prompt && prompt.threads.length > 1
-                ? ` and ${prompt.threads.length - 1} more are`
-                : " is"}{" "}
-              already working on it. Open it, or start a second thread?
+              {gt(
+                "{count, plural, =0 {“{title}” is already working on it. Open it, or start a second thread?} other {“{title}” and {count} more are already working on it. Open it, or start a second thread?}}",
+                {
+                  title: newestExisting?.title ?? "",
+                  count: Math.max(0, (prompt?.threads.length ?? 1) - 1),
+                },
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+            <AlertDialogClose render={<Button variant="outline" />}>
+              <T>Cancel</T>
+            </AlertDialogClose>
             <Button
               variant="outline"
               onClick={() => {
@@ -911,14 +936,14 @@ function StartFromPickerDialog(props: StartFromPickerDialogProps) {
                 startNew?.();
               }}
             >
-              Start new thread
+              <T>Start new thread</T>
             </Button>
             <Button
               onClick={() => {
                 if (newestExisting) openExistingThread(newestExisting);
               }}
             >
-              Open thread
+              <T>Open thread</T>
             </Button>
           </AlertDialogFooter>
         </AlertDialogPopup>

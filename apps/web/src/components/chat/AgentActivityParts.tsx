@@ -27,6 +27,7 @@ import type {
 } from "@t3tools/contracts";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -47,6 +48,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { m as defaultResolve, type MessageResolver } from "~/i18n/messages";
 import { cn } from "~/lib/utils";
 import { formatSecondsTimestamp } from "~/timestampFormat";
 
@@ -56,9 +58,9 @@ import { TOOL_KIND_ICONS } from "./agentToolKinds";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 const TOOL_STATUS_LABELS: Record<SubagentToolCall["status"], string> = {
-  running: "running",
-  completed: "completed",
-  failed: "failed",
+  running: msg("running", { $context: "tool call status" }),
+  completed: msg("completed", { $context: "tool call status" }),
+  failed: msg("failed", { $context: "tool call status" }),
 };
 
 function rowKeyToggle(toggle: () => void) {
@@ -71,10 +73,14 @@ function rowKeyToggle(toggle: () => void) {
 }
 
 /** Time, status, duration, and exit code, as the chat's tool footer shows them. */
-function toolCallMeta(call: SubagentToolCall, timestampFormat: TimestampFormat): string {
+function toolCallMeta(
+  call: SubagentToolCall,
+  timestampFormat: TimestampFormat,
+  resolve: MessageResolver = defaultResolve,
+): string {
   return [
     call.startedAt ? formatSecondsTimestamp(call.startedAt, timestampFormat) : null,
-    TOOL_STATUS_LABELS[call.status],
+    resolve(TOOL_STATUS_LABELS[call.status]),
     toolCallDuration(call),
     call.exitCode !== null ? `exit ${call.exitCode}` : null,
   ]
@@ -150,6 +156,8 @@ const ToolCallRow = memo(function ToolCallRow(props: {
   onActivate: ((call: SubagentToolCall) => void) | undefined;
 }) {
   const { call, focusToken, onActivate } = props;
+  const gt = useGT();
+  const m = useMessages();
   const [expanded, setExpanded] = useState(focusToken !== null);
   // A new focus expands the call during render; the layout effect only scrolls to it.
   const [seenFocusToken, setSeenFocusToken] = useState(focusToken);
@@ -158,6 +166,7 @@ const ToolCallRow = memo(function ToolCallRow(props: {
     if (focusToken !== null) setExpanded(true);
   }
   const rowRef = useRef<HTMLLIElement>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- scrolls the DOM row into view for each new focus
   useLayoutEffect(() => {
     if (focusToken !== null) rowRef.current?.scrollIntoView({ block: "center" });
   }, [focusToken]);
@@ -169,7 +178,7 @@ const ToolCallRow = memo(function ToolCallRow(props: {
       role="button"
       tabIndex={0}
       aria-expanded={onActivate ? undefined : expanded}
-      aria-label={failed ? `${call.title}, failed` : call.title}
+      aria-label={failed ? gt("{title}, failed", { title: call.title }) : call.title}
       onClick={(event: MouseEvent) => {
         // An outer clickable surface (the agent preview) must not also handle it.
         if (onActivate) event.stopPropagation();
@@ -246,7 +255,7 @@ const ToolCallRow = memo(function ToolCallRow(props: {
             timestampFormat={props.timestampFormat}
           />
           <p className="mt-1.5 font-mono text-3xs text-muted-foreground">
-            {toolCallMeta(call, props.timestampFormat)}
+            {toolCallMeta(call, props.timestampFormat, m)}
           </p>
         </div>
       ) : null}
@@ -287,24 +296,35 @@ function UsageBreakdown(props: { rows: ReadonlyArray<readonly [label: string, va
 
 function StepUsageTooltip(props: { usage: OrchestrationV2ModelCallUsage; summary: string }) {
   const { usage } = props;
+  const gt = useGT();
   const exact = (value: number) => value.toLocaleString();
   const cachedShare =
     usage.cachedInputTokens !== undefined && usage.inputTokens
       ? Math.round((usage.cachedInputTokens / usage.inputTokens) * 100)
       : null;
   const rows: Array<readonly [string, string]> = [];
-  if (usage.inputTokens !== undefined) rows.push(["Input", exact(usage.inputTokens)]);
+  if (usage.inputTokens !== undefined) {
+    rows.push([gt("Input", { $context: "input tokens" }), exact(usage.inputTokens)]);
+  }
   if (usage.cachedInputTokens !== undefined) {
     rows.push([
-      "Cached",
+      gt("Cached", { $context: "cached input tokens" }),
       cachedShare === null
         ? exact(usage.cachedInputTokens)
-        : `${exact(usage.cachedInputTokens)} (${cachedShare}% of input)`,
+        : gt("{tokens} ({share}% of input)", {
+            tokens: exact(usage.cachedInputTokens),
+            share: cachedShare,
+          }),
     ]);
   }
-  if (usage.outputTokens !== undefined) rows.push(["Output", exact(usage.outputTokens)]);
+  if (usage.outputTokens !== undefined) {
+    rows.push([gt("Output", { $context: "output tokens" }), exact(usage.outputTokens)]);
+  }
   if (usage.reasoningOutputTokens !== undefined) {
-    rows.push(["Reasoning", exact(usage.reasoningOutputTokens)]);
+    rows.push([
+      gt("Reasoning", { $context: "reasoning tokens" }),
+      exact(usage.reasoningOutputTokens),
+    ]);
   }
   return (
     <Tooltip>
@@ -323,7 +343,11 @@ function ToolCallStepDivider(props: { step: number; usage?: OrchestrationV2Model
   const summary = stepTokenSummary(props.usage);
   return (
     <li className="flex items-center gap-2 py-1 font-mono text-2xs tabular-nums text-muted-foreground">
-      <span className="shrink-0">Step {props.step}</span>
+      <span className="shrink-0">
+        <T>
+          Step <Var>{props.step}</Var>
+        </T>
+      </span>
       <span aria-hidden className="h-px min-w-2 flex-1 bg-border/60" />
       {summary !== null && props.usage !== undefined ? (
         <StepUsageTooltip usage={props.usage} summary={summary} />
@@ -387,11 +411,8 @@ function UsageStat(props: { icon: LucideIcon; label: string; value: string }) {
 }
 
 /**
- * A subagent's usage as icon + number with each label in its tooltip, and
- * `Σ total` opening the full breakdown. `leading` sits at the start; `extra`
- * appends rows to the breakdown (runs, attempt). `active` is the subject's
- * work state (`isActiveSubagentStatus`), so missing usage stays provisional
- * until the agent settles.
+ * A subagent's usage, with `Σ total` opening the full breakdown. `active` is the subject's work
+ * state (`isActiveSubagentStatus`), so missing usage stays provisional until the agent settles.
  */
 export function AgentUsageFooter(props: {
   usage: OrchestrationV2SubagentUsage | null;
@@ -400,20 +421,40 @@ export function AgentUsageFooter(props: {
   extra?: ReadonlyArray<readonly [string, string]>;
 }) {
   const { usage } = props;
+  const gt = useGT();
+  const m = useMessages();
   const breakdown: Array<readonly [string, string]> = [];
   if (usage) {
-    breakdown.push(["Total", formatSubagentTokenCount(usage.totalTokens)]);
+    breakdown.push([
+      gt("Total", { $context: "total tokens" }),
+      formatSubagentTokenCount(usage.totalTokens),
+    ]);
     if (usage.inputTokens !== undefined)
-      breakdown.push(["Input", formatSubagentTokenCount(usage.inputTokens)]);
+      breakdown.push([
+        gt("Input", { $context: "input tokens" }),
+        formatSubagentTokenCount(usage.inputTokens),
+      ]);
     if (usage.cachedInputTokens !== undefined)
-      breakdown.push(["Cached", formatSubagentTokenCount(usage.cachedInputTokens)]);
+      breakdown.push([
+        gt("Cached", { $context: "cached input tokens" }),
+        formatSubagentTokenCount(usage.cachedInputTokens),
+      ]);
     if (usage.outputTokens !== undefined)
-      breakdown.push(["Output", formatSubagentTokenCount(usage.outputTokens)]);
+      breakdown.push([
+        gt("Output", { $context: "output tokens" }),
+        formatSubagentTokenCount(usage.outputTokens),
+      ]);
     if (usage.reasoningOutputTokens !== undefined)
-      breakdown.push(["Reasoning", formatSubagentTokenCount(usage.reasoningOutputTokens)]);
-    if (usage.toolUses !== undefined) breakdown.push(["Tool calls", String(usage.toolUses)]);
+      breakdown.push([
+        gt("Reasoning", { $context: "reasoning tokens" }),
+        formatSubagentTokenCount(usage.reasoningOutputTokens),
+      ]);
+    if (usage.toolUses !== undefined) breakdown.push([gt("Tool calls"), String(usage.toolUses)]);
     if (usage.durationMs !== undefined)
-      breakdown.push(["Duration", formatDuration(usage.durationMs)]);
+      breakdown.push([
+        gt("Duration", { $context: "how long the agent ran" }),
+        formatDuration(usage.durationMs),
+      ]);
   }
   breakdown.push(...(props.extra ?? []));
   const cachedShare =
@@ -428,35 +469,38 @@ export function AgentUsageFooter(props: {
         {usage?.inputTokens !== undefined ? (
           <UsageStat
             icon={ArrowDownIcon}
-            label={`Input tokens · ${exact(usage.inputTokens)}`}
+            label={gt("Input tokens · {count}", { count: exact(usage.inputTokens) })}
             value={formatSubagentTokenCount(usage.inputTokens)}
           />
         ) : null}
         {cachedShare !== null && usage?.cachedInputTokens !== undefined ? (
           <UsageStat
             icon={DatabaseIcon}
-            label={`Cached input · ${exact(usage.cachedInputTokens)} (${cachedShare}% of input)`}
+            label={gt("Cached input · {count} ({share}% of input)", {
+              count: exact(usage.cachedInputTokens),
+              share: cachedShare,
+            })}
             value={`${cachedShare}%`}
           />
         ) : null}
         {usage?.outputTokens !== undefined ? (
           <UsageStat
             icon={ArrowUpIcon}
-            label={`Output tokens · ${exact(usage.outputTokens)}`}
+            label={gt("Output tokens · {count}", { count: exact(usage.outputTokens) })}
             value={formatSubagentTokenCount(usage.outputTokens)}
           />
         ) : null}
         {usage?.reasoningOutputTokens !== undefined ? (
           <UsageStat
             icon={BrainIcon}
-            label={`Reasoning tokens · ${exact(usage.reasoningOutputTokens)}`}
+            label={gt("Reasoning tokens · {count}", { count: exact(usage.reasoningOutputTokens) })}
             value={formatSubagentTokenCount(usage.reasoningOutputTokens)}
           />
         ) : null}
         {usage?.toolUses !== undefined ? (
           <UsageStat
             icon={WrenchIcon}
-            label={`Tool calls · ${usage.toolUses}`}
+            label={gt("Tool calls · {count}", { count: usage.toolUses })}
             value={String(usage.toolUses)}
           />
         ) : null}
@@ -466,7 +510,7 @@ export function AgentUsageFooter(props: {
           <TooltipTrigger render={<span tabIndex={0} className="shrink-0 outline-none" />}>
             Σ{" "}
             <span className="text-foreground">
-              {usage ? formatSubagentTokenCount(usage.totalTokens) : "—"}
+              {usage ? formatSubagentTokenCount(usage.totalTokens) : "-"}
             </span>
           </TooltipTrigger>
           <TooltipPopup side="top" align="end">
@@ -474,7 +518,7 @@ export function AgentUsageFooter(props: {
           </TooltipPopup>
         </Tooltip>
       ) : (
-        <span className="shrink-0">{subagentUsageUnreportedLabel(props.active)}</span>
+        <span className="shrink-0">{subagentUsageUnreportedLabel(props.active, m)}</span>
       )}
     </footer>
   );

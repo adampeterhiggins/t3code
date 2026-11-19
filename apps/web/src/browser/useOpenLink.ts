@@ -18,6 +18,8 @@ import {
   resolveLinkTarget,
 } from "./browserLinkTarget";
 import { isBrowserSettingsReadError, openUrlInPreview } from "./openFileInPreview";
+import { msg } from "gt-react";
+import { m } from "~/i18n/messages";
 
 const NO_MODIFIER = { metaKey: false, ctrlKey: false } as const;
 
@@ -54,7 +56,7 @@ export function useOpenLink(threadRef: ScopedThreadRef | null | undefined): (
       console.error(result.cause);
     }
     const api = readLocalApi();
-    if (!api) throw new Error("Link opening is unavailable.");
+    if (!api) throw new Error(m(msg("Link opening is unavailable.")));
     await api.shell.openExternal(url);
   };
 }
@@ -85,7 +87,7 @@ export function useLinkClickHandler(
     event.stopPropagation();
     void openLink(url, { event }).catch((error: unknown) => {
       console.error(error);
-      toastManager.add({ type: "error", title: "Unable to open link" });
+      toastManager.add({ type: "error", title: m(msg("Unable to open link")) });
     });
   };
 }

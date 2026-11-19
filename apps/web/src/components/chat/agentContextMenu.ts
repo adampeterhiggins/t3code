@@ -18,9 +18,11 @@ import type {
 } from "@t3tools/contracts";
 import type { AgentFleetEntry } from "@t3tools/client-runtime/state/agent-fleet";
 import { useNavigate } from "@tanstack/react-router";
+import { msg } from "gt-react";
 import type { MouseEvent } from "react";
 
 import { useAgentDrillStore } from "~/agentDrillStore";
+import { m } from "~/i18n/messages";
 import { readLocalApi } from "~/localApi";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { loadThreadProjection, readProject, readThreadProjection } from "~/state/entities";
@@ -109,16 +111,21 @@ export function useAgentContextMenu(
       };
       const record = await resolveAgentContextRecord(referenceTarget);
       const items: ContextMenuItem<AgentMenuAction>[] = [
-        { id: "attach", label: "Attach to chat" },
+        { id: "attach", label: m(msg("Attach to chat")) },
         ...(record === null
           ? []
-          : [{ id: "copy-handle" as const, label: `Copy @${record.handle}` }]),
+          : [
+              {
+                id: "copy-handle" as const,
+                label: m(msg("Copy @{handle}"), { handle: record.handle }),
+              },
+            ]),
         ...(childThreadId === null
           ? []
-          : [{ id: "open-in-tab" as const, label: "Open in new tab" }]),
-        { id: "continue-in-chat", label: "Continue in chat" },
+          : [{ id: "open-in-tab" as const, label: m(msg("Open in new tab")) }]),
+        { id: "continue-in-chat", label: m(msg("Continue in chat")) },
         ...(showInAgentsPanel
-          ? [{ id: "show-in-agents" as const, label: "Show in Agents panel" }]
+          ? [{ id: "show-in-agents" as const, label: m(msg("Show in Agents panel")) }]
           : []),
       ];
       const action = await api.contextMenu.show(items, position);

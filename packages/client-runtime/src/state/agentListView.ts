@@ -9,6 +9,8 @@ import type {
   TurnItemId,
 } from "@t3tools/contracts";
 import { isWindowsAbsolutePath } from "@t3tools/shared/path";
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
 import * as DateTime from "effect/DateTime";
 import { copySorted } from "@t3tools/shared/Array";
 import {
@@ -279,12 +281,15 @@ type RawToolCall = Omit<
 >;
 
 /** A tool item's call as recorded, with paths and commands still absolute. */
-function rawToolCallFromItem(item: OrchestrationV2TurnItem): RawToolCall | null {
+function rawToolCallFromItem(
+  item: OrchestrationV2TurnItem,
+  resolve: MFunctionType,
+): RawToolCall | null {
   const title = item.title?.trim() || null;
   switch (item.type) {
     case "command_execution":
       return {
-        title: title ?? "Command",
+        title: title ?? resolve(msg("Command", { $context: "noun, a shell command tool call" })),
         detail: commandDisplayText(item.input).trim() || null,
         kind: "command",
         exitCode: item.exitCode ?? null,
@@ -293,20 +298,29 @@ function rawToolCallFromItem(item: OrchestrationV2TurnItem): RawToolCall | null 
     case "file_change": {
       const many = item.changes !== undefined && item.changes.length > 1;
       return {
-        title: title ?? (many ? `Changed ${item.changes!.length} files` : "Edit"),
+        title:
+          title ??
+          (many
+            ? resolve(msg("Changed {count} files", { count: item.changes!.length }))
+            : resolve(msg("Edit", { $context: "noun, a file edit tool call" }))),
         detail: item.fileName,
         kind: "edit",
         exitCode: null,
         preview:
           fileChangePreviewText(item) ??
           (item.additions !== undefined || item.deletions !== undefined
-            ? `+${item.additions ?? 0}, −${item.deletions ?? 0} lines`
+            ? resolve(
+                msg("+{additions}, −{deletions} lines", {
+                  additions: item.additions ?? 0,
+                  deletions: item.deletions ?? 0,
+                }),
+              )
             : null),
       };
     }
     case "file_search":
       return {
-        title: title ?? "Search",
+        title: title ?? resolve(msg("Search", { $context: "noun, a file search tool call" })),
         detail: textOrNull(item.pattern),
         kind: "search",
         exitCode: null,
@@ -321,7 +335,7 @@ function rawToolCallFromItem(item: OrchestrationV2TurnItem): RawToolCall | null 
     case "web_search": {
       const view = webToolView(item);
       return {
-        title: webToolLabel(view) ?? title ?? "Web search",
+        title: webToolLabel(view, resolve) ?? title ?? resolve(msg("Web search")),
         detail: view.prompt ?? null,
         kind: "web",
         exitCode: null,
@@ -341,7 +355,7 @@ function rawToolCallFromItem(item: OrchestrationV2TurnItem): RawToolCall | null 
               ? (textOrNull(input?.url) ?? textOrNull(input?.query))
               : (path ?? null);
       return {
-        title: title ?? item.toolName ?? "Tool",
+        title: title ?? item.toolName ?? resolve(msg("Tool", { $context: "a tool call" })),
         detail: kind === "command" && detail ? commandDisplayText(detail) : detail,
         kind,
         exitCode: null,
@@ -361,7 +375,7 @@ function rawToolCallFromItem(item: OrchestrationV2TurnItem): RawToolCall | null 
 
 /** The tool family of a turn item, as agent rows mark it; null for non-tool items. */
 export function subagentToolKindOfItem(item: OrchestrationV2TurnItem): SubagentToolKind | null {
-  return rawToolCallFromItem(item)?.kind ?? null;
+  return rawToolCallFromItem(item, mFallback)?.kind ?? null;
 }
 
 function rawToolCallText(call: RawToolCall): string {
@@ -515,10 +529,10 @@ function toolCallFromItem(
   };
 }
 
-function rawToolCalls(items: ReadonlyArray<OrchestrationV2TurnItem>) {
+function rawToolCalls(items: ReadonlyArray<OrchestrationV2TurnItem>, resolve: MFunctionType) {
   const calls: Array<{ readonly item: OrchestrationV2TurnItem; readonly raw: RawToolCall }> = [];
   for (const item of items) {
-    const raw = rawToolCallFromItem(item);
+    const raw = rawToolCallFromItem(item, resolve);
     if (raw !== null) calls.push({ item, raw });
   }
   return copySorted(calls, (left, right) => left.item.ordinal - right.item.ordinal);
@@ -532,8 +546,9 @@ function rawToolCalls(items: ReadonlyArray<OrchestrationV2TurnItem>) {
 export function deriveSubagentToolCalls(
   items: ReadonlyArray<OrchestrationV2TurnItem>,
   workspaceRoot?: string | null,
+  resolve: MFunctionType = mFallback,
 ): ReadonlyArray<SubagentToolCall> {
-  const calls = rawToolCalls(items);
+  const calls = rawToolCalls(items, resolve);
   const sibling = subagentSiblingCheckout(
     calls.map(({ raw }) => rawToolCallText(raw)),
     workspaceRoot,
@@ -550,7 +565,7 @@ export function subagentWorkspaceRoot(
   items: ReadonlyArray<OrchestrationV2TurnItem>,
   workspaceRoot?: string | null,
 ): string | null {
-  const texts = rawToolCalls(items).map(({ raw }) => rawToolCallText(raw));
+  const texts = rawToolCalls(items, mFallback).map(({ raw }) => rawToolCallText(raw));
   const worktrees = new Map<string, number>();
   for (const text of texts) {
     const worktree = CLAUDE_AGENT_WORKTREE.exec(text)?.[0];
@@ -568,27 +583,33 @@ export function subagentWorkspaceRoot(
  * calls made none; one whose provider recorded nothing at all, or counted tool uses it never
  * reported, falls back to its progress while it works.
  */
-export function subagentEmptyToolCallsText(input: {
-  readonly live: boolean;
-  /** Turn items the agent's own thread recorded, of any kind. */
-  readonly recordedItems: number;
-  readonly reportedToolUses: number | undefined;
-  readonly progress: string | null;
-}): string {
+export function subagentEmptyToolCallsText(
+  input: {
+    readonly live: boolean;
+    /** Turn items the agent's own thread recorded, of any kind. */
+    readonly recordedItems: number;
+    readonly reportedToolUses: number | undefined;
+    readonly progress: string | null;
+  },
+  resolve: MFunctionType = mFallback,
+): string {
   const unreported = input.recordedItems === 0 || (input.reportedToolUses ?? 0) > 0;
-  if (!unreported) return input.live ? "No tool calls yet." : "No tool calls.";
+  if (!unreported) {
+    return input.live ? resolve(msg("No tool calls yet.")) : resolve(msg("No tool calls."));
+  }
   if (input.live && input.progress?.trim()) return input.progress.trim();
   return input.live && input.recordedItems === 0 && input.reportedToolUses === undefined
-    ? "Starting…"
-    : "This provider did not report the agent's tool calls.";
+    ? resolve(msg("Starting…"))
+    : resolve(msg("This provider did not report the agent's tool calls."));
 }
 
 /** The call a working agent's row shows: the newest one. Only it is formatted. */
 export function latestSubagentToolCall(
   items: ReadonlyArray<OrchestrationV2TurnItem>,
   workspaceRoot?: string | null,
+  resolve: MFunctionType = mFallback,
 ): SubagentToolCall | null {
-  const calls = rawToolCalls(items);
+  const calls = rawToolCalls(items, resolve);
   const latest = calls.at(-1);
   if (latest === undefined) return null;
   const sibling = subagentSiblingCheckout(
@@ -791,15 +812,20 @@ const CONTINUATION_TOOL_LINE_CHAR_LIMIT = 200;
 function continuationStatusLine(name: string, status: RuntimeSubagentStatus): string {
   switch (status) {
     case "completed":
+      // oxlint-disable-next-line t3code/no-untranslated-copy -- sent to an agent as context
       return `The "${name}" subagent finished.`;
     case "failed":
+      // oxlint-disable-next-line t3code/no-untranslated-copy -- sent to an agent as context
       return `The "${name}" subagent failed.`;
     case "cancelled":
     case "interrupted":
+      // oxlint-disable-next-line t3code/no-untranslated-copy -- sent to an agent as context
       return `The "${name}" subagent was stopped before it finished.`;
     case "idle":
+      // oxlint-disable-next-line t3code/no-untranslated-copy -- sent to an agent as context
       return `The "${name}" subagent is idle.`;
     default:
+      // oxlint-disable-next-line t3code/no-untranslated-copy -- sent to an agent as context
       return `The "${name}" subagent was still working when this was captured.`;
   }
 }

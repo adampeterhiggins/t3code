@@ -1,5 +1,6 @@
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
+import { useMessages } from "gt-react";
 import { MessagesSquareIcon } from "lucide-react";
 
 import { deriveProviderInstanceEntries, shouldShowInstanceBadge } from "~/providerInstances";
@@ -24,6 +25,7 @@ export function ComposerChatRow(props: {
   /** Set for this chat's own tabs, which get a chip beside the title. */
   isTab: boolean;
 }) {
+  const messages = useMessages();
   const thread = useThreadShell(props.threadRef);
   const project = useProject(
     thread ? { environmentId: thread.environmentId, projectId: thread.projectId } : null,
@@ -46,6 +48,7 @@ export function ComposerChatRow(props: {
         resolveSidebarThreadStatus(thread),
         false,
         hasUnseenCompletion({ ...thread, lastVisitedAt }),
+        messages,
       )
     : null;
   const location = [project?.title, thread?.branch].filter(Boolean).join(" · ");

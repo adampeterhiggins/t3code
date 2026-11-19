@@ -5,6 +5,7 @@ import { readEnvironmentScope, readPreparedConnection } from "../../state/sessio
 import { runtime } from "../../lib/runtime";
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import * as Schema from "effect/Schema";
+import { msg } from "gt-react";
 
 import { type EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 
@@ -39,6 +40,7 @@ import {
 } from "../Sidebar.logic";
 
 import { stackedThreadToast, toastManager } from "../ui/toast";
+import { m } from "../../i18n/messages";
 
 import { SIDEBAR_TAB_SORT_ORDER_LABELS, sidebarTabSortDirectionLabel } from "./SidebarTabsMenu";
 
@@ -98,6 +100,7 @@ export function useSidebarTabs(
   // a toggle back would otherwise revive them. Only once settings load, so a page load that
   // briefly reads the default never wipes them.
   const clientSettingsHydrated = useClientSettingsHydrated();
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- writes the reset to localStorage once settings hydrate, so a later toggle back cannot revive old overrides
   useEffect(() => {
     if (!clientSettingsHydrated || storedTabGroupOverrides.showTabs === showTabs) return;
     setStoredTabGroupOverrides({ showTabs, groups: NO_TAB_GROUP_OVERRIDES });
@@ -178,10 +181,15 @@ export function useSidebarTabs(
     const toastId = toastManager.add(
       stackedThreadToast({
         type: "info",
-        title: "Tab order set to Manual",
-        description: `Was ${SIDEBAR_TAB_SORT_ORDER_LABELS[tabSortOrder]}, ${sidebarTabSortDirectionLabel(tabSortOrder, tabSortDirection).toLowerCase()}.`,
+        title: m(msg("Tab order set to Manual")),
+        description: m(
+          msg("Was {order}, {direction}.", {
+            order: m(SIDEBAR_TAB_SORT_ORDER_LABELS[tabSortOrder]),
+            direction: sidebarTabSortDirectionLabel(tabSortOrder, tabSortDirection).toLowerCase(),
+          }),
+        ),
         actionProps: {
-          children: "Undo",
+          children: m(msg("Undo")),
           onClick: () => {
             toastManager.close(toastId);
             void updateClientSettings(previous);
@@ -215,7 +223,7 @@ export function useSidebarTabs(
       } catch {
         toastManager.add({
           type: "error",
-          title: "Could not name thread group",
+          title: m(msg("Could not name thread group")),
         });
       }
     })();

@@ -1,3 +1,4 @@
+import { LegendList } from "@legendapp/list/react-native";
 import type {
   EnvironmentId,
   GitHubIssueStateFilter,
@@ -18,10 +19,12 @@ import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
 import { StackActions, useNavigation } from "@react-navigation/native";
+import { msg, useGT, useMessages } from "gt-react-native";
 import { useState, type ReactNode } from "react";
-import { ActivityIndicator, Alert, FlatList, Pressable, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { m, type MessageResolver } from "../i18n/messages";
 import { useThreadShells } from "../state/entities";
 import { gitHubIssueEnvironment } from "../state/githubIssues";
 import { useDebouncedValue } from "../state/queries";
@@ -41,20 +44,33 @@ import { SegmentedControl } from "./ui/SegmentedControl";
 const SEARCH_DEBOUNCE_MS = 300;
 
 const STATE_OPTIONS = [
-  { value: "open", label: "Open" },
-  { value: "closed", label: "Closed" },
-  { value: "all", label: "All" },
+  { value: "open", label: msg("Open", { $context: "issue state filter" }) },
+  { value: "closed", label: msg("Closed", { $context: "issue state filter" }) },
+  { value: "all", label: msg("All", { $context: "issue state filter" }) },
 ] as const satisfies ReadonlyArray<{ value: GitHubIssueStateFilter; label: string }>;
 
 /** GitHub's failures carry a reason; the host's `gh` setup deserves a clearer hint than its detail. */
-function gitHubIssueErrorMessage(error: unknown, fallback: string): string {
+function gitHubIssueErrorMessage(
+  error: unknown,
+  fallback: string,
+  resolve: MessageResolver = m,
+): string {
   if (typeof error === "object" && error !== null && "reason" in error) {
-    if (error.reason === "rate-limited") return "GitHub is busy. Try again shortly.";
+    if (error.reason === "rate-limited") return resolve(msg("GitHub is busy. Try again shortly."));
     if (error.reason === "unavailable") {
-      return "The GitHub CLI (gh) is not installed on the computer running T3 Code.";
+      return resolve(
+        msg("The GitHub CLI (gh) is not installed on the computer running {product}.", {
+          product: "T3 Code",
+        }),
+      );
     }
     if (error.reason === "not-authenticated") {
-      return "The GitHub CLI is not signed in. Run `gh auth login` on the computer running T3 Code.";
+      return resolve(
+        msg("The GitHub CLI is not signed in. Run {command} on the computer running {product}.", {
+          command: "`gh auth login`",
+          product: "T3 Code",
+        }),
+      );
     }
   }
   return error instanceof Error && error.message.trim() ? error.message : fallback;
@@ -148,6 +164,8 @@ export function useGitHubIssuePicker(target: GitHubIssuePickerTarget | null): {
  * the thread's tab group.
  */
 function GitHubIssuePickerSheet(props: OpenedGitHubIssuePicker & { readonly onClose: () => void }) {
+  const gt = useGT();
+  const resolve = useMessages();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const startFrom = props.mode === "attach" ? props.startFrom : undefined;
@@ -183,7 +201,11 @@ function GitHubIssuePickerSheet(props: OpenedGitHubIssuePicker & { readonly onCl
   const pending = settled !== trimmed || result.waiting;
   const error =
     result._tag === "Failure"
-      ? gitHubIssueErrorMessage(Cause.squash(result.cause), "Could not load GitHub issues.")
+      ? gitHubIssueErrorMessage(
+          Cause.squash(result.cause),
+          resolve(msg("Could not load GitHub issues.")),
+          resolve,
+        )
       : null;
 
   const pick = async (issue: GitHubIssueSummary) => {
@@ -216,8 +238,8 @@ function GitHubIssuePickerSheet(props: OpenedGitHubIssuePicker & { readonly onCl
       });
       if (linked._tag === "Failure") {
         Alert.alert(
-          "Could not link issue",
-          gitHubIssueErrorMessage(squashAtomCommandFailure(linked), "Try again."),
+          m(msg("Could not link issue")),
+          gitHubIssueErrorMessage(squashAtomCommandFailure(linked), m(msg("Try again."))),
         );
         return;
       }
@@ -230,8 +252,8 @@ function GitHubIssuePickerSheet(props: OpenedGitHubIssuePicker & { readonly onCl
     });
     if (fetched._tag === "Failure") {
       Alert.alert(
-        "Could not attach issue",
-        gitHubIssueErrorMessage(squashAtomCommandFailure(fetched), "Try again."),
+        m(msg("Could not attach issue")),
+        gitHubIssueErrorMessage(squashAtomCommandFailure(fetched), m(msg("Try again."))),
       );
       return;
     }
@@ -246,7 +268,10 @@ function GitHubIssuePickerSheet(props: OpenedGitHubIssuePicker & { readonly onCl
         props.insertion,
       )
     ) {
-      Alert.alert("Too many context items", "Remove some context from the draft and try again.");
+      Alert.alert(
+        m(msg("Too many context items")),
+        m(msg("Remove some context from the draft and try again.")),
+      );
       return;
     }
     if (startFrom) startFromIssueUrls.set(props.draftKey, issue.url);
@@ -262,35 +287,40 @@ function GitHubIssuePickerSheet(props: OpenedGitHubIssuePicker & { readonly onCl
     <PickerSheet
       title={
         props.mode === "link"
-          ? "Link GitHub issue"
+          ? gt("Link GitHub issue")
           : startFrom
-            ? "Start from issue"
-            : "GitHub issue"
+            ? gt("Start from issue")
+            : gt("GitHub issue")
       }
       onClose={props.onClose}
     >
       <View className="gap-3 px-4 pb-3">
         <AppTextInput
-          accessibilityLabel="Search GitHub issues"
+          accessibilityLabel={gt("Search GitHub issues")}
           autoFocus
           autoCapitalize="none"
           autoCorrect={false}
           clearButtonMode="while-editing"
-          placeholder="Search, or paste #123 or an issue link"
+          placeholder={gt("Search, or paste #123 or an issue link")}
           returnKeyType="search"
           value={query}
           onChangeText={setQuery}
         />
         <SegmentedControl
-          options={STATE_OPTIONS}
+          options={STATE_OPTIONS.map((option) => ({ ...option, label: resolve(option.label) }))}
           selected={state}
           onSelect={setState}
           size="compact"
         />
       </View>
-      <FlatList
+      {/* oxlint-disable-next-line t3code/require-registered-list-scroll -- PickerSheet is a Modal with an inline header; there is no navigation header to register with. */}
+      <LegendList
         data={issues}
         keyExtractor={(issue) => issue.url}
+        extraData={{ attaching, pick }}
+        estimatedItemSize={64}
+        recycleItems
+        className="flex-1"
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) }}
         ListEmptyComponent={
@@ -304,17 +334,33 @@ function GitHubIssuePickerSheet(props: OpenedGitHubIssuePicker & { readonly onCl
                   error ? "text-center text-danger-foreground" : "text-center text-foreground-muted"
                 }
               >
-                {error ?? (trimmed ? "No matching issues." : "No issues.")}
+                {error ?? (trimmed ? gt("No matching issues.") : gt("No issues."))}
               </Text>
             )}
           </View>
         }
         renderItem={({ item }) => {
           const inUse = threadsForGitHubIssue(candidateThreads, threadLinks, item.url).length > 0;
+          const issueState =
+            item.state === "open"
+              ? gt("Open", { $context: "issue state" })
+              : gt("Closed", { $context: "issue state" });
           return (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`${gitHubIssueLabel(item)} ${item.title}, ${item.state}${inUse ? ", in use" : ""}`}
+              accessibilityLabel={
+                inUse
+                  ? gt("{issue} {title}, {state}, in use", {
+                      issue: gitHubIssueLabel(item),
+                      title: item.title,
+                      state: item.state,
+                    })
+                  : gt("{issue} {title}, {state}", {
+                      issue: gitHubIssueLabel(item),
+                      title: item.title,
+                      state: item.state,
+                    })
+              }
               disabled={attaching !== null}
               onPress={() => void pick(item)}
               className="flex-row items-center gap-3 px-4 py-3 active:bg-subtle disabled:opacity-60"
@@ -324,8 +370,8 @@ function GitHubIssuePickerSheet(props: OpenedGitHubIssuePicker & { readonly onCl
                   {item.title}
                 </Text>
                 <Text className="text-sm text-foreground-muted" numberOfLines={1}>
-                  {gitHubIssueLabel(item)} · {item.state === "open" ? "Open" : "Closed"}
-                  {inUse ? " · In use" : ""}
+                  {gitHubIssueLabel(item)} · {issueState}
+                  {inUse ? ` · ${gt("In use")}` : ""}
                 </Text>
               </View>
               {attaching === item.url ? <ActivityIndicator /> : null}

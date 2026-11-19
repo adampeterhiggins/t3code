@@ -1,5 +1,6 @@
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import { CheckIcon, ChevronRightIcon, SearchIcon } from "lucide-react";
+import { useGT } from "gt-react";
 import { useState } from "react";
 import type * as React from "react";
 
@@ -151,11 +152,12 @@ function MenuItem({
 
 /** An asynchronous menu keeps its known choices while more options arrive. */
 /** A menu's options are still loading: a spinner and what is loading, in place of the list. */
-function MenuLoadingItem({ children = "Loading…" }: { children?: React.ReactNode }) {
+function MenuLoadingItem({ children }: { children?: React.ReactNode }) {
+  const gt = useGT();
   return (
     <MenuItem disabled>
       <Spinner size="sm" tone="muted" aria-hidden role={undefined} aria-label={undefined} />
-      <span role="status">{children}</span>
+      <span role="status">{children === undefined ? gt("Loading…") : children}</span>
     </MenuItem>
   );
 }
@@ -407,7 +409,7 @@ function normalizeMenuSearch(query: string): string {
 function MenuSearch<T>({
   items,
   getText,
-  placeholder = "Search…",
+  placeholder: placeholderProp,
   children,
 }: {
   items: ReadonlyArray<T>;
@@ -415,8 +417,10 @@ function MenuSearch<T>({
   placeholder?: string;
   children: (matches: ReadonlyArray<T>, query: string) => React.ReactNode;
 }) {
+  const gt = useGT();
   const [value, setValue] = useState("");
   if (items.length <= MENU_SEARCH_THRESHOLD) return children(items, "");
+  const placeholder = placeholderProp ?? gt("Search…");
   const query = normalizeMenuSearch(value);
   const matches =
     query.length === 0
@@ -431,7 +435,11 @@ function MenuSearch<T>({
         aria-label={placeholder}
         onChange={(event) => setValue(event.currentTarget.value)}
       />
-      {matches.length === 0 ? <MenuItem disabled>No matches</MenuItem> : children(matches, query)}
+      {matches.length === 0 ? (
+        <MenuItem disabled>{gt("No matches")}</MenuItem>
+      ) : (
+        children(matches, query)
+      )}
     </>
   );
 }

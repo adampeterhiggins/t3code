@@ -1,3 +1,6 @@
+import { T, msg, useGT } from "gt-react";
+import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
+import { m, type MessageResolver } from "~/i18n/messages";
 import {
   type OrchestrationV2LimitRecovery,
   type OrchestrationV2LimitRecoveryUpdate,
@@ -53,7 +56,10 @@ type RecoveryProps = {
   continueElsewhere: UsageLimitContinueElsewhere | null;
 };
 
-export function usageLimitRecoveryBannerItem(props: RecoveryProps): ComposerBannerStackItem {
+export function usageLimitRecoveryBannerItem(
+  props: RecoveryProps,
+  resolve: MessageResolver = m,
+): ComposerBannerStackItem {
   const { runId, resetAt, stoppedAt, recovery, timestampFormat } = props;
   const canSchedule =
     !props.settled &&
@@ -68,17 +74,41 @@ export function usageLimitRecoveryBannerItem(props: RecoveryProps): ComposerBann
     id: `usage-limit-recovery:${runId}`,
     variant: "warning",
     icon: chatGptLimit ? <OpenAI aria-hidden="true" /> : <GaugeIcon />,
-    title: chatGptLimit ? "ChatGPT usage limit reached" : "Usage limit reached",
+    title: chatGptLimit
+      ? resolve(msg("ChatGPT usage limit reached"))
+      : resolve(msg("Usage limit reached")),
     // The action buttons take the rest of the row. Stacking the reset time
     // under the title wraps it inside that leftover column.
     descriptionPlacement: "details",
     description: workspaceLimit
-      ? "You've reached your workspace's limit for using your ChatGPT plan in other apps."
+      ? resolve(
+          msg("You've reached your workspace's limit for using your ChatGPT plan in other apps."),
+        )
       : resetAt
         ? scheduled
-          ? `Resumes automatically about a minute after ${formatUpcomingTimestamp(resetAt, timestampFormat)}`
-          : `Resets ${formatUpcomingTimestamp(resetAt, timestampFormat)}`
-        : "Reset time unavailable; retry manually",
+          ? resolve(
+              msg("Resumes automatically about a minute after {time}", {
+                time: formatUpcomingTimestamp(
+                  resetAt,
+                  timestampFormat,
+                  undefined,
+                  undefined,
+                  resolve,
+                ),
+              }),
+            )
+          : resolve(
+              msg("Resets {time}", {
+                time: formatUpcomingTimestamp(
+                  resetAt,
+                  timestampFormat,
+                  undefined,
+                  undefined,
+                  resolve,
+                ),
+              }),
+            )
+        : resolve(msg("Reset time unavailable; retry manually")),
     actions: (
       <>
         {canSchedule || props.onResumeNow || props.continueElsewhere ? (
@@ -87,7 +117,7 @@ export function usageLimitRecoveryBannerItem(props: RecoveryProps): ComposerBann
         {chatGptLimit ? (
           workspaceLimit ? (
             <Button size="xs" variant="ghost" onClick={copyAdminRequest}>
-              Copy request for admin
+              <T>Copy request for admin</T>
             </Button>
           ) : (
             <ChatGptUsageButton size="xs" variant="ghost" />
@@ -110,6 +140,7 @@ function RecoveryActions({
   settled,
   requestPending,
 }: RecoveryProps) {
+  const gt = useGT();
   const [pendingAction, setPendingAction] = useState<"resume-now" | "resume" | "snooze" | null>(
     null,
   );
@@ -136,7 +167,7 @@ function RecoveryActions({
       toastManager.add({
         type: "error",
         title: failureTitle,
-        description: cause instanceof Error ? cause.message : "An error occurred.",
+        description: thrownErrorMessage(cause, m) ?? m(msg("An error occurred.")),
       });
     }
     setPendingAction(null);
@@ -146,8 +177,8 @@ function RecoveryActions({
     if (action === "snooze" && !snoozed && Date.parse(resetAt) <= Date.now()) {
       toastManager.add({
         type: "error",
-        title: "Could not snooze thread",
-        description: "The reset time has passed. Retry the thread manually.",
+        title: m(msg("Could not snooze thread")),
+        description: m(msg("The reset time has passed. Retry the thread manually.")),
       });
       // The deadline timer can lag after a throttled tab or sleep; disable now.
       deadlineStore(Date.parse(resetAt)).refresh();
@@ -161,7 +192,9 @@ function RecoveryActions({
           resetAt,
           ...(action === "resume" ? { autoResume: !scheduled } : { snooze: !snoozed }),
         }),
-      action === "resume" ? "Could not change auto-resume" : "Could not snooze thread",
+      action === "resume"
+        ? m(msg("Could not change auto-resume"))
+        : m(msg("Could not snooze thread")),
     );
   }
   // Inline errors would widen the actions column and crush the title.
@@ -172,18 +205,18 @@ function RecoveryActions({
           size="xs"
           variant="ghost"
           disabled={pending}
-          onClick={() => void run("resume-now", onResumeNow, "Could not resume thread")}
+          onClick={() => void run("resume-now", onResumeNow, m(msg("Could not resume thread")))}
         >
-          Resume now
+          <T>Resume now</T>
         </Button>
       ) : null}
       {canSchedule ? (
         <Button size="xs" variant="ghost" disabled={pending} onClick={() => toggle("resume")}>
           {pendingAction === "resume"
-            ? "Saving..."
+            ? gt("Saving...")
             : scheduled
-              ? "Cancel auto-resume"
-              : "Resume at reset"}
+              ? gt("Cancel auto-resume")
+              : gt("Resume at reset")}
         </Button>
       ) : null}
       {canSchedule ? (
@@ -193,14 +226,18 @@ function RecoveryActions({
           disabled={pending || (!snoozed && resetPassed)}
           onClick={() => toggle("snooze")}
         >
-          {pendingAction === "snooze" ? "Saving..." : snoozed ? "Wake now" : "Snooze until reset"}
+          {pendingAction === "snooze"
+            ? gt("Saving...")
+            : snoozed
+              ? gt("Wake now")
+              : gt("Snooze until reset")}
         </Button>
       ) : null}
       {continueElsewhere ? (
         <Menu>
           <MenuTrigger render={<Button size="xs" variant="ghost" disabled={pending} />}>
             <GitForkIcon aria-hidden="true" />
-            Continue in new tab
+            <T>Continue in new tab</T>
             <ChevronDownIcon aria-hidden="true" />
           </MenuTrigger>
           <MenuPopup align="end">
@@ -222,7 +259,9 @@ function RecoveryActions({
               </MenuItem>
             ))}
             {continueElsewhere.alternatives.length > 0 ? <MenuSeparator /> : null}
-            <MenuItem onClick={continueElsewhere.onChooseModel}>Choose another model…</MenuItem>
+            <MenuItem onClick={continueElsewhere.onChooseModel}>
+              <T>Choose another model…</T>
+            </MenuItem>
           </MenuPopup>
         </Menu>
       ) : null}

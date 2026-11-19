@@ -7,6 +7,7 @@ import type {
   MessageDraftSendMode,
   ScopedThreadRef,
 } from "@t3tools/contracts";
+import { msg, T, useGT, useMessages } from "gt-react";
 import {
   ArrowUpIcon,
   BotIcon,
@@ -32,8 +33,8 @@ const EXPANDED_DRAFT_LIMIT = 3;
 type DraftRowAction = "open" | "send" | "queue" | "steer" | "delete";
 
 const ORIGIN_PRESENTATION = {
-  mobile: { Icon: SmartphoneIcon, label: "Saved on a phone" },
-  agent: { Icon: BotIcon, label: "Saved by an agent" },
+  mobile: { Icon: SmartphoneIcon, label: msg("Saved on a phone") },
+  agent: { Icon: BotIcon, label: msg("Saved by an agent") },
 } as const;
 
 /** Drafts saved in this thread, to open in the composer or send as they are. */
@@ -46,6 +47,8 @@ export function ThreadDraftsTray(props: {
   readonly onOpen: (draftId: MessageDraftId) => void;
 }) {
   const { threadRef, running, canSteer } = props;
+  const gt = useGT();
+  const m = useMessages();
   const drafts = useThreadMessageDrafts(threadRef);
   const canOpen = useAtomValue(
     messageDraftEnvironment.take.permissionAtom(threadRef.environmentId),
@@ -101,20 +104,20 @@ export function ThreadDraftsTray(props: {
     const api = readLocalApi();
     if (!api || busyDraftId !== null) return;
     const items: ContextMenuItem<DraftRowAction>[] = [
-      { id: "open", label: "Open in composer", icon: "pencil", disabled: !canOpen },
+      { id: "open", label: gt("Open in composer"), icon: "pencil", disabled: !canOpen },
       // While a turn takes steering, both follow-ups are offered, as on the send button.
       ...(canSteerNow
         ? [
             {
               id: "queue" as const,
-              label: "Queue",
+              label: gt("Queue", { $context: "verb, queue the draft as a follow-up" }),
               icon: "list-plus",
               checked: defaultSendMode === "queue",
               disabled: !canSend,
             },
             {
               id: "steer" as const,
-              label: "Steer now",
+              label: gt("Steer now"),
               icon: "corner-up-right",
               checked: defaultSendMode === "steer",
               disabled: !canSend,
@@ -123,14 +126,17 @@ export function ThreadDraftsTray(props: {
         : [
             {
               id: "send" as const,
-              label: defaultSendMode === "queue" ? "Queue" : "Send",
+              label:
+                defaultSendMode === "queue"
+                  ? gt("Queue", { $context: "verb, queue the draft as a follow-up" })
+                  : gt("Send", { $context: "verb, send the draft" }),
               icon: defaultSendMode === "queue" ? "list-plus" : "arrow-up",
               disabled: !canSend,
             },
           ]),
       {
         id: "delete",
-        label: "Delete draft",
+        label: gt("Delete draft"),
         icon: "trash",
         destructive: true,
         separatorBefore: true,
@@ -145,12 +151,14 @@ export function ThreadDraftsTray(props: {
     <ComposerBanner.Attachment>
       <ComposerBanner.Root
         role="region"
-        aria-label={`${drafts.length} draft${drafts.length === 1 ? "" : "s"}`}
+        aria-label={gt("{count, plural, one {{count} draft} other {{count} drafts}}", {
+          count: drafts.length,
+        })}
         className="relative z-0"
       >
         <ComposerBanner.Row
           render={<button type="button" />}
-          aria-label={expanded ? "Collapse drafts" : "Expand drafts"}
+          aria-label={expanded ? gt("Collapse drafts") : gt("Expand drafts")}
           aria-expanded={expanded}
           aria-controls={listId}
           onPointerDown={(event) => event.preventDefault()}
@@ -159,7 +167,9 @@ export function ThreadDraftsTray(props: {
           <ComposerBanner.Icon>
             <FileTextIcon />
           </ComposerBanner.Icon>
-          <ComposerBanner.Content className="text-muted-foreground">Drafts</ComposerBanner.Content>
+          <ComposerBanner.Content className="text-muted-foreground">
+            <T>Drafts</T>
+          </ComposerBanner.Content>
           <ComposerBanner.Actions>
             <ComposerBanner.Count>{drafts.length}</ComposerBanner.Count>
             <ComposerBanner.ToggleIcon expanded={expanded} />
@@ -190,13 +200,19 @@ export function ThreadDraftsTray(props: {
                     <ComposerBanner.Content className="text-foreground/80">
                       {imageCount > 0 ? (
                         <ImageIcon
-                          aria-label={`${imageCount} image${imageCount === 1 ? "" : "s"}`}
+                          aria-label={gt(
+                            "{count, plural, one {{count} image} other {{count} images}}",
+                            { count: imageCount },
+                          )}
                           className="size-3 shrink-0 text-muted-foreground"
                         />
                       ) : null}
                       {fileCount > 0 ? (
                         <PaperclipIcon
-                          aria-label={`${fileCount} file${fileCount === 1 ? "" : "s"}`}
+                          aria-label={gt(
+                            "{count, plural, one {{count} file} other {{count} files}}",
+                            { count: fileCount },
+                          )}
                           className="size-3 shrink-0 text-muted-foreground"
                         />
                       ) : null}
@@ -205,7 +221,9 @@ export function ThreadDraftsTray(props: {
                           {text.length > 0 ? (
                             <InlineChipText text={text} hideImages={imageCount > 0} />
                           ) : (
-                            <span className="text-muted-foreground">Attachments only</span>
+                            <span className="text-muted-foreground">
+                              <T>Attachments only</T>
+                            </span>
                           )}
                         </TooltipTrigger>
                         {text.length > 0 ? (
@@ -222,7 +240,7 @@ export function ThreadDraftsTray(props: {
                     <ComposerBanner.Actions>
                       <span className="flex shrink-0 items-center gap-1 text-muted-foreground tabular-nums max-sm:hidden">
                         {origin ? (
-                          <origin.Icon aria-label={origin.label} className="size-3" />
+                          <origin.Icon aria-label={m(origin.label)} className="size-3" />
                         ) : null}
                         <RelativeTime timestamp={draft.createdAt} />
                       </span>
@@ -232,7 +250,7 @@ export function ThreadDraftsTray(props: {
                         disabled={busy || !canOpen}
                         onClick={() => void run(draft, "open")}
                       >
-                        Open
+                        <T context="verb, open the draft in the composer">Open</T>
                       </Button>
                       <Button
                         size="xs"
@@ -241,10 +259,14 @@ export function ThreadDraftsTray(props: {
                         onClick={() => void run(draft, "send")}
                       >
                         <ArrowUpIcon />
-                        {defaultSendMode === "queue" ? "Queue" : "Send"}
+                        {defaultSendMode === "queue" ? (
+                          <T context="verb, queue the draft as a follow-up">Queue</T>
+                        ) : (
+                          <T context="verb, send the draft">Send</T>
+                        )}
                       </Button>
                       <ComposerBanner.Dismiss
-                        aria-label="Delete draft"
+                        aria-label={gt("Delete draft")}
                         disabled={busy || !canDelete}
                         onClick={() => void run(draft, "delete")}
                       />

@@ -2,6 +2,7 @@ import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/model
 import { resolveStartedBy, startedByThreadRef } from "@t3tools/client-runtime/state/startedBy";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
+import { useMessages } from "gt-react";
 import { BotIcon } from "lucide-react";
 
 import { useThreadShell } from "../../state/entities";
@@ -18,7 +19,8 @@ export function StartedByChip(props: { threadRef: ScopedThreadRef }) {
   const thread = useThreadShell(props.threadRef);
   const starter = useThreadShell(startedByThreadRef(thread));
   const navigate = useNavigate();
-  const attribution = resolveStartedBy(thread, starter);
+  const messages = useMessages();
+  const attribution = resolveStartedBy(thread, starter, messages);
   if (attribution === null) return null;
   const { label, description, openRef } = attribution;
 
@@ -56,7 +58,8 @@ export function StartedByHoverLine(props: {
   thread: Pick<EnvironmentThreadShell, "environmentId" | "startedBy">;
 }) {
   const starter = useThreadShell(startedByThreadRef(props.thread));
-  const attribution = resolveStartedBy(props.thread, starter);
+  const messages = useMessages();
+  const attribution = resolveStartedBy(props.thread, starter, messages);
   if (attribution === null) return null;
   return (
     <div className="flex min-w-0 items-center gap-2">

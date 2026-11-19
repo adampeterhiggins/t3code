@@ -25,6 +25,7 @@ import {
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import { useEffect, useMemo, useState } from "react";
+import { T, useGT } from "gt-react-native";
 import { Pressable, ScrollView, Text, View } from "react-native";
 
 import * as Dialog from "../../components/ui/Dialog";
@@ -120,6 +121,7 @@ export function ThreadTabs({
   empty: boolean;
   working: boolean;
 }) {
+  const gt = useGT();
   const prepared = usePreparedConnection(environmentId);
   const selectDetail = useSelectWorkspaceDetail();
   const canNameGroup = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
@@ -144,10 +146,10 @@ export function ThreadTabs({
   const canLinkGitHubIssue = gitHubIssueCwd !== null && gitHub.canLink;
   const linkActions = [
     ...(linear.canLink
-      ? [{ id: LINK_LINEAR_ACTION, title: "Link Linear issue", image: "link" }]
+      ? [{ id: LINK_LINEAR_ACTION, title: gt("Link Linear issue"), image: "link" }]
       : []),
     ...(canLinkGitHubIssue
-      ? [{ id: LINK_GITHUB_ACTION, title: "Link GitHub issue", image: "link" }]
+      ? [{ id: LINK_GITHUB_ACTION, title: gt("Link GitHub issue"), image: "link" }]
       : []),
     ...slackNotion.menuActions,
   ];
@@ -189,7 +191,7 @@ export function ThreadTabs({
     });
   };
   const create = async () => {
-    await runBusyTabAction(setBusy, "Could not create tab", async () => {
+    await runBusyTabAction(setBusy, gt("Could not create tab"), async () => {
       const next = ThreadId.make(uuidv4());
       await runtime.runPromise(
         createThreadTab(prepared.value, threadId, {
@@ -202,7 +204,7 @@ export function ThreadTabs({
     });
   };
   const handOff = async (option: ModelOption) => {
-    await runBusyTabAction(setBusy, "Could not hand off", async () => {
+    await runBusyTabAction(setBusy, gt("Could not hand off"), async () => {
       const next = ThreadId.make(uuidv4());
       // A native fork carries the conversation itself; with no finished response to fork
       // from, the new tab starts with a summary of this one.
@@ -259,7 +261,7 @@ export function ThreadTabs({
   // place, on the sibling's own model and with this tab's draft. This tab is archived, so it can
   // be reopened.
   const continueFrom = async (sourceThreadId: ThreadId, sourceTitle: string) => {
-    await runBusyTabAction(setBusy, "Could not continue that chat", async () => {
+    await runBusyTabAction(setBusy, gt("Could not continue that chat"), async () => {
       const next = ThreadId.make(uuidv4());
       await runtime.runPromise(
         forkThreadTabFromRun(prepared.value, threadId, {
@@ -289,8 +291,8 @@ export function ThreadTabs({
     if (!next) return;
     if (working) {
       Dialog.alert(
-        "Could not close tab",
-        "This tab is working. Interrupt it first, then try again.",
+        gt("Could not close tab"),
+        gt("This tab is working. Interrupt it first, then try again."),
       );
       return;
     }
@@ -298,7 +300,7 @@ export function ThreadTabs({
       const result = await archive({ environmentId, input: { threadId } });
       if (result._tag === "Failure") {
         const error = Cause.squash(result.cause);
-        Dialog.alert("Could not close tab", error instanceof Error ? error.message : undefined);
+        Dialog.alert(gt("Could not close tab"), error instanceof Error ? error.message : undefined);
         return;
       }
       refreshArchivedThreadsForEnvironment(environmentId);
@@ -313,23 +315,26 @@ export function ThreadTabs({
       if (result._tag === "Failure") {
         const error = Cause.squash(result.cause);
         Dialog.alert(
-          "Could not restart agent session",
+          gt("Could not restart agent session"),
           error instanceof Error ? error.message : undefined,
         );
         return;
       }
-      Dialog.alert("Agent session will restart", "Your next message starts a fresh session.");
+      Dialog.alert(
+        gt("Agent session will restart"),
+        gt("Your next message starts a fresh session."),
+      );
     });
   };
   const onMenuAction = (id: string) => {
     if (id === NEW_TAB_ACTION) void create();
     else if (id === "tab:name-group" && canNameGroup)
       Dialog.prompt({
-        title: "Name thread group (blank uses tab title)",
+        title: gt("Name thread group (blank uses tab title)"),
         initialValue: group.name ?? "",
-        confirmText: "Save",
+        confirmText: gt("Save", { $context: "verb" }),
         onConfirm: (value) => {
-          void runBusyTabAction(setBusy, "Could not name thread group", async () => {
+          void runBusyTabAction(setBusy, gt("Could not name thread group"), async () => {
             setGroup(
               await runtime.runPromise(
                 setThreadTabGroupName(prepared.value, threadId, value.trim() || null),
@@ -358,7 +363,7 @@ export function ThreadTabs({
   };
   const toggle = (sourceId: ThreadId) => {
     if (!selected.includes(sourceId) && selected.length >= 8) {
-      Dialog.alert("Select up to eight chats for context.");
+      Dialog.alert(gt("Select up to eight chats for context."));
       return;
     }
     const next = selected.includes(sourceId)
@@ -374,21 +379,23 @@ export function ThreadTabs({
         {group.tabs.length <= 1 && !group.name ? (
           // A lone tab would repeat the thread title, so the switcher is just a "new tab" action.
           <Pressable
-            accessibilityLabel="New tab"
+            accessibilityLabel={gt("New tab")}
             accessibilityRole="button"
             disabled={busy}
             onPress={() => void create()}
             className="flex-row items-center gap-1.5 self-start rounded-full bg-subtle px-3 py-1.5 active:opacity-70 disabled:opacity-50"
           >
             <SymbolView name="plus" size={13} tintColorClassName="accent-foreground" />
-            <Text className="text-sm font-medium text-foreground">New tab</Text>
+            <Text className="text-sm font-medium text-foreground">
+              <T>New tab</T>
+            </Text>
           </Pressable>
         ) : (
           <Menu
             accessible
             accessibilityRole="button"
-            accessibilityLabel={`Chat tab: ${group.name ?? title}`}
-            title="Tabs"
+            accessibilityLabel={gt("Chat tab: {title}", { title: group.name ?? title })}
+            title={gt("Tabs")}
             // Long titles shrink so the linked issue beside the switcher stays visible.
             style={{ flexShrink: 1, minWidth: 0 }}
             actions={[
@@ -397,24 +404,31 @@ export function ThreadTabs({
                 title: tab.threadId === threadId ? title : tab.title,
                 state: tab.threadId === threadId ? ("on" as const) : ("off" as const),
               })),
-              { id: NEW_TAB_ACTION, title: "New tab", image: "plus" },
+              { id: NEW_TAB_ACTION, title: gt("New tab"), image: "plus" },
               ...(canNameGroup
-                ? [{ id: "tab:name-group", title: "Name thread group…", image: "pencil" }]
+                ? [{ id: "tab:name-group", title: gt("Name thread group…"), image: "pencil" }]
                 : []),
-              { id: CLOSE_TAB_ACTION, title: "Close tab", image: "xmark" },
+              { id: CLOSE_TAB_ACTION, title: gt("Close tab"), image: "xmark" },
               {
                 id: RESTART_SESSION_ACTION,
-                title: "Restart agent session",
+                title: gt("Restart agent session"),
                 image: "arrow.clockwise",
               },
               ...(linkActions.length > 0
-                ? [{ id: "tab:link", title: "Link", image: "link", subactions: linkActions }]
+                ? [
+                    {
+                      id: "tab:link",
+                      title: gt("Link", { $context: "verb, links an issue or message" }),
+                      image: "link",
+                      subactions: linkActions,
+                    },
+                  ]
                 : []),
             ]}
             onPressAction={({ nativeEvent }) => onMenuAction(nativeEvent.event)}
           >
             <Pressable
-              accessibilityLabel={`Chat tab: ${group.name ?? title}`}
+              accessibilityLabel={gt("Chat tab: {title}", { title: group.name ?? title })}
               accessibilityRole="button"
               disabled={busy}
               className="min-w-0 shrink flex-row items-center gap-1.5 self-start rounded-full bg-subtle px-3 py-1.5 active:opacity-70 disabled:opacity-50"
@@ -431,8 +445,8 @@ export function ThreadTabs({
           <Menu
             accessible
             accessibilityRole="button"
-            accessibilityLabel="Hand off to another model"
-            title="Continue in a new tab with"
+            accessibilityLabel={gt("Hand off to another model")}
+            title={gt("Continue in a new tab with")}
             actions={handOffModels.map((group) => ({
               id: `tab:hand-off-provider:${group.providerKey}`,
               title: group.providerLabel,
@@ -449,7 +463,7 @@ export function ThreadTabs({
             onPressAction={({ nativeEvent }) => onMenuAction(nativeEvent.event)}
           >
             <Pressable
-              accessibilityLabel="Hand off to another model"
+              accessibilityLabel={gt("Hand off to another model")}
               accessibilityRole="button"
               disabled={busy}
               className="shrink-0 flex-row items-center gap-1.5 self-start rounded-full bg-subtle px-3 py-1.5 active:opacity-70 disabled:opacity-50"
@@ -459,7 +473,9 @@ export function ThreadTabs({
                 size={13}
                 tintColorClassName="accent-foreground"
               />
-              <Text className="text-sm font-medium text-foreground">Hand off</Text>
+              <Text className="text-sm font-medium text-foreground">
+                <T>Hand off</T>
+              </Text>
             </Pressable>
           </Menu>
         ) : null}
@@ -475,19 +491,21 @@ export function ThreadTabs({
           <Menu
             accessible
             accessibilityRole="button"
-            accessibilityLabel="Link"
-            title="Link"
+            accessibilityLabel={gt("Link", { $context: "verb, links an issue or message" })}
+            title={gt("Link", { $context: "verb, links an issue or message" })}
             actions={linkActions}
             onPressAction={({ nativeEvent }) => onMenuAction(nativeEvent.event)}
           >
             <Pressable
-              accessibilityLabel="Link"
+              accessibilityLabel={gt("Link", { $context: "verb, links an issue or message" })}
               accessibilityRole="button"
               disabled={busy}
               className="shrink-0 flex-row items-center gap-1.5 rounded-full bg-subtle px-3 py-1.5 active:opacity-70 disabled:opacity-50"
             >
               <SymbolView name="link" size={13} tintColorClassName="accent-foreground" />
-              <Text className="text-sm font-medium text-foreground">Link</Text>
+              <Text className="text-sm font-medium text-foreground">
+                <T context="verb, links an issue or message">Link</T>
+              </Text>
             </Pressable>
           </Menu>
         ) : null}
@@ -513,7 +531,9 @@ export function ThreadTabs({
           showsHorizontalScrollIndicator={false}
           contentContainerClassName="items-center gap-2 pt-2"
         >
-          <Text className="text-xs text-muted-foreground">Include context from:</Text>
+          <Text className="text-xs text-muted-foreground">
+            <T>Include context from:</T>
+          </Text>
           {group.tabs
             .filter((tab) => tab.threadId !== threadId)
             .map((tab) => (
@@ -521,17 +541,17 @@ export function ThreadTabs({
                 key={tab.threadId}
                 accessible
                 accessibilityRole="button"
-                accessibilityLabel={`Context from ${tab.title}`}
+                accessibilityLabel={gt("Context from {title}", { title: tab.title })}
                 title={tab.title}
                 actions={[
                   {
                     id: `${CONTINUE_PREFIX}${tab.threadId}`,
-                    title: "Continue this conversation",
+                    title: gt("Continue this conversation"),
                     image: "arrow.triangle.branch",
                   },
                   {
                     id: `${INCLUDE_PREFIX}${tab.threadId}`,
-                    title: "Include summary",
+                    title: gt("Include summary"),
                     image: "paperclip",
                     state: selected.includes(tab.threadId) ? ("on" as const) : ("off" as const),
                   },

@@ -1,4 +1,5 @@
 import { DEFAULT_USAGE_FOOTER_DISPLAY } from "@t3tools/contracts";
+import { msg, useGT, useMessages } from "gt-react";
 import { ChevronDownIcon } from "lucide-react";
 
 import { useClientSettings } from "../../hooks/useSettings";
@@ -12,13 +13,19 @@ import {
   useUsageLimitPools,
 } from "../usage/UsageFooter";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 
-const ACCOUNTS_LABELS = { combined: "One per provider", separate: "One per account" } as const;
-const VALUE_LABELS = { used: "Percent used", remaining: "Percent left" } as const;
+const ACCOUNTS_LABELS = {
+  combined: msg("One per provider"),
+  separate: msg("One per account"),
+} as const;
+const VALUE_LABELS = { used: msg("Percent used"), remaining: msg("Percent left") } as const;
 
 /** The usage footer's display choices; the footer's own panel edits the same setting. */
 export function UsageFooterSettingsRows() {
+  const gt = useGT();
+  const m = useMessages();
+  const searchableSetting = useSearchableSetting();
   const enabled = useClientSettings((settings) => settings.usageFooterEnabled);
   const display = useClientSettings((settings) => settings.usageFooterDisplay);
   const pools = useUsageLimitPools();
@@ -26,19 +33,21 @@ export function UsageFooterSettingsRows() {
   const hiddenCount = display.hiddenProviders.length + display.hiddenAccounts.length;
   const providersSummary =
     pools.length === 0
-      ? "No limits reported"
+      ? gt("No limits reported")
       : hiddenCount === 0
-        ? "All shown"
-        : `${hiddenCount} hidden`;
+        ? gt("All shown")
+        : gt("{count} hidden", { count: hiddenCount });
   return (
     <>
       <SettingsRow
         {...searchableSetting("usage-footer-providers")}
-        description="Choose which providers, and with one entry per account which accounts, the footer and its panel show."
+        description={gt(
+          "Choose which providers, and with one entry per account which accounts, the footer and its panel show.",
+        )}
         resetAction={
           hiddenCount > 0 ? (
             <SettingResetButton
-              label="usage footer providers"
+              ariaLabel={gt("Reset usage footer providers to default")}
               onClick={() => updateUsageFooterDisplay({ hiddenProviders: [], hiddenAccounts: [] })}
             />
           ) : null
@@ -60,11 +69,13 @@ export function UsageFooterSettingsRows() {
       />
       <SettingsRow
         {...searchableSetting("usage-footer-accounts")}
-        description="Pool each provider's accounts into one entry, or show every account on its own."
+        description={gt(
+          "Pool each provider's accounts into one entry, or show every account on its own.",
+        )}
         resetAction={
           display.accounts !== DEFAULT_USAGE_FOOTER_DISPLAY.accounts ? (
             <SettingResetButton
-              label="usage footer accounts"
+              ariaLabel={gt("Reset usage footer accounts to default")}
               onClick={() =>
                 updateUsageFooterDisplay({ accounts: DEFAULT_USAGE_FOOTER_DISPLAY.accounts })
               }
@@ -83,13 +94,13 @@ export function UsageFooterSettingsRows() {
               <SelectTrigger
                 size="sm"
                 className="w-full min-w-0"
-                aria-label="Usage footer accounts"
+                aria-label={gt("Usage footer accounts")}
               >
-                <SelectValue>{ACCOUNTS_LABELS[display.accounts]}</SelectValue>
+                <SelectValue>{m(ACCOUNTS_LABELS[display.accounts])}</SelectValue>
               </SelectTrigger>
               <SelectPopup align="end" alignItemWithTrigger={false}>
-                <SelectItem value="combined">{ACCOUNTS_LABELS.combined}</SelectItem>
-                <SelectItem value="separate">{ACCOUNTS_LABELS.separate}</SelectItem>
+                <SelectItem value="combined">{m(ACCOUNTS_LABELS.combined)}</SelectItem>
+                <SelectItem value="separate">{m(ACCOUNTS_LABELS.separate)}</SelectItem>
               </SelectPopup>
             </Select>
           </div>
@@ -97,11 +108,11 @@ export function UsageFooterSettingsRows() {
       />
       <SettingsRow
         {...searchableSetting("usage-footer-format")}
-        description="Show how much of each limit is used, or how much is left."
+        description={gt("Show how much of each limit is used, or how much is left.")}
         resetAction={
           display.value !== DEFAULT_USAGE_FOOTER_DISPLAY.value ? (
             <SettingResetButton
-              label="usage footer format"
+              ariaLabel={gt("Reset usage footer format to default")}
               onClick={() =>
                 updateUsageFooterDisplay({ value: DEFAULT_USAGE_FOOTER_DISPLAY.value })
               }
@@ -116,12 +127,16 @@ export function UsageFooterSettingsRows() {
                 if (value === "used" || value === "remaining") updateUsageFooterDisplay({ value });
               }}
             >
-              <SelectTrigger size="sm" className="w-full min-w-0" aria-label="Usage footer format">
-                <SelectValue>{VALUE_LABELS[display.value]}</SelectValue>
+              <SelectTrigger
+                size="sm"
+                className="w-full min-w-0"
+                aria-label={gt("Usage footer format")}
+              >
+                <SelectValue>{m(VALUE_LABELS[display.value])}</SelectValue>
               </SelectTrigger>
               <SelectPopup align="end" alignItemWithTrigger={false}>
-                <SelectItem value="used">{VALUE_LABELS.used}</SelectItem>
-                <SelectItem value="remaining">{VALUE_LABELS.remaining}</SelectItem>
+                <SelectItem value="used">{m(VALUE_LABELS.used)}</SelectItem>
+                <SelectItem value="remaining">{m(VALUE_LABELS.remaining)}</SelectItem>
               </SelectPopup>
             </Select>
           </div>
@@ -129,11 +144,11 @@ export function UsageFooterSettingsRows() {
       />
       <SettingsRow
         {...searchableSetting("usage-footer-reset")}
-        description="Show the time until each limit resets."
+        description={gt("Show the time until each limit resets.")}
         resetAction={
           display.showReset !== DEFAULT_USAGE_FOOTER_DISPLAY.showReset ? (
             <SettingResetButton
-              label="usage footer reset time"
+              ariaLabel={gt("Reset usage footer reset time to default")}
               onClick={() =>
                 updateUsageFooterDisplay({ showReset: DEFAULT_USAGE_FOOTER_DISPLAY.showReset })
               }
@@ -144,17 +159,17 @@ export function UsageFooterSettingsRows() {
           <Switch
             checked={display.showReset}
             onCheckedChange={(checked) => updateUsageFooterDisplay({ showReset: Boolean(checked) })}
-            aria-label="Show time to reset in the usage footer"
+            aria-label={gt("Show time to reset in the usage footer")}
           />
         }
       />
       <SettingsRow
         {...searchableSetting("usage-footer-names")}
-        description="Show each provider's name beside its icon."
+        description={gt("Show each provider's name beside its icon.")}
         resetAction={
           display.showNames !== DEFAULT_USAGE_FOOTER_DISPLAY.showNames ? (
             <SettingResetButton
-              label="usage footer provider names"
+              ariaLabel={gt("Reset usage footer provider names to default")}
               onClick={() =>
                 updateUsageFooterDisplay({ showNames: DEFAULT_USAGE_FOOTER_DISPLAY.showNames })
               }
@@ -165,7 +180,7 @@ export function UsageFooterSettingsRows() {
           <Switch
             checked={display.showNames}
             onCheckedChange={(checked) => updateUsageFooterDisplay({ showNames: Boolean(checked) })}
-            aria-label="Show provider names in the usage footer"
+            aria-label={gt("Show provider names in the usage footer")}
           />
         }
       />

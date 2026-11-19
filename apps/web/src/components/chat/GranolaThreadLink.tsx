@@ -1,6 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { granolaLinkForThread } from "@t3tools/client-runtime/state/granola";
 import type { EnvironmentId, ScopedThreadRef, GranolaThreadLink } from "@t3tools/contracts";
+import { T, useGT } from "gt-react";
 import { ExternalLinkIcon, PencilIcon, UnlinkIcon } from "lucide-react";
 
 import { useLinkClickHandler } from "~/browser/useOpenLink";
@@ -41,6 +42,7 @@ export function GranolaThreadLinkRow(props: {
   link: GranolaThreadLink;
 }) {
   const { threadRef, link } = props;
+  const gt = useGT();
   const granolaEnabled = useEnvironmentSettings(
     threadRef.environmentId,
     (s) => s.enableGranolaIntegration,
@@ -57,7 +59,7 @@ export function GranolaThreadLinkRow(props: {
       linkUrl={link.url}
       icon={<GranolaIcon className="size-4 shrink-0" />}
       label={link.title}
-      accessibleLabel={`Linked Granola note: ${link.title}`}
+      accessibleLabel={gt("Linked Granola note: {title}", { title: link.title })}
       threadRef={threadRef}
       url={link.url}
     >
@@ -66,12 +68,12 @@ export function GranolaThreadLinkRow(props: {
         onClick={(event) => openLink(event, link.url)}
       >
         <ExternalLinkIcon />
-        Open in Granola
+        <T>Open in Granola</T>
       </MenuItem>
       {granolaEnabled && canEdit ? (
         <MenuItem onClick={() => openGranolaNotePicker(threadRef, "link")}>
           <PencilIcon />
-          Change note…
+          <T>Change note…</T>
         </MenuItem>
       ) : null}
       {canEdit ? (
@@ -79,7 +81,7 @@ export function GranolaThreadLinkRow(props: {
           <MenuSeparator />
           <MenuItem onClick={() => void unlink(threadRef)}>
             <UnlinkIcon />
-            Unlink note
+            <T>Unlink note</T>
           </MenuItem>
         </>
       ) : null}

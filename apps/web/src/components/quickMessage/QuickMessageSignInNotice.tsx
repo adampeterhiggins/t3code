@@ -1,3 +1,4 @@
+import { T } from "gt-react";
 import type { PointerEvent, ReactNode } from "react";
 
 import { useTheme } from "~/hooks/useTheme";
@@ -21,7 +22,7 @@ function QuickMessageNoticeFrame({ children }: { readonly children: ReactNode })
   );
 }
 
-function QuickMessageNotice(props: { readonly children: string }) {
+function QuickMessageNotice(props: { readonly children: ReactNode }) {
   return (
     <QuickMessageNoticeFrame>
       <ComposerSurface.Shell>
@@ -37,7 +38,9 @@ function QuickMessageNotice(props: { readonly children: string }) {
 
 export function QuickMessageSignInNotice() {
   return (
-    <QuickMessageNotice>Open T3 Code to finish signing in, then try again.</QuickMessageNotice>
+    <QuickMessageNotice>
+      <T>Open T3 Code to finish signing in, then try again.</T>
+    </QuickMessageNotice>
   );
 }
 
@@ -48,7 +51,10 @@ export function QuickMessageSignInNotice() {
 export function LegacyQuickMessageUnavailableNotice() {
   return (
     <QuickMessageNotice>
-      This quick message window is no longer available. Reopen T3 Code and press the shortcut again.
+      <T>
+        This quick message window is no longer available. Reopen T3 Code and press the shortcut
+        again.
+      </T>
     </QuickMessageNotice>
   );
 }

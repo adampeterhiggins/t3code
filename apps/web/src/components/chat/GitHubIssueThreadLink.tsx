@@ -1,6 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { gitHubIssueLinkForThread } from "@t3tools/client-runtime/state/github-issues";
 import type { EnvironmentId, GitHubIssueThreadLink, ScopedThreadRef } from "@t3tools/contracts";
+import { T, useGT, useMessages } from "gt-react";
 import { ExternalLinkIcon, PencilIcon, UnlinkIcon } from "lucide-react";
 
 import { useLinkClickHandler } from "~/browser/useOpenLink";
@@ -48,6 +49,8 @@ export function GitHubIssueThreadLinkRow(props: {
   link: GitHubIssueThreadLink;
 }) {
   const { threadRef, link } = props;
+  const gt = useGT();
+  const m = useMessages();
   const summary = useEnvironmentQuery(
     githubIssueEnvironment.issueSummary({
       environmentId: threadRef.environmentId,
@@ -69,12 +72,16 @@ export function GitHubIssueThreadLinkRow(props: {
       linkUrl={link.url}
       icon={<GitHubIcon className="size-4 shrink-0" />}
       label={`#${link.number} ${title}`}
-      accessibleLabel={`Linked GitHub issue ${link.repository}#${link.number}: ${title}`}
+      accessibleLabel={gt("Linked GitHub issue {repository}#{number}: {title}", {
+        repository: link.repository,
+        number: link.number,
+        title,
+      })}
       threadRef={threadRef}
       url={url}
       trailing={
         state ? (
-          <span className={cn("shrink-0 text-2xs", state.toneClassName)}>{state.label}</span>
+          <span className={cn("shrink-0 text-2xs", state.toneClassName)}>{m(state.label)}</span>
         ) : null
       }
     >
@@ -83,18 +90,18 @@ export function GitHubIssueThreadLinkRow(props: {
         onClick={(event) => openLink(event, url)}
       >
         <ExternalLinkIcon />
-        Open on GitHub
+        <T>Open on GitHub</T>
       </MenuItem>
       {canEdit ? (
         <>
           <MenuItem onClick={() => openGitHubIssuePicker(threadRef, "link")}>
             <PencilIcon />
-            Change issue…
+            <T>Change issue…</T>
           </MenuItem>
           <MenuSeparator />
           <MenuItem onClick={() => void unlink(threadRef)}>
             <UnlinkIcon />
-            Unlink issue
+            <T>Unlink issue</T>
           </MenuItem>
         </>
       ) : null}

@@ -1,5 +1,7 @@
 import type { EnvironmentThreadShell, ThreadStructure } from "@t3tools/client-runtime/state/shell";
 import type { ThreadTabGroup } from "@t3tools/contracts";
+import { msg } from "gt-react";
+import { m } from "~/i18n/messages";
 import type { ComposerThreadTarget } from "../../composerDraftStore";
 import { threadHasStarted } from "../ChatView.logic";
 import { useStableCallback } from "../../hooks/useStableCallback";
@@ -68,7 +70,7 @@ export function useChatViewTabForks(input: {
     if (!activeThread || !isServerThread || forkInFlightRef.current) return;
     const connection = readPreparedConnection(environmentId);
     if (!connection) {
-      toastManager.add({ type: "error", title: "The environment is not connected." });
+      toastManager.add({ type: "error", title: m(msg("The environment is not connected.")) });
       return;
     }
     forkInFlightRef.current = true;
@@ -77,7 +79,7 @@ export function useChatViewTabForks(input: {
     } catch (cause) {
       toastManager.add({
         type: "error",
-        title: "Could not fork into a new tab",
+        title: m(msg("Could not fork into a new tab")),
         description: cause instanceof Error ? cause.message : undefined,
       });
     }
