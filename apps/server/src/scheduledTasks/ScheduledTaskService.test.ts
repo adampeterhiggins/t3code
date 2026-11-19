@@ -510,6 +510,7 @@ it.effect("a one-time task is removed once its turn completes", () =>
           ManagedPolicy.layerTest(),
           Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
           Layer.mock(ThreadManagementService.ThreadManagementService)({
+            dispatch: () => Effect.succeed({ sequence: 0, storedEvents: [] }),
             sendToThread: (input) => Ref.set(sent, input.messageId).pipe(Effect.as({} as never)),
             getThreadShell: () => Effect.succeed(threadShell(projectId)),
             getProjectThreadRecords: () =>

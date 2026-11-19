@@ -117,6 +117,7 @@ const harness = (input: {
             getTimelinePage: () =>
               Effect.succeed({ items: [], totalItems: 0, hasMore: false, hasEarlier: false }),
             getThreadRecords: (threadId) => Effect.succeed(byId(threadId)) as never,
+            getRunCount: (threadId) => Effect.succeed(byId(threadId).runs.length),
             getProjectThreadRecords: ({ threadId }) => Effect.succeed(byId(threadId)) as never,
             getThreadShell: (threadId) =>
               Effect.succeed(

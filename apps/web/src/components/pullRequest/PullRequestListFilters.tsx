@@ -549,8 +549,8 @@ export function PullRequestFiltersMenu({
   filters,
   onFilters,
   facets,
-  authorOptions = facets?.authors ?? [],
-  labelOptions = facets?.labels ?? [],
+  authorOptions: authorOptionsProp,
+  labelOptions: labelOptionsProp,
   optionScope = NO_FILTER_OPTION_SCOPE,
   optionsPending = false,
   host,
@@ -599,6 +599,8 @@ export function PullRequestFiltersMenu({
   unavailable: ReadonlyMap<string, string>;
   onProject: (projectId: ProjectId | undefined, environmentId: EnvironmentId | undefined) => void;
 }) {
+  const authorOptions = authorOptionsProp ?? facets?.authors ?? [];
+  const labelOptions = labelOptionsProp ?? facets?.labels ?? [];
   const selectedLabels = (filters.labels ?? []).flatMap((group) => group);
   const filterCount = [
     state !== "open",
