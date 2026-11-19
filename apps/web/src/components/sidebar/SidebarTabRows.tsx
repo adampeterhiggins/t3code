@@ -540,6 +540,7 @@ export const SidebarTabRow = memo(function SidebarTabRow(props: {
       x: number;
       y: number;
     },
+    source: "mouse" | "keyboard",
   ) => void;
   onFileDropThreads: (threadRef: ScopedThreadRef, files: File[]) => void;
   /** Closes this tab; its hover control stands in for the time label. */
@@ -653,10 +654,14 @@ export const SidebarTabRow = memo(function SidebarTabRow(props: {
             }}
             onContextMenu={(event) => {
               event.preventDefault();
-              props.onContextMenu(threadRef, {
-                x: event.clientX,
-                y: event.clientY,
-              });
+              props.onContextMenu(
+                threadRef,
+                {
+                  x: event.clientX,
+                  y: event.clientY,
+                },
+                "mouse",
+              );
             }}
           >
             {props.isRenaming ? (

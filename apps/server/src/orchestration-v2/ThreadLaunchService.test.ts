@@ -1604,6 +1604,7 @@ it.effect.each(["stable", "upstream/release"])(
         git: {
           resolveWorktreeBaseRemote: (input) => git.resolveWorktreeBaseRemote({ ...input, cwd }),
           hasRefNamed: () => Effect.succeed(false),
+          listLocalBranchNames: () => git.listLocalBranchNames(cwd),
         },
         fetchWorktreeBaseCommit: (input) => git.fetchWorktreeBaseCommit({ ...input, cwd }),
         createWorktree: (input, options) =>
@@ -4027,6 +4028,7 @@ it.effect.each([
       hasCommit: ({ refName }) =>
         Effect.succeed(["feature", "refs/heads/feature"].includes(refName)),
       git: {
+        listLocalBranchNames: () => Effect.succeed(["feature"]),
         listRefs: () =>
           Effect.succeed({
             refs: [
@@ -4529,6 +4531,141 @@ it.effect("leaves uncertain Git detection failures to workspace preparation", ()
       Effect.provide(harness.layer),
     );
   }),
+);
+
+it.effect.each([
+  { name: "is missing", baseRef: "t3/renamed", startFromOrigin: false, origin: true },
+  {
+    name: "has no origin to come from",
+    baseRef: "t3/renamed",
+    startFromOrigin: true,
+    origin: false,
+  },
+  {
+    name: "was deleted on its remote",
+    baseRef: "origin/development",
+    startFromOrigin: true,
+    origin: true,
+  },
+  {
+    name: "is a previous checkout there never was",
+    baseRef: "-",
+    startFromOrigin: false,
+    origin: true,
+  },
+])("refuses a new worktree whose base ref $name", (testCase) =>
+  Effect.gen(function* () {
+    const harness = makeHarness({
+      hasCommit: ({ refName }) => Effect.succeed(refName === "HEAD"),
+      fetchWorktreeBaseCommit: () => Effect.succeed(null),
+      git: {
+        resolveWorktreeBaseRemote: () =>
+          Effect.succeed(testCase.origin ? { remoteName: "origin", branchName: "main" } : null),
+        hasRefNamed: () => Effect.succeed(false),
+      },
+    });
+    yield* Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const error = yield* launches
+        .checkWorktreeBase({
+          projectId,
+          workspaceStrategy: {
+            type: "worktree",
+            baseRef: testCase.baseRef,
+            startFromOrigin: testCase.startFromOrigin,
+          },
+        })
+        .pipe(Effect.flip);
+      assert.deepInclude(error, {
+        _tag: "ThreadLaunchBaseRefError",
+        projectId,
+        baseRef: testCase.baseRef,
+      });
+      assert.equal(
+        error.message,
+        `Base ref "${testCase.baseRef}" does not resolve to a commit in project "Project" (/repo).`,
+      );
+    }).pipe(Effect.provide(harness.layer));
+  }),
+);
+
+it.effect("refuses a new worktree whose explicit branch already exists", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const git = yield* GitVcsDriver.GitVcsDriver;
+    const directory = yield* fs.makeTempDirectoryScoped({ prefix: "launch-branch-exists-" });
+    const cwd = `${directory}/repo`;
+    const temporaryBranch = "t3code/0b5e7a1c-3f2d-4e8a-9b6c-1d2e3f4a5b6c";
+    yield* fs.makeDirectory(cwd);
+    const command = (args: string[]) => git.execute({ operation: "launch-test", cwd, args });
+    yield* command(["init", "-b", "main"]);
+    yield* command(["config", "user.name", "Test"]);
+    yield* command(["config", "user.email", "test@example.test"]);
+    yield* command(["commit", "--allow-empty", "-m", "initial"]);
+    yield* command(["branch", "feature/idle"]);
+    yield* command(["branch", temporaryBranch]);
+    // Resolves as `refs/heads/feature/tagged` although no such branch exists.
+    yield* command(["tag", "refs/heads/feature/tagged"]);
+    yield* command(["worktree", "add", "-b", "feature/taken", `${directory}/taken`]);
+    const harness = makeHarness({
+      hasCommit: ({ refName }) =>
+        command(["rev-parse", "--verify", `${refName}^{commit}`]).pipe(
+          Effect.as(true),
+          Effect.orElseSucceed(() => false),
+        ),
+      git: {
+        listLocalBranchNames: () => git.listLocalBranchNames(cwd),
+        listRefs: () =>
+          Effect.succeed({
+            refs: [],
+            isRepo: true,
+            hasPrimaryRemote: false,
+            nextCursor: null,
+            totalCount: 0,
+          }),
+      },
+    });
+    yield* Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const check = (branch: string, baseRef = "main") =>
+        launches
+          .checkWorktreeBase({
+            projectId,
+            workspaceStrategy: { type: "worktree", baseRef, branch },
+          })
+          .pipe(
+            Effect.match({
+              onSuccess: () => [branch, "accepted"],
+              onFailure: (error) => [branch, error._tag],
+            }),
+          );
+      assert.deepEqual(
+        yield* Effect.forEach(
+          ["feature/idle", "feature/taken", temporaryBranch, "feature/fresh", "feature/tagged"],
+          (branch) => check(branch),
+        ),
+        [
+          ["feature/idle", "ThreadLaunchBranchExistsError"],
+          ["feature/taken", "ThreadLaunchBranchExistsError"],
+          [temporaryBranch, "ThreadLaunchBranchExistsError"],
+          ["feature/fresh", "accepted"],
+          ["feature/tagged", "accepted"],
+        ],
+      );
+      // A `:/text` base skips the base check but not the branch check.
+      assert.deepEqual(yield* check("feature/taken", ":/initial"), [
+        "feature/taken",
+        "ThreadLaunchBranchExistsError",
+      ]);
+    }).pipe(Effect.provide(harness.layer));
+  }).pipe(
+    Effect.provide(
+      GitVcsDriver.layer.pipe(
+        Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "launch-branch-exists-" })),
+        Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+      ),
+    ),
+  ),
 );
 
 it.effect.each([

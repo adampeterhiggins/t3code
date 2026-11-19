@@ -204,6 +204,7 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
     busyRef.current = true;
     setBusyRunId(runId);
     void Haptics.selectionAsync();
+    let result;
     if (action === "drafts") {
       const entry = queuedRuns[index]!;
       // Saved before the cancel, so a failed save never loses the message.
@@ -226,11 +227,11 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
         );
       }
     } else if (action === "remove") {
-      await cancel(buildCancelQueuedRunCommand({ ...target, runId }));
+      result = await cancel(buildCancelQueuedRunCommand({ ...target, runId }));
     } else if (workflow?.canSendNow) {
-      await resume({ ...target, input: { threadId: target.threadId, runId } });
+      result = await resume({ ...target, input: { threadId: target.threadId, runId } });
     } else if (workflow?.activeRun && workflow.canPromoteToSteer) {
-      await promote({
+      result = await promote({
         ...target,
         input: {
           threadId: target.threadId,
@@ -241,6 +242,13 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
     }
     busyRef.current = false;
     setBusyRunId(null);
+    if (action === "steer" && result?._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+      const error = squashAtomCommandFailure(result);
+      Dialog.alert(
+        "Could not send queued message",
+        error instanceof Error ? error.message : "Try again.",
+      );
+    }
   };
 
   const content = (

@@ -1,3 +1,5 @@
+import { ActivityShimmerOverlay } from "../chat/TimelineRowParts";
+import { observeVisibleAnimation } from "~/lib/visibleAnimation";
 import { useAtomMount } from "@effect/atom-react";
 import { useEnvironmentQuery } from "../../state/query";
 import { vcsEnvironment, vcsBranchRevalidation } from "../../state/vcs";
@@ -7,6 +9,7 @@ import { useSidebarRowTabs, SidebarDisclosure } from "./SidebarTabDisclosure";
 import {
   type EnvironmentId,
   AuthOrchestrationOperateScope,
+  type ContextMenuSource,
   type EnvironmentMachineKind,
   type ScopedThreadRef,
 } from "@t3tools/contracts";
@@ -24,6 +27,7 @@ import {
 import { asLaunchingThread } from "@t3tools/client-runtime/state/thread-inbox";
 import { discardComposerDraft } from "../../lib/discardComposerDraft";
 import { useThreadMessageDrafts } from "../../state/messageDrafts";
+import { contextMenuSourceOf } from "../../contextMenuSource";
 import { requestCustomSnooze } from "../CustomSnoozeDialog";
 import { useSupportsMultiplePullRequests } from "~/hooks/useSupportsMultiplePullRequests";
 import { useDeadlinePassed } from "~/hooks/useDeadline";
@@ -467,10 +471,8 @@ type SidebarThreadRowProps = {
   renamingTitle: string;
   onContextMenu: (
     threadRef: ScopedThreadRef,
-    position: {
-      x: number;
-      y: number;
-    },
+    position: { x: number; y: number },
+    source: ContextMenuSource,
   ) => void;
   onSettle: (threadRef: ScopedThreadRef) => void;
   onActionSweepStart: (
@@ -642,7 +644,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   };
   const handleContextMenu = (event: ReactMouseEvent) => {
     event.preventDefault();
-    onContextMenu(threadRef, { x: event.clientX, y: event.clientY });
+    onContextMenu(threadRef, { x: event.clientX, y: event.clientY }, contextMenuSourceOf(event));
   };
   const handleKeyDown = (event: ReactKeyboardEvent) => {
     if (event.target !== event.currentTarget) return;
@@ -900,6 +902,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     ) : (
       <span
         aria-hidden
+        ref={isRegeneratingTitle ? observeVisibleAnimation : undefined}
         className={cn(
           "min-w-0 flex-1 text-start text-sm transition-opacity motion-reduce:transition-none",
           shouldRecede ? "font-normal" : "font-medium",
@@ -924,11 +927,16 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                       ? "text-muted-foreground"
                       : "text-secondary-label/70",
               ),
-          isRegeneratingTitle && "opacity-55",
+          isRegeneratingTitle && "relative text-muted-foreground",
         )}
         dir={textDirection(props.tabGroupName ?? thread.title)}
       >
         {props.tabGroupName ?? thread.title}
+        {isRegeneratingTitle ? (
+          <ActivityShimmerOverlay className="truncate">
+            {props.tabGroupName ?? thread.title}
+          </ActivityShimmerOverlay>
+        ) : null}
       </span>
     );
   const accessibleTitle = isRenaming ? null : (
@@ -1689,6 +1697,7 @@ export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props
       x: number;
       y: number;
     },
+    source: "mouse" | "keyboard",
   ) => void;
   onFileDropThreads: (threadRef: ScopedThreadRef, files: File[]) => void;
 }) {
@@ -1710,13 +1719,17 @@ export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props
   );
   const handleContextMenu = (event: ReactMouseEvent) => {
     event.preventDefault();
-    props.onContextMenu(threadRef, { x: event.clientX, y: event.clientY });
+    props.onContextMenu(
+      threadRef,
+      { x: event.clientX, y: event.clientY },
+      contextMenuSourceOf(event),
+    );
   };
   const handleKeyDown = (event: ReactKeyboardEvent) => {
     if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
     event.preventDefault();
     const rect = event.currentTarget.getBoundingClientRect();
-    props.onContextMenu(threadRef, { x: rect.left, y: rect.bottom });
+    props.onContextMenu(threadRef, { x: rect.left, y: rect.bottom }, "keyboard");
   };
   const rowRef = (row: HTMLElement | null) => {
     setDragNodeRef(row);

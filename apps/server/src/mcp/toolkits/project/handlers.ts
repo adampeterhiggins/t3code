@@ -49,6 +49,7 @@ function projectFailure(error: Project.ProjectServiceError) {
   return new OrchestratorMcpFailure({ code: "invalid_request", message });
 }
 
+/** Require project worktrees so launches cannot target arbitrary host directories. */
 export const assertProjectWorktree = Effect.fn("mcp.assertProjectWorktree")(function* (
   workspaceRoot: string,
   worktreePath: string,
@@ -164,24 +165,30 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
         const launchedModel =
           launched === null || launched.deletedAt !== null ? undefined : launched.modelSelection;
         const replaying = launchedModel !== undefined;
-        const project = replaying
-          ? undefined
-          : yield* Project.ProjectService.pipe(
-              Effect.flatMap((projects) => projects.getById(projectId)),
-              Effect.mapError(unavailable),
-              Effect.flatMap(
-                Option.match({
-                  onNone: () =>
-                    Effect.fail(
-                      new OrchestratorMcpFailure({
-                        code: "invalid_request",
-                        message: "The project was not found.",
-                      }),
-                    ),
-                  onSome: Effect.succeed,
-                }),
-              ),
-            );
+        if (launched !== null && replaying && launched.projectId !== projectId)
+          return yield* new OrchestratorMcpFailure({
+            code: "invalid_request",
+            message: "A launch retry must use the original project.",
+          });
+        const project =
+          replaying && input.workspaceStrategy?.type !== "existing_worktree"
+            ? undefined
+            : yield* Project.ProjectService.pipe(
+                Effect.flatMap((projects) => projects.getById(projectId)),
+                Effect.mapError(unavailable),
+                Effect.flatMap(
+                  Option.match({
+                    onNone: () =>
+                      Effect.fail(
+                        new OrchestratorMcpFailure({
+                          code: "invalid_request",
+                          message: "The project was not found.",
+                        }),
+                      ),
+                    onSome: Effect.succeed,
+                  }),
+                ),
+              );
         if (project !== undefined && input.workspaceStrategy?.type === "existing_worktree")
           yield* assertProjectWorktree(project.workspaceRoot, input.workspaceStrategy.worktreePath);
         if (!replaying && input.modelSelection !== undefined) {
@@ -192,7 +199,7 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
             yield* OrchestrationMcp.requireAdvertisedModel(provider, model);
         }
         const projectSettings =
-          project === undefined
+          replaying || project === undefined
             ? undefined
             : yield* ServerSettings.ServerSettingsService.pipe(
                 Effect.flatMap((settings) => settings.getSettings),

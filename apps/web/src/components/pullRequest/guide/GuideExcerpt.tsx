@@ -21,6 +21,7 @@ import {
 import { PREFERRED_HIGHLIGHTER } from "~/lib/syntaxHighlighting";
 import {
   buildDiffReviewComment,
+  diffReviewSelectionId,
   resolveDiffReviewAnchor,
   type ReviewCommentContext,
 } from "~/reviewCommentContext";
@@ -246,7 +247,7 @@ function ExcerptDiff({
   const askAgent = (request: string, delivery: PullRequestAgentDelivery) => {
     if (draft === null || file === null || onAskAgent === null) return;
     const comment = buildDiffReviewComment({
-      id: `pull-request-guide:${excerpt.path}:${draft.range.start}:${draft.range.end}`,
+      id: `pull-request-guide:${diffReviewSelectionId(excerpt.path, draft.range)}`,
       sectionId: `pull-request-guide:${excerpt.path}`,
       sectionTitle: "Review guide",
       filePath: excerpt.path,

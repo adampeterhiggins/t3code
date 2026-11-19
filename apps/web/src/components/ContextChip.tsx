@@ -30,14 +30,16 @@ const contextChipVariants = cva(
         model: "[--context-chip-accent:var(--context-chip-model)]",
         thread: "[--context-chip-accent:var(--context-chip-thread)]",
         environment: "[--context-chip-accent:var(--context-chip-environment)]",
-        "doc-pdf": "[--context-chip-accent:var(--context-chip-doc-pdf)]",
+        citation: "[--context-chip-accent:var(--context-chip-citation)]",
+        // PDF red reads as the invalid state, so only the icon carries it.
+        "doc-pdf":
+          "[--context-chip-accent:var(--context-chip-doc-pdf)] [--context-chip-ink:var(--context-chip-message-ink,currentColor)] [--document-icon-stroke:var(--context-chip-message-ink,var(--context-chip-accent))]",
         "doc-word": "[--context-chip-accent:var(--context-chip-doc-word)]",
         "doc-spreadsheet": "[--context-chip-accent:var(--context-chip-doc-spreadsheet)]",
         "doc-slides": "[--context-chip-accent:var(--context-chip-doc-slides)]",
         "doc-epub": "[--context-chip-accent:var(--context-chip-doc-epub)]",
         response: "[--context-chip-accent:oklch(0.62_0.16_259)]",
         "unread-link": "[--context-chip-accent:oklch(0.62_0.16_259)]",
-        citation: "[--context-chip-accent:oklch(0.62_0.16_259)]",
         "thread-tab": "[--context-chip-accent:oklch(0.62_0.134_120)]",
         "linear-issue": "[--context-chip-accent:oklch(0.62_0.16_270)]",
         "linear-object": "[--context-chip-accent:oklch(0.62_0.16_270)]",

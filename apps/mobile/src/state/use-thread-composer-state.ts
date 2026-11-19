@@ -1,5 +1,6 @@
 import { composerDraftsAtom } from "./use-composer-drafts";
 import { useComposerAttachmentActions } from "./use-composer-attachment-actions";
+import * as Effect from "effect/Effect";
 import * as Dialog from "../components/ui/Dialog";
 import { AuthOrchestrationOperateScope } from "@t3tools/contracts";
 import { readEnvironmentScope } from "./session";
@@ -72,7 +73,7 @@ import {
   pruneCaughtUpAcknowledgedThreadMessages,
 } from "./acknowledged-thread-messages";
 import {
-  appendPendingThreadMessages,
+  appendAcceptedThreadMessages,
   selectPendingAcknowledgedMessages,
 } from "../features/threads/pending-thread-feed";
 import { threadAllowsProviderSwitch } from "./thread-provider-switching";
@@ -81,6 +82,7 @@ import { pendingThreadCreationMessage } from "./pending-thread-creation";
 import {
   composerAttachmentUploadBlockReason,
   composerAttachmentUploadsAtom,
+  uploadComposerAttachmentShared,
 } from "./composer-attachment-uploads";
 import {
   appendComposerDraftAttachments,
@@ -133,7 +135,7 @@ import {
 } from "./use-thread-detail";
 import { useThreadSelection } from "./use-thread-selection";
 import { enqueueThreadOutboxMessage } from "./thread-outbox";
-import { dispatchingQueuedMessageIdAtom, useThreadOutboxMessages } from "./use-thread-outbox";
+import { dispatchingQueuedMessageIdsAtom, useThreadOutboxMessages } from "./use-thread-outbox";
 import { threadEnvironment } from "./threads";
 import { useAtomCommand } from "./use-atom-command";
 import { useSteerQueueIntoSubagentWait } from "./use-steer-queue-into-subagent-wait";
@@ -232,7 +234,7 @@ export function useThreadComposerState(input: {
   const composerDrafts = useAtomValue(composerDraftsAtom);
   const acknowledgedMessages = useAtomValue(acknowledgedThreadMessagesAtom);
   const queuedMessagesByThreadKey = useThreadOutboxMessages();
-  const dispatchingQueuedMessageId = useAtomValue(dispatchingQueuedMessageIdAtom);
+  const dispatchingQueuedMessageIds = useAtomValue(dispatchingQueuedMessageIdsAtom);
   const [feedbackSubmissionsByThreadKey, setFeedbackSubmissionsByThreadKey] = useState<
     Record<string, ReadonlyArray<CodexFeedbackSubmission>>
   >({});
@@ -255,6 +257,10 @@ export function useThreadComposerState(input: {
         (message) => message.creation === undefined,
       )
     : [];
+  // The thread sends one message at a time, the head of its queue.
+  const dispatchingQueuedMessageId =
+    selectedThreadQueuedMessages.find((message) => dispatchingQueuedMessageIds[message.messageId])
+      ?.messageId ?? null;
   const feedbackSubmissions = selectedThreadKey
     ? (feedbackSubmissionsByThreadKey[selectedThreadKey] ?? [])
     : [];
@@ -332,9 +338,10 @@ export function useThreadComposerState(input: {
       sequence: selectedThreadSequence,
       projectedMessages: selectedThreadMessages,
     });
-    if (pendingAcknowledgments.length === 0) return feed;
-    return appendPendingThreadMessages(feed, feed, pendingAcknowledgments).map((entry) =>
-      entry.pendingMessage ? { ...entry, acknowledged: true } : entry,
+    return appendAcceptedThreadMessages(
+      feed,
+      pendingAcknowledgments,
+      pendingCreation.length > 0 ? pendingCreationMessage : null,
     );
   })();
 
@@ -600,11 +607,15 @@ export function useThreadComposerState(input: {
     setIsSavingQueuedEdit(true);
     const capabilities = selectedEnvironmentRuntime?.serverConfig?.environment.capabilities;
     const prepared = await settlePromise(() =>
-      prepareTurnAttachments({
-        environmentId: thread.environmentId,
-        attachments: draft.attachments,
-        supportsImageUploads: capabilities !== undefined,
-      }),
+      Effect.runPromise(
+        prepareTurnAttachments({
+          environmentId: thread.environmentId,
+          attachments: draft.attachments,
+          supportsImageUploads: capabilities !== undefined,
+          uploadAttachment: (attachment) =>
+            uploadComposerAttachmentShared(thread.environmentId, attachment),
+        }),
+      ),
     );
     if (AsyncResult.isFailure(prepared)) {
       savingQueuedEditRef.current = false;

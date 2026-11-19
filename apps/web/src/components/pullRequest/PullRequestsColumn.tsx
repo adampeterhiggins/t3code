@@ -84,6 +84,7 @@ export function PullRequestsColumn({
   sortMenu,
   filtersMenu,
   appliedFilters,
+  savedViewsMenu,
   rightPanelControl,
   titlebarControls,
   rightPanelOpen,
@@ -106,6 +107,7 @@ export function PullRequestsColumn({
   filtersMenu: ReactNode;
   /** The applied filters as removable pills, on their own row below the controls. */
   appliedFilters: ReactNode;
+  savedViewsMenu: ReactNode;
   rightPanelControl: ReactNode;
   titlebarControls: ReactNode;
   rightPanelOpen: boolean;
@@ -244,6 +246,7 @@ export function PullRequestsColumn({
               </div>
               {sortMenu}
               {filtersMenu}
+              {savedViewsMenu}
               <PullRequestCompactFilterMenu
                 label="Filter by provider"
                 outlined

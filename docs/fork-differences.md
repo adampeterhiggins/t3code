@@ -1224,7 +1224,10 @@ in `packages/contracts/src/composerContext.ts`, `packages/client-runtime/src/sta
 `apps/mobile/src/features/threads/ThreadSlackNotionLinks.tsx`. User guide:
 [discord.md](./user/discord.md).
 
-## GitHub issues
+## GitHub issue attachments and tab-group links
+
+Upstream provides the cross-tracker Issues page and thread issue links. The fork additionally keeps
+composer snapshots and issue links shared by a thread's chat-tab group, described here.
 
 GitHub issues attach to messages as a `github-issue` context chip, the same way Linear issues do:
 from the composer's attach menu, the `#` menu's **GitHub issues** tab, the web command palette, and

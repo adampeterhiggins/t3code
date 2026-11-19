@@ -41,6 +41,7 @@ import {
 } from "./composerDraftStore";
 import { startDefaultThemeAdoption } from "./hooks/useDefaultTheme";
 import { startEnvironmentThemeRepaint, startSharedThemeFollow } from "./hooks/useEnvironmentTheme";
+import { startThemeBackground } from "./themeBackground";
 import { readLocalStorageValue, subscribeLocalStorageKey } from "./hooks/useLocalStorage";
 import { startThemeSync } from "./hooks/useThemeSync";
 import { startHostEnvironmentLookup } from "./state/primaryEnvironment";
@@ -275,6 +276,7 @@ export function startAppServices(): AppRouter {
   // The legacy panel shares the main profile and must not run draft writers.
   // The floating chat has its own partition, so reconciliation is safe there.
   if (isQuickMessageWindow && !isDetachedChatWindow) return router;
+  startThemeBackground();
   startBrowserChromeThemeSync(router);
   if (!isDetachedChatWindow) {
     startDefaultThemeAdoption();
