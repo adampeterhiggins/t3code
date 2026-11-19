@@ -1737,6 +1737,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 {unifyTabs ? null : terminalStatusIcon}
                 {savedDraftsIndicator}
                 {prBadge}
+                {issueBadge}
                 {diff ? (
                   <span className="shrink-0 font-mono">
                     <span className="text-diff-addition-foreground">

@@ -2322,6 +2322,8 @@ describe("UsageService", () => {
                   ),
                 ),
             },
+            onCursorRequest: (request) =>
+              Response.json({ accessToken: request.headers.authorization?.replace("Bearer ", "") }),
           }),
         ),
       );
