@@ -127,6 +127,7 @@ describe("ProjectSetupScriptRunner", () => {
         worktreePath: "/repo/worktrees/a",
         env: {
           T3CODE_PROJECT_ROOT: "/repo/project",
+          T3CODE_TERMINAL_SHELL: "",
           T3CODE_WORKTREE_PATH: "/repo/worktrees/a",
           COLORTERM: "",
           NO_COLOR: "1",
@@ -363,6 +364,7 @@ describe("ProjectSetupScriptRunner", () => {
             NO_COLOR: "1",
             FORCE_COLOR: "0",
             T3CODE_PROJECT_ROOT: "/repo/project",
+            T3CODE_TERMINAL_SHELL: "",
             T3CODE_WORKTREE_PATH: "/repo/worktrees/a",
             COLORTERM: "",
           },
@@ -818,6 +820,7 @@ it.effect("resolves setup scripts through the standalone project service", () =>
     assert.equal(open.mock.calls[0]?.[0].cwd, "/repo-worktree");
     assert.deepEqual(open.mock.calls[0]?.[0].env, {
       T3CODE_PROJECT_ROOT: "/repo",
+      T3CODE_TERMINAL_SHELL: "",
       T3CODE_WORKTREE_PATH: "/repo-worktree",
       COLORTERM: "",
       NO_COLOR: "1",
