@@ -2389,6 +2389,8 @@
   "aece11422a97a057": "Halte {shortcut} gedrückt oder drücke zweimal zum Beenden",
   "404941d325a2755b": "Drücke {shortcut} erneut zum Beenden",
   "48ef9d3971c97e7d": "Ansicht konnte nicht wieder geöffnet werden",
+  "f9a66fb70d32aa76": "Open",
+  "8311ef81069a97c0": "View on {host}",
   "158a785cabe10dda": "Arbeitsbereichspanel",
   "9371d8cc390a8a1b": "Browservorschauen sind nur in der T3-Code-Desktop-App verfügbar.",
   "05037ca1666fd421": "Terminals sind nur aus einem Projekt-Thread verfügbar.",
@@ -2734,6 +2736,25 @@
   "b4daab4983e50891": "{kind} {label} öffnen: {title}",
   "c5d4a1b01d27c81d": "Bildanhang, {name}, {size}",
   "baa023ab89b1e31f": "Nicht verfügbarer Kontext, {label}",
+  "3c00a11e86f58071": "Annotated preview crop",
+  "adb5ff2442db6c03": "Expand annotated screenshot",
+  "bacd736112f1bf56": "Loading agent…",
+  "8164298472176286": "@{handle} is no longer recorded.",
+  "e9044aef9edc11ca": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " was not saved with this draft. Attach it again to send it."
+  ],
+  "274e087f814611a7": "View instructions",
+  "ddf87b4bb3bb345e": {
+    "t": "p",
+    "i": 1,
+    "c": "No description is available for this skill."
+  },
+  "2015dc02d7941a79": "Screenshot unavailable",
   "52a44f36200620d5": "Diese Installation verwendet die richtige Architektur.",
   "007ab0ba4a0318eb": "Dieser Mac hat Apple Silicon, aber T3 Code läuft noch als Intel-Build unter Rosetta. Lade das verfügbare Update herunter, um zum nativen Apple-Silicon-Build zu wechseln.",
   "0fe3e0e043327f70": "Dieser Mac hat Apple Silicon, aber T3 Code läuft noch als Intel-Build unter Rosetta. Starte neu, um den heruntergeladenen Apple-Silicon-Build zu installieren.",
@@ -3243,10 +3264,7 @@
     {
       "t": "span",
       "i": 2,
-      "c": [
-        " ",
-        "auf dem Computer, der diese Seite geöffnet hat"
-      ]
+      "c": [" ", "auf dem Computer, der diese Seite geöffnet hat"]
     }
   ],
   "b2d53b4d1d48fbef": [
@@ -3258,10 +3276,7 @@
     {
       "t": "span",
       "i": 2,
-      "c": [
-        " ",
-        "· wer es ausführt, erhält diesen Zugriff"
-      ]
+      "c": [" ", "· wer es ausführt, erhält diesen Zugriff"]
     }
   ],
   "c54cc9c75db9dc58": "Genehmige nur eine Anmeldung, die du gerade selbst gestartet hast.",
@@ -12606,6 +12621,7 @@
   "ef436cc0f1cee213": ", arbeitet",
   "2c3bb8ccf6c38078": "Hinweis zum Anbieter-Update schließen",
   "3cef7762c22f5fb1": "Ausblenden, bis sich der Anbieterstatus ändert",
+  "d6e87bef865972c8": "{count, plural, other {{count} more tabs}}",
   "0f90824868d6c3af": "Neuer Thread ({shortcut})",
   "a1dbe20d209982b6": "Suchen",
   "201317aac48d4d9f": "Thread-Suche leeren",

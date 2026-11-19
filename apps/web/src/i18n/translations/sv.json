@@ -2388,6 +2388,8 @@
   "aece11422a97a057": "Håll ned {shortcut} eller tryck två gånger för att avsluta",
   "404941d325a2755b": "Tryck på {shortcut} igen för att avsluta",
   "48ef9d3971c97e7d": "Kunde inte öppna vyn igen",
+  "f9a66fb70d32aa76": "Open",
+  "8311ef81069a97c0": "View on {host}",
   "158a785cabe10dda": "Arbetsytepanel",
   "9371d8cc390a8a1b": "Webbläsarförhandsvisningar finns bara i skrivbordsappen T3 Code.",
   "05037ca1666fd421": "Terminalytor finns bara i en projekttråd.",
@@ -2732,6 +2734,25 @@
   "b4daab4983e50891": "Öppna {kind} {label}: {title}",
   "c5d4a1b01d27c81d": "Bildbilaga, {name}, {size}",
   "baa023ab89b1e31f": "Otillgänglig kontext, {label}",
+  "3c00a11e86f58071": "Annotated preview crop",
+  "adb5ff2442db6c03": "Expand annotated screenshot",
+  "bacd736112f1bf56": "Loading agent…",
+  "8164298472176286": "@{handle} is no longer recorded.",
+  "e9044aef9edc11ca": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " was not saved with this draft. Attach it again to send it."
+  ],
+  "274e087f814611a7": "View instructions",
+  "ddf87b4bb3bb345e": {
+    "t": "p",
+    "i": 1,
+    "c": "No description is available for this skill."
+  },
+  "2015dc02d7941a79": "Screenshot unavailable",
   "52a44f36200620d5": "Den här installationen använder rätt arkitektur.",
   "007ab0ba4a0318eb": "Den här Macen har Apple Silicon, men T3 Code kör fortfarande Intel-versionen under Rosetta. Ladda ned den tillgängliga uppdateringen för att byta till den inbyggda Apple Silicon-versionen.",
   "0fe3e0e043327f70": "Den här Macen har Apple Silicon, men T3 Code kör fortfarande Intel-versionen under Rosetta. Starta om för att installera den nedladdade Apple Silicon-versionen.",
@@ -3241,10 +3262,7 @@
     {
       "t": "span",
       "i": 2,
-      "c": [
-        " ",
-        "på datorn som öppnade den här sidan"
-      ]
+      "c": [" ", "på datorn som öppnade den här sidan"]
     }
   ],
   "b2d53b4d1d48fbef": [
@@ -3256,10 +3274,7 @@
     {
       "t": "span",
       "i": 2,
-      "c": [
-        " ",
-        "· den som kör den får den här åtkomsten"
-      ]
+      "c": [" ", "· den som kör den får den här åtkomsten"]
     }
   ],
   "c54cc9c75db9dc58": "Godkänn bara en inloggning som du själv precis har startat.",
@@ -12612,6 +12627,7 @@
   "ef436cc0f1cee213": ", arbetar",
   "2c3bb8ccf6c38078": "Stäng meddelandet om leverantörsuppdatering",
   "3cef7762c22f5fb1": "Stäng tills leverantörsstatusen ändras",
+  "d6e87bef865972c8": "{count, plural, other {{count} more tabs}}",
   "0f90824868d6c3af": "Ny tråd ({shortcut})",
   "a1dbe20d209982b6": "Sök",
   "201317aac48d4d9f": "Rensa trådsökningen",

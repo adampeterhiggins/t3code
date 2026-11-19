@@ -2388,6 +2388,8 @@
   "aece11422a97a057": "Mantenha {shortcut} pressionado ou pressione duas vezes para sair",
   "404941d325a2755b": "Pressione {shortcut} de novo para sair",
   "48ef9d3971c97e7d": "Não foi possível reabrir a visualização",
+  "f9a66fb70d32aa76": "Open",
+  "8311ef81069a97c0": "View on {host}",
   "158a785cabe10dda": "Painel do workspace",
   "9371d8cc390a8a1b": "As pré-visualizações no navegador só estão disponíveis no app para desktop do T3 Code.",
   "05037ca1666fd421": "Os terminais só estão disponíveis a partir de uma thread de projeto.",
@@ -2732,6 +2734,25 @@
   "b4daab4983e50891": "Abrir {kind} {label}: {title}",
   "c5d4a1b01d27c81d": "Imagem anexada, {name}, {size}",
   "baa023ab89b1e31f": "Contexto indisponível, {label}",
+  "3c00a11e86f58071": "Annotated preview crop",
+  "adb5ff2442db6c03": "Expand annotated screenshot",
+  "bacd736112f1bf56": "Loading agent…",
+  "8164298472176286": "@{handle} is no longer recorded.",
+  "e9044aef9edc11ca": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " was not saved with this draft. Attach it again to send it."
+  ],
+  "274e087f814611a7": "View instructions",
+  "ddf87b4bb3bb345e": {
+    "t": "p",
+    "i": 1,
+    "c": "No description is available for this skill."
+  },
+  "2015dc02d7941a79": "Screenshot unavailable",
   "52a44f36200620d5": "Esta instalação usa a arquitetura correta.",
   "007ab0ba4a0318eb": "Este Mac tem Apple Silicon, mas o T3 Code ainda está rodando a versão Intel pelo Rosetta. Baixe a atualização disponível para mudar para a versão nativa para Apple Silicon.",
   "0fe3e0e043327f70": "Este Mac tem Apple Silicon, mas o T3 Code ainda está rodando a versão Intel pelo Rosetta. Reinicie para instalar a versão para Apple Silicon baixada.",
@@ -3241,10 +3262,7 @@
     {
       "t": "span",
       "i": 2,
-      "c": [
-        " ",
-        "no computador que abriu esta página"
-      ]
+      "c": [" ", "no computador que abriu esta página"]
     }
   ],
   "b2d53b4d1d48fbef": [
@@ -3256,10 +3274,7 @@
     {
       "t": "span",
       "i": 2,
-      "c": [
-        " ",
-        "· quem executar recebe este acesso"
-      ]
+      "c": [" ", "· quem executar recebe este acesso"]
     }
   ],
   "c54cc9c75db9dc58": "Aprove apenas um login que você acabou de iniciar.",
@@ -12603,6 +12618,7 @@
   "ef436cc0f1cee213": ", trabalhando",
   "2c3bb8ccf6c38078": "Dispensar aviso de atualização do provedor",
   "3cef7762c22f5fb1": "Dispensar até o status do provedor mudar",
+  "d6e87bef865972c8": "{count, plural, other {{count} more tabs}}",
   "0f90824868d6c3af": "Nova thread ({shortcut})",
   "a1dbe20d209982b6": "Pesquisar",
   "201317aac48d4d9f": "Limpar pesquisa de threads",

@@ -2388,6 +2388,8 @@
   "aece11422a97a057": "Maintenez {shortcut} ou appuyez deux fois pour quitter",
   "404941d325a2755b": "Appuyez à nouveau sur {shortcut} pour quitter",
   "48ef9d3971c97e7d": "Impossible de rouvrir la vue",
+  "f9a66fb70d32aa76": "Open",
+  "8311ef81069a97c0": "View on {host}",
   "158a785cabe10dda": "Panneau de l’espace de travail",
   "9371d8cc390a8a1b": "Les aperçus du navigateur ne sont disponibles que dans l’app desktop T3 Code.",
   "05037ca1666fd421": "Les terminaux ne sont disponibles que depuis un fil de projet.",
@@ -2732,6 +2734,25 @@
   "b4daab4983e50891": "Ouvrir {kind} {label} : {title}",
   "c5d4a1b01d27c81d": "Image jointe, {name}, {size}",
   "baa023ab89b1e31f": "Contexte indisponible, {label}",
+  "3c00a11e86f58071": "Annotated preview crop",
+  "adb5ff2442db6c03": "Expand annotated screenshot",
+  "bacd736112f1bf56": "Loading agent…",
+  "8164298472176286": "@{handle} is no longer recorded.",
+  "e9044aef9edc11ca": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " was not saved with this draft. Attach it again to send it."
+  ],
+  "274e087f814611a7": "View instructions",
+  "ddf87b4bb3bb345e": {
+    "t": "p",
+    "i": 1,
+    "c": "No description is available for this skill."
+  },
+  "2015dc02d7941a79": "Screenshot unavailable",
   "52a44f36200620d5": "Cette installation utilise la bonne architecture.",
   "007ab0ba4a0318eb": "Ce Mac est équipé d’Apple Silicon, mais T3 Code exécute encore la version Intel sous Rosetta. Téléchargez la mise à jour disponible pour passer à la version native Apple Silicon.",
   "0fe3e0e043327f70": "Ce Mac est équipé d’Apple Silicon, mais T3 Code exécute encore la version Intel sous Rosetta. Redémarrez pour installer la version Apple Silicon téléchargée.",
@@ -3241,10 +3262,7 @@
     {
       "t": "span",
       "i": 2,
-      "c": [
-        " ",
-        "sur l’ordinateur qui a ouvert cette page"
-      ]
+      "c": [" ", "sur l’ordinateur qui a ouvert cette page"]
     }
   ],
   "b2d53b4d1d48fbef": [
@@ -3256,10 +3274,7 @@
     {
       "t": "span",
       "i": 2,
-      "c": [
-        " ",
-        "· quiconque l’exécute obtient cet accès"
-      ]
+      "c": [" ", "· quiconque l’exécute obtient cet accès"]
     }
   ],
   "c54cc9c75db9dc58": "N’approuvez qu’une connexion que vous venez de lancer.",
@@ -12604,6 +12619,7 @@
   "ef436cc0f1cee213": ", en cours",
   "2c3bb8ccf6c38078": "Ignorer l’avis de mise à jour du fournisseur",
   "3cef7762c22f5fb1": "Ignorer jusqu’au prochain changement de statut du fournisseur",
+  "d6e87bef865972c8": "{count, plural, other {{count} more tabs}}",
   "0f90824868d6c3af": "Nouveau fil ({shortcut})",
   "a1dbe20d209982b6": "Rechercher",
   "201317aac48d4d9f": "Effacer la recherche de fils",

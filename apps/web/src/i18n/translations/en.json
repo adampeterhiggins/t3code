@@ -2388,6 +2388,8 @@
   "aece11422a97a057": "Hold {shortcut} or press twice to quit",
   "404941d325a2755b": "Press {shortcut} again to quit",
   "48ef9d3971c97e7d": "Could not reopen view",
+  "f9a66fb70d32aa76": "Open",
+  "8311ef81069a97c0": "View on {host}",
   "158a785cabe10dda": "Workspace panel",
   "9371d8cc390a8a1b": "Browser previews are only available in the T3 Code desktop app.",
   "05037ca1666fd421": "Terminal surfaces are only available from a project thread.",
@@ -2732,6 +2734,25 @@
   "b4daab4983e50891": "Open {kind} {label}: {title}",
   "c5d4a1b01d27c81d": "Image attachment, {name}, {size}",
   "baa023ab89b1e31f": "Unavailable context, {label}",
+  "3c00a11e86f58071": "Annotated preview crop",
+  "adb5ff2442db6c03": "Expand annotated screenshot",
+  "bacd736112f1bf56": "Loading agent…",
+  "8164298472176286": "@{handle} is no longer recorded.",
+  "e9044aef9edc11ca": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " was not saved with this draft. Attach it again to send it."
+  ],
+  "274e087f814611a7": "View instructions",
+  "ddf87b4bb3bb345e": {
+    "t": "p",
+    "i": 1,
+    "c": "No description is available for this skill."
+  },
+  "2015dc02d7941a79": "Screenshot unavailable",
   "52a44f36200620d5": "This install is using the correct architecture.",
   "007ab0ba4a0318eb": "This Mac has Apple Silicon, but T3 Code is still running the Intel build under Rosetta. Download the available update to switch to the native Apple Silicon build.",
   "0fe3e0e043327f70": "This Mac has Apple Silicon, but T3 Code is still running the Intel build under Rosetta. Restart to install the downloaded Apple Silicon build.",
@@ -3241,10 +3262,7 @@
     {
       "t": "span",
       "i": 2,
-      "c": [
-        " ",
-        "on the computer that opened this page"
-      ]
+      "c": [" ", "on the computer that opened this page"]
     }
   ],
   "b2d53b4d1d48fbef": [
@@ -3256,10 +3274,7 @@
     {
       "t": "span",
       "i": 2,
-      "c": [
-        " ",
-        "· whoever runs it gets this access"
-      ]
+      "c": [" ", "· whoever runs it gets this access"]
     }
   ],
   "c54cc9c75db9dc58": "Only approve a sign-in you just started.",
@@ -12614,6 +12629,7 @@
   "ef436cc0f1cee213": ", working",
   "2c3bb8ccf6c38078": "Dismiss provider update notice",
   "3cef7762c22f5fb1": "Dismiss until provider status changes",
+  "d6e87bef865972c8": "{count, plural, other {{count} more tabs}}",
   "0f90824868d6c3af": "New thread ({shortcut})",
   "a1dbe20d209982b6": "Search",
   "201317aac48d4d9f": "Clear thread search",

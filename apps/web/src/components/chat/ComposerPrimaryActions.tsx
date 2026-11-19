@@ -419,9 +419,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           {...pointerFocusProps}
           disabled={isSendBusy || isSendDisabled || isEnvironmentUnavailable}
         >
-          {isSendBusy
-            ? gt("Sending...")
-            : gt("Implement", { $context: "verb, implements a plan" })}
+          {isSendBusy ? gt("Sending...") : gt("Implement", { $context: "verb, implements a plan" })}
         </button>
         <Menu>
           <MenuTrigger

@@ -2386,6 +2386,8 @@
   "aece11422a97a057": "終了するには {shortcut} を長押しするか 2 回押します",
   "404941d325a2755b": "終了するにはもう一度 {shortcut} を押します",
   "48ef9d3971c97e7d": "ビューを再度開けませんでした",
+  "f9a66fb70d32aa76": "Open",
+  "8311ef81069a97c0": "View on {host}",
   "158a785cabe10dda": "ワークスペースパネル",
   "9371d8cc390a8a1b": "ブラウザーのプレビューは T3 Code デスクトップアプリでのみ利用できます。",
   "05037ca1666fd421": "ターミナルはプロジェクトのスレッドからのみ利用できます。",
@@ -2730,6 +2732,25 @@
   "b4daab4983e50891": "{kind} {label} を開く: {title}",
   "c5d4a1b01d27c81d": "画像の添付ファイル、{name}、{size}",
   "baa023ab89b1e31f": "利用できないコンテキスト、{label}",
+  "3c00a11e86f58071": "Annotated preview crop",
+  "adb5ff2442db6c03": "Expand annotated screenshot",
+  "bacd736112f1bf56": "Loading agent…",
+  "8164298472176286": "@{handle} is no longer recorded.",
+  "e9044aef9edc11ca": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " was not saved with this draft. Attach it again to send it."
+  ],
+  "274e087f814611a7": "View instructions",
+  "ddf87b4bb3bb345e": {
+    "t": "p",
+    "i": 1,
+    "c": "No description is available for this skill."
+  },
+  "2015dc02d7941a79": "Screenshot unavailable",
   "52a44f36200620d5": "このインストールは正しいアーキテクチャを使用しています。",
   "007ab0ba4a0318eb": "この Mac は Apple Silicon ですが、T3 Code はまだ Rosetta で Intel ビルドを実行しています。ネイティブの Apple Silicon ビルドに切り替えるには、利用可能な更新をダウンロードしてください。",
   "0fe3e0e043327f70": "この Mac は Apple Silicon ですが、T3 Code はまだ Rosetta で Intel ビルドを実行しています。ダウンロードした Apple Silicon ビルドをインストールするには再起動してください。",
@@ -3239,10 +3260,7 @@
     {
       "t": "span",
       "i": 2,
-      "c": [
-        " ",
-        "(このページを開いたコンピューター上)"
-      ]
+      "c": [" ", "(このページを開いたコンピューター上)"]
     }
   ],
   "b2d53b4d1d48fbef": [
@@ -3254,10 +3272,7 @@
     {
       "t": "span",
       "i": 2,
-      "c": [
-        " ",
-        "· 実行した人にこのアクセス権が付与されます"
-      ]
+      "c": [" ", "· 実行した人にこのアクセス権が付与されます"]
     }
   ],
   "c54cc9c75db9dc58": "自分で開始したばかりのサインインだけを承認してください。",
@@ -12554,6 +12569,7 @@
   "ef436cc0f1cee213": "、作業中",
   "2c3bb8ccf6c38078": "プロバイダーの更新通知を閉じる",
   "3cef7762c22f5fb1": "プロバイダーのステータスが変わるまで非表示",
+  "d6e87bef865972c8": "{count, plural, other {{count} more tabs}}",
   "0f90824868d6c3af": "新しいスレッド ({shortcut})",
   "a1dbe20d209982b6": "検索",
   "201317aac48d4d9f": "スレッドの検索をクリア",

@@ -366,7 +366,7 @@ it.effect("does not report authentication when post-login verification fails", (
 it.effect("surfaces what the login command printed when it exits non-zero", () =>
   Effect.gen(function* () {
     const h = yield* makeHarness(terminalMethod);
-    yield* h.controller.start("owner", Effect.void, "terminal");
+    yield* h.controller.start("owner", { stopSessions: Effect.void, methodId: "terminal" });
     yield* h.phase("waiting");
     h.data("Connect to the VPN, then sign in again.\r\n");
     h.exit(1);

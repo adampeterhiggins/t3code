@@ -718,7 +718,9 @@ export function useThreadListActions(): {
           { title: thread.title, workspaceRoot: project.workspaceRoot },
         ),
       ),
-      confirmText: m(msg("Move", { $context: "verb, confirms moving a thread to another project" })),
+      confirmText: m(
+        msg("Move", { $context: "verb, confirms moving a thread to another project" }),
+      ),
       onConfirm: async () => {
         if (!checkThreadOperationPermission(thread, m(msg("Could not move thread")))) return;
         selectionHaptic();

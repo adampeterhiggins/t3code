@@ -2388,6 +2388,8 @@
   "aece11422a97a057": "Mantén pulsado {shortcut} o púlsalo dos veces para salir",
   "404941d325a2755b": "Pulsa {shortcut} otra vez para salir",
   "48ef9d3971c97e7d": "No se pudo volver a abrir la vista",
+  "f9a66fb70d32aa76": "Open",
+  "8311ef81069a97c0": "View on {host}",
   "158a785cabe10dda": "Panel de trabajo",
   "9371d8cc390a8a1b": "Las vistas previas del navegador solo están disponibles en la app de escritorio de T3 Code.",
   "05037ca1666fd421": "Las terminales solo están disponibles desde un hilo de proyecto.",
@@ -2732,6 +2734,25 @@
   "b4daab4983e50891": "Abrir {kind} {label}: {title}",
   "c5d4a1b01d27c81d": "Imagen adjunta, {name}, {size}",
   "baa023ab89b1e31f": "Contexto no disponible, {label}",
+  "3c00a11e86f58071": "Annotated preview crop",
+  "adb5ff2442db6c03": "Expand annotated screenshot",
+  "bacd736112f1bf56": "Loading agent…",
+  "8164298472176286": "@{handle} is no longer recorded.",
+  "e9044aef9edc11ca": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " was not saved with this draft. Attach it again to send it."
+  ],
+  "274e087f814611a7": "View instructions",
+  "ddf87b4bb3bb345e": {
+    "t": "p",
+    "i": 1,
+    "c": "No description is available for this skill."
+  },
+  "2015dc02d7941a79": "Screenshot unavailable",
   "52a44f36200620d5": "Esta instalación usa la arquitectura correcta.",
   "007ab0ba4a0318eb": "Este Mac tiene Apple Silicon, pero T3 Code sigue ejecutando la versión para Intel con Rosetta. Descarga la actualización disponible para cambiar a la versión nativa para Apple Silicon.",
   "0fe3e0e043327f70": "Este Mac tiene Apple Silicon, pero T3 Code sigue ejecutando la versión para Intel con Rosetta. Reinicia para instalar la versión para Apple Silicon descargada.",
@@ -3241,10 +3262,7 @@
     {
       "t": "span",
       "i": 2,
-      "c": [
-        " ",
-        "en el ordenador que abrió esta página"
-      ]
+      "c": [" ", "en el ordenador que abrió esta página"]
     }
   ],
   "b2d53b4d1d48fbef": [
@@ -3256,10 +3274,7 @@
     {
       "t": "span",
       "i": 2,
-      "c": [
-        " ",
-        "· quien lo ejecute obtiene este acceso"
-      ]
+      "c": [" ", "· quien lo ejecute obtiene este acceso"]
     }
   ],
   "c54cc9c75db9dc58": "Aprueba solo un inicio de sesión que acabes de iniciar.",
@@ -12599,6 +12614,7 @@
   "ef436cc0f1cee213": ", en curso",
   "2c3bb8ccf6c38078": "Descartar aviso de actualización del proveedor",
   "3cef7762c22f5fb1": "Descartar hasta que cambie el estado del proveedor",
+  "d6e87bef865972c8": "{count, plural, other {{count} more tabs}}",
   "0f90824868d6c3af": "Nuevo hilo ({shortcut})",
   "a1dbe20d209982b6": "Buscar",
   "201317aac48d4d9f": "Borrar búsqueda de hilos",

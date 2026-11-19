@@ -885,7 +885,12 @@ export function useThreadActions() {
       const confirmed = await settlePromise(() =>
         localApi.dialogs.confirm(
           [
-            m(msg('Move "{thread}" to {project}?', { thread: thread.title, project: project.title })),
+            m(
+              msg('Move "{thread}" to {project}?', {
+                thread: thread.title,
+                project: project.title,
+              }),
+            ),
             m(
               msg(
                 "The agent continues in {workspaceRoot}. Its current checkout stays on disk, and linked pull requests are cleared.",

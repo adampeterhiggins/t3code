@@ -16,7 +16,7 @@ import {
 } from "../Sidebar.logic";
 import { resolveSidebarTopStatus, SidebarTopStatusIcon } from "./SidebarTopStatus";
 
-export function compactSidebarTimeLabel(label: string): string {
+function compactSidebarTimeLabel(label: string): string {
   if (label === "just now") return "now";
   return label.endsWith(" ago") ? label.slice(0, -4) : label;
 }

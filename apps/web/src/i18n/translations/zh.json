@@ -2393,6 +2393,8 @@
   "aece11422a97a057": "按住 {shortcut} 或连按两次退出",
   "404941d325a2755b": "再按一次 {shortcut} 退出",
   "48ef9d3971c97e7d": "无法重新打开视图",
+  "f9a66fb70d32aa76": "Open",
+  "8311ef81069a97c0": "View on {host}",
   "158a785cabe10dda": "工作区面板",
   "9371d8cc390a8a1b": "浏览器预览仅在 T3 Code 桌面应用中可用。",
   "05037ca1666fd421": "终端面板仅在项目会话中可用。",
@@ -2738,6 +2740,25 @@
   "b4daab4983e50891": "打开 {kind} {label}：{title}",
   "c5d4a1b01d27c81d": "图片附件，{name}，{size}",
   "baa023ab89b1e31f": "不可用的上下文：{label}",
+  "3c00a11e86f58071": "Annotated preview crop",
+  "adb5ff2442db6c03": "Expand annotated screenshot",
+  "bacd736112f1bf56": "Loading agent…",
+  "8164298472176286": "@{handle} is no longer recorded.",
+  "e9044aef9edc11ca": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " was not saved with this draft. Attach it again to send it."
+  ],
+  "274e087f814611a7": "View instructions",
+  "ddf87b4bb3bb345e": {
+    "t": "p",
+    "i": 1,
+    "c": "No description is available for this skill."
+  },
+  "2015dc02d7941a79": "Screenshot unavailable",
   "52a44f36200620d5": "当前安装使用了正确的架构。",
   "007ab0ba4a0318eb": "这台 Mac 使用 Apple Silicon，但 T3 Code 仍以 Rosetta 运行 Intel 版本。下载可用更新即可切换到原生的 Apple Silicon 版本。",
   "0fe3e0e043327f70": "这台 Mac 使用 Apple Silicon，但 T3 Code 仍以 Rosetta 运行 Intel 版本。重启即可安装已下载的 Apple Silicon 版本。",
@@ -3247,10 +3268,7 @@
     {
       "t": "span",
       "i": 2,
-      "c": [
-        " ",
-        "位于打开此页面的计算机上"
-      ]
+      "c": [" ", "位于打开此页面的计算机上"]
     }
   ],
   "b2d53b4d1d48fbef": [
@@ -3262,10 +3280,7 @@
     {
       "t": "span",
       "i": 2,
-      "c": [
-        " ",
-        "· 运行它的任何人都会获得此访问权限"
-      ]
+      "c": [" ", "· 运行它的任何人都会获得此访问权限"]
     }
   ],
   "c54cc9c75db9dc58": "请只批准你刚刚发起的登录。",
@@ -12629,6 +12644,7 @@
   "ef436cc0f1cee213": "，运行中",
   "2c3bb8ccf6c38078": "忽略提供方更新提示",
   "3cef7762c22f5fb1": "忽略直到提供方状态变化",
+  "d6e87bef865972c8": "{count, plural, other {{count} more tabs}}",
   "0f90824868d6c3af": "新建会话（{shortcut}）",
   "a1dbe20d209982b6": "搜索",
   "201317aac48d4d9f": "清除会话搜索",

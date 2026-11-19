@@ -435,7 +435,11 @@ function MenuSearch<T>({
         aria-label={placeholder}
         onChange={(event) => setValue(event.currentTarget.value)}
       />
-      {matches.length === 0 ? <MenuItem disabled>{gt("No matches")}</MenuItem> : children(matches, query)}
+      {matches.length === 0 ? (
+        <MenuItem disabled>{gt("No matches")}</MenuItem>
+      ) : (
+        children(matches, query)
+      )}
     </>
   );
 }
