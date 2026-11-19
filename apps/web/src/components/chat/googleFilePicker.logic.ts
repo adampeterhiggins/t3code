@@ -4,6 +4,9 @@ import {
   type FilterDimension,
   filterFacets,
 } from "@t3tools/shared/filterFacets";
+import { msg } from "gt-react";
+
+import { m, type MessageResolver } from "~/i18n/messages";
 
 export type GoogleFilePickerSource = "drive" | "calendar" | "gmail";
 export type GoogleFileType = GoogleFileSummary["fileType"];
@@ -199,8 +202,8 @@ export function groupEventsByDay(
 }
 
 /** `All day` or `10:00 – 11:00`, in local time. */
-export function eventTimeLabel(event: GoogleFileSummary): string {
-  if (isAllDay(event)) return "All day";
+export function eventTimeLabel(event: GoogleFileSummary, resolve: MessageResolver = m): string {
+  if (isAllDay(event)) return resolve(msg("All day"));
   const time = (date: Date | null) =>
     date?.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) ?? "";
   const start = time(parseGoogleTime(event.startsAt));
@@ -209,7 +212,7 @@ export function eventTimeLabel(event: GoogleFileSummary): string {
 }
 
 /** `Today · Sun 25 Oct`, `Tomorrow · …`, or `Mon 27 Oct`, with the year when not this one. */
-export function dayHeading(day: string, now: number): string {
+export function dayHeading(day: string, now: number, resolve: MessageResolver = m): string {
   const date = dayFromKey(day);
   const today = new Date(now);
   const label = date.toLocaleDateString(undefined, {
@@ -219,9 +222,9 @@ export function dayHeading(day: string, now: number): string {
     ...(date.getFullYear() === today.getFullYear() ? {} : { year: "numeric" }),
   });
   const relative = {
-    [localDayKey(today)]: "Today",
-    [localDayKey(addDays(today, 1))]: "Tomorrow",
-    [localDayKey(addDays(today, -1))]: "Yesterday",
+    [localDayKey(today)]: msg("Today · {date}"),
+    [localDayKey(addDays(today, 1))]: msg("Tomorrow · {date}"),
+    [localDayKey(addDays(today, -1))]: msg("Yesterday · {date}"),
   }[day];
-  return relative ? `${relative} · ${label}` : label;
+  return relative ? resolve(relative, { date: label }) : label;
 }

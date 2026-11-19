@@ -559,7 +559,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
       ? getQuestionAnswerPreview(workEntry.questionAnswer)
       : null;
   const viewedImagePath = workEntryViewedImagePath(workEntry);
-  const { plainOutput, plainOutputFetches } = toolCallDetailOutput(workEntry, workspaceRoot);
+  const { plainOutput, plainOutputFetches } = toolCallDetailOutput(workEntry, workspaceRoot, m);
   const viewedImage =
     viewedImagePath && threadRef
       ? resolveViewedImageAsset(viewedImagePath, {

@@ -1,5 +1,6 @@
 import type { ProjectIconColor } from "@t3tools/contracts";
 import type { ThreadGroup } from "@t3tools/contracts/settings";
+import { T, useGT } from "gt-react-native";
 import { useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
@@ -91,6 +92,7 @@ function ThreadGroupEditor(props: {
   readonly initial: ThreadGroupDraft | null;
   readonly onFinish: (result: ThreadGroupEditorResult) => void;
 }) {
+  const gt = useGT();
   const [name, setName] = useState(props.initial?.name ?? "");
   const [style, setStyle] = useState<ThreadGroup>(props.initial?.style ?? {});
   const [error, setError] = useState<string | null>(null);
@@ -102,7 +104,7 @@ function ThreadGroupEditor(props: {
   const save = () => {
     const trimmed = name.trim();
     if (trimmed.length === 0) {
-      setError("Group name cannot be empty.");
+      setError(gt("Group name cannot be empty."));
       return;
     }
     props.onFinish({ name: trimmed, style });
@@ -121,20 +123,20 @@ function ThreadGroupEditor(props: {
         >
           <View className="flex-row items-center gap-3">
             <ThreadGroupIcon
-              name={name.trim() || "Group"}
+              name={name.trim() || gt("Group", { $context: "default thread group name" })}
               style={style}
               size={22}
               fallbackTintClassName="accent-icon-muted"
             />
             <AppText accessibilityRole="header" className="text-xl font-t3-semibold">
-              {props.initial === null ? "New group" : "Edit group"}
+              {props.initial === null ? gt("New group") : gt("Edit group")}
             </AppText>
           </View>
           <TextInput
-            accessibilityLabel="Group name"
+            accessibilityLabel={gt("Group name")}
             autoFocus={props.initial === null}
             className="min-h-12 rounded-xl bg-subtle px-3 text-base text-foreground"
-            placeholder="Group name"
+            placeholder={gt("Group name")}
             returnKeyType="done"
             value={name}
             onChangeText={(value) => {
@@ -144,10 +146,12 @@ function ThreadGroupEditor(props: {
             onSubmitEditing={save}
           />
           <View className="gap-2">
-            <AppText className="text-sm text-foreground-secondary">Icon</AppText>
+            <AppText className="text-sm text-foreground-secondary">
+              <T>Icon</T>
+            </AppText>
             <View className="flex-row flex-wrap gap-2">
               <IconChoice
-                label="No icon"
+                label={gt("No icon")}
                 selected={style.icon == null}
                 onPress={() => {
                   const { icon: _icon, ...rest } = style;
@@ -164,7 +168,7 @@ function ThreadGroupEditor(props: {
               {/* A Lucide or monogram icon set on web stays selectable as-is. */}
               {initialIcon !== null && initialIcon.kind !== "emoji" ? (
                 <IconChoice
-                  label="Current icon"
+                  label={gt("Current icon")}
                   selected={style.icon === initialIcon}
                   onPress={() => setStyle({ ...style, icon: initialIcon })}
                 >
@@ -191,11 +195,13 @@ function ThreadGroupEditor(props: {
             </View>
           </View>
           <View className="gap-2">
-            <AppText className="text-sm text-foreground-secondary">Accent</AppText>
+            <AppText className="text-sm text-foreground-secondary">
+              <T context="thread group color">Accent</T>
+            </AppText>
             <View className="flex-row flex-wrap gap-2">
               <Pressable
                 accessibilityRole="radio"
-                accessibilityLabel="No accent"
+                accessibilityLabel={gt("No accent")}
                 accessibilityState={{ checked: style.accent === undefined }}
                 className={cn(
                   "size-8 items-center justify-center rounded-full border border-border",
@@ -223,10 +229,10 @@ function ThreadGroupEditor(props: {
           </View>
           <View className="flex-row items-center justify-between gap-3">
             <AppText className="flex-1 text-sm text-foreground-secondary">
-              Also show its threads in Threads, Snoozed and Settled
+              <T>Also show its threads in Threads, Snoozed and Settled</T>
             </AppText>
             <ThemedSwitch
-              accessibilityLabel="Also show its threads in Threads, Snoozed and Settled"
+              accessibilityLabel={gt("Also show its threads in Threads, Snoozed and Settled")}
               value={style.showInThreads === true}
               onValueChange={(checked) => {
                 const { showInThreads: _showInThreads, ...rest } = style;
@@ -236,10 +242,10 @@ function ThreadGroupEditor(props: {
           </View>
           <View className="flex-row items-center justify-between gap-3">
             <AppText className="flex-1 text-sm text-foreground-secondary">
-              Show settled threads
+              <T>Show settled threads</T>
             </AppText>
             <ThemedSwitch
-              accessibilityLabel="Show settled threads"
+              accessibilityLabel={gt("Show settled threads")}
               value={style.showSettled !== false}
               onValueChange={(checked) => {
                 const { showSettled: _showSettled, ...rest } = style;
@@ -256,11 +262,13 @@ function ThreadGroupEditor(props: {
             {props.initial !== null ? (
               <Pressable
                 accessibilityRole="button"
-                accessibilityHint="Removes the group and moves its threads out of it."
+                accessibilityHint={gt("Removes the group and moves its threads out of it.")}
                 className="mr-auto min-h-12 justify-center"
                 onPress={() => props.onFinish("delete")}
               >
-                <AppText className="text-danger-foreground">Delete group</AppText>
+                <AppText className="text-danger-foreground">
+                  <T>Delete group</T>
+                </AppText>
               </Pressable>
             ) : null}
             <Pressable
@@ -268,14 +276,20 @@ function ThreadGroupEditor(props: {
               className="min-h-12 justify-center px-3"
               onPress={() => props.onFinish(null)}
             >
-              <AppText>Cancel</AppText>
+              <AppText>
+                <T>Cancel</T>
+              </AppText>
             </Pressable>
             <Pressable
               accessibilityRole="button"
               className="min-h-12 justify-center rounded-xl bg-subtle px-3"
               onPress={save}
             >
-              <AppText>{props.initial === null ? "Create" : "Save"}</AppText>
+              <AppText>
+                {props.initial === null
+                  ? gt("Create", { $context: "verb, creates a group" })
+                  : gt("Save", { $context: "verb" })}
+              </AppText>
             </Pressable>
           </View>
         </ScrollView>

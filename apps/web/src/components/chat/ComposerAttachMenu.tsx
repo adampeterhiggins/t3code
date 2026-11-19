@@ -12,6 +12,7 @@ import {
   MessageSquareIcon,
   PaperclipIcon,
 } from "lucide-react";
+import { T, useGT } from "gt-react";
 import { memo } from "react";
 
 import { Button } from "../ui/button";
@@ -65,11 +66,19 @@ export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
   /** Fork: opens the model picker to insert a model chip; absent where chips can't be edited. */
   onPickModel?: (() => void) | undefined;
 }) {
+  const gt = useGT();
   const composerMenuProps = useComposerMenuProps();
   return (
     <Menu>
       <MenuTrigger
-        render={<Button type="button" variant="ghost" size="icon-sm" aria-label="Attach" />}
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={gt("Attach", { $context: "verb, attach to message" })}
+          />
+        }
       >
         {/* The clip's weight sits in its upper loop; 1px down reads as centered on the row. */}
         <PaperclipIcon className="translate-y-px" />
@@ -77,11 +86,11 @@ export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
       <MenuPopup side="top" align="end" {...composerMenuProps}>
         <MenuItem onClick={props.onAttachFiles}>
           <PaperclipIcon />
-          Files and images
+          <T>Files and images</T>
         </MenuItem>
         <MenuItem onClick={() => props.onPick("thread")}>
           <MessageSquareIcon />
-          Thread
+          <T context="attach source: a chat thread">Thread</T>
         </MenuItem>
         <ComposerIntegrationAttachMenuItems
           environmentId={props.environmentId}
@@ -91,23 +100,23 @@ export const ComposerAttachMenu = memo(function ComposerAttachMenu(props: {
         {props.pullRequestsAvailable ? (
           <MenuItem onClick={() => props.onPick("pull-request")}>
             <PullRequestGlyph.pullRequest />
-            Pull request
+            <T>Pull request</T>
           </MenuItem>
         ) : null}
         {props.checkoutsAvailable ? (
           <MenuItem onClick={() => props.onPick("checkout")}>
             <LaptopIcon />
-            Checkout
+            <T context="attach source: a local git checkout">Checkout</T>
           </MenuItem>
         ) : null}
         <MenuItem onClick={() => props.onPick("repository")}>
           <FolderGit2Icon />
-          Repository
+          <T>Repository</T>
         </MenuItem>
         {props.onPickModel ? (
           <MenuItem onClick={props.onPickModel}>
             <CpuIcon />
-            Model
+            <T context="attach source: an AI model">Model</T>
           </MenuItem>
         ) : null}
       </MenuPopup>

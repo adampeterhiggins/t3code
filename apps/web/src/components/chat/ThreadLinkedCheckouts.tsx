@@ -1,5 +1,6 @@
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { checkoutPathsEqual } from "@t3tools/shared/checkouts";
+import { T, useGT } from "gt-react";
 import { FolderIcon, PlusIcon, SquareArrowOutUpRightIcon, XIcon } from "lucide-react";
 
 import { useOpenInPreferredEditor } from "~/editorPreferences";
@@ -19,6 +20,7 @@ import { openCheckoutAttachPicker } from "./CheckoutAttachPicker";
  * leaves messages that already referenced one unchanged.
  */
 export function ThreadLinkedCheckouts(props: { environmentId: EnvironmentId; threadId: ThreadId }) {
+  const gt = useGT();
   const threadRef = { environmentId: props.environmentId, threadId: props.threadId };
   const shell = useThreadShell(threadRef);
   const links = shell?.source.linkedCheckouts ?? [];
@@ -45,13 +47,13 @@ export function ThreadLinkedCheckouts(props: { environmentId: EnvironmentId; thr
   return (
     <ThreadDetailsSection
       headingId="thread-details-checkouts-heading"
-      title="Linked checkouts"
+      title={gt("Linked checkouts")}
       actions={
         <Button
           type="button"
           size="icon-xs"
           variant="ghost"
-          aria-label="Link a checkout"
+          aria-label={gt("Link a checkout")}
           onClick={() => openCheckoutAttachPicker(threadRef)}
         >
           <PlusIcon />
@@ -64,11 +66,13 @@ export function ThreadLinkedCheckouts(props: { environmentId: EnvironmentId; thr
             checkoutPathsEqual(candidate.path, link.path),
           );
           const missing = entry !== undefined && !entry.exists;
-          const detail = missing
-            ? link.path
-            : entry === undefined
+          const branch = entry?.branch ?? gt("detached HEAD");
+          const detail =
+            missing || entry === undefined
               ? link.path
-              : `${entry.branch ?? "detached HEAD"}${entry.changedFiles > 0 ? ` · ${entry.changedFiles} changed` : " · clean"}`;
+              : entry.changedFiles > 0
+                ? gt("{branch} · {count} changed", { branch, count: entry.changedFiles })
+                : gt("{branch} · clean", { branch });
           return (
             <div key={link.path} className="group flex items-start gap-2 rounded-md px-1.5 py-1">
               <FolderIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
@@ -76,7 +80,9 @@ export function ThreadLinkedCheckouts(props: { environmentId: EnvironmentId; thr
                 <div className="truncate text-xs">{link.name}</div>
                 <div className="truncate text-muted-foreground text-xs">{detail}</div>
                 {missing ? (
-                  <div className="truncate text-warning text-xs">Folder not found</div>
+                  <div className="truncate text-warning text-xs">
+                    <T>Folder not found</T>
+                  </div>
                 ) : null}
               </div>
               {missing ? (
@@ -87,7 +93,7 @@ export function ThreadLinkedCheckouts(props: { environmentId: EnvironmentId; thr
                     variant="ghost-muted"
                     onClick={() => openCheckoutAttachPicker(threadRef, { relocateFrom: link.path })}
                   >
-                    Locate
+                    <T context="verb, find the moved folder">Locate</T>
                   </Button>
                   <Button
                     type="button"
@@ -100,7 +106,7 @@ export function ThreadLinkedCheckouts(props: { environmentId: EnvironmentId; thr
                       })
                     }
                   >
-                    Unlink
+                    <T context="verb">Unlink</T>
                   </Button>
                 </div>
               ) : (
@@ -109,7 +115,7 @@ export function ThreadLinkedCheckouts(props: { environmentId: EnvironmentId; thr
                     type="button"
                     size="icon-xs"
                     variant="ghost"
-                    aria-label={`Open ${link.name}`}
+                    aria-label={gt("Open {name}", { name: link.name })}
                     onClick={() => void openInEditor(link.path)}
                   >
                     <SquareArrowOutUpRightIcon />
@@ -118,7 +124,7 @@ export function ThreadLinkedCheckouts(props: { environmentId: EnvironmentId; thr
                     type="button"
                     size="icon-xs"
                     variant="ghost"
-                    aria-label={`Unlink ${link.name}`}
+                    aria-label={gt("Unlink {name}", { name: link.name })}
                     onClick={() =>
                       void unlink({
                         environmentId: props.environmentId,

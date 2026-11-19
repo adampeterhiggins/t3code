@@ -1,6 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { notionLinkForThread } from "@t3tools/client-runtime/state/notion";
 import type { EnvironmentId, ScopedThreadRef, NotionThreadLink } from "@t3tools/contracts";
+import { T, useGT } from "gt-react";
 import { ExternalLinkIcon, PencilIcon, UnlinkIcon } from "lucide-react";
 
 import { useLinkClickHandler } from "~/browser/useOpenLink";
@@ -38,6 +39,7 @@ export function useUnlinkNotionPage() {
 /** The thread details row for the thread's linked Notion page, showing its title when linked. */
 export function NotionThreadLinkRow(props: { threadRef: ScopedThreadRef; link: NotionThreadLink }) {
   const { threadRef, link } = props;
+  const gt = useGT();
   const notionEnabled = useEnvironmentSettings(
     threadRef.environmentId,
     (s) => s.enableNotionIntegration,
@@ -54,7 +56,7 @@ export function NotionThreadLinkRow(props: { threadRef: ScopedThreadRef; link: N
       linkUrl={link.url}
       icon={<NotionIcon className="size-4 shrink-0" />}
       label={link.title}
-      accessibleLabel={`Linked Notion page: ${link.title}`}
+      accessibleLabel={gt("Linked Notion page: {title}", { title: link.title })}
       threadRef={threadRef}
       url={link.url}
     >
@@ -63,12 +65,12 @@ export function NotionThreadLinkRow(props: { threadRef: ScopedThreadRef; link: N
         onClick={(event) => openLink(event, link.url)}
       >
         <ExternalLinkIcon />
-        Open in Notion
+        <T>Open in Notion</T>
       </MenuItem>
       {notionEnabled && canEdit ? (
         <MenuItem onClick={() => openNotionPagePicker(threadRef, "link")}>
           <PencilIcon />
-          Change page…
+          <T>Change page…</T>
         </MenuItem>
       ) : null}
       {canEdit ? (
@@ -76,7 +78,7 @@ export function NotionThreadLinkRow(props: { threadRef: ScopedThreadRef; link: N
           <MenuSeparator />
           <MenuItem onClick={() => void unlink(threadRef)}>
             <UnlinkIcon />
-            Unlink page
+            <T>Unlink page</T>
           </MenuItem>
         </>
       ) : null}

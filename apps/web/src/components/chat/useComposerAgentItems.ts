@@ -4,6 +4,7 @@ import {
 } from "@t3tools/client-runtime/state/agent-fleet";
 import { matchesSubagentQuery } from "@t3tools/client-runtime/state/subagent-handles";
 import type { ScopedThreadRef } from "@t3tools/contracts";
+import { useGT } from "gt-react";
 
 import { useThreadProjection, useThreadShells } from "~/state/entities";
 
@@ -24,6 +25,7 @@ export function useComposerAgentItems(
   /** The directory agents' tool calls are shown relative to. */
   workspaceRoot: string | null,
 ) {
+  const gt = useGT();
   const environmentId = enabled ? (threadRef?.environmentId ?? null) : null;
   const threadId = enabled ? (threadRef?.threadId ?? null) : null;
   const activeRef =
@@ -65,7 +67,7 @@ export function useComposerAgentItems(
       .map((entry) => ({ entry, ownerTitle: null })),
     ...others.map((entry) => ({
       entry,
-      ownerTitle: titles.get(entry.ownerThreadId) ?? "another thread",
+      ownerTitle: titles.get(entry.ownerThreadId) ?? gt("another thread"),
     })),
   ].map(({ entry, ownerTitle }): ComposerCommandItem => ({
     id: `subagent:${entry.key}`,

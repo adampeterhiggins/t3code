@@ -15,6 +15,7 @@ import {
   type ScheduledTask,
 } from "@t3tools/contracts";
 import { StackActions, useNavigation } from "@react-navigation/native";
+import { T, useGT, useLocale, useMessages } from "gt-react-native";
 import { useState, type ReactNode } from "react";
 import { ActivityIndicator, FlatList, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -62,6 +63,9 @@ export function useStartFromAutomationPicker(target: StartFromAutomationTarget |
 function StartFromAutomationSheet(
   props: StartFromAutomationTarget & { readonly onClose: () => void },
 ) {
+  const gt = useGT();
+  const messages = useMessages();
+  const locale = useLocale();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const [query, setQuery] = useState("");
@@ -110,14 +114,20 @@ function StartFromAutomationSheet(
     setRunning(null);
     if (result._tag === "Failure") {
       if (!isAtomCommandInterrupted(result)) {
-        Dialog.alert(`Could not run ${task.title}`, String(squashAtomCommandFailure(result)));
+        Dialog.alert(
+          gt("Could not run {title}", { title: task.title }),
+          String(squashAtomCommandFailure(result)),
+        );
       }
       return;
     }
     // Null means the run could not be dispatched; older servers do not report the thread.
     const threadId = result.value.threadId;
     if (threadId === null) {
-      Dialog.alert(`Could not run ${task.title}`, result.value.task.lastRunError ?? undefined);
+      Dialog.alert(
+        gt("Could not run {title}", { title: task.title }),
+        result.value.task.lastRunError ?? undefined,
+      );
       return;
     }
     props.onClose();
@@ -132,14 +142,14 @@ function StartFromAutomationSheet(
   };
 
   return (
-    <PickerSheet title="Start from automation" onClose={props.onClose}>
+    <PickerSheet title={gt("Start from automation")} onClose={props.onClose}>
       <View className="px-4 pb-3">
         <AppTextInput
-          accessibilityLabel="Search automations"
+          accessibilityLabel={gt("Search automations")}
           autoCapitalize="none"
           autoCorrect={false}
           clearButtonMode="while-editing"
-          placeholder="Search automations"
+          placeholder={gt("Search automations")}
           returnKeyType="search"
           value={query}
           onChangeText={setQuery}
@@ -153,13 +163,15 @@ function StartFromAutomationSheet(
         ListHeaderComponent={
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="New automation from draft"
+            accessibilityLabel={gt("New automation from draft")}
             disabled={!canEdit || running !== null}
             onPress={newFromDraft}
             className="flex-row items-center gap-3 px-4 py-3 active:bg-subtle disabled:opacity-60"
           >
             <SymbolView name="plus" size={16} tintColorClassName="accent-icon" />
-            <Text className="text-base text-foreground">New automation from draft</Text>
+            <Text className="text-base text-foreground">
+              <T>New automation from draft</T>
+            </Text>
           </Pressable>
         }
         ListEmptyComponent={
@@ -177,18 +189,18 @@ function StartFromAutomationSheet(
               >
                 {list.error ??
                   (query.trim()
-                    ? "No matching automations."
-                    : "No automations in this project yet.")}
+                    ? gt("No matching automations.")
+                    : gt("No automations in this project yet."))}
               </Text>
             )}
           </View>
         }
         renderItem={({ item }) => {
-          const blocker = automationRunBlocker(item);
+          const blocker = automationRunBlocker(item, messages);
           const status = [
-            describeSchedule(item),
-            item.enabled ? null : "paused",
-            item.lastRunStatus === "failed" ? "last run failed" : null,
+            describeSchedule(item, undefined, messages, locale),
+            item.enabled ? null : gt("paused", { $context: "automation status" }),
+            item.lastRunStatus === "failed" ? gt("last run failed") : null,
           ]
             .filter(Boolean)
             .join(" · ");
@@ -196,7 +208,7 @@ function StartFromAutomationSheet(
             <View className="flex-row items-center">
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`Run ${item.title} now`}
+                accessibilityLabel={gt("Run {title} now", { title: item.title })}
                 accessibilityHint={blocker ?? undefined}
                 disabled={!canRun || running !== null || blocker !== null}
                 onPress={() => void run(item)}
@@ -214,7 +226,7 @@ function StartFromAutomationSheet(
               </Pressable>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`Edit ${item.title}`}
+                accessibilityLabel={gt("Edit {title}", { title: item.title })}
                 disabled={!canEdit || running !== null}
                 onPress={() =>
                   openEditor(

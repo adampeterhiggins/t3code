@@ -647,7 +647,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     isActive: props.isActive || props.groupFocused === true,
     isSelected,
   });
-  const resolvedTopStatus = resolveSidebarTopStatus(status, isWoke, isUnread);
+  const resolvedTopStatus = resolveSidebarTopStatus(status, isWoke, isUnread, messages);
   // A native /goal keeps the agent going across turns until it is met.
   const topStatus =
     resolvedTopStatus !== null && status === "working" && thread.goal?.status === "active"

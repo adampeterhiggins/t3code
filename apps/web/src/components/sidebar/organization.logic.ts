@@ -9,6 +9,8 @@ import type { SidebarThreadViews, ThreadGroups } from "@t3tools/contracts/settin
 import { repositoryGroupingKeyOf, type RepositoryIdentity } from "@t3tools/contracts";
 import type { Organisation, Organisations } from "@t3tools/contracts/settings";
 import { filterFacets } from "@t3tools/shared/filterFacets";
+import { msg } from "gt-react";
+import { m, type MessageResolver } from "../../i18n/messages";
 
 export type SidebarPage =
   | "threads"
@@ -181,6 +183,7 @@ export function buildSidebarOrganisationOptions(
   identities: ReadonlyArray<RepositoryIdentity | null | undefined>,
   organisations: Organisations,
   picked: readonly string[],
+  resolve: MessageResolver = m,
 ): OrganisationOption[] {
   const options = buildOrganisationOptions(
     identities,
@@ -193,8 +196,8 @@ export function buildSidebarOrganisationOptions(
   ) {
     options.push({
       key: NO_ORGANISATION_KEY,
-      label: "No organisation",
-      defaultLabel: "No organisation",
+      label: resolve(msg("No organisation")),
+      defaultLabel: resolve(msg("No organisation")),
       organisation: undefined,
     });
   }

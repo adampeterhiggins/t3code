@@ -1028,7 +1028,7 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
       : null;
   const outputImages = expanded && fetchedItem ? turnItemOutputImages(fetchedItem) : [];
   // Thread, PR, browser and other common tools show what they did instead of their JSON.
-  const toolPreview = expanded && fetchedItem ? resolveToolPreview(fetchedItem) : null;
+  const toolPreview = expanded && fetchedItem ? resolveToolPreview(fetchedItem, messages) : null;
   const viewedImagePath = workEntryViewedImagePath(row.workEntry);
   const fetchedOutput =
     !expanded || streamsOutput

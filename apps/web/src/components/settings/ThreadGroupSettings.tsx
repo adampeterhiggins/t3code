@@ -88,7 +88,8 @@ function BuiltInThreadGroupRows() {
   const setViews = (views: Partial<SidebarThreadViews>) =>
     updateSettings({ sidebarThreadViews: { ...threadViews, ...views } });
 
-  return BUILT_IN_GROUPS.map(({ title, Icon, views, settledChoice }) => {
+  return BUILT_IN_GROUPS.map(({ title: titleMessage, Icon, views, settledChoice }) => {
+    const title = m(titleMessage);
     const defaults: Partial<SidebarThreadViews> = Object.fromEntries(
       views.map(([category]) => [category, DEFAULT_UNIFIED_SETTINGS.sidebarThreadViews[category]]),
     );
@@ -136,7 +137,7 @@ function BuiltInThreadGroupRows() {
                   >
                     {SidebarThreadView.literals.map((view) => (
                       <MenuRadioItem key={view} value={view}>
-                        {THREAD_GROUP_VIEW_LABELS[view]}
+                        {m(THREAD_GROUP_VIEW_LABELS[view])}
                       </MenuRadioItem>
                     ))}
                   </MenuRadioGroup>
@@ -178,6 +179,7 @@ function BuiltInThreadGroupRows() {
 /** Configures the built-in pages' rows, and creates, renames, deletes and configures thread groups. */
 export function ThreadGroupSettingsSection() {
   const gt = useGT();
+  const m = useMessages();
   const searchableSetting = useSearchableSetting();
   const threads = useQuietThreadShells();
   const { setThreadGroup } = useThreadActions();
@@ -281,7 +283,7 @@ export function ThreadGroupSettingsSection() {
                     >
                       {(["default", ...SidebarThreadView.literals] as const).map((view) => (
                         <MenuRadioItem key={view} value={view}>
-                          {THREAD_GROUP_VIEW_LABELS[view]}
+                          {m(THREAD_GROUP_VIEW_LABELS[view])}
                         </MenuRadioItem>
                       ))}
                     </MenuRadioGroup>

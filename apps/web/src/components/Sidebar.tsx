@@ -285,7 +285,7 @@ import { SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
 import {
   SidebarFilterMenu,
   SidebarFilterPills,
-  sidebarPageLabel,
+  sidebarPageLabeler,
 } from "./sidebar/SidebarFilterMenu";
 import { requestThreadGroup } from "./ThreadGroupDialog";
 
@@ -383,6 +383,7 @@ function readRouteThreadKey(router: AnyRouter): string | null {
 export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReveal }) {
   const gt = useGT();
   const messages = useMessages();
+  const sidebarPageLabel = sidebarPageLabeler(messages);
   const projects = useProjects();
   const quietThreads = useQuietThreadShells();
   const promotingDraftThreadKeys = usePromotingDraftThreadKeys();

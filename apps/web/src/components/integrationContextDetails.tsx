@@ -25,9 +25,11 @@ import {
   type ThreadTabSummaryRole,
 } from "@t3tools/client-runtime/thread-tab-summary";
 import { composerObjectLinkNoun } from "@t3tools/source-control-definitions/composerObjectLinks";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
 import { UnlinkIcon } from "lucide-react";
 import { Fragment, type ComponentProps, type MouseEvent } from "react";
 
+import { m, type MessageResolver } from "~/i18n/messages";
 import { formatLinearMarkdownForPreview } from "~/lib/linearMarkdown";
 import { cn } from "~/lib/utils";
 import ChatMarkdown from "./ChatMarkdown";
@@ -59,19 +61,25 @@ export function ThreadTabSummaryDetails({ summary }: { summary: string }) {
   );
 }
 
-const THREAD_TAB_SUMMARY_ROLE_LABELS = {
-  user: "User",
-  assistant: "Agent",
-  reasoning: "Thinking",
-  tools: "Tools",
-  error: "Error",
-} as const satisfies Record<ThreadTabSummaryRole, string>;
+const THREAD_TAB_SUMMARY_ROLE_LABELS: Record<ThreadTabSummaryRole, string> = {
+  user: msg("User", { $context: "speaker in a chat transcript" }),
+  assistant: msg("Agent", { $context: "speaker in a chat transcript" }),
+  reasoning: msg("Thinking", { $context: "speaker in a chat transcript" }),
+  tools: msg("Tools", { $context: "speaker in a chat transcript" }),
+  error: msg("Error", { $context: "speaker in a chat transcript" }),
+};
 
 function ThreadTabSummaryChatDetails({ chat }: { chat: ThreadTabSummaryChat }) {
+  const gt = useGT();
+  const messages = useMessages();
   const fileCount = chat.files.length + chat.moreFiles;
   const facts = [
-    chat.latestTurn ? `Latest turn ${chat.latestTurn}` : null,
-    fileCount > 0 ? `${fileCount} ${fileCount === 1 ? "file" : "files"} changed` : null,
+    chat.latestTurn ? gt("Latest turn {turn}", { turn: chat.latestTurn }) : null,
+    fileCount > 0
+      ? gt("{count, plural, one {{count} file changed} other {{count} files changed}}", {
+          count: fileCount,
+        })
+      : null,
   ].filter((fact) => fact !== null);
   // Each user message opens a turn, as in the summary.
   const turns: ThreadTabSummaryBlock[][] = [];
@@ -87,7 +95,9 @@ function ThreadTabSummaryChatDetails({ chat }: { chat: ThreadTabSummaryChat }) {
       </div>
       {chat.files.length > 0 ? (
         <div className="flex flex-col gap-1">
-          <p className="font-medium text-muted-foreground">Files changed</p>
+          <p className="font-medium text-muted-foreground">
+            <T>Files changed</T>
+          </p>
           <ul className="flex flex-col gap-0.5 font-mono text-muted-foreground">
             {chat.files.map((file) => {
               const stats = / \(\+\d+ −\d+\)$/.exec(file);
@@ -101,18 +111,28 @@ function ThreadTabSummaryChatDetails({ chat }: { chat: ThreadTabSummaryChat }) {
                 </li>
               );
             })}
-            {chat.moreFiles > 0 ? <li>…and {chat.moreFiles} more</li> : null}
+            {chat.moreFiles > 0 ? (
+              <li>
+                <T>
+                  …and <Var>{chat.moreFiles}</Var> more
+                </T>
+              </li>
+            ) : null}
           </ul>
         </div>
       ) : null}
       {chat.plan ? (
         <div className="flex flex-col gap-1">
-          <p className="font-medium text-muted-foreground">Latest plan</p>
+          <p className="font-medium text-muted-foreground">
+            <T>Latest plan</T>
+          </p>
           <ChatMarkdown text={chat.plan} cwd={undefined} className="text-xs" />
         </div>
       ) : null}
       {turns.length === 0 ? (
-        <p className="text-muted-foreground">No messages yet.</p>
+        <p className="text-muted-foreground">
+          <T>No messages yet.</T>
+        </p>
       ) : (
         <div className="flex flex-col divide-y divide-border/70 border-t border-border/70">
           {turns.map((turn, turnIndex) => (
@@ -123,12 +143,15 @@ function ThreadTabSummaryChatDetails({ chat }: { chat: ThreadTabSummaryChat }) {
               {turn.map((block, index) =>
                 block.kind === "omitted" ? (
                   <p key={index} className="col-span-2 text-center text-muted-foreground">
-                    {block.turns} earlier {block.turns === 1 ? "turn" : "turns"} not included
+                    {gt(
+                      "{count, plural, one {{count} earlier turn not included} other {{count} earlier turns not included}}",
+                      { count: block.turns },
+                    )}
                   </p>
                 ) : (
                   <Fragment key={index}>
                     <p className="font-medium text-muted-foreground">
-                      {THREAD_TAB_SUMMARY_ROLE_LABELS[block.role]}
+                      {messages(THREAD_TAB_SUMMARY_ROLE_LABELS[block.role])}
                     </p>
                     <ThreadTabSummaryEntry role={block.role} text={block.text} />
                   </Fragment>
@@ -143,6 +166,7 @@ function ThreadTabSummaryChatDetails({ chat }: { chat: ThreadTabSummaryChat }) {
 }
 
 function ThreadTabSummaryEntry({ role, text }: { role: ThreadTabSummaryRole; text: string }) {
+  const gt = useGT();
   switch (role) {
     case "reasoning":
       return (
@@ -153,8 +177,7 @@ function ThreadTabSummaryEntry({ role, text }: { role: ThreadTabSummaryRole; tex
         <ul className="flex min-w-0 flex-col gap-0.5 font-mono text-muted-foreground">
           {threadTabSummaryTools(text).map((tool, index) => (
             <li key={index} className={cn("wrap-break-word", tool.failed && "text-destructive")}>
-              {tool.label}
-              {tool.failed ? " (failed)" : null}
+              {tool.failed ? gt("{tool} (failed)", { tool: tool.label }) : tool.label}
             </li>
           ))}
         </ul>
@@ -222,12 +245,13 @@ export function LinearIssueDetails(props: {
   markdown: string;
   onOpenLink: (event: MouseEvent<HTMLElement>, url: string) => void;
 }) {
+  const gt = useGT();
   return (
     <div className="flex flex-col gap-2">
       <IssueDetailsHeader
         summary={`${props.identifier} · ${props.stateName}`}
         url={props.url}
-        linkLabel="Open in Linear"
+        linkLabel={gt("Open in Linear")}
         onOpenLink={props.onOpenLink}
       />
       <LinearIssueMarkdown markdown={props.markdown} url={props.url} />
@@ -236,13 +260,16 @@ export function LinearIssueDetails(props: {
 }
 
 const LINEAR_OBJECT_KIND_LABELS: Record<LinearObjectContextRecord["objectType"], string> = {
-  project: "Linear project",
-  document: "Linear document",
-  initiative: "Linear initiative",
+  project: msg("Linear project"),
+  document: msg("Linear document"),
+  initiative: msg("Linear initiative"),
 };
 
-export function linearObjectKindLabel(objectType: LinearObjectContextRecord["objectType"]) {
-  return LINEAR_OBJECT_KIND_LABELS[objectType];
+export function linearObjectKindLabel(
+  objectType: LinearObjectContextRecord["objectType"],
+  resolve: MessageResolver = m,
+) {
+  return resolve(LINEAR_OBJECT_KIND_LABELS[objectType]);
 }
 
 /** An attached Linear project, document, or initiative: the snapshot the agent received. */
@@ -251,13 +278,15 @@ export function LinearObjectDetails(props: {
   onOpenLink: (event: MouseEvent<HTMLElement>, url: string) => void;
 }) {
   const { record } = props;
-  const kind = linearObjectKindLabel(record.objectType);
+  const gt = useGT();
+  const messages = useMessages();
+  const kind = linearObjectKindLabel(record.objectType, messages);
   return (
     <div className="flex flex-col gap-2">
       <IssueDetailsHeader
         summary={record.status === null ? kind : `${kind} · ${record.status}`}
         url={record.url}
-        linkLabel="Open in Linear"
+        linkLabel={gt("Open in Linear")}
         onOpenLink={props.onOpenLink}
       />
       <LinearIssueMarkdown markdown={record.markdown} url={record.url} />
@@ -271,12 +300,17 @@ export function GitHubIssueDetails(props: {
   onOpenLink: (event: MouseEvent<HTMLElement>, url: string) => void;
 }) {
   const { record } = props;
+  const gt = useGT();
+  const state =
+    record.state === "open"
+      ? gt("Open", { $context: "issue state" })
+      : gt("Closed", { $context: "issue state" });
   return (
     <div className="flex flex-col gap-2">
       <IssueDetailsHeader
-        summary={`${record.repository}#${record.number} · ${record.state === "open" ? "Open" : "Closed"}`}
+        summary={`${record.repository}#${record.number} · ${state}`}
         url={record.url}
-        linkLabel="Open on GitHub"
+        linkLabel={gt("Open on GitHub")}
         onOpenLink={props.onOpenLink}
       />
       <GitHubIssueMarkdown markdown={record.markdown} />
@@ -300,6 +334,7 @@ export function GitHubRefDetails(props: {
   onOpenLink: (event: MouseEvent<HTMLElement>, url: string) => void;
 }) {
   const { record } = props;
+  const gt = useGT();
   // A run or job id means nothing to a reader; its workflow name does.
   const name =
     record.refType === "commit"
@@ -314,7 +349,7 @@ export function GitHubRefDetails(props: {
       <IssueDetailsHeader
         summary={`${record.repository} · ${gitHubRefTypeLabel(record.refType)} ${name}`}
         url={record.url}
-        linkLabel="Open on GitHub"
+        linkLabel={gt("Open on GitHub")}
         onOpenLink={props.onOpenLink}
       />
       <IssueMarkdownBody text={record.markdown} />
@@ -330,10 +365,11 @@ export function SlackThreadDetails(props: {
   >;
   onOpenLink: (event: MouseEvent<HTMLElement>, url: string) => void;
 }) {
+  const gt = useGT();
   return (
     <ChatThreadDetails
       icon={<SlackIcon />}
-      linkLabel="Open in Slack"
+      linkLabel={gt("Open in Slack")}
       record={props.record}
       onOpenLink={props.onOpenLink}
       fallback={<IssueMarkdownBody text={props.record.markdown} />}
@@ -349,10 +385,11 @@ export function DiscordThreadDetails(props: {
   >;
   onOpenLink: (event: MouseEvent<HTMLElement>, url: string) => void;
 }) {
+  const gt = useGT();
   return (
     <ChatThreadDetails
       icon={<DiscordIcon />}
-      linkLabel="Open in Discord"
+      linkLabel={gt("Open in Discord")}
       record={props.record}
       onOpenLink={props.onOpenLink}
       fallback={<IssueMarkdownBody text={props.record.markdown} />}
@@ -371,33 +408,53 @@ export function CheckoutDetails(props: {
   onLink?: () => void;
 }) {
   const { record } = props;
+  const gt = useGT();
   return (
     <div className="flex w-72 flex-col gap-2 text-xs">
       {props.onOpen || props.onLink ? (
         <div className="flex justify-end gap-3">
           {props.onOpen ? (
-            <PreviewCornerAction onClick={props.onOpen}>Open in editor</PreviewCornerAction>
+            <PreviewCornerAction onClick={props.onOpen}>
+              <T>Open in editor</T>
+            </PreviewCornerAction>
           ) : null}
           {props.onLink ? (
-            <PreviewCornerAction onClick={props.onLink}>Link to thread</PreviewCornerAction>
+            <PreviewCornerAction onClick={props.onLink}>
+              <T>Link to thread</T>
+            </PreviewCornerAction>
           ) : null}
         </div>
       ) : null}
       <dl className="grid grid-cols-[4.5rem_1fr] gap-x-2 gap-y-1">
-        <dt className="text-muted-foreground">Path</dt>
+        <dt className="text-muted-foreground">
+          <T>Path</T>
+        </dt>
         <dd className="truncate font-mono">{record.path}</dd>
-        <dt className="text-muted-foreground">Branch</dt>
-        <dd className="truncate font-mono">{record.branch ?? "detached HEAD"}</dd>
+        <dt className="text-muted-foreground">
+          <T>Branch</T>
+        </dt>
+        <dd className="truncate font-mono">{record.branch ?? gt("detached HEAD")}</dd>
         <dt className="text-muted-foreground">HEAD</dt>
-        <dd className="truncate font-mono">{record.headSha?.slice(0, 12) ?? "unknown"}</dd>
-        <dt className="text-muted-foreground">Changes</dt>
+        <dd className="truncate font-mono">
+          {record.headSha?.slice(0, 12) ?? gt("unknown", { $context: "commit hash" })}
+        </dd>
+        <dt className="text-muted-foreground">
+          <T>Changes</T>
+        </dt>
         <dd className={record.changedFiles > 0 ? "text-warning" : undefined}>
           {record.changedFiles === 0
-            ? "clean"
-            : `${record.changedFiles} uncommitted file${record.changedFiles === 1 ? "" : "s"}`}
+            ? gt("clean", { $context: "git working tree has no changes" })
+            : gt(
+                "{count, plural, one {{count} uncommitted file} other {{count} uncommitted files}}",
+                { count: record.changedFiles },
+              )}
         </dd>
-        <dt className="text-muted-foreground">Agent</dt>
-        <dd>{record.access === "read" ? "Read access for this turn" : "Path shared only"}</dd>
+        <dt className="text-muted-foreground">
+          <T>Agent</T>
+        </dt>
+        <dd>
+          {record.access === "read" ? gt("Read access for this turn") : gt("Path shared only")}
+        </dd>
       </dl>
     </div>
   );
@@ -410,6 +467,8 @@ export function RepositoryDetails(props: {
   const { record } = props;
   const outcome = record.outcome;
   const browsable = /^https?:\/\//i.test(record.remoteUrl);
+  const gt = useGT();
+  const messages = useMessages();
   return (
     <div className="flex flex-col gap-2 text-xs">
       <div className="flex items-baseline justify-between gap-3 text-muted-foreground">
@@ -422,7 +481,7 @@ export function RepositoryDetails(props: {
             className="shrink-0 underline-offset-2 hover:text-foreground hover:underline"
             onClick={(event) => props.onOpenLink(event, record.remoteUrl)}
           >
-            Open repository
+            <T>Open repository</T>
           </a>
         ) : null}
       </div>
@@ -435,20 +494,25 @@ export function RepositoryDetails(props: {
                 : "text-foreground"
             }
           >
-            {contextRepositoryOutcomeLabel(outcome)}
+            {contextRepositoryOutcomeLabel(outcome, messages)}
           </p>
           {outcome.detail ? <p className="text-muted-foreground">{outcome.detail}</p> : null}
           {outcome.git ? (
             <p className="text-muted-foreground">
-              {describeContextRepositoryGitStatus(outcome.git)}
-              {outcome.git.upstream && !outcome.fetched ? " (as of the last fetch)" : ""}
+              {outcome.git.upstream && !outcome.fetched
+                ? gt("{status} (as of the last fetch)", {
+                    status: describeContextRepositoryGitStatus(outcome.git, messages),
+                  })
+                : describeContextRepositoryGitStatus(outcome.git, messages)}
             </p>
           ) : null}
         </>
       ) : (
         <p className="text-muted-foreground">
-          Cloned into the workspace's context folder as {record.directoryName} when you send, unless
-          it is already there.
+          <T>
+            Cloned into the workspace's context folder as <Var>{record.directoryName}</Var> when you
+            send, unless it is already there.
+          </T>
         </p>
       )}
     </div>
@@ -466,32 +530,33 @@ export function UnreadLinkDetails(props: {
   onRetry?: (() => void) | undefined;
   onKeepAsText?: (() => void) | undefined;
 }) {
+  const gt = useGT();
   const noun = composerObjectLinkNoun(props.record.linkKind);
   return (
     <div className="flex flex-col gap-2">
       <IssueDetailsHeader
         summary={
           props.record.reason === "timed-out"
-            ? `Loading this ${noun} timed out`
-            : `Could not read this ${noun}`
+            ? gt("Loading this {noun} timed out", { noun })
+            : gt("Could not read this {noun}", { noun })
         }
         url={props.record.url}
-        linkLabel="Open link"
+        linkLabel={gt("Open link")}
         onOpenLink={props.onOpenLink}
       />
       <p className="text-xs text-muted-foreground">
-        The agent receives the link, not its contents.
+        <T>The agent receives the link, not its contents.</T>
       </p>
       {props.onRetry || props.onKeepAsText ? (
         <div className="flex gap-2">
           {props.onRetry ? (
             <Button size="xs" variant="outline" onClick={props.onRetry}>
-              Retry
+              <T>Retry</T>
             </Button>
           ) : null}
           {props.onKeepAsText ? (
             <Button size="xs" variant="ghost" onClick={props.onKeepAsText}>
-              Keep as text
+              <T>Keep as text</T>
             </Button>
           ) : null}
         </div>
@@ -507,13 +572,17 @@ export function UnreadLinkChipTrigger({
 }: Omit<ComponentProps<typeof ContextChipButton>, "kind" | "icon" | "label"> & {
   record: Pick<UnreadLinkContextRecord, "label" | "linkKind">;
 }) {
+  const gt = useGT();
+  const messages = useMessages();
   return (
     <ContextChipButton
       kind="neutral"
       state="invalid"
       icon={<UnlinkIcon />}
       label={record.label}
-      aria-label={`${unreadLinkAccessibleLabel(record)}. Show details`}
+      aria-label={gt("{label}. Show details", {
+        label: unreadLinkAccessibleLabel(record, messages),
+      })}
       {...props}
     />
   );
@@ -521,15 +590,21 @@ export function UnreadLinkChipTrigger({
 
 export function unreadLinkAccessibleLabel(
   record: Pick<UnreadLinkContextRecord, "label" | "linkKind">,
+  resolve: MessageResolver = m,
 ): string {
-  return `Could not attach ${composerObjectLinkNoun(record.linkKind)}, ${record.label}`;
+  return resolve(
+    msg("Could not attach {noun}, {label}", {
+      noun: composerObjectLinkNoun(record.linkKind),
+      label: record.label,
+    }),
+  );
 }
 
 /** When the meeting happened, as the note's hover summary shows it. */
-function granolaMeetingDate(meetingAt: string | null): string {
+function granolaMeetingDate(meetingAt: string | null, resolve: MessageResolver): string {
   const date = meetingAt === null ? null : new Date(meetingAt);
   return date === null || Number.isNaN(date.getTime())
-    ? "Meeting note"
+    ? resolve(msg("Meeting note"))
     : date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
@@ -541,12 +616,14 @@ export function GranolaNoteDetails({
   record: Pick<GranolaNoteContextRecord, "meetingAt" | "url" | "markdown">;
   onOpenLink: (event: MouseEvent<HTMLElement>, url: string) => void;
 }) {
+  const gt = useGT();
+  const messages = useMessages();
   return (
     <div className="flex flex-col gap-2">
       <IssueDetailsHeader
-        summary={granolaMeetingDate(record.meetingAt)}
+        summary={granolaMeetingDate(record.meetingAt, messages)}
         url={record.url}
-        linkLabel="Open in Granola"
+        linkLabel={gt("Open in Granola")}
         onOpenLink={onOpenLink}
       />
       <IssueMarkdownBody text={record.markdown} />
@@ -555,10 +632,10 @@ export function GranolaNoteDetails({
 }
 
 const SLACK_RESOURCE_SUMMARIES: Record<SlackResourceContextRecord["resourceType"], string> = {
-  canvas: "Canvas",
-  list: "List",
-  file: "File",
-  user: "Profile",
+  canvas: msg("Canvas", { $context: "Slack resource type" }),
+  list: msg("List", { $context: "Slack resource type" }),
+  file: msg("File", { $context: "Slack resource type" }),
+  user: msg("Profile", { $context: "Slack resource type" }),
 };
 
 export function SlackResourceDetails({
@@ -568,12 +645,14 @@ export function SlackResourceDetails({
   record: Pick<SlackResourceContextRecord, "resourceType" | "url" | "markdown">;
   onOpenLink: (event: MouseEvent<HTMLElement>, url: string) => void;
 }) {
+  const gt = useGT();
+  const messages = useMessages();
   return (
     <div className="flex flex-col gap-2">
       <IssueDetailsHeader
-        summary={SLACK_RESOURCE_SUMMARIES[record.resourceType]}
+        summary={messages(SLACK_RESOURCE_SUMMARIES[record.resourceType])}
         url={record.url}
-        linkLabel="Open in Slack"
+        linkLabel={gt("Open in Slack")}
         onOpenLink={onOpenLink}
       />
       <IssueMarkdownBody text={record.markdown} />
@@ -592,12 +671,13 @@ export function PromptLinkDetails({
   record: Pick<PromptLinkContextRecord, "url" | "prompt" | "target">;
   onOpenLink: (event: MouseEvent<HTMLElement>, url: string) => void;
 }) {
+  const gt = useGT();
   return (
     <div className="flex flex-col gap-2">
       <IssueDetailsHeader
-        summary={record.target ?? "New thread"}
+        summary={record.target ?? gt("New thread")}
         url={record.url}
-        linkLabel="Open in T3 Code"
+        linkLabel={gt("Open in T3 Code")}
         onOpenLink={onOpenLink}
       />
       {record.prompt === null ? null : (
@@ -616,12 +696,13 @@ export function NotionPageDetails({
   record: NotionPageContextRecord;
   onOpenLink: (event: MouseEvent<HTMLElement>, url: string) => void;
 }) {
+  const gt = useGT();
   return (
     <div className="flex flex-col gap-2">
       <IssueDetailsHeader
         summary={record.title}
         url={record.url}
-        linkLabel="Open in Notion"
+        linkLabel={gt("Open in Notion")}
         onOpenLink={onOpenLink}
       />
       <IssueMarkdownBody text={record.markdown} />

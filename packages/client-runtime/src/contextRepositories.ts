@@ -5,6 +5,8 @@ import {
   type ContextRepositoryGitStatus,
   type ContextRepositoryOutcome,
 } from "@t3tools/contracts";
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
 
 export { repositoryContextRecord } from "@t3tools/source-control-definitions/integrationContextRecords";
 
@@ -83,11 +85,29 @@ export function contextRepositoryListInput(owners: ReadonlyArray<string>) {
 }
 
 /** Names a list of owners for picker copy: `acme`, `acme and me`, `acme, me and 2 more`. */
-export function describeContextRepositoryOwners(owners: ReadonlyArray<string>): string {
-  if (owners.length <= 2) return owners.join(" and ");
+export function describeContextRepositoryOwners(
+  owners: ReadonlyArray<string>,
+  resolve: MFunctionType = mFallback,
+): string {
+  if (owners.length <= 1) return owners[0] ?? "";
+  if (owners.length === 2) {
+    return resolve(msg("{first} and {second}", { first: owners[0], second: owners[1] }));
+  }
   return owners.length === 3
-    ? `${owners[0]}, ${owners[1]} and ${owners[2]}`
-    : `${owners[0]}, ${owners[1]} and ${owners.length - 2} more`;
+    ? resolve(
+        msg("{first}, {second} and {third}", {
+          first: owners[0],
+          second: owners[1],
+          third: owners[2],
+        }),
+      )
+    : resolve(
+        msg("{first}, {second} and {count} more", {
+          first: owners[0],
+          second: owners[1],
+          count: owners.length - 2,
+        }),
+      );
 }
 
 /**
@@ -168,24 +188,41 @@ export function findContextRepositoryClone(
 }
 
 /** Compact git state for a chip or picker row: `main · 3 behind · 2 changed`. */
-export function describeContextRepositoryGitStatus(git: ContextRepositoryGitStatus): string {
-  const parts = [git.branch ?? `detached at ${git.headSha?.slice(0, 7) ?? "unknown"}`];
-  if (git.ahead > 0) parts.push(`${git.ahead} ahead`);
-  if (git.behind > 0) parts.push(`${git.behind} behind`);
-  if (git.upstream === null) parts.push("no upstream");
-  parts.push(git.changedFiles === 0 ? "clean" : `${git.changedFiles} changed`);
+export function describeContextRepositoryGitStatus(
+  git: ContextRepositoryGitStatus,
+  resolve: MFunctionType = mFallback,
+): string {
+  const parts = [
+    git.branch ??
+      resolve(
+        msg("detached at {sha}", {
+          sha: git.headSha?.slice(0, 7) ?? resolve(msg("unknown", { $context: "git commit" })),
+        }),
+      ),
+  ];
+  if (git.ahead > 0) parts.push(resolve(msg("{count} ahead", { count: git.ahead })));
+  if (git.behind > 0) parts.push(resolve(msg("{count} behind", { count: git.behind })));
+  if (git.upstream === null) parts.push(resolve(msg("no upstream")));
+  parts.push(
+    git.changedFiles === 0
+      ? resolve(msg("clean", { $context: "git working tree has no changes" }))
+      : resolve(msg("{count} changed", { count: git.changedFiles })),
+  );
   return parts.join(" · ");
 }
 
-export function contextRepositoryOutcomeLabel(outcome: ContextRepositoryOutcome): string {
+export function contextRepositoryOutcomeLabel(
+  outcome: ContextRepositoryOutcome,
+  resolve: MFunctionType = mFallback,
+): string {
   switch (outcome.status) {
     case "cloned":
-      return `Cloned into ${outcome.path}`;
+      return resolve(msg("Cloned into {path}", { path: outcome.path }));
     case "present":
-      return `Already in ${outcome.path}`;
+      return resolve(msg("Already in {path}", { path: outcome.path }));
     case "conflict":
-      return `Not cloned: ${outcome.path} is in the way`;
+      return resolve(msg("Not cloned: {path} is in the way", { path: outcome.path }));
     case "failed":
-      return "Clone failed";
+      return resolve(msg("Clone failed"));
   }
 }

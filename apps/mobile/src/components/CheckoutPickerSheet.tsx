@@ -9,10 +9,12 @@ import {
   looksLikeCheckoutPath,
   rankCheckoutCandidates,
 } from "@t3tools/shared/checkouts";
+import { msg, useGT } from "gt-react-native";
 import { useState, type ReactNode } from "react";
 import { Alert, FlatList, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { m } from "../i18n/messages";
 import { useEnvironmentServerConfig, useProjects, useThreadShells } from "../state/entities";
 import { useDebouncedValue } from "../state/queries";
 import { useEnvironmentQuery } from "../state/query";
@@ -51,6 +53,7 @@ export function useCheckoutPicker(target: CheckoutPickerTarget | null): {
 }
 
 function CheckoutPickerSheet(props: OpenedCheckoutPicker & { readonly onClose: () => void }) {
+  const gt = useGT();
   const insets = useSafeAreaInsets();
   const projects = useProjects();
   const threads = useThreadShells();
@@ -65,8 +68,8 @@ function CheckoutPickerSheet(props: OpenedCheckoutPicker & { readonly onClose: (
     })),
     environmentLabel: (id) =>
       id === props.environmentId
-        ? (config?.environment.label ?? "This environment")
-        : "Another environment",
+        ? (config?.environment.label ?? gt("This environment"))
+        : gt("Another environment"),
   }).filter((candidate) => candidate.selectable);
   const ranked = rankCheckoutCandidates(
     candidates,
@@ -125,22 +128,25 @@ function CheckoutPickerSheet(props: OpenedCheckoutPicker & { readonly onClose: (
         props.insertion,
       )
     ) {
-      Alert.alert("Too many context items", "Remove some context from the draft and try again.");
+      Alert.alert(
+        m(msg("Too many context items")),
+        m(msg("Remove some context from the draft and try again.")),
+      );
       return;
     }
     props.onClose();
   };
 
   return (
-    <PickerSheet title="Attach checkout" onClose={props.onClose}>
+    <PickerSheet title={gt("Attach checkout")} onClose={props.onClose}>
       <View className="px-4 pb-3">
         <AppTextInput
-          accessibilityLabel="Search checkouts"
+          accessibilityLabel={gt("Search checkouts")}
           autoFocus
           autoCapitalize="none"
           autoCorrect={false}
           clearButtonMode="while-editing"
-          placeholder="Search by name or paste a path"
+          placeholder={gt("Search by name or paste a path")}
           value={query}
           onChangeText={setQuery}
         />
@@ -154,8 +160,8 @@ function CheckoutPickerSheet(props: OpenedCheckoutPicker & { readonly onClose: (
           <View className="items-center p-6">
             <Text className="text-center text-foreground-muted">
               {pasted
-                ? "Press return to use that path."
-                : "No local checkouts yet. Paste a path to use a folder."}
+                ? gt("Press return to use that path.")
+                : gt("No local checkouts yet. Paste a path to use a folder.")}
             </Text>
           </View>
         }
@@ -166,11 +172,14 @@ function CheckoutPickerSheet(props: OpenedCheckoutPicker & { readonly onClose: (
           const status =
             entry === undefined
               ? item.path
-              : `${entry.branch ?? "detached"} · ${entry.changedFiles === 0 ? "clean" : `${entry.changedFiles} changed`}`;
+              : gt("{branch} · {count, plural, =0 {clean} other {{count} changed}}", {
+                  branch: entry.branch ?? gt("detached", { $context: "git HEAD with no branch" }),
+                  count: entry.changedFiles,
+                });
           return (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`Attach ${item.name}`}
+              accessibilityLabel={gt("Attach {name}", { name: item.name })}
               onPress={() => attach(item.path, item.name)}
               className="gap-0.5 px-4 py-3 active:bg-subtle"
             >

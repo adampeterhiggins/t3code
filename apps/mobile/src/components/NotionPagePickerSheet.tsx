@@ -6,10 +6,12 @@ import { formatComposerContextReference } from "@t3tools/shared/composerContextR
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
+import { msg, T, useGT, useMessages } from "gt-react-native";
 import { useState, type ReactNode } from "react";
 import { ActivityIndicator, Alert, FlatList, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { m, type MessageResolver } from "../i18n/messages";
 import { relativeTime } from "../lib/time";
 import { useEnvironmentServerConfig } from "../state/entities";
 import { notionEnvironment } from "../state/notion";
@@ -28,13 +30,20 @@ import { PickerSheet } from "./PickerSheet";
 const SEARCH_DEBOUNCE_MS = 400;
 
 /** Notion's failures carry a reason; a rate limit deserves a clearer hint than its detail. */
-function notionErrorMessage(error: unknown, fallback: string): string {
+function notionErrorMessage(
+  error: unknown,
+  fallback: string,
+  resolve: MessageResolver = m,
+): string {
   if (typeof error === "object" && error !== null && "reason" in error) {
-    if (error.reason === "rate-limited") return "Notion is busy. Try again shortly.";
+    if (error.reason === "rate-limited") return resolve(msg("Notion is busy. Try again shortly."));
     if (error.reason === "not-connected" || error.reason === "revoked") {
-      return "Notion is not connected. Connect it from Settings > Integrations on desktop or web.";
+      return resolve(
+        msg("Notion is not connected. Connect it from Settings > Integrations on desktop or web."),
+      );
     }
-    if (error.reason === "not-found") return "Share that page with the Notion connection.";
+    if (error.reason === "not-found")
+      return resolve(msg("Share that page with the Notion connection."));
   }
   return error instanceof Error && error.message.trim() ? error.message : fallback;
 }
@@ -92,13 +101,14 @@ export function useNotionPagePicker(target: NotionPagePickerTarget | null): {
  * desktop or web.
  */
 function NotionPagePickerSheet(props: OpenedNotionPagePicker & { readonly onClose: () => void }) {
+  const gt = useGT();
   const connection = useEnvironmentQuery(
     notionEnvironment.connection({ environmentId: props.environmentId, input: {} }),
   );
   const phase = connection.data?.phase;
   return (
     <PickerSheet
-      title={props.mode === "link" ? "Link Notion page" : "Notion page"}
+      title={props.mode === "link" ? gt("Link Notion page") : gt("Notion page")}
       onClose={props.onClose}
     >
       {phase === "connected" ? (
@@ -110,7 +120,9 @@ function NotionPagePickerSheet(props: OpenedNotionPagePicker & { readonly onClos
           ) : (
             <Text className="text-center text-foreground-muted">
               {connection.error ??
-                "Notion is not connected on this environment. Connect it from Settings > Integrations on desktop or web."}
+                gt(
+                  "Notion is not connected on this environment. Connect it from Settings > Integrations on desktop or web.",
+                )}
             </Text>
           )}
         </View>
@@ -120,6 +132,7 @@ function NotionPagePickerSheet(props: OpenedNotionPagePicker & { readonly onClos
 }
 
 function NotionPageSearch(props: OpenedNotionPagePicker & { readonly onClose: () => void }) {
+  const gt = useGT();
   const [query, setQuery] = useState("");
   const trimmed = query.trim();
   const settled = useDebouncedValue(trimmed, SEARCH_DEBOUNCE_MS);
@@ -140,8 +153,8 @@ function NotionPageSearch(props: OpenedNotionPagePicker & { readonly onClose: ()
     });
     if (result._tag === "Failure") {
       Alert.alert(
-        "Could not link Notion page",
-        notionErrorMessage(squashAtomCommandFailure(result), "Try again."),
+        m(msg("Could not link Notion page")),
+        notionErrorMessage(squashAtomCommandFailure(result), m(msg("Try again."))),
       );
       return;
     }
@@ -159,8 +172,8 @@ function NotionPageSearch(props: OpenedNotionPagePicker & { readonly onClose: ()
     });
     if (fetched._tag === "Failure") {
       Alert.alert(
-        "Could not attach Notion page",
-        notionErrorMessage(squashAtomCommandFailure(fetched), "Try again."),
+        m(msg("Could not attach Notion page")),
+        notionErrorMessage(squashAtomCommandFailure(fetched), m(msg("Try again."))),
       );
       return;
     }
@@ -175,7 +188,10 @@ function NotionPageSearch(props: OpenedNotionPagePicker & { readonly onClose: ()
         props.insertion,
       )
     ) {
-      Alert.alert("Too many context items", "Remove some context from the draft and try again.");
+      Alert.alert(
+        m(msg("Too many context items")),
+        m(msg("Remove some context from the draft and try again.")),
+      );
       return;
     }
     props.onClose();
@@ -191,12 +207,12 @@ function NotionPageSearch(props: OpenedNotionPagePicker & { readonly onClose: ()
     <View className="flex-1">
       <View className="px-4 pb-3">
         <AppTextInput
-          accessibilityLabel="Search Notion pages"
+          accessibilityLabel={gt("Search Notion pages")}
           autoFocus
           autoCapitalize="none"
           autoCorrect={false}
           clearButtonMode="while-editing"
-          placeholder="Search Notion"
+          placeholder={gt("Search Notion")}
           returnKeyType="search"
           value={query}
           onChangeText={setQuery}
@@ -216,7 +232,7 @@ function NotionPageSearch(props: OpenedNotionPagePicker & { readonly onClose: ()
             <ActivityIndicator />
           ) : (
             <Text className="text-center text-foreground-muted">
-              Search by page title or paste a Notion link.
+              <T>Search by page title or paste a Notion link.</T>
             </Text>
           )}
         </View>
@@ -233,6 +249,8 @@ function NotionPageResults(props: {
   readonly attaching: string | null;
   readonly onPick: (page: NotionPageSummary) => void;
 }) {
+  const gt = useGT();
+  const resolve = useMessages();
   const insets = useSafeAreaInsets();
   const result = useAtomValue(
     notionEnvironment.pages({
@@ -244,7 +262,11 @@ function NotionPageResults(props: {
   const pending = props.pendingInput || result.waiting;
   const error =
     result._tag === "Failure"
-      ? notionErrorMessage(Cause.squash(result.cause), "Could not search Notion.")
+      ? notionErrorMessage(
+          Cause.squash(result.cause),
+          resolve(msg("Could not search Notion.")),
+          resolve,
+        )
       : null;
   return (
     <FlatList
@@ -263,7 +285,7 @@ function NotionPageResults(props: {
                 error ? "text-center text-danger-foreground" : "text-center text-foreground-muted"
               }
             >
-              {error ?? "No matching pages."}
+              {error ?? gt("No matching pages.")}
             </Text>
           )}
         </View>

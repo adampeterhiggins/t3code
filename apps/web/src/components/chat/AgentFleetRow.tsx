@@ -29,6 +29,7 @@ import type {
   TurnItemId,
 } from "@t3tools/contracts";
 import { resolveSubagentMetadata } from "@t3tools/client-runtime/state/subagent-display";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
 import { CheckIcon, CornerDownRightIcon, FolderIcon, GitBranchIcon, XIcon } from "lucide-react";
 import { useRef, type MouseEvent, type ReactNode } from "react";
 
@@ -122,6 +123,8 @@ export function AgentPreviewContent(props: {
   onOpen: (toolCallId?: TurnItemId) => void;
 }) {
   const { entry } = props;
+  const gt = useGT();
+  const m = useMessages();
   const record = useAgentRecord(props.parentRef, entry);
   // A nested agent's record arrives with its owner; until then the shell's view stands in.
   const agent: RuntimeSubagent =
@@ -138,7 +141,7 @@ export function AgentPreviewContent(props: {
     child && entry.childThreadId !== null
       ? child.turnItems.filter((item) => item.threadId === entry.childThreadId)
       : [];
-  const calls = deriveSubagentToolCalls(ownItems, props.workspaceRoot);
+  const calls = deriveSubagentToolCalls(ownItems, props.workspaceRoot, m);
   const agentRoot = subagentWorkspaceRoot(ownItems, props.workspaceRoot);
   const runStats =
     child && entry.childThreadId !== null
@@ -159,13 +162,17 @@ export function AgentPreviewContent(props: {
     entry.shell ? scopeProjectRef(props.parentRef.environmentId, entry.shell.projectId) : null,
   );
   // Workspace lines appear only where the agent works somewhere its owner doesn't.
-  const { workspace } = resolveSubagentMetadata({
-    model: agent.model,
-    parentThread: ownerShell,
-    childThread: entry.shell,
-    parentProject: ownerProject,
-    childProject: agentProject,
-  });
+  const { workspace } = resolveSubagentMetadata(
+    {
+      model: agent.model,
+      parentThread: ownerShell,
+      childThread: entry.shell,
+      parentProject: ownerProject,
+      childProject: agentProject,
+    },
+    m,
+  );
+  const branchLabel = m(msg("Branch", { $context: "field label" }));
   return (
     <div className="flex cursor-pointer flex-col" onClick={() => props.onOpen()}>
       <div className="flex flex-col gap-0.5 border-b border-border/60 px-3 pt-2.5 pb-2">
@@ -183,7 +190,7 @@ export function AgentPreviewContent(props: {
         </div>
         <p className="flex min-w-0 items-center gap-1 ps-3.5 font-mono text-2xs whitespace-nowrap text-muted-foreground">
           <span className="shrink-0">
-            {[STATUS_VISUALS[agent.status].label, props.provider?.displayName]
+            {[m(STATUS_VISUALS[agent.status].label), props.provider?.displayName]
               .filter(Boolean)
               .join(" · ")}
             {" · "}
@@ -196,10 +203,16 @@ export function AgentPreviewContent(props: {
             childThread={entry.shell}
             provider={props.provider?.snapshot}
           />
-          {runStats.runs > 1 ? <span className="shrink-0">· run {runStats.runs}</span> : null}
+          {runStats.runs > 1 ? (
+            <span className="shrink-0">
+              <T>
+                · run <Var>{runStats.runs}</Var>
+              </T>
+            </span>
+          ) : null}
         </p>
         {workspace.map(({ label, value }) => {
-          const Icon = label === "Branch" ? GitBranchIcon : FolderIcon;
+          const Icon = label === branchLabel ? GitBranchIcon : FolderIcon;
           return (
             <div
               key={label}
@@ -214,19 +227,25 @@ export function AgentPreviewContent(props: {
       </div>
       <div className="flex flex-col gap-2.5 px-2.5 py-2">
         {live && agent.progress ? (
-          <PreviewSection title="Now">
+          <PreviewSection title={gt("Now", { $context: "what the agent is doing right now" })}>
             <p className="px-0.5 text-xs text-muted-foreground">{agent.progress}</p>
           </PreviewSection>
         ) : null}
         {prompt ? (
-          <PreviewSection title="Prompt">
+          <PreviewSection title={gt("Prompt", { $context: "noun, the agent's task prompt" })}>
             <p className="line-clamp-3 whitespace-pre-wrap break-words px-0.5 text-xs leading-relaxed text-foreground/85">
               {prompt}
             </p>
           </PreviewSection>
         ) : null}
         {outcome ? (
-          <PreviewSection title={agent.error ? "Error" : "Result"}>
+          <PreviewSection
+            title={
+              agent.error
+                ? gt("Error", { $context: "agent outcome" })
+                : gt("Result", { $context: "agent outcome" })
+            }
+          >
             <p
               className={cn(
                 "line-clamp-3 whitespace-pre-wrap break-words px-0.5 text-xs leading-relaxed",
@@ -241,7 +260,7 @@ export function AgentPreviewContent(props: {
           <PreviewSection
             title={
               <>
-                Latest tool calls
+                <T>Latest tool calls</T>
                 <span className="font-mono tracking-normal"> · {totalCalls}</span>
               </>
             }
@@ -259,7 +278,9 @@ export function AgentPreviewContent(props: {
             />
             {totalCalls > latest.length ? (
               <p className="ps-6.5 pt-1 text-2xs text-muted-foreground">
-                {totalCalls - latest.length} more · click to open the agent
+                <T>
+                  <Var>{totalCalls - latest.length}</Var> more · click to open the agent
+                </T>
               </p>
             ) : null}
           </PreviewSection>
@@ -284,6 +305,8 @@ export function AgentRow(props: {
   const { row } = props;
   const { entry } = row;
   const { agent } = entry;
+  const gt = useGT();
+  const m = useMessages();
   const provider = props.providers.get(entry.providerInstanceId);
   const previewActions = useRef<{ close: () => void; unmount: () => void } | null>(null);
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
@@ -322,7 +345,10 @@ export function AgentRow(props: {
               previewActions.current?.close();
               props.onContextMenu(event, entry);
             }}
-            aria-label={`${entry.title}, ${STATUS_VISUALS[agent.status].label}. Show details`}
+            aria-label={gt("{title}, {status}. Show details", {
+              title: entry.title,
+              status: m(STATUS_VISUALS[agent.status].label),
+            })}
             className={cn(
               "flex w-full flex-col rounded-md px-1.5 text-left hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70",
               row.context && "opacity-60",
@@ -387,7 +413,10 @@ export function AgentRow(props: {
           </span>
         ) : resultLine ? (
           <span className="flex h-5 min-w-0 items-center gap-1 ps-3.5 text-muted-foreground">
-            <CornerDownRightIcon aria-label="Result" className="size-3 shrink-0 opacity-70" />
+            <CornerDownRightIcon
+              aria-label={gt("Result", { $context: "agent outcome" })}
+              className="size-3 shrink-0 opacity-70"
+            />
             <span className="min-w-0 truncate text-2xs">{resultLine}</span>
           </span>
         ) : null}
@@ -417,11 +446,12 @@ export function AgentCommandRow(props: {
 }) {
   const { entry } = props;
   const { agent } = entry;
+  const m = useMessages();
   const providers = useProviderEntries(props.parentRef.environmentId);
   const provider = providers.get(entry.providerInstanceId);
   const live = isActiveSubagentStatus(agent.status);
   const identity = [
-    STATUS_VISUALS[agent.status].label,
+    m(STATUS_VISUALS[agent.status].label),
     ...(provider ? [provider.displayName] : []),
     ...subagentIdentityParts(agent),
     ...(props.ownerTitle === null ? [] : [`from ${props.ownerTitle}`]),

@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useAtomValue } from "@effect/atom-react";
+import { useMessages } from "gt-react";
 import * as Schema from "effect/Schema";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useOrganisations } from "../../hooks/useOrganisations";
@@ -24,6 +25,7 @@ export function useSidebarProjectScope(
     Parameters<typeof resolveSidebarProjectScopeKey>[0]["settings"]
   >,
 ) {
+  const messages = useMessages();
   const persistedProjectScopeKeys = useUiStateStore((store) => store.sidebarProjectScopeKeys);
   const setPickedProjectKeys = useUiStateStore((store) => store.setSidebarProjectScopeKeys);
   // Exclusions are the other way to narrow a dimension: everything but them, so new projects
@@ -97,6 +99,7 @@ export function useSidebarProjectScope(
     ),
     organisations,
     [...scopedOrganisationKeys, ...excludedOrganisationKeys],
+    messages,
   );
   const excludedProjectKeys = [
     ...new Set(

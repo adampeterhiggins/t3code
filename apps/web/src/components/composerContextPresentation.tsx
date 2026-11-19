@@ -332,29 +332,35 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
     element: {
       chip: (entry, { resolve }) =>
         entry.kind === "element"
-          ? buttonContextChip({
-              kind: "element",
-              icon: <MousePointerClickIcon />,
-              label: entry.record.label,
-              kindLabel: resolve(msg("Browser element")),
-              preview: { record: entry.record },
-            })
+          ? buttonContextChip(
+              {
+                kind: "element",
+                icon: <MousePointerClickIcon />,
+                label: entry.record.label,
+                kindLabel: resolve(msg("Browser element")),
+                preview: { record: entry.record },
+              },
+              resolve,
+            )
           : null,
     },
     "preview-annotation": {
       chip: (entry, { resolve }) =>
         entry.kind === "preview-annotation"
-          ? buttonContextChip({
-              kind: "preview-annotation",
-              icon: <MousePointerClickIcon />,
-              label: previewAnnotationContextLabel(entry.record, resolve),
-              kindLabel: resolve(msg("Preview annotation")),
-              preview: {
-                record: previewAnnotationContextRecord(entry.record),
-                screenshotUrl:
-                  entry.record.screenshot?.dataUrl || entry.screenshot?.previewUrl || null,
+          ? buttonContextChip(
+              {
+                kind: "preview-annotation",
+                icon: <MousePointerClickIcon />,
+                label: previewAnnotationContextLabel(entry.record, resolve),
+                kindLabel: resolve(msg("Preview annotation")),
+                preview: {
+                  record: previewAnnotationContextRecord(entry.record),
+                  screenshotUrl:
+                    entry.record.screenshot?.dataUrl || entry.screenshot?.previewUrl || null,
+                },
               },
-            })
+              resolve,
+            )
           : null,
     },
     "review-comment": {
@@ -451,20 +457,23 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
       chip: (entry, { actions, resolve }) => {
         if (entry.kind !== "skill") return null;
         const { label, description, path } = entry.record;
-        return buttonContextChip({
-          kind: "skill",
-          icon: <SkillChipIcon />,
-          label,
-          kindLabel: resolve(msg("Skill")),
-          preview: {
+        return buttonContextChip(
+          {
+            kind: "skill",
+            icon: <SkillChipIcon />,
             label,
-            description,
-            onOpenInstructions:
-              path && actions.environmentId && !isDetachedChatWindow
-                ? () => actions.openMention(path)
-                : undefined,
+            kindLabel: resolve(msg("Skill")),
+            preview: {
+              label,
+              description,
+              onOpenInstructions:
+                path && actions.environmentId && !isDetachedChatWindow
+                  ? () => actions.openMention(path)
+                  : undefined,
+            },
           },
-        });
+          resolve,
+        );
       },
     },
     thread: {

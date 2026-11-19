@@ -2,6 +2,7 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { resolveStartedBy, startedByThreadRef } from "@t3tools/client-runtime/state/startedBy";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { useNavigation } from "@react-navigation/native";
+import { useMessages } from "gt-react-native";
 import { Pressable, Text } from "react-native";
 
 import { SymbolView } from "../../components/ui/AppSymbol";
@@ -16,9 +17,10 @@ export function ThreadStartedByChip(props: {
   readonly threadId: ThreadId;
 }) {
   const navigation = useNavigation();
+  const messages = useMessages();
   const thread = useThreadShell(scopeThreadRef(props.environmentId, props.threadId));
   const starter = useThreadShell(startedByThreadRef(thread));
-  const attribution = resolveStartedBy(thread, starter);
+  const attribution = resolveStartedBy(thread, starter, messages);
   if (attribution === null) return null;
   const { label, description, openRef } = attribution;
 

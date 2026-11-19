@@ -19,9 +19,11 @@ import type {
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
+import { msg, T, useGT, useMessages } from "gt-react";
 import { useState } from "react";
 
 import { useComposerDraftStore } from "~/composerDraftStore";
+import { m } from "~/i18n/messages";
 import { useIssueContextStore } from "~/issueContextStore";
 import { cn } from "~/lib/utils";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
@@ -54,9 +56,9 @@ const SEARCH_DEBOUNCE_MS = 300;
 const EMPTY_ISSUES: ReadonlyArray<GitHubIssueSummary> = [];
 
 const STATE_OPTIONS: ReadonlyArray<{ id: GitHubIssueStateFilter; label: string }> = [
-  { id: "open", label: "Open" },
-  { id: "closed", label: "Closed" },
-  { id: "all", label: "All" },
+  { id: "open", label: msg("Open", { $context: "GitHub issue state filter" }) },
+  { id: "closed", label: msg("Closed", { $context: "GitHub issue state filter" }) },
+  { id: "all", label: msg("All", { $context: "GitHub issue state filter" }) },
 ];
 
 type GitHubIssuePickerMode = "attach" | "link";
@@ -96,7 +98,7 @@ export function useAttachGitHubIssue() {
         const failure = squashAtomCommandFailure(result);
         toastManager.add({
           type: "error",
-          title: "Could not attach the GitHub issue",
+          title: m(msg("Could not attach the GitHub issue")),
           description: failure instanceof Error ? failure.message : undefined,
         });
       }
@@ -126,7 +128,7 @@ export function useLinkGitHubIssue() {
         const failure = squashAtomCommandFailure(result);
         toastManager.add({
           type: "error",
-          title: "Could not link the GitHub issue",
+          title: m(msg("Could not link the GitHub issue")),
           description: failure instanceof Error ? failure.message : undefined,
         });
       }
@@ -147,6 +149,7 @@ export function useGitHubIssueList(input: {
   query: string;
   state: GitHubIssueStateFilter;
 }) {
+  const gt = useGT();
   const trimmedQuery = input.query.trim();
   const debouncedQuery = useDebouncedValue(trimmedQuery, SEARCH_DEBOUNCE_MS);
   const issuesQuery = useEnvironmentQuery(
@@ -172,8 +175,8 @@ export function useGitHubIssueList(input: {
     issues.length > 0
       ? null
       : searching
-        ? "Searching GitHub issues…"
-        : (issuesQuery.error ?? "No issues match.");
+        ? gt("Searching GitHub issues…")
+        : (issuesQuery.error ?? gt("No issues match."));
   return { issues, status };
 }
 
@@ -182,9 +185,10 @@ export function GitHubIssueStateTabs(props: {
   state: GitHubIssueStateFilter;
   onChange: (state: GitHubIssueStateFilter) => void;
 }) {
+  const resolve = useMessages();
   return (
     <SourceTabs
-      options={STATE_OPTIONS}
+      options={STATE_OPTIONS.map((option) => ({ ...option, label: resolve(option.label) }))}
       activeId={props.state}
       onSelect={props.onChange}
       className="flex gap-1 px-3 pb-2"
@@ -195,6 +199,7 @@ export function GitHubIssueStateTabs(props: {
 /** A GitHub issue list row. Fixed widths so authors and states line up down the list. */
 export function GitHubIssueRow(props: { issue: GitHubIssueSummary; inUse: boolean }) {
   const { issue } = props;
+  const resolve = useMessages();
   const state = GITHUB_ISSUE_STATE_PRESENTATION[issue.state];
   return (
     <span className="flex min-w-0 flex-1 items-center gap-2">
@@ -205,14 +210,14 @@ export function GitHubIssueRow(props: { issue: GitHubIssueSummary; inUse: boolea
       <span className="min-w-0 flex-1 truncate text-foreground text-sm">{issue.title}</span>
       {props.inUse ? (
         <Badge variant="outline" size="sm">
-          In use
+          <T>In use</T>
         </Badge>
       ) : null}
       <span className="w-24 shrink-0 truncate text-muted-foreground/70 text-xs">
         {issue.authorLogin ?? ""}
       </span>
       <span className={cn("w-14 shrink-0 truncate text-xs", state.toneClassName)}>
-        {state.label}
+        {resolve(state.label)}
       </span>
     </span>
   );
@@ -267,6 +272,7 @@ function GitHubIssuePickerDialog(props: {
 }) {
   const { projectRef, cwd, threadRef, mode } = props;
   const environmentId = threadRef.environmentId;
+  const gt = useGT();
   const navigate = useNavigate();
   const attachIssue = useAttachGitHubIssue();
   const linkIssue = useLinkGitHubIssue();
@@ -306,22 +312,22 @@ function GitHubIssuePickerDialog(props: {
       }}
     >
       <CommandDialogPopup
-        aria-label={mode === "link" ? "Link GitHub issue" : "Attach GitHub issue"}
+        aria-label={mode === "link" ? gt("Link GitHub issue") : gt("Attach GitHub issue")}
         className="overflow-hidden"
       >
         <CommandPaletteContent
           inputProps={{
-            placeholder: "Search GitHub issues, or paste #123 or an issue link",
+            placeholder: gt("Search GitHub issues, or paste #123 or an issue link"),
             startAddon: <GitHubIcon />,
           }}
           footerActionLabel={
             mode === "link"
               ? attaching
-                ? "Linking…"
-                : "Link"
+                ? gt("Linking…")
+                : gt("Link", { $context: "verb, links an issue to the thread" })
               : attaching
-                ? "Attaching…"
-                : "Attach"
+                ? gt("Attaching…")
+                : gt("Attach", { $context: "verb, attaches an issue to the message" })
           }
           inputAccessory={<GitHubIssueStateTabs state={state} onChange={setState} />}
           mode="none"

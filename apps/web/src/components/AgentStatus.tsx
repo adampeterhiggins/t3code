@@ -3,6 +3,7 @@
  * static status dots and DOM-write elapsed timers (no per-tick React commits).
  */
 import type { RuntimeSubagent } from "@t3tools/client-runtime/state/subagentRuntime";
+import { msg } from "gt-react";
 import { useEffect, useRef } from "react";
 
 import { cn } from "~/lib/utils";
@@ -17,16 +18,16 @@ export const STATUS_VISUALS: Record<
   RuntimeSubagent["status"],
   { dotClass: string; label: string }
 > = {
-  pending: { dotClass: "bg-info", label: "Working" },
-  running: { dotClass: "bg-info", label: "Working" },
-  waiting: { dotClass: "bg-info", label: "Working" },
+  pending: { dotClass: "bg-info", label: msg("Working") },
+  running: { dotClass: "bg-info", label: msg("Working") },
+  waiting: { dotClass: "bg-info", label: msg("Working") },
   // Idle reads as settled (muted, not sky): a resting Codex child looks done
   // unless resumed — live-test: sky idle dots read as stuck in-progress.
-  idle: { dotClass: "bg-muted-foreground/50", label: "Idle · resumable" },
-  completed: { dotClass: "bg-success", label: "Completed" },
-  failed: { dotClass: "bg-destructive", label: "Failed" },
-  cancelled: { dotClass: "bg-muted-foreground/60", label: "Stopped" },
-  interrupted: { dotClass: "bg-muted-foreground/60", label: "Stopped" },
+  idle: { dotClass: "bg-muted-foreground/50", label: msg("Idle · resumable") },
+  completed: { dotClass: "bg-success", label: msg("Completed") },
+  failed: { dotClass: "bg-destructive", label: msg("Failed") },
+  cancelled: { dotClass: "bg-muted-foreground/60", label: msg("Stopped") },
+  interrupted: { dotClass: "bg-muted-foreground/60", label: msg("Stopped") },
 };
 
 export function StatusDot({ status }: { status: RuntimeSubagent["status"] }) {

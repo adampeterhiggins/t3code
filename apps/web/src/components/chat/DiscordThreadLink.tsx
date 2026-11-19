@@ -1,6 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { discordLinkForThread } from "@t3tools/client-runtime/state/discord";
 import type { EnvironmentId, ScopedThreadRef, DiscordThreadLink } from "@t3tools/contracts";
+import { T, useGT } from "gt-react";
 import { ExternalLinkIcon, PencilIcon, UnlinkIcon } from "lucide-react";
 
 import { useLinkClickHandler } from "~/browser/useOpenLink";
@@ -44,6 +45,7 @@ export function DiscordThreadLinkRow(props: {
   link: DiscordThreadLink;
 }) {
   const { threadRef, link } = props;
+  const gt = useGT();
   const discordEnabled = useEnvironmentSettings(
     threadRef.environmentId,
     (s) => s.enableDiscordIntegration,
@@ -61,7 +63,10 @@ export function DiscordThreadLinkRow(props: {
       linkUrl={link.url}
       icon={<DiscordIcon className="size-4 shrink-0" />}
       label={link.title}
-      accessibleLabel={`Linked Discord thread in ${link.channelLabel}: ${description}`}
+      accessibleLabel={gt("Linked Discord thread in {channel}: {description}", {
+        channel: link.channelLabel,
+        description,
+      })}
       threadRef={threadRef}
       url={link.url}
       trailing={
@@ -75,12 +80,12 @@ export function DiscordThreadLinkRow(props: {
         onClick={(event) => openLink(event, link.url)}
       >
         <ExternalLinkIcon />
-        Open in Discord
+        <T>Open in Discord</T>
       </MenuItem>
       {discordEnabled && canEdit ? (
         <MenuItem onClick={() => openDiscordMessagePicker(threadRef, "link")}>
           <PencilIcon />
-          Change Discord thread…
+          <T>Change Discord thread…</T>
         </MenuItem>
       ) : null}
       {canEdit ? (
@@ -88,7 +93,7 @@ export function DiscordThreadLinkRow(props: {
           <MenuSeparator />
           <MenuItem onClick={() => void unlink(threadRef)}>
             <UnlinkIcon />
-            Unlink Discord thread
+            <T>Unlink Discord thread</T>
           </MenuItem>
         </>
       ) : null}

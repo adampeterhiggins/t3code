@@ -1044,13 +1044,13 @@ export function GeneralSettingsPanel() {
                 >
                   <SelectTrigger aria-label={gt("Grouped thread view")} size="sm">
                     <SelectValue>
-                      {THREAD_GROUP_VIEW_LABELS[settings.sidebarThreadViews.grouped]}
+                      {m(THREAD_GROUP_VIEW_LABELS[settings.sidebarThreadViews.grouped])}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectPopup>
                     {SidebarThreadView.literals.map((view) => (
                       <SelectItem key={view} value={view}>
-                        {THREAD_GROUP_VIEW_LABELS[view]}
+                        {m(THREAD_GROUP_VIEW_LABELS[view])}
                       </SelectItem>
                     ))}
                   </SelectPopup>
@@ -1189,13 +1189,13 @@ export function GeneralSettingsPanel() {
                       aria-label={gt("Sort tabs by")}
                     >
                       <SelectValue>
-                        {SIDEBAR_TAB_SORT_ORDER_LABELS[settings.sidebarTabSortOrder]}
+                        {m(SIDEBAR_TAB_SORT_ORDER_LABELS[settings.sidebarTabSortOrder])}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectPopup align="end" alignItemWithTrigger={false}>
                       {SIDEBAR_TAB_SORT_ORDERS.map((order) => (
                         <SelectItem key={order} hideIndicator value={order}>
-                          {SIDEBAR_TAB_SORT_ORDER_LABELS[order]}
+                          {m(SIDEBAR_TAB_SORT_ORDER_LABELS[order])}
                         </SelectItem>
                       ))}
                     </SelectPopup>
@@ -1218,13 +1218,18 @@ export function GeneralSettingsPanel() {
                           {sidebarTabSortDirectionLabel(
                             settings.sidebarTabSortOrder,
                             settings.sidebarTabSortDirection,
+                            m,
                           )}
                         </SelectValue>
                       </SelectTrigger>
                       <SelectPopup align="end" alignItemWithTrigger={false}>
                         {(["desc", "asc"] as const).map((direction) => (
                           <SelectItem key={direction} hideIndicator value={direction}>
-                            {sidebarTabSortDirectionLabel(settings.sidebarTabSortOrder, direction)}
+                            {sidebarTabSortDirectionLabel(
+                              settings.sidebarTabSortOrder,
+                              direction,
+                              m,
+                            )}
                           </SelectItem>
                         ))}
                       </SelectPopup>

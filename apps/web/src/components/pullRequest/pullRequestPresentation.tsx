@@ -338,7 +338,7 @@ function PullRequestCheckPreview({ check }: { check: PullRequestCheck }) {
   const source = pullRequestCheckSource(check);
   // The card mounts on open, so its timing reads the clock once rather than ticking.
   const [openedAt] = useState(() => Date.now());
-  const timing = pullRequestCheckTiming(check, openedAt);
+  const timing = pullRequestCheckTiming(check, openedAt, messages);
   const summary = check.summary ? plainCheckSummary(check.summary) : "";
   const annotations = check.annotations ?? [];
   return (

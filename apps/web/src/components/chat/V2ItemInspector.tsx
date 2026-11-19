@@ -6,7 +6,7 @@ import type {
   ThreadId,
 } from "@t3tools/contracts";
 import { formatPathsForWorkspace } from "@t3tools/client-runtime/work-log/command-display";
-import { T, Var, useGT } from "gt-react";
+import { T, Var, useGT, useMessages } from "gt-react";
 import type { ToolCallDiffTarget } from "../../diffPanelStore";
 
 import {
@@ -314,6 +314,7 @@ function FileChangePreview(props: {
 }
 
 export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspectorProps) {
+  const messages = useMessages();
   // Command rows stream their output, including the final output, from the server.
   const environmentStreamsOutput = useCommandOutputStreaming(props.environmentId);
   const streamsOutput =
@@ -327,7 +328,7 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
   );
   const item = fetched.item;
   const outputState = fetched.output;
-  const preview = (() => resolveToolPreview(item))();
+  const preview = (() => resolveToolPreview(item, messages))();
   const support = useV2ItemSupport({
     environmentId: props.environmentId,
     sourceThreadId: props.projectedItem.sourceThreadId,

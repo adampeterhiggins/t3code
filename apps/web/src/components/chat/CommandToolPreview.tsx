@@ -1,3 +1,4 @@
+import { T } from "gt-react";
 import { CheckIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
@@ -48,7 +49,7 @@ export function CommandToolPreview({
         onToggle={(event) => setOutputOpen(event.currentTarget.open)}
       >
         <summary className="cursor-pointer text-xs text-secondary-label focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
-          View output
+          <T>View output</T>
           <span
             className={cn(
               "float-right ml-3 font-mono text-3xs select-text",

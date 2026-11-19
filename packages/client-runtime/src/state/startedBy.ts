@@ -1,4 +1,6 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
 
 import { scopeThreadRef } from "../environment/scoped.ts";
 import type { EnvironmentThreadShell } from "./models.ts";
@@ -20,6 +22,7 @@ export function startedByThreadRef(thread: StartedByThread | null): ScopedThread
 export function resolveStartedBy(
   thread: StartedByThread | null,
   starter: Pick<EnvironmentThreadShell, "title"> | null,
+  resolve: MFunctionType = mFallback,
 ): {
   readonly label: string;
   readonly description: string;
@@ -30,14 +33,14 @@ export function resolveStartedBy(
   if (startedBy.kind === "agent-access") {
     return {
       label: startedBy.label,
-      description: `Started by the agent using ${startedBy.label}`,
+      description: resolve(msg("Started by the agent using {label}", { label: startedBy.label })),
       openRef: null,
     };
   }
-  const label = starter?.title ?? "an archived thread";
+  const label = starter?.title ?? resolve(msg("an archived thread"));
   return {
     label,
-    description: `Started by the agent in ${label}`,
+    description: resolve(msg("Started by the agent in {label}", { label })),
     openRef: starter === null ? null : startedByThreadRef(thread),
   };
 }

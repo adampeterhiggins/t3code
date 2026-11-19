@@ -1,4 +1,5 @@
 import type { GoogleFileContextRecord } from "@t3tools/contracts";
+import { T, Var } from "gt-react";
 import type { MouseEvent } from "react";
 import ChatMarkdown from "./ChatMarkdown";
 
@@ -22,18 +23,9 @@ export function GoogleFileDetails({
           onClick={(event) => onOpenLink(event, record.url)}
           className="shrink-0 underline-offset-2 hover:text-foreground hover:underline"
         >
-          Open in{" "}
-          {record.fileType === "email"
-            ? "Gmail"
-            : record.fileType === "event"
-              ? "Google Calendar"
-              : record.fileType === "sheet"
-                ? "Google Sheets"
-                : record.fileType === "doc"
-                  ? "Google Docs"
-                  : record.fileType === "slides"
-                    ? "Google Slides"
-                    : "Google Drive"}
+          <T>
+            Open in <Var>{GOOGLE_APP_NAMES[record.fileType]}</Var>
+          </T>
         </a>
       </div>
       {record.grid ? (
@@ -73,3 +65,13 @@ export function GoogleFileDetails({
     </div>
   );
 }
+
+const GOOGLE_APP_NAMES: Record<GoogleFileContextRecord["fileType"], string> = {
+  email: "Gmail",
+  event: "Google Calendar",
+  sheet: "Google Sheets",
+  doc: "Google Docs",
+  slides: "Google Slides",
+  drive: "Google Drive",
+  folder: "Google Drive",
+};

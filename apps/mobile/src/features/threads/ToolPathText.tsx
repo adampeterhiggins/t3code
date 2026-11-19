@@ -1,6 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { toolPathTextParts } from "@t3tools/client-runtime/work-log/tool-paths";
 import type { EnvironmentId } from "@t3tools/contracts";
+import { useGT, useMessages } from "gt-react-native";
 import { Alert } from "react-native";
 
 import { AppText as Text } from "../../components/ui/AppText";
@@ -14,9 +15,12 @@ export function ToolPathText(props: {
   workspaceRoot: string | null | undefined;
   targets?: ReadonlyArray<string>;
 }) {
+  const gt = useGT();
+  const messages = useMessages();
   const roots = useAtomValue(toolPathRootsAtom(props.environmentId));
   const occurrences = new Map<string, number>();
-  return toolPathTextParts(props.text, props.workspaceRoot, roots, props.targets).map((part) => {
+  const parts = toolPathTextParts(props.text, props.workspaceRoot, roots, props.targets, messages);
+  return parts.map((part) => {
     if ("text" in part) return part.text;
     const { path } = part;
     const occurrence = (occurrences.get(path.absolutePath) ?? 0) + 1;
@@ -25,19 +29,19 @@ export function ToolPathText(props: {
       <Text
         key={`${path.absolutePath}:${occurrence}`}
         accessibilityRole="button"
-        accessibilityLabel={`Full path: ${path.absolutePath}`}
-        accessibilityHint="Shows the full path with a copy action."
+        accessibilityLabel={gt("Full path: {path}", { path: path.absolutePath })}
+        accessibilityHint={gt("Shows the full path with a copy action.")}
         className="font-t3-mono text-xs"
         onPress={(event) => {
           event.stopPropagation();
-          Alert.alert(path.project ?? "Full file path", path.absolutePath, [
-            { text: "Close", style: "cancel" },
+          Alert.alert(path.project ?? gt("Full file path"), path.absolutePath, [
+            { text: gt("Close"), style: "cancel" },
             {
-              text: "Copy full path",
+              text: gt("Copy full path"),
               onPress: () => {
                 void tryCopyTextWithHaptic(path.absolutePath, { target: "full file path" }).then(
                   (copied) => {
-                    if (!copied) Alert.alert("Could not copy", "Try again.");
+                    if (!copied) Alert.alert(gt("Could not copy"), gt("Try again."));
                   },
                 );
               },

@@ -5,6 +5,7 @@ import {
   webUrlParts,
   type WebToolView,
 } from "@t3tools/client-runtime/work-log/web-tool";
+import { T, useGT, Var } from "gt-react";
 import { ExternalLinkIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
@@ -99,7 +100,7 @@ function Answer(props: {
             setOpen(!open);
           }}
         >
-          {open ? "Show less" : props.label}
+          {open ? <T>Show less</T> : props.label}
         </button>
       ) : null}
     </div>
@@ -116,6 +117,7 @@ function SectionLabel({ children }: { readonly children: ReactNode }) {
 
 function FetchDetail(props: { readonly view: WebToolView; readonly cwd: string | undefined }) {
   const { view } = props;
+  const gt = useGT();
   return (
     <div className="space-y-2.5">
       {view.url !== undefined || view.statusCode !== undefined ? (
@@ -126,7 +128,9 @@ function FetchDetail(props: { readonly view: WebToolView; readonly cwd: string |
       ) : null}
       {view.prompt !== undefined ? (
         <div className="space-y-1">
-          <SectionLabel>Asked</SectionLabel>
+          <SectionLabel>
+            <T context="the question the agent asked of a fetched page">Asked</T>
+          </SectionLabel>
           <p className="select-text border-l-2 border-border ps-2.5 whitespace-pre-wrap text-muted-foreground italic">
             {view.prompt}
           </p>
@@ -134,11 +138,15 @@ function FetchDetail(props: { readonly view: WebToolView; readonly cwd: string |
       ) : null}
       {view.answer !== undefined ? (
         <div className="space-y-1">
-          {view.prompt !== undefined ? <SectionLabel>Answer</SectionLabel> : null}
+          {view.prompt !== undefined ? (
+            <SectionLabel>
+              <T context="noun">Answer</T>
+            </SectionLabel>
+          ) : null}
           <Answer
             text={view.answer}
             cwd={props.cwd}
-            label={view.prompt !== undefined ? "Show full answer" : "Show more"}
+            label={view.prompt !== undefined ? gt("Show full answer") : gt("Show more")}
           />
         </div>
       ) : null}
@@ -148,6 +156,7 @@ function FetchDetail(props: { readonly view: WebToolView; readonly cwd: string |
 }
 
 function ResultList({ view }: { readonly view: WebToolView }) {
+  const gt = useGT();
   const [showAll, setShowAll] = useState(false);
   const shown = showAll ? view.results : view.results.slice(0, VISIBLE_RESULTS);
   const hidden = view.results.length - shown.length;
@@ -170,7 +179,7 @@ function ResultList({ view }: { readonly view: WebToolView }) {
                   url={result.url}
                   className="block truncate font-medium text-foreground"
                 >
-                  {result.title?.trim() || host || result.url || "Search result"}
+                  {result.title?.trim() || host || result.url || gt("Search result")}
                 </ExternalLink>
                 {location !== undefined ? (
                   <div className="truncate text-muted-foreground">{location}</div>
@@ -194,7 +203,9 @@ function ResultList({ view }: { readonly view: WebToolView }) {
             setShowAll(true);
           }}
         >
-          {hidden} more
+          <T>
+            <Var>{hidden}</Var> more
+          </T>
         </button>
       ) : null}
     </div>
@@ -203,6 +214,7 @@ function ResultList({ view }: { readonly view: WebToolView }) {
 
 function SearchDetail(props: { readonly view: WebToolView; readonly cwd: string | undefined }) {
   const { view } = props;
+  const gt = useGT();
   return (
     <div className="space-y-2.5">
       {view.query !== undefined ? (
@@ -212,14 +224,16 @@ function SearchDetail(props: { readonly view: WebToolView; readonly cwd: string 
           </span>
           {view.results.length > 0 ? (
             <span className="shrink-0 text-muted-foreground">
-              {view.results.length} {view.results.length === 1 ? "result" : "results"}
+              {gt("{count, plural, one {{count} result} other {{count} results}}", {
+                count: view.results.length,
+              })}
             </span>
           ) : null}
         </div>
       ) : null}
       {view.results.length > 0 ? <ResultList view={view} /> : null}
       {view.answer !== undefined ? (
-        <Answer text={view.answer} cwd={props.cwd} label="Show more" />
+        <Answer text={view.answer} cwd={props.cwd} label={gt("Show more")} />
       ) : null}
     </div>
   );

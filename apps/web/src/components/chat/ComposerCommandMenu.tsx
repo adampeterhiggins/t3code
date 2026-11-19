@@ -456,6 +456,7 @@ function GitHubIssueRow(props: {
   item: GitHubIssueCommandItem;
   environmentId: EnvironmentId | null;
 }) {
+  const m = useMessages();
   const state = GITHUB_ISSUE_STATE_PRESENTATION[props.item.state];
   const row = (
     <span className="flex min-w-0 flex-1 items-center gap-2 text-xs">
@@ -466,7 +467,7 @@ function GitHubIssueRow(props: {
       <span className="w-24 shrink-0 truncate text-secondary-label">
         {props.item.authorLogin ?? ""}
       </span>
-      <span className={cn("w-14 shrink-0 truncate", state.toneClassName)}>{state.label}</span>
+      <span className={cn("w-14 shrink-0 truncate", state.toneClassName)}>{m(state.label)}</span>
     </span>
   );
   return props.environmentId === null ? (

@@ -6,6 +6,7 @@ import type {
   RecordsToolPreview,
   ToolPreview,
 } from "@t3tools/client-runtime/work-log/tool-preview";
+import { T, useGT, Var } from "gt-react";
 import { ExternalLinkIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
@@ -84,7 +85,7 @@ function OpenThreadLink(props: {
   if (props.hidden || !threadId) return null;
   return (
     <PreviewCornerAction onClick={() => onOpenThread(ThreadId.make(threadId))}>
-      Open thread
+      <T>Open thread</T>
     </PreviewCornerAction>
   );
 }
@@ -152,7 +153,7 @@ function ThreadName(props: {
       className={cn("min-w-0 truncate text-left hover:underline", props.className)}
       onClick={() => props.onOpenThread(threadId)}
     >
-      {shell?.title ?? "Open thread"}
+      {shell?.title ?? <T>Open thread</T>}
     </button>
   );
 }
@@ -204,7 +205,11 @@ function RecordsView(props: {
   const shown = expanded ? preview.items : preview.items.slice(0, MAX_RECORDS);
   const collapsed = preview.items.length - shown.length;
   if (preview.items.length === 0)
-    return <p className="text-muted-foreground italic">No results.</p>;
+    return (
+      <p className="text-muted-foreground italic">
+        <T>No results.</T>
+      </p>
+    );
   return (
     <ul className="divide-y divide-border/60">
       {shown.map((item) => {
@@ -247,12 +252,22 @@ function RecordsView(props: {
             className="text-muted-foreground hover:text-foreground"
             onClick={() => setExpanded((open) => !open)}
           >
-            {expanded ? "Show fewer" : `Show ${collapsed} more`}
+            {expanded ? (
+              <T>Show fewer</T>
+            ) : (
+              <T>
+                Show <Var>{collapsed}</Var> more
+              </T>
+            )}
           </button>
         </li>
       ) : null}
       {preview.more > 0 ? (
-        <li className="pt-1.5 text-muted-foreground">+{preview.more} more in the raw call</li>
+        <li className="pt-1.5 text-muted-foreground">
+          <T>
+            +<Var>{preview.more}</Var> more in the raw call
+          </T>
+        </li>
       ) : null}
     </ul>
   );
@@ -275,7 +290,9 @@ function ProviderCapabilitiesView({
         <div className="flex min-w-0 items-center gap-1.5">
           {preview.inheritedModel ? (
             <>
-              <span className="shrink-0 text-muted-foreground">Inherits</span>
+              <span className="shrink-0 text-muted-foreground">
+                <T context="the subagent inherits this model">Inherits</T>
+              </span>
               <span className="min-w-0 truncate font-medium text-foreground">
                 {preview.inheritedModel}
               </span>
@@ -295,7 +312,11 @@ function ProviderCapabilitiesView({
       ) : null}
       {available.length > 0 ? (
         <div>
-          <SectionLabel>Available · {available.length}</SectionLabel>
+          <SectionLabel>
+            <T>
+              Available · <Var>{available.length}</Var>
+            </T>
+          </SectionLabel>
           <ul className="divide-y divide-border/60">
             {available.map((provider) => (
               <li key={provider.key} className="flex min-w-0 items-start gap-2 py-1">
@@ -310,7 +331,7 @@ function ProviderCapabilitiesView({
                     ) : null}
                     {provider.current ? (
                       <Badge size="sm" variant="outline">
-                        current
+                        <T context="the provider in use now">current</T>
                       </Badge>
                     ) : null}
                   </div>
@@ -331,7 +352,11 @@ function ProviderCapabilitiesView({
       ) : null}
       {unavailable.length > 0 ? (
         <div>
-          <SectionLabel>Unavailable · {unavailable.length}</SectionLabel>
+          <SectionLabel>
+            <T>
+              Unavailable · <Var>{unavailable.length}</Var>
+            </T>
+          </SectionLabel>
           <ul>
             {unavailable.map((provider) => (
               <li
@@ -369,7 +394,9 @@ function GenericBody(props: {
     case "table": {
       const hidden = Math.max(0, preview.rows.length - MAX_TABLE_ROWS) + preview.more;
       return preview.rows.length === 0 ? (
-        <p className="text-muted-foreground italic">No rows.</p>
+        <p className="text-muted-foreground italic">
+          <T>No rows.</T>
+        </p>
       ) : (
         <div className="max-h-72 overflow-auto">
           <table className="w-full border-collapse font-mono text-2xs">
@@ -402,7 +429,13 @@ function GenericBody(props: {
               ))}
             </tbody>
           </table>
-          {hidden > 0 ? <p className="mt-1 text-muted-foreground">+{hidden} more rows</p> : null}
+          {hidden > 0 ? (
+            <p className="mt-1 text-muted-foreground">
+              <T>
+                +<Var>{hidden}</Var> more rows
+              </T>
+            </p>
+          ) : null}
         </div>
       );
     }
@@ -414,7 +447,9 @@ function GenericBody(props: {
               <TitleLink title={preview.title} url={preview.url} />
             </p>
           ) : preview.url ? (
-            <ExternalLink href={preview.url}>Open</ExternalLink>
+            <ExternalLink href={preview.url}>
+              <T context="verb, opens the link">Open</T>
+            </ExternalLink>
           ) : null}
           {preview.markdown ? (
             preview.preformatted ? (
@@ -452,7 +487,13 @@ function GenericBody(props: {
 
 function WakeTime({ at }: { readonly at: string }) {
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
-  return <p className="text-foreground">Wakes at {formatShortTimestamp(at, timestampFormat)}</p>;
+  return (
+    <p className="text-foreground">
+      <T>
+        Wakes at <Var>{formatShortTimestamp(at, timestampFormat)}</Var>
+      </T>
+    </p>
+  );
 }
 
 function PreviewBody(props: {
@@ -466,6 +507,7 @@ function PreviewBody(props: {
   readonly onImageExpand?: ((preview: ExpandedImagePreview) => void) | undefined;
 }) {
   const { preview } = props;
+  const gt = useGT();
   switch (preview.kind) {
     case "thread":
       return (
@@ -487,7 +529,7 @@ function PreviewBody(props: {
         <>
           <div className="flex items-start gap-2">
             <span className="min-w-0 flex-1 font-medium text-foreground">
-              {preview.title ?? "Delegated task"}
+              {preview.title ?? <T>Delegated task</T>}
             </span>
             <StatusBadge status={preview.status} />
             <OpenThreadLink
@@ -504,7 +546,9 @@ function PreviewBody(props: {
       );
     case "pull-requests":
       return preview.pullRequests.length === 0 ? (
-        <p className="text-muted-foreground italic">No pull requests.</p>
+        <p className="text-muted-foreground italic">
+          <T>No pull requests.</T>
+        </p>
       ) : (
         <ul className="space-y-1.5">
           {preview.pullRequests.map((pr) => (
@@ -538,14 +582,16 @@ function PreviewBody(props: {
                 threadId: props.threadId,
                 path: preview.snapshot.screenshotPath,
               }}
-              alt="Captured page screenshot"
+              alt={gt("Captured page screenshot")}
               maxHeightRem={16}
               onImageExpand={props.onImageExpand}
             />
           ) : null}
           {preview.snapshot?.visibleText ? (
             <details>
-              <summary className="cursor-pointer text-muted-foreground">Captured page text</summary>
+              <summary className="cursor-pointer text-muted-foreground">
+                <T>Captured page text</T>
+              </summary>
               <pre className={cn("max-h-60 overflow-auto text-foreground/85", monoClassName)}>
                 {preview.snapshot.visibleText}
               </pre>
@@ -582,7 +628,11 @@ function PreviewBody(props: {
       );
     case "slack-messages":
       if (preview.messages.length === 0) {
-        return <p className="text-muted-foreground italic">No messages found.</p>;
+        return (
+          <p className="text-muted-foreground italic">
+            <T>No messages found.</T>
+          </p>
+        );
       }
       return (
         <ul className="space-y-2">
@@ -601,7 +651,9 @@ function PreviewBody(props: {
                 ) : null}
                 {message.url ? (
                   <span className="ml-auto shrink-0">
-                    <ExternalLink href={message.url}>Open</ExternalLink>
+                    <ExternalLink href={message.url}>
+                      <T context="verb, opens the link">Open</T>
+                    </ExternalLink>
                   </span>
                 ) : null}
               </p>
@@ -612,7 +664,9 @@ function PreviewBody(props: {
           ))}
           {preview.messages.length > MAX_SLACK_MESSAGES ? (
             <li className="text-muted-foreground">
-              +{preview.messages.length - MAX_SLACK_MESSAGES} more
+              <T>
+                +<Var>{preview.messages.length - MAX_SLACK_MESSAGES}</Var> more
+              </T>
             </li>
           ) : null}
         </ul>
@@ -642,7 +696,11 @@ function PreviewBody(props: {
                 </p>
               ))}
               {question.otherAnswer ? (
-                <p className="text-foreground">Answered: {question.otherAnswer}</p>
+                <p className="text-foreground">
+                  <T>
+                    Answered: <Var>{question.otherAnswer}</Var>
+                  </T>
+                </p>
               ) : null}
             </div>
           ))}
@@ -655,7 +713,12 @@ function PreviewBody(props: {
             <div className="min-w-0">
               {preview.recipient ? (
                 <div className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
-                  To <Chip>{preview.recipient}</Chip>
+                  <T>
+                    To{" "}
+                    <Var>
+                      <Chip>{preview.recipient}</Chip>
+                    </Var>
+                  </T>
                 </div>
               ) : null}
               {preview.summary ? (
@@ -734,8 +797,10 @@ function PreviewBody(props: {
         <>
           {preview.query ? (
             <p className="text-muted-foreground">
-              “{preview.query}” · {preview.matches.length} match
-              {preview.matches.length === 1 ? "" : "es"}
+              {gt(
+                "{count, plural, one {“{query}” · {count} match} other {“{query}” · {count} matches}}",
+                { query: preview.query, count: preview.matches.length },
+              )}
             </p>
           ) : null}
           <ul className="space-y-1.5">
@@ -760,7 +825,9 @@ function PreviewBody(props: {
       );
     case "context-transfers":
       return preview.transfers.length === 0 ? (
-        <p className="text-muted-foreground italic">No context transfers.</p>
+        <p className="text-muted-foreground italic">
+          <T>No context transfers.</T>
+        </p>
       ) : (
         <ul className="space-y-1">
           {preview.transfers.map((transfer) => (
@@ -787,7 +854,9 @@ function PreviewBody(props: {
       );
     case "threads":
       return preview.threads.length === 0 ? (
-        <p className="text-muted-foreground italic">No threads.</p>
+        <p className="text-muted-foreground italic">
+          <T>No threads.</T>
+        </p>
       ) : (
         <ul className="divide-y divide-border/60">
           {preview.threads.map((thread) => (
@@ -811,7 +880,9 @@ function PreviewBody(props: {
       );
     case "scheduled-tasks":
       return preview.tasks.length === 0 ? (
-        <p className="text-muted-foreground italic">No scheduled tasks.</p>
+        <p className="text-muted-foreground italic">
+          <T>No scheduled tasks.</T>
+        </p>
       ) : (
         <ul className="divide-y divide-border/60">
           {preview.tasks.map((task) => (
@@ -820,7 +891,7 @@ function PreviewBody(props: {
                 <p className="min-w-0 flex-1 truncate font-medium text-foreground">{task.title}</p>
                 {task.enabled ? null : (
                   <Badge size="sm" variant="warning" className="shrink-0">
-                    paused
+                    <T context="scheduled task state">paused</T>
                   </Badge>
                 )}
               </div>
@@ -895,7 +966,7 @@ export function ToolPreviewCard(props: {
           className="shrink-0 hover:text-foreground"
           onClick={() => setShowRaw((shown) => !shown)}
         >
-          {showRaw ? "Hide raw call" : "Raw call"}
+          {showRaw ? <T>Hide raw call</T> : <T>Raw call</T>}
         </button>
       </div>
       {showRaw ? props.raw : null}

@@ -10,9 +10,11 @@ import {
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
+import { msg, T, useGT, useMessages } from "gt-react";
 import { useState } from "react";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useEnvironmentSettings } from "~/hooks/useSettings";
+import { m } from "~/i18n/messages";
 import { useIssueContextStore } from "~/issueContextStore";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { useDebouncedValue } from "~/state/queries";
@@ -94,7 +96,7 @@ function useLinkGoogleFile() {
         const failure = squashAtomCommandFailure(result);
         toastManager.add({
           type: "error",
-          title: "Could not link the Google file, event or email",
+          title: m(msg("Could not link the Google file, event or email")),
           description: failure instanceof Error ? failure.message : undefined,
         });
       }
@@ -120,6 +122,8 @@ function GoogleFilePickerDialog({
     threadRef.environmentId,
     (s) => s.enableGoogleIntegration,
   );
+  const gt = useGT();
+  const resolve = useMessages();
   const navigate = useNavigate();
   const attachPage = useAttachGoogleFile();
   const linkPage = useLinkGoogleFile();
@@ -210,7 +214,7 @@ function GoogleFilePickerDialog({
           page.fileType === "event" ? (
             <span className="flex min-w-0 flex-1 items-center gap-2">
               <span className="w-28 shrink-0 text-muted-foreground text-xs tabular-nums">
-                {eventTimeLabel(page)}
+                {eventTimeLabel(page, resolve)}
               </span>
               <span className="min-w-0 flex-1 truncate text-sm">{page.title}</span>
               <span className="w-40 shrink-0 truncate text-end text-muted-foreground text-xs">
@@ -236,17 +240,17 @@ function GoogleFilePickerDialog({
     connection.error ??
     result.error ??
     (connection.data === null
-      ? "Reading Google status…"
+      ? gt("Reading Google status…")
       : result.isPending || settled !== query.trim()
-        ? "Searching Google…"
+        ? gt("Searching Google…")
         : files.length === 0 || (source === "calendar" && days.length === 0)
           ? view !== DEFAULT_GOOGLE_FILE_PICKER_VIEWS[source] && (loaded?.length ?? 0) > 0
-            ? "Nothing matches these filters."
+            ? gt("Nothing matches these filters.")
             : browsingWeek
               ? selectedDay === null
-                ? "No events this week."
-                : `No events on ${dayHeading(selectedDay, openedAt)}.`
-              : "No matching sources. Search or paste a Google link."
+                ? gt("No events this week.")
+                : gt("No events on {day}.", { day: dayHeading(selectedDay, openedAt, resolve) })
+              : gt("No matching sources. Search or paste a Google link.")
           : null);
   if (!googleEnabled) return null;
   return (
@@ -259,8 +263,8 @@ function GoogleFilePickerDialog({
       <CommandDialogPopup
         aria-label={
           mode === "link"
-            ? "Link Google file, event or email"
-            : "Attach Google file, event or email"
+            ? gt("Link Google file, event or email")
+            : gt("Attach Google file, event or email")
         }
         className="overflow-hidden"
       >
@@ -269,26 +273,29 @@ function GoogleFilePickerDialog({
             inputProps={{
               placeholder:
                 source === "gmail"
-                  ? "Search Gmail (from:, subject:, is:unread) or paste a conversation link"
-                  : "Search Google or paste a source link",
+                  ? gt("Search Gmail (from:, subject:, is:unread) or paste a conversation link")
+                  : gt("Search Google or paste a source link"),
               startAddon: <GoogleIcon />,
             }}
             footerActionLabel={
               mode === "link"
                 ? attaching
-                  ? "Linking…"
-                  : "Link source"
+                  ? gt("Linking…")
+                  : gt("Link source")
                 : attaching
-                  ? "Attaching…"
-                  : "Attach source"
+                  ? gt("Attaching…")
+                  : gt("Attach source")
             }
             inputAccessory={
               <>
                 <SourceTabs
                   className="flex gap-1 px-3 py-2"
                   options={[
+                    // oxlint-disable-next-line t3code/no-untranslated-copy -- Google product name
                     { id: "drive", label: "Drive" },
+                    // oxlint-disable-next-line t3code/no-untranslated-copy -- Google product name
                     { id: "calendar", label: "Calendar" },
+                    // oxlint-disable-next-line t3code/no-untranslated-copy -- Google product name
                     { id: "gmail", label: "Gmail" },
                   ]}
                   activeId={source}
@@ -335,7 +342,9 @@ function GoogleFilePickerDialog({
                 {source === "calendar" ? (
                   days.map((group) => (
                     <CommandGroup key={group.day}>
-                      <CommandGroupLabel>{dayHeading(group.day, openedAt)}</CommandGroupLabel>
+                      <CommandGroupLabel>
+                        {dayHeading(group.day, openedAt, resolve)}
+                      </CommandGroupLabel>
                       {group.events.map(row)}
                     </CommandGroup>
                   ))
@@ -349,8 +358,10 @@ function GoogleFilePickerDialog({
             {result.data?.hasMore ? (
               <p className="px-4 py-2 text-xs text-muted-foreground">
                 {source === "calendar"
-                  ? "Showing the first events from each calendar. Search by title to narrow the results."
-                  : "Showing the first 30 files. Search by title to narrow the results."}
+                  ? gt(
+                      "Showing the first events from each calendar. Search by title to narrow the results.",
+                    )
+                  : gt("Showing the first 30 files. Search by title to narrow the results.")}
               </p>
             ) : null}
           </CommandPaletteContent>
@@ -358,8 +369,10 @@ function GoogleFilePickerDialog({
           <div className="flex flex-col items-center gap-3 px-6 py-10 text-center text-sm">
             <p className="text-muted-foreground">
               {mode === "link"
-                ? "Connect Google to link a Drive file, Calendar event or Gmail conversation."
-                : "Connect Google to attach Drive files, Calendar events and Gmail conversations."}
+                ? gt("Connect Google to link a Drive file, Calendar event or Gmail conversation.")
+                : gt(
+                    "Connect Google to attach Drive files, Calendar events and Gmail conversations.",
+                  )}
             </p>
             <Button
               size="sm"
@@ -368,7 +381,7 @@ function GoogleFilePickerDialog({
                 void navigate({ to: "/settings/integrations" });
               }}
             >
-              Connect Google
+              <T>Connect Google</T>
             </Button>
           </div>
         )}

@@ -1,8 +1,10 @@
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
+import { msg, T, useGT, Var } from "gt-react";
 import { type ReactNode, useEffect, useState } from "react";
 
+import { m } from "~/i18n/messages";
 import { deriveProviderInstanceEntries } from "~/providerInstances";
 import { useProject, useThreadShell } from "~/state/entities";
 import { providersIgnoringCheckedAtAtom } from "~/state/server";
@@ -39,6 +41,7 @@ export function ThreadSummaryPreview(props: {
   loadSummary: ReturnType<typeof createThreadAttachSummaryLoader> | null;
 }) {
   const { environmentId, threadId, loadSummary } = props;
+  const gt = useGT();
   const thread = useThreadShell(scopeThreadRef(environmentId, threadId));
   const project = useProject(thread ? scopeProjectRef(environmentId, thread.projectId) : null);
   const providerLabel = useThreadProviderLabel(environmentId, threadId);
@@ -53,7 +56,8 @@ export function ThreadSummaryPreview(props: {
       (cause: unknown) => {
         if (active)
           setPreview({
-            error: cause instanceof Error ? cause.message : "Could not summarize that thread.",
+            error:
+              cause instanceof Error ? cause.message : m(msg("Could not summarize that thread.")),
           });
       },
     );
@@ -67,14 +71,20 @@ export function ThreadSummaryPreview(props: {
     project?.title ?? null,
     providerLabel,
     content && content.files.length > 0
-      ? `${content.files.length + content.moreFiles} ${content.files.length + content.moreFiles === 1 ? "file" : "files"} changed`
+      ? gt("{count, plural, one {{count} file changed} other {{count} files changed}}", {
+          count: content.files.length + content.moreFiles,
+        })
       : null,
   ].filter((fact) => fact !== null);
   return (
     <div className="flex flex-col gap-3">
       <div className="flex min-w-0 flex-col gap-0.5">
         {props.parentTitle !== null && props.parentTitle !== props.title ? (
-          <p className="truncate text-muted-foreground">Tab of {props.parentTitle}</p>
+          <p className="truncate text-muted-foreground">
+            <T>
+              Tab of <Var>{props.parentTitle}</Var>
+            </T>
+          </p>
         ) : null}
         <p className="truncate font-medium text-foreground text-sm">{props.title}</p>
         <p className="truncate text-muted-foreground">{facts.join(" · ")}</p>
@@ -84,10 +94,12 @@ export function ThreadSummaryPreview(props: {
           {content.opening === null &&
           content.latestUser === null &&
           content.latestAssistant === null ? (
-            <p className="text-muted-foreground">No messages yet.</p>
+            <p className="text-muted-foreground">
+              <T>No messages yet.</T>
+            </p>
           ) : null}
           {content.opening !== null ? (
-            <SummaryPreviewSection label="Started with">
+            <SummaryPreviewSection label={gt("Started with")}>
               <p className="line-clamp-3 whitespace-pre-line wrap-break-word">{content.opening}</p>
             </SummaryPreviewSection>
           ) : null}
@@ -95,8 +107,11 @@ export function ThreadSummaryPreview(props: {
             <SummaryPreviewSection
               label={
                 content.earlierTurns > 0
-                  ? `Latest · after ${content.earlierTurns} more ${content.earlierTurns === 1 ? "turn" : "turns"}`
-                  : "Latest"
+                  ? gt(
+                      "{count, plural, one {Latest · after {count} more turn} other {Latest · after {count} more turns}}",
+                      { count: content.earlierTurns },
+                    )
+                  : gt("Latest", { $context: "the most recent exchange in a thread" })
               }
             >
               <p className="line-clamp-2 whitespace-pre-line wrap-break-word">
@@ -105,17 +120,21 @@ export function ThreadSummaryPreview(props: {
             </SummaryPreviewSection>
           ) : null}
           {content.latestAssistant !== null ? (
-            <SummaryPreviewSection label="Agent replied">
+            <SummaryPreviewSection label={gt("Agent replied")}>
               <p className="line-clamp-4 whitespace-pre-line wrap-break-word text-muted-foreground">
                 {content.latestAssistant}
               </p>
             </SummaryPreviewSection>
           ) : null}
           {content.files.length > 0 ? (
-            <SummaryPreviewSection label="Files changed">
+            <SummaryPreviewSection label={gt("Files changed")}>
               <p className="line-clamp-2 wrap-break-word font-mono text-muted-foreground">
-                {content.files.map((file) => file.split("/").at(-1)).join(", ")}
-                {content.moreFiles > 0 ? `, +${content.moreFiles} more` : ""}
+                {content.moreFiles > 0
+                  ? gt("{files}, +{count} more", {
+                      files: content.files.map((file) => file.split("/").at(-1)).join(", "),
+                      count: content.moreFiles,
+                    })
+                  : content.files.map((file) => file.split("/").at(-1)).join(", ")}
               </p>
             </SummaryPreviewSection>
           ) : null}
@@ -125,8 +144,8 @@ export function ThreadSummaryPreview(props: {
           {preview && "error" in preview
             ? preview.error
             : loadSummary === null
-              ? "Connect to preview this thread."
-              : "Summarizing…"}
+              ? gt("Connect to preview this thread.")
+              : gt("Summarizing…")}
         </p>
       )}
     </div>

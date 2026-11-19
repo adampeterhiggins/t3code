@@ -242,6 +242,7 @@ export function workEntryReadOutput(
     "changedFiles" | "detail" | "viewedImagePath" | "structuredPayload" | "toolData"
   >,
   workspaceRoot: string | undefined,
+  resolve: MessageResolver = m,
 ): string | null {
   const paths = [
     ...new Set(
@@ -262,7 +263,7 @@ export function workEntryReadOutput(
     // Fork: a ranged read names its lines after the path.
     const range =
       entry.structuredPayload?.type === "dynamic_tool"
-        ? toolReadRangeLabel(entry.structuredPayload.input)
+        ? toolReadRangeLabel(entry.structuredPayload.input, resolve)
         : null;
     return [...paths, ...(range ? [range] : [])].join("\n");
   }

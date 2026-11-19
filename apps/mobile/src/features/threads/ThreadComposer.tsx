@@ -631,17 +631,20 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
   const sendMenuItems =
     hasContent && (!canSend || messageDrafts?.busy === true)
       ? []
-      : resolveComposerSendMenu({
-          hasContent,
-          running: props.activeThreadBusy,
-          canSteer: props.canSteerActiveTurn,
-          activeTurnDefault: props.followUpBehavior,
-          // Mobile has no way to start a sibling thread from the thread composer.
-          canSendInNewThread: false,
-          canSaveDraft: messageDrafts !== null && !messageDrafts.busy,
-          isEditingQueuedMessage: queuedEdit !== null,
-          drafts: messageDrafts?.busy === false ? messageDrafts.drafts : [],
-        });
+      : resolveComposerSendMenu(
+          {
+            hasContent,
+            running: props.activeThreadBusy,
+            canSteer: props.canSteerActiveTurn,
+            activeTurnDefault: props.followUpBehavior,
+            // Mobile has no way to start a sibling thread from the thread composer.
+            canSendInNewThread: false,
+            canSaveDraft: messageDrafts !== null && !messageDrafts.busy,
+            isEditingQueuedMessage: queuedEdit !== null,
+            drafts: messageDrafts?.busy === false ? messageDrafts.drafts : [],
+          },
+          messages,
+        );
   const handleSendMenuAction = (action: ComposerSendMenuAction) => {
     switch (action.type) {
       case "send":

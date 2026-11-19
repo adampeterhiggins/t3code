@@ -1,3 +1,4 @@
+import { msg, T, useGT, useMessages } from "gt-react";
 import {
   ArrowDownUpIcon,
   CalendarIcon,
@@ -30,14 +31,14 @@ import {
 } from "./granolaNotePicker.logic";
 
 const SORT_LABELS = {
-  newest: "Newest",
-  oldest: "Oldest",
-  title: "Title A–Z",
+  newest: msg("Newest", { $context: "sort order" }),
+  oldest: msg("Oldest", { $context: "sort order" }),
+  title: msg("Title A–Z", { $context: "sort order" }),
 } as const satisfies Record<GranolaNotePickerView["sort"], string>;
 
 const RANGE_LABELS = {
-  week: "Last 7 days",
-  month: "Last 30 days",
+  week: msg("Last 7 days"),
+  month: msg("Last 30 days"),
 } as const satisfies Record<GranolaNotePickerView["range"], string>;
 
 type Person = { readonly value: string; readonly label: string; readonly count: number };
@@ -58,15 +59,24 @@ function PeopleChecklist(props: {
   /** The meetings are still loading, so there is nobody to list yet. */
   loading: boolean;
 }) {
+  const gt = useGT();
   if (props.people.length === 0) {
     return props.loading ? (
-      <MenuLoadingItem>Loading people…</MenuLoadingItem>
+      <MenuLoadingItem>
+        <T>Loading people…</T>
+      </MenuLoadingItem>
     ) : (
-      <MenuItem disabled>No people in these meetings</MenuItem>
+      <MenuItem disabled>
+        <T>No people in these meetings</T>
+      </MenuItem>
     );
   }
   return (
-    <MenuSearch items={props.people} getText={(person) => person.label} placeholder="Search people">
+    <MenuSearch
+      items={props.people}
+      getText={(person) => person.label}
+      placeholder={gt("Search people")}
+    >
       {(matches, query) =>
         matches.map((person) => (
           <MenuCheckboxItem
@@ -108,6 +118,8 @@ export function GranolaNotePickerFilterBar(props: {
   onChange: (view: GranolaNotePickerView) => void;
 }) {
   const { view } = props;
+  const gt = useGT();
+  const m = useMessages();
   const [menuOpen, setMenuOpen] = useState(false);
   // "Only" settles the filter, so it also closes the menu.
   const pickOnly = (next: GranolaNotePickerView) => {
@@ -122,11 +134,13 @@ export function GranolaNotePickerFilterBar(props: {
         <Menu open={menuOpen} onOpenChange={setMenuOpen}>
           <MenuTrigger render={<Button type="button" size="xs" variant="outline" />}>
             <ListFilterIcon />
-            Filter
+            <T context="verb, opens filter options">Filter</T>
           </MenuTrigger>
           <MenuPopup align="start">
             <MenuSub>
-              <MenuSubTrigger>Attendee</MenuSubTrigger>
+              <MenuSubTrigger>
+                <T>Attendee</T>
+              </MenuSubTrigger>
               <MenuSubPopup>
                 <PeopleChecklist
                   people={props.attendees}
@@ -138,7 +152,9 @@ export function GranolaNotePickerFilterBar(props: {
               </MenuSubPopup>
             </MenuSub>
             <MenuSub>
-              <MenuSubTrigger>Note taker</MenuSubTrigger>
+              <MenuSubTrigger>
+                <T>Note taker</T>
+              </MenuSubTrigger>
               <MenuSubPopup>
                 <PeopleChecklist
                   people={props.creators}
@@ -150,7 +166,9 @@ export function GranolaNotePickerFilterBar(props: {
               </MenuSubPopup>
             </MenuSub>
             <MenuSub>
-              <MenuSubTrigger>Date</MenuSubTrigger>
+              <MenuSubTrigger>
+                <T context="filter by date">Date</T>
+              </MenuSubTrigger>
               <MenuSubPopup>
                 <MenuRadioGroup
                   value={view.range}
@@ -162,7 +180,7 @@ export function GranolaNotePickerFilterBar(props: {
                     (range) => (
                       <MenuRadioItem key={range} value={range}>
                         <span className="flex w-full min-w-0 items-center gap-2">
-                          <span className="min-w-0 flex-1 truncate">{RANGE_LABELS[range]}</span>
+                          <span className="min-w-0 flex-1 truncate">{m(RANGE_LABELS[range])}</span>
                           {props.loading ? null : (
                             <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                               {props.ranges[range]}
@@ -185,13 +203,13 @@ export function GranolaNotePickerFilterBar(props: {
             variant="ghost-muted"
             onClick={() => props.onChange(DEFAULT_GRANOLA_NOTE_PICKER_VIEW)}
           >
-            Reset
+            <T context="verb, resets filters">Reset</T>
           </Button>
         ) : null}
         <Menu>
           <MenuTrigger render={<Button type="button" size="xs" variant="ghost" />}>
             <ArrowDownUpIcon />
-            {SORT_LABELS[view.sort]}
+            {m(SORT_LABELS[view.sort])}
           </MenuTrigger>
           <MenuPopup align="end">
             <MenuRadioGroup
@@ -202,7 +220,7 @@ export function GranolaNotePickerFilterBar(props: {
             >
               {(Object.keys(SORT_LABELS) as Array<GranolaNotePickerView["sort"]>).map((sort) => (
                 <MenuRadioItem key={sort} value={sort}>
-                  {SORT_LABELS[sort]}
+                  {m(SORT_LABELS[sort])}
                 </MenuRadioItem>
               ))}
             </MenuRadioGroup>
@@ -228,7 +246,7 @@ export function GranolaNotePickerFilterBar(props: {
             <FilterPill
               key={`creator:${name}`}
               icon={<NotebookPenIcon />}
-              label={`Notes by ${name}`}
+              label={gt("Notes by {name}", { name })}
               onRemove={() =>
                 props.onChange({
                   ...view,
@@ -240,7 +258,7 @@ export function GranolaNotePickerFilterBar(props: {
           {rangeFiltered ? (
             <FilterPill
               icon={<CalendarIcon />}
-              label={RANGE_LABELS[view.range]}
+              label={m(RANGE_LABELS[view.range])}
               onRemove={() =>
                 props.onChange({ ...view, range: DEFAULT_GRANOLA_NOTE_PICKER_VIEW.range })
               }

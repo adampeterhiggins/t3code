@@ -923,7 +923,7 @@ export function ComposerContextSheet(props: {
                   label={gt("Clone", { $context: "noun, cloning a repository" })}
                   value={
                     record.outcome
-                      ? contextRepositoryOutcomeLabel(record.outcome)
+                      ? contextRepositoryOutcomeLabel(record.outcome, m)
                       : gt(
                           "Cloned into the workspace's context folder as {directory} when sent, unless it is already there.",
                           { directory: record.directoryName },
@@ -936,7 +936,7 @@ export function ComposerContextSheet(props: {
                   label="Git"
                   value={
                     record.outcome?.git
-                      ? describeContextRepositoryGitStatus(record.outcome.git)
+                      ? describeContextRepositoryGitStatus(record.outcome.git, m)
                       : null
                   }
                 />

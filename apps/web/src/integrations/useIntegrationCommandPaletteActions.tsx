@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import { useGT } from "gt-react";
 import type { ScopedThreadRef, ServerSettings } from "@t3tools/contracts";
 import type { Project } from "../types";
 import { ITEM_ICON_CLASS, type CommandPaletteActionItem } from "../components/CommandPalette.logic";
@@ -42,6 +43,7 @@ export function useIntegrationCommandPaletteActions(
   composerProject: Project | undefined,
   composerSettings: ServerSettings | undefined,
 ): CommandPaletteActionItem[] {
+  const gt = useGT();
   const activeLinearLink = useThreadLinearLink(activeLinkThreadRef);
   const unlinkLinearIssue = useUnlinkLinearIssue();
   const canLinkLinearIssue = useAtomValue(
@@ -84,7 +86,7 @@ export function useIntegrationCommandPaletteActions(
       kind: "action",
       value: "action:attach-linear-issue",
       searchTerms: ["linear", "issue", "ticket", "attach", "context"],
-      title: "Attach Linear issue",
+      title: gt("Attach Linear issue"),
       icon: <LinearIcon className={ITEM_ICON_CLASS} />,
       run: async () => {
         openLinearIssuePicker(composerThreadRef);
@@ -95,7 +97,7 @@ export function useIntegrationCommandPaletteActions(
         kind: "action",
         value: "action:attach-notion-page",
         searchTerms: ["notion", "page", "document", "attach", "context"],
-        title: "Attach Notion page",
+        title: gt("Attach Notion page"),
         icon: <NotionIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
           openNotionPagePicker(composerThreadRef);
@@ -116,7 +118,7 @@ export function useIntegrationCommandPaletteActions(
           "attach",
           "context",
         ],
-        title: "Attach Google file, event or email",
+        title: gt("Attach Google file, event or email"),
         icon: <GoogleIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
           openGoogleFilePicker(composerThreadRef);
@@ -128,7 +130,7 @@ export function useIntegrationCommandPaletteActions(
         kind: "action",
         value: "action:attach-granola-note",
         searchTerms: ["granola", "meeting", "notes", "transcript", "call", "attach", "context"],
-        title: "Attach Granola note",
+        title: gt("Attach Granola note"),
         icon: <GranolaIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
           openGranolaNotePicker(composerThreadRef);
@@ -140,7 +142,7 @@ export function useIntegrationCommandPaletteActions(
         kind: "action",
         value: "action:attach-slack-message",
         searchTerms: ["slack", "message", "thread", "conversation", "attach", "context"],
-        title: "Attach Slack message",
+        title: gt("Attach Slack message"),
         icon: <SlackIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
           openSlackMessagePicker(composerThreadRef);
@@ -152,7 +154,7 @@ export function useIntegrationCommandPaletteActions(
         kind: "action",
         value: "action:attach-discord-message",
         searchTerms: ["discord", "message", "thread", "conversation", "attach", "context"],
-        title: "Attach Discord message",
+        title: gt("Attach Discord message"),
         icon: <DiscordIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
           openDiscordMessagePicker(composerThreadRef);
@@ -164,7 +166,7 @@ export function useIntegrationCommandPaletteActions(
         kind: "action",
         value: "action:attach-github-issue",
         searchTerms: ["github", "issue", "ticket", "attach", "context"],
-        title: "Attach GitHub issue",
+        title: gt("Attach GitHub issue"),
         icon: <GitHubIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
           openGitHubIssuePicker(composerThreadRef);
@@ -176,8 +178,8 @@ export function useIntegrationCommandPaletteActions(
           value: "action:link-github-issue",
           searchTerms: ["github", "issue", "ticket", "link", "thread"],
           title: activeGitHubIssueLink
-            ? `Change linked GitHub issue (#${activeGitHubIssueLink.number})`
-            : "Link GitHub issue",
+            ? gt("Change linked GitHub issue (#{number})", { number: activeGitHubIssueLink.number })
+            : gt("Link GitHub issue"),
           icon: <GitHubIcon className={ITEM_ICON_CLASS} />,
           run: async () => {
             openGitHubIssuePicker(composerThreadRef, "link");
@@ -191,7 +193,7 @@ export function useIntegrationCommandPaletteActions(
         kind: "action",
         value: "action:unlink-github-issue",
         searchTerms: ["github", "issue", "ticket", "unlink", "remove"],
-        title: `Unlink GitHub issue #${activeGitHubIssueLink.number}`,
+        title: gt("Unlink GitHub issue #{number}", { number: activeGitHubIssueLink.number }),
         icon: <GitHubIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
           await unlinkGitHubIssue(composerThreadRef);
@@ -204,8 +206,10 @@ export function useIntegrationCommandPaletteActions(
         value: "action:link-linear-issue",
         searchTerms: ["linear", "issue", "ticket", "link", "thread"],
         title: activeLinearLink
-          ? `Change linked Linear issue (${activeLinearLink.identifier})`
-          : "Link Linear issue",
+          ? gt("Change linked Linear issue ({identifier})", {
+              identifier: activeLinearLink.identifier,
+            })
+          : gt("Link Linear issue"),
         icon: <LinearIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
           openLinearIssuePicker(composerThreadRef, "link");
@@ -216,7 +220,9 @@ export function useIntegrationCommandPaletteActions(
           kind: "action",
           value: "action:unlink-linear-issue",
           searchTerms: ["linear", "issue", "ticket", "unlink", "remove"],
-          title: `Unlink Linear issue ${activeLinearLink.identifier}`,
+          title: gt("Unlink Linear issue {identifier}", {
+            identifier: activeLinearLink.identifier,
+          }),
           icon: <LinearIcon className={ITEM_ICON_CLASS} />,
           run: async () => {
             await unlinkLinearIssue(composerThreadRef);
@@ -230,8 +236,8 @@ export function useIntegrationCommandPaletteActions(
         value: "action:link-slack-thread",
         searchTerms: ["slack", "thread", "conversation", "link"],
         title: activeSlackLink
-          ? `Change linked Slack thread (${activeSlackLink.channelLabel})`
-          : "Link Slack thread",
+          ? gt("Change linked Slack thread ({channel})", { channel: activeSlackLink.channelLabel })
+          : gt("Link Slack thread"),
         icon: <SlackIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
           openSlackMessagePicker(composerThreadRef, "link");
@@ -244,7 +250,7 @@ export function useIntegrationCommandPaletteActions(
         kind: "action",
         value: "action:unlink-slack-thread",
         searchTerms: ["slack", "thread", "conversation", "unlink", "remove"],
-        title: `Unlink Slack thread in ${activeSlackLink.channelLabel}`,
+        title: gt("Unlink Slack thread in {channel}", { channel: activeSlackLink.channelLabel }),
         icon: <SlackIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
           await unlinkSlackThread(composerThreadRef);
@@ -257,8 +263,10 @@ export function useIntegrationCommandPaletteActions(
         value: "action:link-discord-thread",
         searchTerms: ["discord", "thread", "conversation", "link"],
         title: activeDiscordLink
-          ? `Change linked Discord thread (${activeDiscordLink.channelLabel})`
-          : "Link Discord thread",
+          ? gt("Change linked Discord thread ({channel})", {
+              channel: activeDiscordLink.channelLabel,
+            })
+          : gt("Link Discord thread"),
         icon: <DiscordIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
           openDiscordMessagePicker(composerThreadRef, "link");
@@ -271,7 +279,9 @@ export function useIntegrationCommandPaletteActions(
         kind: "action",
         value: "action:unlink-discord-thread",
         searchTerms: ["discord", "thread", "conversation", "unlink", "remove"],
-        title: `Unlink Discord thread in ${activeDiscordLink.channelLabel}`,
+        title: gt("Unlink Discord thread in {channel}", {
+          channel: activeDiscordLink.channelLabel,
+        }),
         icon: <DiscordIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
           await unlinkDiscordThread(composerThreadRef);
@@ -284,8 +294,8 @@ export function useIntegrationCommandPaletteActions(
         value: "action:link-notion-page",
         searchTerms: ["notion", "page", "document", "link"],
         title: activeNotionLink
-          ? `Change linked Notion page (${activeNotionLink.title})`
-          : "Link Notion page",
+          ? gt("Change linked Notion page ({title})", { title: activeNotionLink.title })
+          : gt("Link Notion page"),
         icon: <NotionIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
           openNotionPagePicker(composerThreadRef, "link");
@@ -298,8 +308,8 @@ export function useIntegrationCommandPaletteActions(
         value: "action:link-google-file",
         searchTerms: ["google", "gmail", "email", "calendar", "page", "document", "link"],
         title: activeGoogleLink
-          ? `Change linked Google source (${activeGoogleLink.title})`
-          : "Link Google file, event or email",
+          ? gt("Change linked Google source ({title})", { title: activeGoogleLink.title })
+          : gt("Link Google file, event or email"),
         icon: <GoogleIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
           openGoogleFilePicker(composerThreadRef, "link");
@@ -311,7 +321,7 @@ export function useIntegrationCommandPaletteActions(
         kind: "action",
         value: "action:unlink-notion-page",
         searchTerms: ["notion", "page", "document", "unlink", "remove"],
-        title: `Unlink Notion page ${activeNotionLink.title}`,
+        title: gt("Unlink Notion page {title}", { title: activeNotionLink.title }),
         icon: <NotionIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
           await unlinkNotionPage(composerThreadRef);
@@ -332,7 +342,7 @@ export function useIntegrationCommandPaletteActions(
           "unlink",
           "remove",
         ],
-        title: `Unlink Google source ${activeGoogleLink.title}`,
+        title: gt("Unlink Google source {title}", { title: activeGoogleLink.title }),
         icon: <GoogleIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
           await unlinkGoogleFile(composerThreadRef);
@@ -345,8 +355,8 @@ export function useIntegrationCommandPaletteActions(
         value: "action:link-granola-note",
         searchTerms: ["granola", "meeting", "notes", "link"],
         title: activeGranolaLink
-          ? `Change linked Granola note (${activeGranolaLink.title})`
-          : "Link Granola note",
+          ? gt("Change linked Granola note ({title})", { title: activeGranolaLink.title })
+          : gt("Link Granola note"),
         icon: <GranolaIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
           openGranolaNotePicker(composerThreadRef, "link");
@@ -358,7 +368,7 @@ export function useIntegrationCommandPaletteActions(
         kind: "action",
         value: "action:unlink-granola-note",
         searchTerms: ["granola", "meeting", "notes", "unlink", "remove"],
-        title: `Unlink Granola note ${activeGranolaLink.title}`,
+        title: gt("Unlink Granola note {title}", { title: activeGranolaLink.title }),
         icon: <GranolaIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
           await unlinkGranolaNote(composerThreadRef);

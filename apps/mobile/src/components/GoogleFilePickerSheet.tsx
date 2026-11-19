@@ -11,10 +11,12 @@ import { formatComposerContextReference } from "@t3tools/shared/composerContextR
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
+import { msg, T, useGT, useMessages } from "gt-react-native";
 import { useState, type ReactNode } from "react";
 import { ActivityIndicator, Alert, FlatList, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { m, type MessageResolver } from "../i18n/messages";
 import { relativeTime } from "../lib/time";
 import { useEnvironmentServerConfig } from "../state/entities";
 import { googleEnvironment } from "../state/google";
@@ -29,18 +31,26 @@ import {
 import { AppText as Text, AppTextInput } from "./ui/AppText";
 import { PickerSheet } from "./PickerSheet";
 
+const GOOGLE_SOURCE_NAMES = { gmail: "Gmail", drive: "Drive", calendar: "Calendar" } as const;
+
 /** Google allows search request quotas, so typing settles longer before it queries. */
 const SEARCH_DEBOUNCE_MS = 400;
 
 /** Google's failures carry a reason; a rate limit deserves a clearer hint than its detail. */
-function googleErrorMessage(error: unknown, fallback: string): string {
+function googleErrorMessage(
+  error: unknown,
+  fallback: string,
+  resolve: MessageResolver = m,
+): string {
   if (typeof error === "object" && error !== null && "reason" in error) {
-    if (error.reason === "rate-limited") return "Google is busy. Try again shortly.";
+    if (error.reason === "rate-limited") return resolve(msg("Google is busy. Try again shortly."));
     if (error.reason === "not-connected" || error.reason === "revoked") {
-      return "Google is not connected. Connect it from Settings > Integrations on desktop or web.";
+      return resolve(
+        msg("Google is not connected. Connect it from Settings > Integrations on desktop or web."),
+      );
     }
     if (error.reason === "not-found")
-      return "Check that the connected Google account can open this document.";
+      return resolve(msg("Check that the connected Google account can open this document."));
   }
   return error instanceof Error && error.message.trim() ? error.message : fallback;
 }
@@ -98,6 +108,7 @@ export function useGoogleFilePicker(target: GoogleFilePickerTarget | null): {
  * desktop or web.
  */
 function GoogleFilePickerSheet(props: OpenedGoogleFilePicker & { readonly onClose: () => void }) {
+  const gt = useGT();
   const connection = useEnvironmentQuery(
     googleEnvironment.connection({ environmentId: props.environmentId, input: {} }),
   );
@@ -105,7 +116,9 @@ function GoogleFilePickerSheet(props: OpenedGoogleFilePicker & { readonly onClos
   return (
     <PickerSheet
       title={
-        props.mode === "link" ? "Link Google file, event or email" : "Google file, event or email"
+        props.mode === "link"
+          ? gt("Link Google file, event or email")
+          : gt("Google file, event or email")
       }
       onClose={props.onClose}
     >
@@ -118,7 +131,9 @@ function GoogleFilePickerSheet(props: OpenedGoogleFilePicker & { readonly onClos
           ) : (
             <Text className="text-center text-foreground-muted">
               {connection.error ??
-                "Google is not connected on this environment. Connect it from Settings > Integrations on desktop or web."}
+                gt(
+                  "Google is not connected on this environment. Connect it from Settings > Integrations on desktop or web.",
+                )}
             </Text>
           )}
         </View>
@@ -128,6 +143,7 @@ function GoogleFilePickerSheet(props: OpenedGoogleFilePicker & { readonly onClos
 }
 
 function GoogleFileSearch(props: OpenedGoogleFilePicker & { readonly onClose: () => void }) {
+  const gt = useGT();
   const [query, setQuery] = useState("");
   const [source, setSource] = useState<NonNullable<GoogleSearchFilesInput["source"]>>("all");
   const trimmed = query.trim();
@@ -149,8 +165,8 @@ function GoogleFileSearch(props: OpenedGoogleFilePicker & { readonly onClose: ()
     });
     if (result._tag === "Failure") {
       Alert.alert(
-        "Could not link Google file, event or email",
-        googleErrorMessage(squashAtomCommandFailure(result), "Try again."),
+        m(msg("Could not link Google file, event or email")),
+        googleErrorMessage(squashAtomCommandFailure(result), m(msg("Try again."))),
       );
       return;
     }
@@ -168,8 +184,8 @@ function GoogleFileSearch(props: OpenedGoogleFilePicker & { readonly onClose: ()
     });
     if (fetched._tag === "Failure") {
       Alert.alert(
-        "Could not attach Google file, event or email",
-        googleErrorMessage(squashAtomCommandFailure(fetched), "Try again."),
+        m(msg("Could not attach Google file, event or email")),
+        googleErrorMessage(squashAtomCommandFailure(fetched), m(msg("Try again."))),
       );
       return;
     }
@@ -184,7 +200,10 @@ function GoogleFileSearch(props: OpenedGoogleFilePicker & { readonly onClose: ()
         props.insertion,
       )
     ) {
-      Alert.alert("Too many context items", "Remove some context from the draft and try again.");
+      Alert.alert(
+        m(msg("Too many context items")),
+        m(msg("Remove some context from the draft and try again.")),
+      );
       return;
     }
     props.onClose();
@@ -208,26 +227,24 @@ function GoogleFileSearch(props: OpenedGoogleFilePicker & { readonly onClose: ()
             className="rounded-md bg-surface px-3 py-2"
           >
             <Text className={source === value ? "text-foreground" : "text-foreground-muted"}>
-              {value === "gmail"
-                ? "Gmail"
-                : value === "all"
-                  ? "All"
-                  : value === "drive"
-                    ? "Drive"
-                    : "Calendar"}
+              {value === "all"
+                ? gt("All", { $context: "all Google sources" })
+                : GOOGLE_SOURCE_NAMES[value]}
             </Text>
           </Pressable>
         ))}
       </View>
       <View className="px-4 pb-3">
         <AppTextInput
-          accessibilityLabel="Search Google sources"
+          accessibilityLabel={gt("Search Google sources")}
           autoFocus
           autoCapitalize="none"
           autoCorrect={false}
           clearButtonMode="while-editing"
           placeholder={
-            source === "gmail" ? "Search Gmail (from:, subject:, is:unread)" : "Search Google"
+            source === "gmail"
+              ? gt("Search Gmail (from:, subject:, is:unread)")
+              : gt("Search Google")
           }
           returnKeyType="search"
           value={query}
@@ -249,7 +266,7 @@ function GoogleFileSearch(props: OpenedGoogleFilePicker & { readonly onClose: ()
             <ActivityIndicator />
           ) : (
             <Text className="text-center text-foreground-muted">
-              Search files, events and emails or paste a Google link.
+              <T>Search files, events and emails or paste a Google link.</T>
             </Text>
           )}
         </View>
@@ -267,6 +284,8 @@ function GoogleFileResults(props: {
   readonly attaching: string | null;
   readonly onPick: (page: GoogleFileSummary) => void;
 }) {
+  const gt = useGT();
+  const resolve = useMessages();
   const insets = useSafeAreaInsets();
   const result = useAtomValue(
     googleEnvironment.files({
@@ -278,7 +297,11 @@ function GoogleFileResults(props: {
   const pending = props.pendingInput || result.waiting;
   const error =
     result._tag === "Failure"
-      ? googleErrorMessage(Cause.squash(result.cause), "Could not search Google.")
+      ? googleErrorMessage(
+          Cause.squash(result.cause),
+          resolve(msg("Could not search Google.")),
+          resolve,
+        )
       : null;
   return (
     <FlatList
@@ -297,7 +320,7 @@ function GoogleFileResults(props: {
                 error ? "text-center text-danger-foreground" : "text-center text-foreground-muted"
               }
             >
-              {error ?? "No matching files."}
+              {error ?? gt("No matching files.")}
             </Text>
           )}
         </View>

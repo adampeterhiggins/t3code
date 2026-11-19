@@ -6,6 +6,7 @@ import { googleLinkForThread } from "@t3tools/client-runtime/state/google";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { slackLinkForThread } from "@t3tools/client-runtime/state/slack";
 import type { EnvironmentId, ThreadId, ThreadLinkKind } from "@t3tools/contracts";
+import { useGT } from "gt-react-native";
 import { Alert, Pressable, Text } from "react-native";
 
 import { Menu } from "../../components/ui/Menu";
@@ -39,6 +40,7 @@ export const LINK_GRANOLA_ACTION = "tab:link-granola";
  * and the orchestration grant; the server still authorizes every change.
  */
 export function useThreadSlackNotionLinks(environmentId: EnvironmentId, threadId: ThreadId) {
+  const gt = useGT();
   const slackLinks = useEnvironmentQuery(
     slackEnvironment.threadLinks({ environmentId, input: {} }),
   ).data;
@@ -96,19 +98,19 @@ export function useThreadSlackNotionLinks(environmentId: EnvironmentId, threadId
     /** Tab-menu items for links the group does not have yet; the chips change existing ones. */
     menuActions: [
       ...(slackLink === null && openSlackPicker
-        ? [{ id: LINK_SLACK_ACTION, title: "Link Slack thread", image: "link" }]
+        ? [{ id: LINK_SLACK_ACTION, title: gt("Link Slack thread"), image: "link" }]
         : []),
       ...(discordLink === null && openDiscordPicker
-        ? [{ id: LINK_DISCORD_ACTION, title: "Link Discord thread", image: "link" }]
+        ? [{ id: LINK_DISCORD_ACTION, title: gt("Link Discord thread"), image: "link" }]
         : []),
       ...(notionLink === null && openNotionPicker
-        ? [{ id: LINK_NOTION_ACTION, title: "Link Notion page", image: "link" }]
+        ? [{ id: LINK_NOTION_ACTION, title: gt("Link Notion page"), image: "link" }]
         : []),
       ...(googleLink === null && openGooglePicker
-        ? [{ id: LINK_GOOGLE_ACTION, title: "Link Google file, event or email", image: "link" }]
+        ? [{ id: LINK_GOOGLE_ACTION, title: gt("Link Google file, event or email"), image: "link" }]
         : []),
       ...(granolaLink === null && openGranolaPicker
-        ? [{ id: LINK_GRANOLA_ACTION, title: "Link Granola note", image: "link" }]
+        ? [{ id: LINK_GRANOLA_ACTION, title: gt("Link Granola note"), image: "link" }]
         : []),
     ],
     sheets: (
@@ -140,6 +142,7 @@ export function handleSlackNotionMenuAction(links: ThreadSlackNotionLinks, id: s
 export function ThreadSlackNotionLinkChips(props: { readonly links: ThreadSlackNotionLinks }) {
   const { environmentId, threadId, slackLink, discordLink, notionLink, googleLink, granolaLink } =
     props.links;
+  const gt = useGT();
   const unlinkSlack = useAtomCommand(slackEnvironment.unlinkThread, {
     label: "slack thread unlink",
     reportFailure: false,
@@ -174,7 +177,7 @@ export function ThreadSlackNotionLinkChips(props: { readonly links: ThreadSlackN
     const error = squashAtomCommandFailure(result);
     Alert.alert(
       title,
-      error instanceof Error && error.message.trim() ? error.message : "Try again.",
+      error instanceof Error && error.message.trim() ? error.message : gt("Try again."),
     );
   };
 
@@ -186,16 +189,19 @@ export function ThreadSlackNotionLinkChips(props: { readonly links: ThreadSlackN
           threadId={threadId}
           kind="slack"
           label={slackLink.channelLabel}
-          description={`Linked Slack thread in ${slackLink.channelLabel}: ${slackLink.title}`}
+          description={gt("Linked Slack thread in {channel}: {title}", {
+            channel: slackLink.channelLabel,
+            title: slackLink.title,
+          })}
           url={slackLink.url}
           target="slack"
-          openTitle="Open in Slack"
-          changeTitle="Change Slack thread…"
-          unlinkTitle="Unlink Slack thread"
+          openTitle={gt("Open in Slack")}
+          changeTitle={gt("Change Slack thread…")}
+          unlinkTitle={gt("Unlink Slack thread")}
           onChange={props.links.openSlackPicker}
           onUnlink={
             props.links.canEditSlack
-              ? () => void unlink(unlinkSlack, "Could not unlink Slack thread")
+              ? () => void unlink(unlinkSlack, gt("Could not unlink Slack thread"))
               : undefined
           }
         />
@@ -206,16 +212,19 @@ export function ThreadSlackNotionLinkChips(props: { readonly links: ThreadSlackN
           threadId={threadId}
           kind="discord"
           label={discordLink.channelLabel}
-          description={`Linked Discord thread in ${discordLink.channelLabel}: ${discordLink.title}`}
+          description={gt("Linked Discord thread in {channel}: {title}", {
+            channel: discordLink.channelLabel,
+            title: discordLink.title,
+          })}
           url={discordLink.url}
           target="discord"
-          openTitle="Open in Discord"
-          changeTitle="Change Discord thread…"
-          unlinkTitle="Unlink Discord thread"
+          openTitle={gt("Open in Discord")}
+          changeTitle={gt("Change Discord thread…")}
+          unlinkTitle={gt("Unlink Discord thread")}
           onChange={props.links.openDiscordPicker}
           onUnlink={
             props.links.canEditDiscord
-              ? () => void unlink(unlinkDiscord, "Could not unlink Discord thread")
+              ? () => void unlink(unlinkDiscord, gt("Could not unlink Discord thread"))
               : undefined
           }
         />
@@ -226,16 +235,16 @@ export function ThreadSlackNotionLinkChips(props: { readonly links: ThreadSlackN
           threadId={threadId}
           kind="notion"
           label={notionLink.title}
-          description={`Linked Notion page: ${notionLink.title}`}
+          description={gt("Linked Notion page: {title}", { title: notionLink.title })}
           url={notionLink.url}
           target="notion"
-          openTitle="Open in Notion"
-          changeTitle="Change page…"
-          unlinkTitle="Unlink page"
+          openTitle={gt("Open in Notion")}
+          changeTitle={gt("Change page…")}
+          unlinkTitle={gt("Unlink page")}
           onChange={props.links.openNotionPicker}
           onUnlink={
             props.links.canEditNotion
-              ? () => void unlink(unlinkNotion, "Could not unlink page")
+              ? () => void unlink(unlinkNotion, gt("Could not unlink page"))
               : undefined
           }
         />
@@ -246,16 +255,18 @@ export function ThreadSlackNotionLinkChips(props: { readonly links: ThreadSlackN
           threadId={threadId}
           kind="google"
           label={googleLink.title}
-          description={`Linked Google file, event or email: ${googleLink.title}`}
+          description={gt("Linked Google file, event or email: {title}", {
+            title: googleLink.title,
+          })}
           url={googleLink.url}
           target="google"
-          openTitle="Open in Google"
-          changeTitle="Change page…"
-          unlinkTitle="Unlink page"
+          openTitle={gt("Open in Google")}
+          changeTitle={gt("Change page…")}
+          unlinkTitle={gt("Unlink page")}
           onChange={props.links.openGooglePicker}
           onUnlink={
             props.links.canEditGoogle
-              ? () => void unlink(unlinkGoogle, "Could not unlink page")
+              ? () => void unlink(unlinkGoogle, gt("Could not unlink page"))
               : undefined
           }
         />
@@ -266,16 +277,16 @@ export function ThreadSlackNotionLinkChips(props: { readonly links: ThreadSlackN
           threadId={threadId}
           kind="granola"
           label={granolaLink.title}
-          description={`Linked Granola note: ${granolaLink.title}`}
+          description={gt("Linked Granola note: {title}", { title: granolaLink.title })}
           url={granolaLink.url}
           target="granola"
-          openTitle="Open in Granola"
-          changeTitle="Change note…"
-          unlinkTitle="Unlink note"
+          openTitle={gt("Open in Granola")}
+          changeTitle={gt("Change note…")}
+          unlinkTitle={gt("Unlink note")}
           onChange={props.links.openGranolaPicker}
           onUnlink={
             props.links.canEditGranola
-              ? () => void unlink(unlinkGranola, "Could not unlink note")
+              ? () => void unlink(unlinkGranola, gt("Could not unlink note"))
               : undefined
           }
         />
@@ -300,6 +311,7 @@ function LinkChip(props: {
   /** Omitted when the connection cannot link; unlinking otherwise stays available as the way out. */
   readonly onUnlink: (() => void) | undefined;
 }) {
+  const gt = useGT();
   const watch = useThreadLinkWatch({
     environmentId: props.environmentId,
     threadId: props.threadId,
@@ -310,7 +322,7 @@ function LinkChip(props: {
     if (watch.handleMenuAction(id)) return;
     if (id === OPEN_ACTION) {
       void tryOpenExternalUrl(props.url, props.target).then((opened) => {
-        if (!opened) Alert.alert("Could not open the link", "Try again later.");
+        if (!opened) Alert.alert(gt("Could not open the link"), gt("Try again later."));
       });
     } else if (id === CHANGE_ACTION) props.onChange?.();
     else if (id === UNLINK_ACTION) props.onUnlink?.();

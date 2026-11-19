@@ -10,8 +10,10 @@ import {
   type ThemePair,
 } from "@t3tools/client-runtime/theme-sync";
 import { AsyncResult } from "effect/reactivity";
+import { msg } from "gt-react-native";
 
 import * as Dialog from "../../../components/ui/Dialog";
+import { m } from "../../../i18n/messages";
 import { isSystemColorsAvailable } from "../../../lib/materialYouPalette";
 import {
   mobileThemeIdFromSynced,
@@ -91,7 +93,7 @@ async function push(environmentIds: ReadonlyArray<EnvironmentId>, theme: SyncedT
   );
   // Any environment that took it carries the change to the other devices.
   if (failures.every((failure) => failure !== null) && failures.length > 0) {
-    Dialog.alert("Could not sync theme", failures.join("\n\n"));
+    Dialog.alert(m(msg("Could not sync theme")), failures.join("\n\n"));
   }
 }
 

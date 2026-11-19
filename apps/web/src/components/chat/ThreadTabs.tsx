@@ -34,6 +34,7 @@ import { threadGroupsHidingSettled, threadGroupsShownInThreads } from "@t3tools/
 import { sanitizeComposerContextLabel } from "@t3tools/shared/composerContextReferences";
 import { useAtomValue } from "@effect/atom-react";
 import * as Option from "effect/Option";
+import { msg, T, useGT, Var } from "gt-react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   ChevronDownIcon,
@@ -57,6 +58,7 @@ import {
   type ComposerContextReference,
   formatInlineContextReference,
 } from "../../lib/composerContextReferences";
+import { m } from "../../i18n/messages";
 import { runtime } from "../../lib/runtime";
 import { newThreadId } from "../../lib/utils";
 import {
@@ -233,8 +235,8 @@ export function useThreadTabActions() {
     if (!prepared) {
       toastManager.add({
         type: "error",
-        title: "Could not create tab",
-        description: "This environment is not connected.",
+        title: m(msg("Could not create tab")),
+        description: m(msg("This environment is not connected.")),
       });
       return;
     }
@@ -256,7 +258,7 @@ export function useThreadTabActions() {
     } catch (cause) {
       toastManager.add({
         type: "error",
-        title: "Could not create tab",
+        title: m(msg("Could not create tab")),
         description: cause instanceof Error ? cause.message : undefined,
       });
     }
@@ -272,7 +274,7 @@ export function useThreadTabActions() {
       const error = squashAtomCommandFailure(result);
       toastManager.add({
         type: "error",
-        title: "Could not close tab",
+        title: m(msg("Could not close tab")),
         description: error instanceof Error ? error.message : undefined,
       });
     }
@@ -283,8 +285,13 @@ export function useThreadTabActions() {
 
 /** A tab's name everywhere it appears: the live thread title, so renames show up immediately. */
 function useTabLabel(environmentId: EnvironmentId, group: ThreadTabGroup, threadId: ThreadId) {
+  const gt = useGT();
   const shell = useThreadShell(scopeThreadRef(environmentId, threadId));
-  return shell?.title ?? group.tabs.find((tab) => tab.threadId === threadId)?.title ?? "Tab";
+  return (
+    shell?.title ??
+    group.tabs.find((tab) => tab.threadId === threadId)?.title ??
+    gt("Tab", { $context: "noun, a chat tab" })
+  );
 }
 
 function TabMenuLabel(props: {
@@ -311,6 +318,7 @@ export function ThreadTabMenu({
   modelSelection: ModelSelection;
   group: ThreadTabGroup;
 }) {
+  const gt = useGT();
   const prepared = usePreparedConnection(environmentId);
   const navigate = useNavigate();
   const { createTab, closeTab } = useThreadTabActions();
@@ -373,7 +381,7 @@ export function ThreadTabMenu({
           <button
             ref={setNewTabButton}
             type="button"
-            aria-label="New tab"
+            aria-label={gt("New tab")}
             aria-haspopup="menu"
             disabled={busy || Option.isNone(prepared)}
             onClick={create}
@@ -387,7 +395,9 @@ export function ThreadTabMenu({
       >
         <PlusIcon className="size-3.5" />
       </TooltipTrigger>
-      <TooltipPopup side="top">New tab · right-click for tab menu</TooltipPopup>
+      <TooltipPopup side="top">
+        <T>New tab · right-click for tab menu</T>
+      </TooltipPopup>
     </Tooltip>
   );
 
@@ -411,7 +421,7 @@ export function ThreadTabMenu({
                   <button
                     type="button"
                     tabIndex={-1}
-                    aria-label="Open in split view"
+                    aria-label={gt("Open in split view")}
                     onMouseUp={(event) => event.stopPropagation()}
                     onClick={(event) => {
                       event.stopPropagation();
@@ -427,7 +437,7 @@ export function ThreadTabMenu({
                   <button
                     type="button"
                     tabIndex={-1}
-                    aria-label="Close tab"
+                    aria-label={gt("Close tab")}
                     disabled={busy}
                     onMouseUp={(event) => event.stopPropagation()}
                     onClick={(event) => {
@@ -447,7 +457,7 @@ export function ThreadTabMenu({
         <MenuSeparator />
         <MenuItem disabled={busy || Option.isNone(prepared)} onClick={create}>
           <PlusIcon />
-          New tab
+          <T>New tab</T>
         </MenuItem>
         <MenuItem
           disabled={busy || !canNameGroup || Option.isNone(prepared)}
@@ -459,16 +469,16 @@ export function ThreadTabMenu({
               try {
                 await runtime.runPromise(setThreadTabGroupName(prepared.value, threadId, name));
               } catch {
-                toastManager.add({ type: "error", title: "Could not name thread group" });
+                toastManager.add({ type: "error", title: m(msg("Could not name thread group")) });
               }
             })
           }
         >
-          Name thread group…
+          <T>Name thread group…</T>
         </MenuItem>
         <MenuItem disabled={busy || Option.isNone(prepared)} onClick={restart}>
           <RotateCcwIcon />
-          Restart agent session
+          <T>Restart agent session</T>
         </MenuItem>
       </MenuPopup>
     </Menu>
@@ -510,6 +520,7 @@ function ThreadTabContextPill(props: {
   onAttach: (title: string) => void;
   onContinue: (title: string) => void;
 }) {
+  const gt = useGT();
   const label = useTabLabel(props.environmentId, props.group, props.threadId);
   const [menuOpen, setMenuOpen] = useState(false);
   // A tab that never ran has no response to fork from; the server refuses other unfinished ones.
@@ -526,7 +537,7 @@ function ThreadTabContextPill(props: {
                 size="compact"
                 variant="pill"
                 pressed={false}
-                aria-label={`Context from ${label}`}
+                aria-label={gt("Context from {label}", { label })}
                 className="min-w-0"
               />
             }
@@ -553,11 +564,11 @@ function ThreadTabContextPill(props: {
       <MenuPopup align="start" side="bottom">
         <MenuItem disabled={!canContinue} onClick={() => props.onContinue(label)}>
           <GitBranchIcon />
-          Continue this conversation
+          <T>Continue this conversation</T>
         </MenuItem>
         <MenuItem onClick={() => props.onAttach(label)}>
           <PaperclipIcon />
-          Attach summary
+          <T>Attach summary</T>
         </MenuItem>
       </MenuPopup>
     </Menu>
@@ -845,6 +856,7 @@ export function ThreadTabContextPills({
   onInsert: (reference: ComposerContextReference) => void;
   onContinue: (sourceThreadId: ThreadId, title: string) => Promise<void>;
 }) {
+  const gt = useGT();
   const threadTabContext = useCaptureThreadTabContext(environmentId, threadId);
   // Summaries fetched on hover are kept so a later click inserts what the preview showed.
   const loadSummary =
@@ -875,16 +887,20 @@ export function ThreadTabContextPills({
     setLoadingId(null);
   };
   const insert = (sourceThreadId: ThreadId, title: string) =>
-    runFor(sourceThreadId, "Could not summarize that tab.", async () => {
+    runFor(sourceThreadId, gt("Could not summarize that tab."), async () => {
       const summary = await loadSummary(sourceThreadId);
       onInsert(await threadTabContext.capture(sourceThreadId, title, summary));
     });
   const continueFrom = (sourceThreadId: ThreadId, title: string) =>
-    runFor(sourceThreadId, "Could not continue that tab.", () => onContinue(sourceThreadId, title));
+    runFor(sourceThreadId, gt("Could not continue that tab."), () =>
+      onContinue(sourceThreadId, title),
+    );
 
   return (
     <div className="pb-3">
-      <p className="pb-2 text-xs text-muted-foreground">Include context from</p>
+      <p className="pb-2 text-xs text-muted-foreground">
+        <T>Include context from</T>
+      </p>
       {/* Fixed thirds of the composer width, wrapping onto new rows instead of scrolling. */}
       <div className="grid grid-cols-3 gap-1.5">
         {siblings.map((tab) => (
@@ -908,7 +924,9 @@ export function ThreadTabContextPills({
             className="min-w-0"
             onClick={() => setExpanded(false)}
           >
-            <span className="truncate">Show less</span>
+            <span className="truncate">
+              <T>Show less</T>
+            </span>
           </Toggle>
         ) : null}
         {hidden.length > 0 && !expanded ? (
@@ -923,7 +941,11 @@ export function ThreadTabContextPills({
                 className="min-w-0"
                 onClick={() => setExpanded(true)}
               >
-                <span className="truncate">{hidden.length} more</span>
+                <span className="truncate">
+                  <T>
+                    <Var>{hidden.length}</Var> more
+                  </T>
+                </span>
               </Toggle>
             }
           >

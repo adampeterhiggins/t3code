@@ -10,7 +10,9 @@ import type { EnvironmentId, OrchestrationV2Subagent, ThreadId } from "@t3tools/
 import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
 import { useCallback, useMemo } from "react";
 import { Alert } from "react-native";
+import { msg } from "gt-react-native";
 
+import { m } from "../../i18n/messages";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import { environmentThreadShells } from "../../state/threads";
 import { insertComposerDraftContext } from "../../state/use-composer-drafts";
@@ -79,7 +81,10 @@ export function attachAgentToChat(
     context: { version: 1, records: [record] },
   });
   if (!inserted) {
-    Alert.alert("Too many context items", "Remove some context from the draft and try again.");
+    Alert.alert(
+      m(msg("Too many context items")),
+      m(msg("Remove some context from the draft and try again.")),
+    );
   }
   return inserted;
 }

@@ -33,6 +33,7 @@ import {
   SearchIcon,
   Trash2Icon,
 } from "lucide-react";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
 import { type ReactNode, useEffect, useState } from "react";
 
 import { connectionAtomRuntime } from "../../connection/runtime";
@@ -51,6 +52,8 @@ import {
 } from "../pullRequest/PullRequestListFilters";
 import { PullRequestCompactFilterMenu } from "../pullRequest/PullRequestCompactFilterMenu";
 import { PULL_REQUEST_STATE_PRESENTATION, PullRequestGlyph } from "../pullRequest/pullRequestIcons";
+import { resolveFilterOptions } from "../pullRequest/pullRequestListOptions";
+import { m, type MessageResolver } from "../../i18n/messages";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
@@ -108,28 +111,60 @@ const MEASURE_CONCURRENCY = 4;
 const DATE_FORMATS_STORAGE_KEY = "t3.settings.worktreeInventory.dateFormats";
 
 const STATE_OPTIONS = [
-  { value: "all", label: "All", Icon: LayersIcon },
-  { value: "active", label: "Active", Icon: CircleDotIcon },
-  { value: "settled", label: "Settled", Icon: CircleCheckIcon },
-  { value: "archived", label: "Archived", Icon: ArchiveIcon },
-  { value: "none", label: "No thread", Icon: CircleDashedIcon },
+  { value: "all", label: msg("All", { $context: "worktree filter" }), Icon: LayersIcon },
+  {
+    value: "active",
+    label: msg("Active", { $context: "worktree thread state" }),
+    Icon: CircleDotIcon,
+  },
+  {
+    value: "settled",
+    label: msg("Settled", { $context: "worktree thread state" }),
+    Icon: CircleCheckIcon,
+  },
+  {
+    value: "archived",
+    label: msg("Archived", { $context: "worktree thread state" }),
+    Icon: ArchiveIcon,
+  },
+  { value: "none", label: msg("No thread"), Icon: CircleDashedIcon },
 ] as const satisfies ReadonlyArray<PullRequestFilterOption<WorktreeFilters["state"]>>;
 
 const CHECKOUT_OPTIONS = [
-  { value: "all", label: "All", Icon: LayersIcon },
-  { value: "clean", label: "Clean", Icon: CircleCheckIcon },
-  { value: "dirty", label: "Local changes", Icon: PenLineIcon },
-  { value: "running", label: "Running", Icon: LoaderIcon },
-  { value: "unknown", label: "Unreadable", Icon: EyeOffIcon },
+  { value: "all", label: msg("All", { $context: "worktree filter" }), Icon: LayersIcon },
+  {
+    value: "clean",
+    label: msg("Clean", { $context: "git checkout with no local changes" }),
+    Icon: CircleCheckIcon,
+  },
+  { value: "dirty", label: msg("Local changes"), Icon: PenLineIcon },
+  {
+    value: "running",
+    label: msg("Running", { $context: "worktree has running work" }),
+    Icon: LoaderIcon,
+  },
+  { value: "unknown", label: msg("Unreadable"), Icon: EyeOffIcon },
 ] as const satisfies ReadonlyArray<PullRequestFilterOption<WorktreeFilters["checkout"]>>;
 
 const PULL_REQUEST_OPTIONS = [
-  { value: "all", label: "All", Icon: LayersIcon },
-  { value: "open", label: "Open", Icon: PullRequestGlyph.pullRequest },
-  { value: "merged", label: "Merged", Icon: PullRequestGlyph.merged },
-  { value: "closed", label: "Closed", Icon: PullRequestGlyph.closed },
-  { value: "unsynced", label: "Not synced", Icon: PullRequestGlyph.pullRequest },
-  { value: "none", label: "No pull request", Icon: CircleDashedIcon },
+  { value: "all", label: msg("All", { $context: "worktree filter" }), Icon: LayersIcon },
+  {
+    value: "open",
+    label: msg("Open", { $context: "pull request state" }),
+    Icon: PullRequestGlyph.pullRequest,
+  },
+  {
+    value: "merged",
+    label: msg("Merged", { $context: "pull request state" }),
+    Icon: PullRequestGlyph.merged,
+  },
+  {
+    value: "closed",
+    label: msg("Closed", { $context: "pull request state" }),
+    Icon: PullRequestGlyph.closed,
+  },
+  { value: "unsynced", label: msg("Not synced"), Icon: PullRequestGlyph.pullRequest },
+  { value: "none", label: msg("No pull request"), Icon: CircleDashedIcon },
 ] as const satisfies ReadonlyArray<PullRequestFilterOption<WorktreeFilters["pullRequest"]>>;
 
 const STATE_DOT: Record<ManagedWorktree["state"], string> = {
@@ -140,9 +175,9 @@ const STATE_DOT: Record<ManagedWorktree["state"], string> = {
 };
 
 const DATE_FORMAT_LABELS: Record<WorktreeDateFormat, string> = {
-  relative: "Relative",
-  date: "Date",
-  datetime: "Date and time",
+  relative: msg("Relative", { $context: "date format, such as 5m ago" }),
+  date: msg("Date", { $context: "date format" }),
+  datetime: msg("Date and time"),
 };
 const DATE_COLUMN_WIDTH: Record<WorktreeDateFormat, string> = {
   relative: "w-18",
@@ -153,29 +188,35 @@ const DATE_COLUMN_WIDTH: Record<WorktreeDateFormat, string> = {
 function CheckoutCell({ checkout }: { checkout: WorktreeCheckout }) {
   switch (checkout) {
     case "clean":
-      return <span className="text-muted-foreground">Clean</span>;
+      return (
+        <span className="text-muted-foreground">
+          <T context="git checkout with no local changes">Clean</T>
+        </span>
+      );
     case "dirty":
       return (
         <Badge size="sm" variant="warning">
-          Local changes
+          <T>Local changes</T>
         </Badge>
       );
     case "running":
       return (
         <Badge size="sm" variant="info">
-          Running
+          <T context="worktree has running work">Running</T>
         </Badge>
       );
     case "unknown":
       return (
         <Badge size="sm" variant="outline">
-          Unreadable
+          <T>Unreadable</T>
         </Badge>
       );
   }
 }
 
 function PullRequestCell({ pullRequest }: { pullRequest: ManagedWorktree["pullRequest"] }) {
+  const gt = useGT();
+  const messages = useMessages();
   if (pullRequest === null) return <span className="text-muted-foreground/60">—</span>;
   const presentation = pullRequest.state
     ? PULL_REQUEST_STATE_PRESENTATION[pullRequest.state]
@@ -186,7 +227,10 @@ function PullRequestCell({ pullRequest }: { pullRequest: ManagedWorktree["pullRe
       href={pullRequest.url}
       target="_blank"
       rel="noreferrer"
-      aria-label={`Pull request ${pullRequest.number}, ${presentation ? presentation.label.toLowerCase() : "state not synced"}`}
+      aria-label={gt("Pull request {number}, {state}", {
+        number: pullRequest.number,
+        state: presentation ? messages(presentation.label).toLowerCase() : gt("state not synced"),
+      })}
       className="inline-flex items-center gap-1 tabular-nums hover:underline"
     >
       <Icon
@@ -241,24 +285,28 @@ function SortableHead({
 }
 
 function DateFormatMenu({
-  label,
+  column,
   value,
   onChange,
 }: {
-  label: string;
+  column: "created" | "updated";
   value: WorktreeDateFormat;
   onChange: (format: WorktreeDateFormat) => void;
 }) {
+  const gt = useGT();
+  const messages = useMessages();
   return (
     <Menu>
       <MenuTrigger
-        aria-label={`${label} format`}
+        aria-label={column === "created" ? gt("Created format") : gt("Updated format")}
         render={<Button size="icon-micro" variant="ghost-muted" />}
       >
         <ChevronDownIcon />
       </MenuTrigger>
       <MenuPopup align="end" side="bottom">
-        <MenuGroupLabel>Show {label.toLowerCase()} as</MenuGroupLabel>
+        <MenuGroupLabel>
+          {column === "created" ? <T>Show created as</T> : <T>Show updated as</T>}
+        </MenuGroupLabel>
         <MenuRadioGroup
           value={value}
           onValueChange={(next) => onChange(next as WorktreeDateFormat)}
@@ -266,7 +314,7 @@ function DateFormatMenu({
           {(Object.keys(DATE_FORMAT_LABELS) as WorktreeDateFormat[]).map((format) => (
             <MenuRadioItem key={format} value={format}>
               <span className="flex min-w-0 items-center gap-2">
-                <span className="flex-1">{DATE_FORMAT_LABELS[format]}</span>
+                <span className="flex-1">{messages(DATE_FORMAT_LABELS[format])}</span>
                 <MenuRadioItemIndicator />
               </span>
             </MenuRadioItem>
@@ -286,8 +334,10 @@ function WorktreeFiltersMenu({
   filters: WorktreeFilters;
   onFilters: (filters: WorktreeFilters) => void;
 }) {
+  const gt = useGT();
+  const messages = useMessages();
   const projectOptions: ReadonlyArray<PullRequestFilterOption<string>> = [
-    { value: "all", label: "All projects", Icon: LayersIcon },
+    { value: "all", label: gt("All projects"), Icon: LayersIcon },
     ...[...new Set(worktrees.map((entry) => entry.repositoryName))]
       .toSorted((left, right) => left.localeCompare(right))
       .map((name) => ({ value: name, label: name, Icon: FolderIcon })),
@@ -297,7 +347,9 @@ function WorktreeFiltersMenu({
     <Menu>
       <MenuTrigger render={<Button variant="outline" />}>
         <ListFilterIcon className="size-4" />
-        <span>Filters</span>
+        <span>
+          <T>Filters</T>
+        </span>
         {activeCount > 0 ? (
           <span className="rounded-full bg-muted px-1.5 text-xs text-muted-foreground tabular-nums">
             {activeCount}
@@ -306,29 +358,29 @@ function WorktreeFiltersMenu({
       </MenuTrigger>
       <MenuPopup align="end" side="bottom">
         <PullRequestFilterRadioSubmenu
-          label="State"
+          label={gt("State", { $context: "worktree thread state" })}
           value={filters.state}
-          options={STATE_OPTIONS}
+          options={resolveFilterOptions(STATE_OPTIONS, messages)}
           counts={countWorktreeFacet(worktrees, "state")}
           onChange={(state) => onFilters({ ...filters, state })}
         />
         <PullRequestFilterRadioSubmenu
-          label="Checkout"
+          label={gt("Checkout", { $context: "noun, a git working copy" })}
           value={filters.checkout}
-          options={CHECKOUT_OPTIONS}
+          options={resolveFilterOptions(CHECKOUT_OPTIONS, messages)}
           counts={countWorktreeFacet(worktrees, "checkout")}
           onChange={(checkout) => onFilters({ ...filters, checkout })}
         />
         <PullRequestFilterRadioSubmenu
-          label="Pull request"
+          label={gt("Pull request")}
           value={filters.pullRequest}
-          options={PULL_REQUEST_OPTIONS}
+          options={resolveFilterOptions(PULL_REQUEST_OPTIONS, messages)}
           counts={countWorktreeFacet(worktrees, "pullRequest")}
           onChange={(pullRequest) => onFilters({ ...filters, pullRequest })}
         />
         <MenuSeparator />
         <PullRequestFilterRadioSubmenu
-          label="Project"
+          label={gt("Project")}
           value={filters.project}
           options={projectOptions}
           counts={countWorktreeFacet(worktrees, "project")}
@@ -346,6 +398,8 @@ function AppliedWorktreeFilters({
   filters: WorktreeFilters;
   onFilters: (filters: WorktreeFilters) => void;
 }) {
+  const gt = useGT();
+  const messages = useMessages();
   const pill = <Key extends keyof WorktreeFilters>(
     key: Key,
     options: ReadonlyArray<PullRequestFilterOption<string>>,
@@ -362,15 +416,21 @@ function AppliedWorktreeFilters({
       <FilterPill
         key={key}
         icon={<PullRequestFilterOptionIcon option={option} />}
-        label={prefix ? `${prefix}: ${option.label}` : option.label}
+        label={
+          prefix ? gt("{label}: {value}", { label: prefix, value: option.label }) : option.label
+        }
         onRemove={() => onFilters({ ...filters, [key]: "all" })}
       />
     );
   };
   const pills = [
-    pill("state", STATE_OPTIONS),
-    pill("checkout", CHECKOUT_OPTIONS, "Checkout"),
-    pill("pullRequest", PULL_REQUEST_OPTIONS, "Pull request"),
+    pill("state", resolveFilterOptions(STATE_OPTIONS, messages)),
+    pill(
+      "checkout",
+      resolveFilterOptions(CHECKOUT_OPTIONS, messages),
+      gt("Checkout", { $context: "noun, a git working copy" }),
+    ),
+    pill("pullRequest", resolveFilterOptions(PULL_REQUEST_OPTIONS, messages), gt("Pull request")),
     pill("project", []),
   ].filter((entry) => entry !== null);
   if (pills.length === 0) return null;
@@ -378,25 +438,51 @@ function AppliedWorktreeFilters({
 }
 
 const SORT_OPTIONS = [
-  { value: "updated:desc", label: "Recently updated", Icon: ClockIcon },
-  { value: "updated:asc", label: "Least recently updated", Icon: HistoryIcon },
-  { value: "created:desc", label: "Newest", Icon: CalendarArrowDownIcon },
-  { value: "created:asc", label: "Oldest", Icon: CalendarArrowUpIcon },
-  { value: "size:desc", label: "Largest", Icon: Maximize2Icon },
-  { value: "size:asc", label: "Smallest", Icon: Minimize2Icon },
-  { value: "project:asc", label: "Project", Icon: FolderIcon },
-  { value: "worktree:asc", label: "Branch", Icon: GitBranchIcon },
-  { value: "state:desc", label: "State", Icon: CircleDotIcon },
-  { value: "checkout:desc", label: "Checkout", Icon: CircleCheckIcon },
+  { value: "updated:desc", label: msg("Recently updated"), Icon: ClockIcon },
+  { value: "updated:asc", label: msg("Least recently updated"), Icon: HistoryIcon },
+  {
+    value: "created:desc",
+    label: msg("Newest", { $context: "sort order" }),
+    Icon: CalendarArrowDownIcon,
+  },
+  {
+    value: "created:asc",
+    label: msg("Oldest", { $context: "sort order" }),
+    Icon: CalendarArrowUpIcon,
+  },
+  { value: "size:desc", label: msg("Largest", { $context: "sort order" }), Icon: Maximize2Icon },
+  { value: "size:asc", label: msg("Smallest", { $context: "sort order" }), Icon: Minimize2Icon },
+  {
+    value: "project:asc",
+    label: msg("Project", { $context: "sort by project" }),
+    Icon: FolderIcon,
+  },
+  {
+    value: "worktree:asc",
+    label: msg("Branch", { $context: "sort by branch" }),
+    Icon: GitBranchIcon,
+  },
+  {
+    value: "state:desc",
+    label: msg("State", { $context: "sort by worktree thread state" }),
+    Icon: CircleDotIcon,
+  },
+  {
+    value: "checkout:desc",
+    label: msg("Checkout", { $context: "sort by git checkout status" }),
+    Icon: CircleCheckIcon,
+  },
 ] as const satisfies ReadonlyArray<
   PullRequestFilterOption<`${WorktreeSortColumn}:${WorktreeSort["direction"]}`>
 >;
 
 function StateLabel({ state }: { state: ManagedWorktree["state"] }) {
+  const messages = useMessages();
+  const label = STATE_OPTIONS.find((option) => option.value === state)?.label;
   return (
     <span className="flex items-center gap-1.5">
       <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", STATE_DOT[state])} />
-      {STATE_OPTIONS.find((option) => option.value === state)?.label}
+      {label === undefined ? null : messages(label)}
     </span>
   );
 }
@@ -409,7 +495,13 @@ function ThreadSummary({
   threads: ManagedWorktree["threads"];
 }) {
   const [first, ...others] = threads;
-  if (!first) return <div className="truncate text-muted-foreground/70">No thread</div>;
+  if (!first) {
+    return (
+      <div className="truncate text-muted-foreground/70">
+        <T>No thread</T>
+      </div>
+    );
+  }
   return (
     <Link
       to="/$environmentId/$threadId"
@@ -433,25 +525,44 @@ function SizeControl({
   measuring: boolean;
   onMeasure: () => void;
 }) {
-  if (measuring) return <span className="text-muted-foreground">Measuring…</span>;
+  const gt = useGT();
+  if (measuring) {
+    return (
+      <span className="text-muted-foreground">
+        <T>Measuring…</T>
+      </span>
+    );
+  }
   if (typeof bytes === "number") return <span className="tabular-nums">{formatBytes(bytes)}</span>;
   return (
     <Button
       size="micro"
       variant="ghost-muted"
-      aria-label={bytes === null ? "Size unavailable. Measure again" : undefined}
+      aria-label={bytes === null ? gt("Size unavailable. Measure again") : undefined}
       onClick={onMeasure}
     >
-      {bytes === null ? "Retry" : "Measure"}
+      {bytes === null ? <T>Retry</T> : <T context="verb, measures disk usage">Measure</T>}
     </Button>
   );
 }
 
-function removalNotice(results: WorktreeInventoryRemoveResult["results"]): string {
+function removalNotice(
+  results: WorktreeInventoryRemoveResult["results"],
+  resolve: MessageResolver = m,
+): string {
   const removed = results.filter((entry) => entry.outcome === "removed").length;
   const refused = results.filter((entry) => entry.outcome !== "removed");
   const reasons = [...new Set(refused.map((entry) => entry.outcome.replaceAll("_", " ")))];
-  return `Removed ${removed} worktree${removed === 1 ? "" : "s"}.${refused.length ? ` Kept ${refused.length}: ${reasons.join(", ")}.` : ""}`;
+  const removedText = resolve(
+    msg("{count, plural, one {Removed {count} worktree.} other {Removed {count} worktrees.}}", {
+      count: removed,
+    }),
+  );
+  if (refused.length === 0) return removedText;
+  const keptText = resolve(
+    msg("Kept {count}: {reasons}.", { count: refused.length, reasons: reasons.join(", ") }),
+  );
+  return `${removedText} ${keptText}`;
 }
 
 function WorktreesOnEnvironment({
@@ -484,6 +595,8 @@ function WorktreesOnEnvironment({
   const [sort, setSort] = useState<WorktreeSort>({ column: "updated", direction: "desc" });
   // Relative dates count from when the list was read, so they agree with the rows beside them.
   const [loadedAtMs, setLoadedAtMs] = useState(0);
+  const gt = useGT();
+  const messages = useMessages();
 
   const refresh = async () => {
     setBusy(true);
@@ -493,7 +606,7 @@ function WorktreesOnEnvironment({
       setWorktrees(result.value.worktrees);
       setLoadedAtMs(Date.now());
       setSelected(new Set());
-    } else setNotice("Could not load worktrees. Refresh to try again.");
+    } else setNotice(m(msg("Could not load worktrees. Refresh to try again.")));
   };
   useEffect(() => {
     let cancelled = false;
@@ -503,7 +616,7 @@ function WorktreesOnEnvironment({
       if (result._tag === "Success") {
         setWorktrees(result.value.worktrees);
         setLoadedAtMs(Date.now());
-      } else setNotice("Could not load worktrees. Refresh to try again.");
+      } else setNotice(m(msg("Could not load worktrees. Refresh to try again.")));
     });
     return () => {
       cancelled = true;
@@ -544,7 +657,12 @@ function WorktreesOnEnvironment({
   };
 
   const prune = async (paths: readonly string[]) => {
-    const message = `Remove ${paths.length} worktree${paths.length === 1 ? "" : "s"} from ${name}? Branches and thread history are kept. Clean checkouts can be recreated when threads resume. Running work and local changes are always protected.`;
+    const message = m(
+      msg(
+        "Remove {count, plural, one {{count} worktree} other {{count} worktrees}} from {name}? Branches and thread history are kept. Clean checkouts can be recreated when threads resume. Running work and local changes are always protected.",
+        { count: paths.length, name },
+      ),
+    );
     const confirmed = await (requestConfirmDialog(message, { variant: "destructive" }) ??
       Promise.resolve(window.confirm(message)));
     if (!confirmed) return;
@@ -558,8 +676,8 @@ function WorktreesOnEnvironment({
       if (result._tag !== "Success") {
         setNotice(
           results.length > 0
-            ? `${removalNotice(results)} Could not remove the rest.`
-            : "Could not remove worktrees.",
+            ? `${removalNotice(results)} ${m(msg("Could not remove the rest."))}`
+            : m(msg("Could not remove worktrees.")),
         );
         await refresh();
         return;
@@ -594,10 +712,23 @@ function WorktreesOnEnvironment({
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="mr-auto text-sm font-medium">{name}</h3>
           <span className="text-xs text-muted-foreground tabular-nums">
-            {worktrees.length} worktree{worktrees.length === 1 ? "" : "s"}
-            {measured.length > 0
-              ? ` · ${formatBytes(measuredBytes)}${measured.length < worktrees.length ? ` across ${measured.length} measured` : ""}`
-              : ""}
+            {measured.length === 0
+              ? gt("{count, plural, one {{count} worktree} other {{count} worktrees}}", {
+                  count: worktrees.length,
+                })
+              : measured.length < worktrees.length
+                ? gt(
+                    "{count, plural, one {{count} worktree} other {{count} worktrees}} · {size} across {measured} measured",
+                    {
+                      count: worktrees.length,
+                      size: formatBytes(measuredBytes),
+                      measured: measured.length,
+                    },
+                  )
+                : gt("{count, plural, one {{count} worktree} other {{count} worktrees}} · {size}", {
+                    count: worktrees.length,
+                    size: formatBytes(measuredBytes),
+                  })}
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -609,18 +740,18 @@ function WorktreesOnEnvironment({
               type="search"
               value={query}
               onChange={(event) => setQuery(event.currentTarget.value)}
-              placeholder="Search branches, paths, threads"
-              aria-label="Search worktrees"
+              placeholder={gt("Search branches, paths, threads")}
+              aria-label={gt("Search worktrees")}
             />
           </InputGroup>
           {narrow ? (
             <PullRequestCompactFilterMenu
-              label="Sort worktrees"
+              label={gt("Sort worktrees")}
               triggerIcon={<ArrowDownUpIcon aria-hidden className="size-4" />}
-              triggerLabel="Sort"
+              triggerLabel={gt("Sort", { $context: "verb, sort a list" })}
               outlined
               value={`${sort.column}:${sort.direction}`}
-              options={SORT_OPTIONS}
+              options={resolveFilterOptions(SORT_OPTIONS, messages)}
               onChange={(next) => {
                 const [column, direction] = next.split(":") as [
                   WorktreeSortColumn,
@@ -637,12 +768,18 @@ function WorktreesOnEnvironment({
             onClick={() => void measure(unmeasured.map((entry) => entry.path))}
           >
             <GaugeIcon className="size-4" />
-            {measuring.size > 0 ? `Measuring ${measuring.size}…` : "Measure all"}
+            {measuring.size > 0 ? (
+              <T>
+                Measuring <Var>{measuring.size}</Var>…
+              </T>
+            ) : (
+              <T>Measure all</T>
+            )}
           </Button>
           <Button
             size="icon"
             variant="outline"
-            aria-label="Refresh worktrees"
+            aria-label={gt("Refresh worktrees")}
             disabled={busy}
             onClick={() => void refresh()}
           >
@@ -658,11 +795,15 @@ function WorktreesOnEnvironment({
         {selectedVisible.length > 0 && (
           <div className="flex items-center gap-2 rounded-lg bg-secondary px-2.5 py-1.5 text-xs">
             <span className="mr-auto font-medium">
-              {selectedVisible.length} selected
-              {selectedBytes > 0 ? ` · frees ${formatBytes(selectedBytes)}` : ""}
+              {selectedBytes > 0
+                ? gt("{count} selected · frees {size}", {
+                    count: selectedVisible.length,
+                    size: formatBytes(selectedBytes),
+                  })
+                : gt("{count} selected", { count: selectedVisible.length })}
             </span>
             <Button size="xs" variant="ghost" onClick={() => setSelected(new Set())}>
-              Clear
+              <T context="verb, clears the selection">Clear</T>
             </Button>
             <Button
               size="xs"
@@ -671,17 +812,21 @@ function WorktreesOnEnvironment({
               onClick={() => void prune(selectedVisible.map((entry) => entry.path))}
             >
               <Trash2Icon />
-              Remove {selectedVisible.length}
+              <T>
+                Remove <Var>{selectedVisible.length}</Var>
+              </T>
             </Button>
           </div>
         )}
       </div>
       {busy && worktrees.length === 0 ? (
         <p role="status" className="px-3 text-sm text-muted-foreground sm:px-4">
-          Loading…
+          <T>Loading…</T>
         </p>
       ) : worktrees.length === 0 ? (
-        <p className="px-3 text-sm text-muted-foreground sm:px-4">No managed worktrees.</p>
+        <p className="px-3 text-sm text-muted-foreground sm:px-4">
+          <T>No managed worktrees.</T>
+        </p>
       ) : narrow ? (
         <div className="border-t border-border/50">
           <label className="flex items-center gap-2.5 border-b border-border/50 px-3 py-2 text-xs text-muted-foreground">
@@ -691,11 +836,11 @@ function WorktreesOnEnvironment({
               disabled={busy || !canRemove || removable.length === 0}
               onCheckedChange={toggleAll}
             />
-            Select all removable
+            <T>Select all removable</T>
           </label>
           {visible.length === 0 ? (
             <p className="px-3 py-4 text-center text-xs text-muted-foreground">
-              No worktrees match these filters.
+              <T>No worktrees match these filters.</T>
             </p>
           ) : (
             visible.map((entry) => {
@@ -707,14 +852,18 @@ function WorktreesOnEnvironment({
                 >
                   <Checkbox
                     className="mt-0.5"
-                    aria-label={`Select ${entry.branch ?? entry.path}`}
+                    aria-label={gt("Select {name}", { name: entry.branch ?? entry.path })}
                     checked={safe && selected.has(entry.path)}
                     disabled={busy || !canRemove || !safe}
                     onCheckedChange={(checked) => toggleOne(entry.path, checked)}
                   />
                   <div className="min-w-0">
                     <div className="truncate font-medium">
-                      {entry.branch ?? <span className="text-muted-foreground">Detached HEAD</span>}
+                      {entry.branch ?? (
+                        <span className="text-muted-foreground">
+                          <T>Detached HEAD</T>
+                        </span>
+                      )}
                     </div>
                     <div className="flex min-w-0 gap-1 text-muted-foreground">
                       <span className="shrink-0">{entry.repositoryName} ·</span>
@@ -731,19 +880,23 @@ function WorktreesOnEnvironment({
                     {safe ? null : <CheckoutCell checkout={worktreeCheckout(entry)} />}
                     {entry.pullRequest ? <PullRequestCell pullRequest={entry.pullRequest} /> : null}
                     <span className="ml-auto text-muted-foreground tabular-nums">
-                      updated{" "}
-                      {formatWorktreeDate(
-                        entry.updatedAt,
-                        dateFormats.updated,
-                        timestampFormat,
-                        loadedAtMs,
-                      )}
+                      <T>
+                        updated{" "}
+                        <Var>
+                          {formatWorktreeDate(
+                            entry.updatedAt,
+                            dateFormats.updated,
+                            timestampFormat,
+                            loadedAtMs,
+                          )}
+                        </Var>
+                      </T>
                     </span>
                     {safe && canRemove ? (
                       <Button
                         size="icon-xs"
                         variant="ghost-destructive"
-                        aria-label={`Remove ${entry.branch ?? entry.path}`}
+                        aria-label={gt("Remove {name}", { name: entry.branch ?? entry.path })}
                         disabled={busy}
                         onClick={() => void prune([entry.path])}
                       >
@@ -775,7 +928,7 @@ function WorktreesOnEnvironment({
               <TableHead>
                 <Checkbox
                   className="ml-1 sm:ml-2"
-                  aria-label="Select all removable worktrees shown"
+                  aria-label={gt("Select all removable worktrees shown")}
                   checked={allSelected}
                   indeterminate={selectedVisible.length > 0 && !allSelected}
                   disabled={busy || !canRemove || removable.length === 0}
@@ -783,19 +936,19 @@ function WorktreesOnEnvironment({
                 />
               </TableHead>
               <SortableHead column="worktree" sort={sort} onSort={toggleSort}>
-                Worktree
+                <T>Worktree</T>
               </SortableHead>
               <SortableHead column="project" sort={sort} onSort={toggleSort}>
-                Project
+                <T>Project</T>
               </SortableHead>
               <SortableHead column="pullRequest" sort={sort} onSort={toggleSort}>
-                PR
+                <T context="column header, abbreviation of pull request">PR</T>
               </SortableHead>
               <SortableHead column="state" sort={sort} onSort={toggleSort}>
-                State
+                <T context="worktree thread state">State</T>
               </SortableHead>
               <SortableHead column="checkout" sort={sort} onSort={toggleSort}>
-                Checkout
+                <T context="noun, a git working copy">Checkout</T>
               </SortableHead>
               {(["created", "updated"] as const).map((column) => (
                 <SortableHead
@@ -806,17 +959,21 @@ function WorktreesOnEnvironment({
                   align="end"
                   action={
                     <DateFormatMenu
-                      label={column === "created" ? "Created" : "Updated"}
+                      column={column}
                       value={dateFormats[column]}
                       onChange={setDateFormat(column)}
                     />
                   }
                 >
-                  {column === "created" ? "Created" : "Updated"}
+                  {column === "created" ? (
+                    <T context="column header, creation date">Created</T>
+                  ) : (
+                    <T context="column header, last update date">Updated</T>
+                  )}
                 </SortableHead>
               ))}
               <SortableHead column="size" sort={sort} onSort={toggleSort} align="end">
-                Size
+                <T context="column header, disk size">Size</T>
               </SortableHead>
               <TableHead />
             </TableRow>
@@ -825,7 +982,9 @@ function WorktreesOnEnvironment({
             {visible.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={10} className="text-center">
-                  <p className="py-4 text-muted-foreground">No worktrees match these filters.</p>
+                  <p className="py-4 text-muted-foreground">
+                    <T>No worktrees match these filters.</T>
+                  </p>
                 </TableCell>
               </TableRow>
             ) : (
@@ -841,7 +1000,7 @@ function WorktreesOnEnvironment({
                     <TableCell>
                       <Checkbox
                         className="ml-1 sm:ml-2"
-                        aria-label={`Select ${entry.branch ?? entry.path}`}
+                        aria-label={gt("Select {name}", { name: entry.branch ?? entry.path })}
                         checked={safe && selected.has(entry.path)}
                         disabled={busy || !canRemove || !safe}
                         onCheckedChange={(checked) => toggleOne(entry.path, checked)}
@@ -854,7 +1013,9 @@ function WorktreesOnEnvironment({
                           render={<div className="truncate font-medium" />}
                         >
                           {entry.branch ?? (
-                            <span className="text-muted-foreground">Detached HEAD</span>
+                            <span className="text-muted-foreground">
+                              <T>Detached HEAD</T>
+                            </span>
                           )}
                         </TooltipTrigger>
                         <TooltipPopup side="top">{entry.path}</TooltipPopup>
@@ -904,7 +1065,7 @@ function WorktreesOnEnvironment({
                           <Button
                             size="icon-xs"
                             variant="ghost-destructive"
-                            aria-label={`Remove ${entry.branch ?? entry.path}`}
+                            aria-label={gt("Remove {name}", { name: entry.branch ?? entry.path })}
                             disabled={busy}
                             onClick={() => void prune([entry.path])}
                           >
@@ -922,7 +1083,10 @@ function WorktreesOnEnvironment({
       )}
       {worktrees.length > 0 ? (
         <p className="px-3 text-xs text-muted-foreground sm:px-4">
-          {visible.length} of {worktrees.length} shown · {removable.length} removable
+          <T>
+            <Var>{visible.length}</Var> of <Var>{worktrees.length}</Var> shown ·{" "}
+            <Var>{removable.length}</Var> removable
+          </T>
         </p>
       ) : null}
     </div>
@@ -931,11 +1095,14 @@ function WorktreesOnEnvironment({
 
 export function WorktreeInventorySection() {
   const { connectedEnvironments } = useSettingsScope();
+  const gt = useGT();
   return (
-    <SettingsSection id="storage-worktree-inventory" title="Managed worktrees">
+    <SettingsSection id="storage-worktree-inventory" title={gt("Managed worktrees")}>
       <p className="px-3 pt-3 text-xs text-muted-foreground sm:px-4">
-        Review worktrees on each selected machine. Sizes are measured on demand. Removal keeps
-        branches and thread history; running threads and local changes are protected.
+        <T>
+          Review worktrees on each selected machine. Sizes are measured on demand. Removal keeps
+          branches and thread history; running threads and local changes are protected.
+        </T>
       </p>
       {connectedEnvironments.map((environment) =>
         environment.serverConfig?.environment.capabilities.worktreeInventory === true ? (
@@ -949,7 +1116,9 @@ export function WorktreeInventorySection() {
             key={environment.environmentId}
             className="px-3 py-3 text-sm text-muted-foreground sm:px-4"
           >
-            Update {environment.environmentId} to review its worktrees.
+            <T>
+              Update <Var>{environment.environmentId}</Var> to review its worktrees.
+            </T>
           </p>
         ),
       )}

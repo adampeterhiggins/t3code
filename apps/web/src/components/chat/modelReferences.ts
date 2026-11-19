@@ -32,6 +32,7 @@ export function modelContextOptions(
         id: selection.id,
         value: selection.value,
         label: descriptor.label,
+        // oxlint-disable-next-line t3code/no-untranslated-copy -- stored in the record and sent to the agent
         valueLabel: selection.value ? "On" : "Off",
       });
       continue;

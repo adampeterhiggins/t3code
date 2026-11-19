@@ -6,10 +6,12 @@ import { discordThreadContextRecord } from "@t3tools/source-control-definitions/
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
+import { msg, T, useGT, useMessages } from "gt-react-native";
 import { useState, type ReactNode } from "react";
 import { ActivityIndicator, Alert, FlatList, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { m, type MessageResolver } from "../i18n/messages";
 import { relativeTime } from "../lib/time";
 import { discordEnvironment } from "../state/discord";
 import { useEnvironmentServerConfig } from "../state/entities";
@@ -28,13 +30,21 @@ import { PickerSheet } from "./PickerSheet";
 const SEARCH_DEBOUNCE_MS = 400;
 
 /** Discord's failures carry a reason; a rate limit deserves a clearer hint than its detail. */
-function discordErrorMessage(error: unknown, fallback: string): string {
+function discordErrorMessage(
+  error: unknown,
+  fallback: string,
+  resolve: MessageResolver = m,
+): string {
   if (typeof error === "object" && error !== null && "reason" in error) {
-    if (error.reason === "rate-limited") return "Discord is busy. Try again shortly.";
+    if (error.reason === "rate-limited") return resolve(msg("Discord is busy. Try again shortly."));
     if (error.reason === "not-connected" || error.reason === "revoked") {
-      return "Discord is not connected. Connect it from Settings > Integrations on desktop or web.";
+      return resolve(
+        msg("Discord is not connected. Connect it from Settings > Integrations on desktop or web."),
+      );
     }
-    if (error.reason === "not-found") return "That message is gone or not visible to the bot.";
+    if (error.reason === "not-found") {
+      return resolve(msg("That message is gone or not visible to the bot."));
+    }
   }
   return error instanceof Error && error.message.trim() ? error.message : fallback;
 }
@@ -94,13 +104,14 @@ export function useDiscordMessagePicker(target: DiscordMessagePickerTarget | nul
 function DiscordMessagePickerSheet(
   props: OpenedDiscordMessagePicker & { readonly onClose: () => void },
 ) {
+  const gt = useGT();
   const connection = useEnvironmentQuery(
     discordEnvironment.connection({ environmentId: props.environmentId, input: {} }),
   );
   const phase = connection.data?.phase;
   return (
     <PickerSheet
-      title={props.mode === "link" ? "Link Discord thread" : "Discord message"}
+      title={props.mode === "link" ? gt("Link Discord thread") : gt("Discord message")}
       onClose={props.onClose}
     >
       {phase === "connected" ? (
@@ -112,7 +123,9 @@ function DiscordMessagePickerSheet(
           ) : (
             <Text className="text-center text-foreground-muted">
               {connection.error ??
-                "Discord is not connected on this environment. Connect it from Settings > Integrations on desktop or web."}
+                gt(
+                  "Discord is not connected on this environment. Connect it from Settings > Integrations on desktop or web.",
+                )}
             </Text>
           )}
         </View>
@@ -124,6 +137,7 @@ function DiscordMessagePickerSheet(
 function DiscordMessageSearch(
   props: OpenedDiscordMessagePicker & { readonly onClose: () => void },
 ) {
+  const gt = useGT();
   const [query, setQuery] = useState("");
   const trimmed = query.trim();
   const settled = useDebouncedValue(trimmed, SEARCH_DEBOUNCE_MS);
@@ -150,8 +164,8 @@ function DiscordMessageSearch(
     });
     if (result._tag === "Failure") {
       Alert.alert(
-        "Could not link Discord thread",
-        discordErrorMessage(squashAtomCommandFailure(result), "Try again."),
+        m(msg("Could not link Discord thread")),
+        discordErrorMessage(squashAtomCommandFailure(result), m(msg("Try again."))),
       );
       return;
     }
@@ -175,8 +189,8 @@ function DiscordMessageSearch(
     });
     if (fetched._tag === "Failure") {
       Alert.alert(
-        "Could not attach Discord message",
-        discordErrorMessage(squashAtomCommandFailure(fetched), "Try again."),
+        m(msg("Could not attach Discord message")),
+        discordErrorMessage(squashAtomCommandFailure(fetched), m(msg("Try again."))),
       );
       return;
     }
@@ -191,7 +205,10 @@ function DiscordMessageSearch(
         props.insertion,
       )
     ) {
-      Alert.alert("Too many context items", "Remove some context from the draft and try again.");
+      Alert.alert(
+        m(msg("Too many context items")),
+        m(msg("Remove some context from the draft and try again.")),
+      );
       return;
     }
     props.onClose();
@@ -207,12 +224,12 @@ function DiscordMessageSearch(
     <View className="flex-1">
       <View className="px-4 pb-3">
         <AppTextInput
-          accessibilityLabel="Search Discord messages"
+          accessibilityLabel={gt("Search Discord messages")}
           autoFocus
           autoCapitalize="none"
           autoCorrect={false}
           clearButtonMode="while-editing"
-          placeholder="Search Discord"
+          placeholder={gt("Search Discord")}
           returnKeyType="search"
           value={query}
           onChangeText={setQuery}
@@ -232,7 +249,7 @@ function DiscordMessageSearch(
             <ActivityIndicator />
           ) : (
             <Text className="text-center text-foreground-muted">
-              Search messages in every server the bot is in.
+              <T>Search messages in every server the bot is in.</T>
             </Text>
           )}
         </View>
@@ -249,6 +266,8 @@ function DiscordMessageResults(props: {
   readonly attaching: string | null;
   readonly onPick: (message: DiscordMessageSummary) => void;
 }) {
+  const gt = useGT();
+  const resolve = useMessages();
   const insets = useSafeAreaInsets();
   const result = useAtomValue(
     discordEnvironment.messages({
@@ -260,7 +279,11 @@ function DiscordMessageResults(props: {
   const pending = props.pendingInput || result.waiting;
   const error =
     result._tag === "Failure"
-      ? discordErrorMessage(Cause.squash(result.cause), "Could not search Discord.")
+      ? discordErrorMessage(
+          Cause.squash(result.cause),
+          resolve(msg("Could not search Discord.")),
+          resolve,
+        )
       : null;
   return (
     <FlatList
@@ -279,7 +302,7 @@ function DiscordMessageResults(props: {
                 error ? "text-center text-danger-foreground" : "text-center text-foreground-muted"
               }
             >
-              {error ?? "No matching messages."}
+              {error ?? gt("No matching messages.")}
             </Text>
           )}
         </View>
@@ -287,7 +310,11 @@ function DiscordMessageResults(props: {
       renderItem={({ item }) => (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`${item.authorName} in ${item.channelLabel}: ${item.text}`}
+          accessibilityLabel={gt("{author} in {channel}: {text}", {
+            author: item.authorName,
+            channel: item.channelLabel,
+            text: item.text,
+          })}
           disabled={props.attaching !== null}
           onPress={() => props.onPick(item)}
           className="flex-row items-center gap-3 px-4 py-3 active:bg-subtle disabled:opacity-60"

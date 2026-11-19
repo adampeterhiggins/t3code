@@ -12,9 +12,11 @@ import type {
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
+import { msg, T, useGT, useMessages } from "gt-react";
 import { useState } from "react";
 
 import { useComposerDraftStore } from "~/composerDraftStore";
+import { m } from "~/i18n/messages";
 import { useIssueContextStore } from "~/issueContextStore";
 import { useEnvironmentSettings } from "~/hooks/useSettings";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
@@ -92,7 +94,7 @@ export function useAttachDiscordMessage() {
         const failure = squashAtomCommandFailure(result);
         toastManager.add({
           type: "error",
-          title: "Could not attach the Discord message",
+          title: m(msg("Could not attach the Discord message")),
           description: failure instanceof Error ? failure.message : undefined,
         });
       }
@@ -128,7 +130,7 @@ function useLinkDiscordThread() {
         const failure = squashAtomCommandFailure(result);
         toastManager.add({
           type: "error",
-          title: "Could not link the Discord thread",
+          title: m(msg("Could not link the Discord thread")),
           description: failure instanceof Error ? failure.message : undefined,
         });
       }
@@ -141,6 +143,7 @@ function useLinkDiscordThread() {
 /** A search result row. Fixed widths so channels and times line up down the list. */
 function DiscordMessageRow(props: { message: DiscordMessageSummary }) {
   const { message } = props;
+  const resolve = useMessages();
   return (
     <span className="flex min-w-0 flex-1 items-center gap-2">
       <span className="w-28 shrink-0 truncate text-muted-foreground text-xs">
@@ -151,7 +154,7 @@ function DiscordMessageRow(props: { message: DiscordMessageSummary }) {
         <span className="text-muted-foreground"> · {message.text}</span>
       </span>
       <span className="w-16 shrink-0 truncate text-end text-muted-foreground/70 text-xs">
-        {formatRelativeTimeLabel(message.postedAt)}
+        {formatRelativeTimeLabel(message.postedAt, undefined, resolve)}
       </span>
     </span>
   );
@@ -171,6 +174,7 @@ function DiscordMessagePickerDialog(props: {
   const { threadRef, mode } = props;
   const environmentId = threadRef.environmentId;
   const discordEnabled = useEnvironmentSettings(environmentId, (s) => s.enableDiscordIntegration);
+  const gt = useGT();
   const navigate = useNavigate();
   const attachMessage = useAttachDiscordMessage();
   const linkThread = useLinkDiscordThread();
@@ -210,15 +214,15 @@ function DiscordMessagePickerDialog(props: {
 
   const status =
     connection.data === null
-      ? "Reading Discord status…"
+      ? gt("Reading Discord status…")
       : query.trim().length === 0
-        ? "Search messages in every server the bot is in."
+        ? gt("Search messages in every server the bot is in.")
         : messagesQuery.error !== null && messages.length === 0
           ? messagesQuery.error
           : messages.length === 0
             ? searching
-              ? "Searching Discord…"
-              : "No messages match."
+              ? gt("Searching Discord…")
+              : gt("No messages match.")
             : null;
 
   if (!discordEnabled) return null;
@@ -230,7 +234,7 @@ function DiscordMessagePickerDialog(props: {
       }}
     >
       <CommandDialogPopup
-        aria-label={mode === "link" ? "Link Discord thread" : "Attach Discord message"}
+        aria-label={mode === "link" ? gt("Link Discord thread") : gt("Attach Discord message")}
         className="overflow-hidden"
       >
         {connected || connection.data === null ? (
@@ -249,17 +253,17 @@ function DiscordMessagePickerDialog(props: {
           >
             <CommandPaletteContent
               inputProps={{
-                placeholder: "Search Discord messages",
+                placeholder: gt("Search Discord messages"),
                 startAddon: <DiscordIcon />,
               }}
               footerActionLabel={
                 mode === "link"
                   ? attaching
-                    ? "Linking…"
-                    : "Link thread"
+                    ? gt("Linking…")
+                    : gt("Link thread")
                   : attaching
-                    ? "Attaching…"
-                    : "Attach thread"
+                    ? gt("Attaching…")
+                    : gt("Attach thread")
               }
               mode="none"
               value={query}
@@ -292,10 +296,10 @@ function DiscordMessagePickerDialog(props: {
               {menuMessage === null ? null : (
                 <>
                   <MenuItem onClick={() => void select(menuMessage, "thread")}>
-                    Attach thread
+                    <T>Attach thread</T>
                   </MenuItem>
                   <MenuItem onClick={() => void select(menuMessage, "message")}>
-                    Attach only this message
+                    <T>Attach only this message</T>
                   </MenuItem>
                 </>
               )}
@@ -305,8 +309,12 @@ function DiscordMessagePickerDialog(props: {
           <div className="flex flex-col items-center gap-3 px-6 py-10 text-center text-sm">
             <p className="text-muted-foreground">
               {mode === "link"
-                ? "Connect Discord to link a thread. T3 Code reads it through your bot and never posts."
-                : "Connect Discord to attach messages. T3 Code reads them through your bot and never posts."}
+                ? gt(
+                    "Connect Discord to link a thread. T3 Code reads it through your bot and never posts.",
+                  )
+                : gt(
+                    "Connect Discord to attach messages. T3 Code reads them through your bot and never posts.",
+                  )}
             </p>
             <Button
               size="sm"
@@ -315,7 +323,7 @@ function DiscordMessagePickerDialog(props: {
                 void navigate({ to: "/settings/integrations" });
               }}
             >
-              Connect Discord
+              <T>Connect Discord</T>
             </Button>
           </div>
         )}

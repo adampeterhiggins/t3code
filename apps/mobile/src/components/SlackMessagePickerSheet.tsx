@@ -11,10 +11,12 @@ import { slackThreadContextRecord } from "@t3tools/source-control-definitions/in
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
+import { msg, T, useGT, useMessages } from "gt-react-native";
 import { useState, type ReactNode } from "react";
 import { ActivityIndicator, Alert, FlatList, Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { m, type MessageResolver } from "../i18n/messages";
 import { relativeTime } from "../lib/time";
 import { useEnvironmentServerConfig } from "../state/entities";
 import { slackEnvironment } from "../state/slack";
@@ -34,13 +36,16 @@ import { PickerSheet } from "./PickerSheet";
 const SEARCH_DEBOUNCE_MS = 400;
 
 /** Slack's failures carry a reason; a rate limit deserves a clearer hint than its detail. */
-function slackErrorMessage(error: unknown, fallback: string): string {
+function slackErrorMessage(error: unknown, fallback: string, resolve: MessageResolver = m): string {
   if (typeof error === "object" && error !== null && "reason" in error) {
-    if (error.reason === "rate-limited") return "Slack is busy. Try again shortly.";
+    if (error.reason === "rate-limited") return resolve(msg("Slack is busy. Try again shortly."));
     if (error.reason === "not-connected" || error.reason === "revoked") {
-      return "Slack is not connected. Connect it from Settings > Integrations on desktop or web.";
+      return resolve(
+        msg("Slack is not connected. Connect it from Settings > Integrations on desktop or web."),
+      );
     }
-    if (error.reason === "not-found") return "That message is gone or not visible to you.";
+    if (error.reason === "not-found")
+      return resolve(msg("That message is gone or not visible to you."));
   }
   return error instanceof Error && error.message.trim() ? error.message : fallback;
 }
@@ -100,13 +105,14 @@ export function useSlackMessagePicker(target: SlackMessagePickerTarget | null): 
 function SlackMessagePickerSheet(
   props: OpenedSlackMessagePicker & { readonly onClose: () => void },
 ) {
+  const gt = useGT();
   const connection = useEnvironmentQuery(
     slackEnvironment.connection({ environmentId: props.environmentId, input: {} }),
   );
   const phase = connection.data?.phase;
   return (
     <PickerSheet
-      title={props.mode === "link" ? "Link Slack thread" : "Slack message"}
+      title={props.mode === "link" ? gt("Link Slack thread") : gt("Slack message")}
       onClose={props.onClose}
     >
       {phase === "connected" ? (
@@ -118,7 +124,9 @@ function SlackMessagePickerSheet(
           ) : (
             <Text className="text-center text-foreground-muted">
               {connection.error ??
-                "Slack is not connected on this environment. Connect it from Settings > Integrations on desktop or web."}
+                gt(
+                  "Slack is not connected on this environment. Connect it from Settings > Integrations on desktop or web.",
+                )}
             </Text>
           )}
         </View>
@@ -128,6 +136,7 @@ function SlackMessagePickerSheet(
 }
 
 function SlackMessageSearch(props: OpenedSlackMessagePicker & { readonly onClose: () => void }) {
+  const gt = useGT();
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<SlackSearchScope | null>(null);
   const trimmed = query.trim();
@@ -162,8 +171,8 @@ function SlackMessageSearch(props: OpenedSlackMessagePicker & { readonly onClose
     });
     if (result._tag === "Failure") {
       Alert.alert(
-        "Could not link Slack thread",
-        slackErrorMessage(squashAtomCommandFailure(result), "Try again."),
+        m(msg("Could not link Slack thread")),
+        slackErrorMessage(squashAtomCommandFailure(result), m(msg("Try again."))),
       );
       return;
     }
@@ -187,8 +196,8 @@ function SlackMessageSearch(props: OpenedSlackMessagePicker & { readonly onClose
     });
     if (fetched._tag === "Failure") {
       Alert.alert(
-        "Could not attach Slack message",
-        slackErrorMessage(squashAtomCommandFailure(fetched), "Try again."),
+        m(msg("Could not attach Slack message")),
+        slackErrorMessage(squashAtomCommandFailure(fetched), m(msg("Try again."))),
       );
       return;
     }
@@ -203,7 +212,10 @@ function SlackMessageSearch(props: OpenedSlackMessagePicker & { readonly onClose
         props.insertion,
       )
     ) {
-      Alert.alert("Too many context items", "Remove some context from the draft and try again.");
+      Alert.alert(
+        m(msg("Too many context items")),
+        m(msg("Remove some context from the draft and try again.")),
+      );
       return;
     }
     props.onClose();
@@ -219,12 +231,14 @@ function SlackMessageSearch(props: OpenedSlackMessagePicker & { readonly onClose
     <View className="flex-1">
       <View className="px-4 pb-3">
         <AppTextInput
-          accessibilityLabel="Search Slack messages"
+          accessibilityLabel={gt("Search Slack messages")}
           autoFocus
           autoCapitalize="none"
           autoCorrect={false}
           clearButtonMode="while-editing"
-          placeholder={scope === null ? "Search Slack" : `Search ${scope.label}`}
+          placeholder={
+            scope === null ? gt("Search Slack") : gt("Search {scope}", { scope: scope.label })
+          }
           returnKeyType="search"
           value={query}
           onChangeText={setQuery}
@@ -248,8 +262,12 @@ function SlackMessageSearch(props: OpenedSlackMessagePicker & { readonly onClose
                 {...(selected ? { trailingIcon: "xmark" as const } : {})}
                 accessibilityLabel={
                   selected
-                    ? `Stop searching ${option.kind === "channel" ? "in" : "from"} ${option.label}`
-                    : `Search ${option.kind === "channel" ? "in" : "from"} ${option.label}`
+                    ? option.kind === "channel"
+                      ? gt("Stop searching in {label}", { label: option.label })
+                      : gt("Stop searching from {label}", { label: option.label })
+                    : option.kind === "channel"
+                      ? gt("Search in {label}", { label: option.label })
+                      : gt("Search from {label}", { label: option.label })
                 }
                 onPress={() => setScope(selected ? null : option)}
               />
@@ -267,7 +285,7 @@ function SlackMessageSearch(props: OpenedSlackMessagePicker & { readonly onClose
         />
       ) : !trimmed && suggestedThreads.length > 0 ? (
         <SlackMessageList
-          header="Threads you posted in"
+          header={gt("Threads you posted in")}
           messages={suggestedThreads}
           pending={false}
           error={null}
@@ -280,7 +298,7 @@ function SlackMessageSearch(props: OpenedSlackMessagePicker & { readonly onClose
             <ActivityIndicator />
           ) : (
             <Text className="text-center text-foreground-muted">
-              Search Slack. Try in:#channel or from:@name
+              <T>Search Slack. Try in:#channel or from:@name</T>
             </Text>
           )}
         </View>
@@ -297,6 +315,7 @@ function SlackMessageResults(props: {
   readonly attaching: string | null;
   readonly onPick: (message: SlackMessageSummary) => void;
 }) {
+  const resolve = useMessages();
   const result = useAtomValue(
     slackEnvironment.messages({
       environmentId: props.environmentId,
@@ -307,7 +326,11 @@ function SlackMessageResults(props: {
   const pending = props.pendingInput || result.waiting;
   const error =
     result._tag === "Failure"
-      ? slackErrorMessage(Cause.squash(result.cause), "Could not search Slack.")
+      ? slackErrorMessage(
+          Cause.squash(result.cause),
+          resolve(msg("Could not search Slack.")),
+          resolve,
+        )
       : null;
   return (
     <SlackMessageList
@@ -328,6 +351,7 @@ function SlackMessageList(props: {
   readonly attaching: string | null;
   readonly onPick: (message: SlackMessageSummary) => void;
 }) {
+  const gt = useGT();
   const insets = useSafeAreaInsets();
   const { pending, error } = props;
   return (
@@ -352,7 +376,7 @@ function SlackMessageList(props: {
                 error ? "text-center text-danger-foreground" : "text-center text-foreground-muted"
               }
             >
-              {error ?? "No matching messages."}
+              {error ?? gt("No matching messages.")}
             </Text>
           )}
         </View>
@@ -360,7 +384,11 @@ function SlackMessageList(props: {
       renderItem={({ item }) => (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`${item.authorName} in ${item.channelLabel}: ${item.text}`}
+          accessibilityLabel={gt("{author} in {channel}: {text}", {
+            author: item.authorName,
+            channel: item.channelLabel,
+            text: item.text,
+          })}
           disabled={props.attaching !== null}
           onPress={() => props.onPick(item)}
           className="flex-row items-center gap-3 px-4 py-3 active:bg-subtle disabled:opacity-60"

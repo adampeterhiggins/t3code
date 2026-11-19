@@ -10,9 +10,11 @@ import {
   STANDARD_SYNCED_THEME_ID,
   type ThemePair,
 } from "@t3tools/client-runtime/theme-sync";
+import { msg } from "gt-react";
 import { useSyncExternalStore } from "react";
 
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
+import { m } from "../i18n/messages";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { primaryEnvironmentIdAtom } from "../state/primaryEnvironment";
 import {
@@ -136,8 +138,8 @@ function notifySyncFailure(result: Awaited<ReturnType<typeof runPush>>): void {
   toastManager.add(
     stackedThreadToast({
       type: "error",
-      title: "Couldn’t sync theme",
-      description: failure instanceof Error ? failure.message : "Try again.",
+      title: m(msg("Couldn’t sync theme")),
+      description: failure instanceof Error ? failure.message : m(msg("Try again.")),
     }),
   );
 }

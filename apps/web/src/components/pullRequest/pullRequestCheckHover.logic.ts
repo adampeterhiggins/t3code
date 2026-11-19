@@ -1,5 +1,7 @@
 import type { PullRequestCheck } from "@t3tools/contracts";
+import { msg } from "gt-react";
 
+import { m, type MessageResolver } from "~/i18n/messages";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 
 export function pullRequestCheckHoverDetail(
@@ -31,17 +33,27 @@ function formatCheckDuration(ms: number): string {
 export function pullRequestCheckTiming(
   check: Pick<PullRequestCheck, "status" | "startedAt" | "completedAt">,
   nowMs: number,
+  resolve: MessageResolver = m,
 ): string | null {
   const startedMs = check.startedAt ? Date.parse(check.startedAt) : Number.NaN;
   const completedMs = check.completedAt ? Date.parse(check.completedAt) : Number.NaN;
   if (check.status === "pending") {
-    return Number.isNaN(startedMs) ? null : `Running for ${formatCheckDuration(nowMs - startedMs)}`;
+    return Number.isNaN(startedMs)
+      ? null
+      : resolve(
+          msg("Running for {duration}", { duration: formatCheckDuration(nowMs - startedMs) }),
+        );
   }
   if (Number.isNaN(completedMs)) return null;
-  const finished = `Finished ${formatRelativeTimeLabel(check.completedAt ?? "", nowMs)}`;
+  const time = formatRelativeTimeLabel(check.completedAt ?? "", nowMs, resolve);
   return Number.isNaN(startedMs)
-    ? finished
-    : `Took ${formatCheckDuration(completedMs - startedMs)} · ${finished.toLowerCase()}`;
+    ? resolve(msg("Finished {time}", { time }))
+    : resolve(
+        msg("Took {duration} · finished {time}", {
+          duration: formatCheckDuration(completedMs - startedMs),
+          time,
+        }),
+      );
 }
 
 /** Check summaries are Markdown reports; the preview shows their prose as plain text. */

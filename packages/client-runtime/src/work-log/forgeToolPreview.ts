@@ -1,3 +1,6 @@
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
+
 import type { PreviewRecord, ThreadActionToolPreview, ToolPreview } from "./toolPreview.ts";
 import {
   documentPreview,
@@ -65,22 +68,36 @@ function actionLabel(tool: string): string {
     : humanKey(tool);
 }
 
-function entryRecord(entry: Record_, index: number): PreviewRecord {
+function entryRecord(entry: Record_, index: number, resolve: MFunctionType): PreviewRecord {
   const number = typeof entry.number === "number" ? `Q${entry.number + 1}` : null;
   const options = Array.isArray(entry.response_options) ? entry.response_options.length : 0;
   const rowsCount = Array.isArray(entry.matrix_rows) ? entry.matrix_rows.length : 0;
   return {
     key: str(entry.id) ?? String(index),
     title:
-      str(entry.title) ?? str(entry.text) ?? str(entry.question_text) ?? str(entry.name) ?? "Entry",
+      str(entry.title) ??
+      str(entry.text) ??
+      str(entry.question_text) ??
+      str(entry.name) ??
+      resolve(msg("Entry", { $context: "questionnaire entry" })),
     subtitle:
       (str(entry.entry_type) ?? str(entry.question_type_code) ?? str(entry.response_type))
         ?.replace(/EntryType$/, "")
         .replaceAll("_", " ") ?? null,
     meta: [
       number,
-      options > 0 ? `${options} option${options === 1 ? "" : "s"}` : null,
-      rowsCount > 0 ? `${rowsCount} row${rowsCount === 1 ? "" : "s"}` : null,
+      options > 0
+        ? resolve(
+            msg("{count, plural, one {{count} option} other {{count} options}}", {
+              count: options,
+            }),
+          )
+        : null,
+      rowsCount > 0
+        ? resolve(
+            msg("{count, plural, one {{count} row} other {{count} rows}}", { count: rowsCount }),
+          )
+        : null,
     ].filter((meta): meta is string => meta !== null),
     url: null,
     body: null,
@@ -88,23 +105,36 @@ function entryRecord(entry: Record_, index: number): PreviewRecord {
   };
 }
 
-function questionnairePreview(tool: string, input: Record_, data: Record_): ToolPreview | null {
+function questionnairePreview(
+  tool: string,
+  input: Record_,
+  data: Record_,
+  resolve: MFunctionType,
+): ToolPreview | null {
   const questionnaire = isRecord(data.questionnaire) ? data.questionnaire : data;
   const entries = Array.isArray(questionnaire.entries)
     ? questionnaire.entries.filter(isRecord)
     : null;
   if (!entries) return null;
   const changed = isRecord(input.entry) ? (str(input.entry.text) ?? str(input.entry.title)) : null;
-  return records(entries.map(entryRecord), {
-    summary: tool.startsWith("get_") ? null : actionLabel(tool),
-    notes: [
-      changed ? `“${changed}”` : null,
-      `${entries.length} entr${entries.length === 1 ? "y" : "ies"} in the questionnaire`,
-    ],
-  });
+  return records(
+    entries.map((entry, index) => entryRecord(entry, index, resolve)),
+    {
+      summary: tool.startsWith("get_") ? null : actionLabel(tool),
+      notes: [
+        changed ? `“${changed}”` : null,
+        resolve(
+          msg(
+            "{count, plural, one {{count} entry in the questionnaire} other {{count} entries in the questionnaire}}",
+            { count: entries.length },
+          ),
+        ),
+      ],
+    },
+  );
 }
 
-function projectPreview(data: Record_): ToolPreview | null {
+function projectPreview(data: Record_, resolve: MFunctionType): ToolPreview | null {
   const project = isRecord(data.project) ? data.project : null;
   if (!project) {
     const error = str(data.error);
@@ -134,7 +164,12 @@ function projectPreview(data: Record_): ToolPreview | null {
           : null,
       ],
     ]),
-    { title: str(project.name) ?? str(surveys[0]?.name) ?? "Project" },
+    {
+      title:
+        str(project.name) ??
+        str(surveys[0]?.name) ??
+        resolve(msg("Project", { $context: "Forge project" })),
+    },
   );
 }
 
@@ -143,6 +178,7 @@ export function forgeToolPreview(
   tool: string,
   input: Record_,
   result: unknown,
+  resolve: MFunctionType = mFallback,
 ): ToolPreview | null {
   const inner = unwrap(result);
   if (typeof inner === "string") {
@@ -156,11 +192,11 @@ export function forgeToolPreview(
       return records(
         inner.filter(isRecord).map((account, index) => ({
           key: str(account.account_id) ?? String(index),
-          title: str(account.name) ?? "Account",
+          title: str(account.name) ?? resolve(msg("Account", { $context: "Forge account" })),
           subtitle: str(account.status),
           meta:
             typeof account.markup === "number" && account.markup > 0
-              ? [`markup ${account.markup}`]
+              ? [resolve(msg("markup {markup}", { markup: account.markup }))]
               : [],
           url: null,
           body: null,
@@ -171,7 +207,7 @@ export function forgeToolPreview(
     return inferredPreview(inner);
   }
   if (!data) return null;
-  const questionnaire = questionnairePreview(tool, input, data);
+  const questionnaire = questionnairePreview(tool, input, data, resolve);
   if (questionnaire) return questionnaire;
   switch (tool) {
     case "ping":
@@ -220,7 +256,7 @@ export function forgeToolPreview(
           title:
             str(check.supplier_respondent_id) ??
             str(check.focaldata_public_respondent_id) ??
-            "Respondent",
+            resolve(msg("Respondent")),
           subtitle: str(check.check_result),
           meta: Array.isArray(check.failed_check_types)
             ? check.failed_check_types.filter((type): type is string => typeof type === "string")
@@ -229,7 +265,7 @@ export function forgeToolPreview(
           body: null,
           threadId: null,
         })),
-        { summary: "Data quality checks" },
+        { summary: resolve(msg("Data quality checks")) },
       );
     }
     case "retrieve_order_statistics": {
@@ -240,7 +276,9 @@ export function forgeToolPreview(
       return records(
         orders.map((item, index) => ({
           key: str(item.order_id) ?? String(index),
-          title: str(item.order_description) ?? `Order ${String(item.order_number ?? index)}`,
+          title:
+            str(item.order_description) ??
+            resolve(msg("Order {number}", { number: String(item.order_number ?? index) })),
           subtitle: str(item.status),
           meta: [
             typeof item.cpi === "number" ? `CPI ${item.cpi}` : null,
@@ -261,7 +299,7 @@ export function forgeToolPreview(
           ["Panel order", data.panel_supplier_order_id],
           ["Order id", data.order_id],
         ]),
-        { title: "Order placed", notes: [str(data.error)] },
+        { title: resolve(msg("Order placed")), notes: [str(data.error)] },
       );
     case "update_order_status":
       return status(
@@ -275,26 +313,29 @@ export function forgeToolPreview(
       return records(
         targets.map((target, index) => ({
           key: str(target.quota_target_id) ?? String(index),
-          title: str(target.label) ?? "Quota",
-          subtitle: target.enabled === false ? "disabled" : null,
+          title: str(target.label) ?? resolve(msg("Quota")),
+          subtitle:
+            target.enabled === false
+              ? resolve(msg("disabled", { $context: "quota target state" }))
+              : null,
           meta: [
             str(target.group_label),
-            `current ${scalarText(target.current_value) ?? "—"}`,
+            resolve(msg("current {value}", { value: scalarText(target.current_value) ?? "—" })),
           ].filter((meta): meta is string => meta !== null),
           url: null,
           body: null,
           threadId: null,
         })),
-        { summary: "Quota targets" },
+        { summary: resolve(msg("Quota targets")) },
       );
     }
     case "trigger_weights_calculation":
     case "get_weights_calculation_status":
-      return status(str(data.message) ?? "Weights calculation", {
+      return status(str(data.message) ?? resolve(msg("Weights calculation")), {
         status: str(data.status),
         details: [
           typeof data.weights_calculated === "number"
-            ? `${data.weights_calculated} respondents weighted`
+            ? resolve(msg("{count} respondents weighted", { count: data.weights_calculated }))
             : null,
           str(data.error),
         ],
@@ -309,7 +350,7 @@ export function forgeToolPreview(
           ["Account id", data.account_id],
         ]),
         {
-          title: str(data.name) ?? "Account",
+          title: str(data.name) ?? resolve(msg("Account", { $context: "Forge account" })),
           notes: [str(data.error)],
         },
       );
@@ -332,7 +373,7 @@ export function forgeToolPreview(
     );
   }
   if (isRecord(data.project) || /project/.test(tool)) {
-    const project = projectPreview(data);
+    const project = projectPreview(data, resolve);
     if (project) return project;
   }
   return inferredPreview(data, humanKey(tool));

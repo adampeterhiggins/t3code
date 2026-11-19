@@ -1,13 +1,12 @@
 /**
- * The sidebar's attention inbox: a header button that appears while any
- * thread needs the user, and a popover listing those threads across every
- * project, environment and tab group. Opening an entry lands on that exact
- * chat tab. Failures and completions can be marked read here; the thread
- * menu's Mark unread brings a completion back.
+ * Lists every thread that needs the user, across projects, environments and tab groups. An entry
+ * opens its exact chat tab; failures and completions can be marked read, and Mark unread in the
+ * thread menu brings a completion back.
  */
 import type { ThreadAttentionReason } from "@t3tools/client-runtime/state/attention-inbox";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { useRouter } from "@tanstack/react-router";
+import { msg, T, useGT, useMessages } from "gt-react";
 import {
   CheckIcon,
   CircleAlertIcon,
@@ -35,18 +34,22 @@ export const ATTENTION_REASON_PRESENTATION: Record<
   { readonly label: string; readonly Icon: LucideIcon; readonly iconClassName: string }
 > = {
   approval: {
-    label: "Approval needed",
+    label: msg("Approval needed"),
     Icon: ShieldQuestionIcon,
     iconClassName: "text-warning-foreground",
   },
   input: {
-    label: "Input needed",
+    label: msg("Input needed"),
     Icon: MessageCircleQuestionIcon,
     iconClassName: "text-info-foreground",
   },
-  failed: { label: "Failed", Icon: CircleAlertIcon, iconClassName: "text-destructive-foreground" },
+  failed: {
+    label: msg("Failed"),
+    Icon: CircleAlertIcon,
+    iconClassName: "text-destructive-foreground",
+  },
   completed: {
-    label: "Completed",
+    label: msg("Completed"),
     Icon: CircleCheckIcon,
     iconClassName: "text-success-foreground",
   },
@@ -63,8 +66,9 @@ export function useProjectTitleByKey(): ReadonlyMap<string, string> {
 export function SidebarAttentionInbox() {
   const entries = useAttentionInbox();
   const [open, setOpen] = useState(false);
+  const gt = useGT();
   if (entries.length === 0 && !open) return null;
-  const label = `Needs attention (${entries.length})`;
+  const label = gt("Needs attention ({count})", { count: entries.length });
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -81,7 +85,7 @@ export function SidebarAttentionInbox() {
           </span>
         ) : null}
       </div>
-      <PopoverPopup align="start" width="md" padding="compact" aria-label="Needs attention">
+      <PopoverPopup align="start" width="md" padding="compact" aria-label={gt("Needs attention")}>
         <AttentionInboxList entries={entries} onOpenEntry={() => setOpen(false)} />
       </PopoverPopup>
     </Popover>
@@ -96,16 +100,27 @@ function AttentionInboxList(props: {
   const { isMobile, setOpenMobile } = useSidebar();
   const markThreadVisited = useUiStateStore((state) => state.markThreadVisited);
   const projectTitleByKey = useProjectTitleByKey();
+  const gt = useGT();
+  const messages = useMessages();
 
   return (
     <div className="flex flex-col gap-1">
-      <PopoverTitle className="m-1">Needs attention</PopoverTitle>
+      <PopoverTitle className="m-1">
+        <T>Needs attention</T>
+      </PopoverTitle>
       {props.entries.length === 0 ? (
-        <p className="px-1 py-2 text-sm text-muted-foreground">Nothing needs you right now.</p>
+        <p className="px-1 py-2 text-sm text-muted-foreground">
+          <T>Nothing needs you right now.</T>
+        </p>
       ) : (
         <ul className="-mx-1 flex max-h-96 flex-col overflow-y-auto">
           {props.entries.map((entry) => {
-            const { label, Icon, iconClassName } = ATTENTION_REASON_PRESENTATION[entry.reason];
+            const {
+              label: reasonLabel,
+              Icon,
+              iconClassName,
+            } = ATTENTION_REASON_PRESENTATION[entry.reason];
+            const label = messages(reasonLabel);
             const projectTitle = projectTitleByKey.get(
               `${entry.thread.environmentId}:${entry.thread.projectId}`,
             );
@@ -138,7 +153,7 @@ function AttentionInboxList(props: {
                     </span>
                   </span>
                   <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                    {formatRelativeTimeLabel(entry.at)}
+                    {formatRelativeTimeLabel(entry.at, undefined, messages)}
                   </span>
                 </button>
                 {canMarkRead ? (
@@ -147,8 +162,8 @@ function AttentionInboxList(props: {
                     size="icon-xs"
                     variant="ghost-muted"
                     className="mr-1 shrink-0"
-                    aria-label={`Mark ${entry.thread.title} as read`}
-                    title="Mark as read"
+                    aria-label={gt("Mark {title} as read", { title: entry.thread.title })}
+                    title={gt("Mark as read")}
                     onClick={() => markThreadVisited(entry.key, new Date().toISOString())}
                   >
                     <CheckIcon />

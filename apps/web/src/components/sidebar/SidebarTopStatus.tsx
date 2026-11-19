@@ -9,6 +9,9 @@ import {
   UserRoundIcon,
 } from "lucide-react";
 
+import { msg } from "gt-react";
+
+import { m, type MessageResolver } from "../../i18n/messages";
 import type { resolveSidebarThreadStatus } from "../Sidebar.logic";
 
 export type SidebarTopStatus = {
@@ -34,35 +37,70 @@ export function resolveSidebarTopStatus(
   status: ReturnType<typeof resolveSidebarThreadStatus>,
   isWoke: boolean,
   isUnread: boolean,
+  resolve: MessageResolver = m,
 ): SidebarTopStatus | null {
   switch (status) {
     case "preparing":
-      return { label: "Setting up", icon: "working", className: "text-info" };
+      return { label: resolve(msg("Setting up")), icon: "working", className: "text-info" };
     case "working":
       // No shimmer: a label that animates forever is noise in a sidebar
       // full of them (and repaints every vsync on high-refresh displays).
-      return { label: "Working", icon: "working", className: "text-info" };
+      return {
+        label: resolve(msg("Working", { $context: "thread status" })),
+        icon: "working",
+        className: "text-info",
+      };
     case "waiting":
       // Waiting is calm background presence (post-settle background
       // roster), not active progress, so the label keeps full strength.
-      return { label: "Waiting", icon: "waiting", className: "text-muted-foreground" };
+      return {
+        label: resolve(msg("Waiting", { $context: "thread status" })),
+        icon: "waiting",
+        className: "text-muted-foreground",
+      };
     case "approval":
-      return { label: "Approval", icon: "approval", className: "text-warning-foreground" };
+      return {
+        label: resolve(msg("Approval", { $context: "thread status, waiting for approval" })),
+        icon: "approval",
+        className: "text-warning-foreground",
+      };
     case "input":
       return {
-        label: "Input",
+        label: resolve(msg("Input", { $context: "thread status, waiting for user input" })),
         icon: "input",
         className: "text-indigo-600 dark:text-indigo-300",
       };
     case "request":
-      return { label: "Request", icon: "request", className: "text-guest-foreground" };
+      return {
+        label: resolve(msg("Request", { $context: "thread status, waiting on a request" })),
+        icon: "request",
+        className: "text-guest-foreground",
+      };
     case "limited":
-      return { label: "Limited", icon: "failed", className: "text-warning" };
+      return {
+        label: resolve(msg("Limited", { $context: "thread status, usage limit reached" })),
+        icon: "failed",
+        className: "text-warning",
+      };
     case "failed":
-      return { label: "Failed", icon: "failed", className: "text-error" };
+      return {
+        label: resolve(msg("Failed", { $context: "thread status" })),
+        icon: "failed",
+        className: "text-error",
+      };
   }
-  if (isWoke) return { label: "Woke", icon: "woke", className: "text-warning" };
-  if (isUnread) return { label: "Done", icon: "done", className: "text-success" };
+  if (isWoke)
+    return {
+      label: resolve(msg("Woke", { $context: "thread status, woke from snooze" })),
+      icon: "woke",
+      className: "text-warning",
+    };
+  if (isUnread)
+    return {
+      label: resolve(msg("Done", { $context: "thread status" })),
+      icon: "done",
+      className: "text-success",
+    };
   return null;
 }
 

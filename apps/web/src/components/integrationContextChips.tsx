@@ -6,6 +6,7 @@ import type {
   ScopedThreadRef,
 } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
+import { msg } from "gt-react";
 import { FolderIcon, MessagesSquareIcon } from "lucide-react";
 
 import { useOpenInPreferredEditor } from "~/editorPreferences";
@@ -97,15 +98,18 @@ function isLinkedObjectEntry(
 
 function linkedObjectHandler<K extends LinkedObjectContextKind>(kind: K): ComposerHandler<K> {
   return {
-    chip: (entry, { actions }) =>
+    chip: (entry, { actions, resolve }) =>
       entry.kind === kind && isLinkedObjectEntry(entry)
-        ? buttonContextChip({
-            kind,
-            icon: linkedObjectIcon(entry.record),
-            label: entry.record.label,
-            kindLabel: linkedObjectKindLabel(entry.record),
-            preview: { record: entry.record, onOpenLink: actions.openLink },
-          })
+        ? buttonContextChip(
+            {
+              kind,
+              icon: linkedObjectIcon(entry.record),
+              label: entry.record.label,
+              kindLabel: linkedObjectKindLabel(entry.record, resolve),
+              preview: { record: entry.record, onOpenLink: actions.openLink },
+            },
+            resolve,
+          )
         : null,
   };
 }
@@ -114,15 +118,18 @@ export const integrationComposerContextHandlers: {
   readonly [K in IntegrationContextKind]: ComposerHandler<K>;
 } = {
   "thread-tab": {
-    chip: (entry) =>
+    chip: (entry, { resolve }) =>
       entry.kind === "thread-tab"
-        ? buttonContextChip({
-            kind: "thread-tab",
-            icon: <MessagesSquareIcon />,
-            label: entry.record.label,
-            kindLabel: "Chat summary",
-            preview: { summary: entry.record.summary },
-          })
+        ? buttonContextChip(
+            {
+              kind: "thread-tab",
+              icon: <MessagesSquareIcon />,
+              label: entry.record.label,
+              kindLabel: resolve(msg("Chat summary")),
+              preview: { summary: entry.record.summary },
+            },
+            resolve,
+          )
         : null,
   },
   "linear-issue": linkedObjectHandler("linear-issue"),
@@ -130,15 +137,18 @@ export const integrationComposerContextHandlers: {
   "github-issue": linkedObjectHandler("github-issue"),
   repository: linkedObjectHandler("repository"),
   checkout: {
-    chip: (entry) =>
+    chip: (entry, { resolve }) =>
       entry.kind === "checkout"
-        ? buttonContextChip({
-            kind: "checkout",
-            icon: <FolderIcon />,
-            label: entry.record.label,
-            kindLabel: "Checkout",
-            preview: { record: entry.record },
-          })
+        ? buttonContextChip(
+            {
+              kind: "checkout",
+              icon: <FolderIcon />,
+              label: entry.record.label,
+              kindLabel: resolve(msg("Checkout", { $context: "a local git checkout" })),
+              preview: { record: entry.record },
+            },
+            resolve,
+          )
         : null,
   },
   "slack-thread": linkedObjectHandler("slack-thread"),
@@ -148,11 +158,11 @@ export const integrationComposerContextHandlers: {
   "google-file": linkedObjectHandler("google-file"),
   "granola-note": linkedObjectHandler("granola-note"),
   subagent: {
-    chip: (entry) =>
+    chip: (entry, { resolve }) =>
       entry.kind === "subagent"
         ? {
             trigger: <SubagentChipTrigger record={entry.record} />,
-            accessibleLabel: subagentChipAccessibleLabel(entry.record),
+            accessibleLabel: subagentChipAccessibleLabel(entry.record, resolve),
             preview: { record: entry.record },
           }
         : null,
@@ -160,12 +170,12 @@ export const integrationComposerContextHandlers: {
   "prompt-link": linkedObjectHandler("prompt-link"),
   "github-ref": linkedObjectHandler("github-ref"),
   "unread-link": {
-    chip: (entry, { actions }) => {
+    chip: (entry, { actions, resolve }) => {
       if (entry.kind !== "unread-link") return null;
       const { record } = entry;
       return {
         trigger: <UnreadLinkChipTrigger record={record} />,
-        accessibleLabel: unreadLinkAccessibleLabel(record),
+        accessibleLabel: unreadLinkAccessibleLabel(record, resolve),
         preview: {
           record,
           onOpenLink: actions.openLink,
@@ -176,13 +186,13 @@ export const integrationComposerContextHandlers: {
     },
   },
   model: {
-    chip: (entry, { actions }) =>
+    chip: (entry, { actions, resolve }) =>
       entry.kind === "model"
         ? {
             trigger: (
               <ComposerModelChip record={entry.record} onRecordChange={actions.updateModelChip} />
             ),
-            accessibleLabel: modelChipAccessibleLabel(entry.record),
+            accessibleLabel: modelChipAccessibleLabel(entry.record, resolve),
             preview: { record: entry.record },
           }
         : null,
@@ -199,14 +209,17 @@ function linkedObjectUserMessageChip<K extends LinkedObjectContextKind>(
 ): UserMessageChip<K> {
   return (record, context) =>
     record.kind === kind && isLinkedObjectContextRecord(record)
-      ? buttonContextChip({
-          kind,
-          icon: linkedObjectIcon(record),
-          label: record.label,
-          kindLabel: linkedObjectKindLabel(record),
-          copyMarkdown: context.copyMarkdown,
-          preview: { record, onOpenLink: context.onOpenLink },
-        })
+      ? buttonContextChip(
+          {
+            kind,
+            icon: linkedObjectIcon(record),
+            label: record.label,
+            kindLabel: linkedObjectKindLabel(record, context.m),
+            copyMarkdown: context.copyMarkdown,
+            preview: { record, onOpenLink: context.onOpenLink },
+          },
+          context.m,
+        )
       : null;
 }
 
@@ -215,14 +228,17 @@ export const integrationUserMessageChips: {
 } = {
   "thread-tab": (record, context) =>
     record.kind === "thread-tab"
-      ? buttonContextChip({
-          kind: "thread-tab",
-          icon: <MessagesSquareIcon />,
-          label: record.label,
-          kindLabel: "Chat summary",
-          copyMarkdown: context.copyMarkdown,
-          preview: { summary: record.summary },
-        })
+      ? buttonContextChip(
+          {
+            kind: "thread-tab",
+            icon: <MessagesSquareIcon />,
+            label: record.label,
+            kindLabel: context.m(msg("Chat summary")),
+            copyMarkdown: context.copyMarkdown,
+            preview: { summary: record.summary },
+          },
+          context.m,
+        )
       : null,
   "linear-issue": linkedObjectUserMessageChip("linear-issue"),
   "linear-object": linkedObjectUserMessageChip("linear-object"),
@@ -230,14 +246,17 @@ export const integrationUserMessageChips: {
   repository: linkedObjectUserMessageChip("repository"),
   checkout: (record, context) =>
     record.kind === "checkout"
-      ? buttonContextChip({
-          kind: "checkout",
-          icon: <FolderIcon />,
-          label: record.label,
-          kindLabel: "Checkout",
-          copyMarkdown: context.copyMarkdown,
-          preview: { record, ...context.checkoutActions },
-        })
+      ? buttonContextChip(
+          {
+            kind: "checkout",
+            icon: <FolderIcon />,
+            label: record.label,
+            kindLabel: context.m(msg("Checkout", { $context: "a local git checkout" })),
+            copyMarkdown: context.copyMarkdown,
+            preview: { record, ...context.checkoutActions },
+          },
+          context.m,
+        )
       : null,
   "slack-thread": linkedObjectUserMessageChip("slack-thread"),
   "slack-resource": linkedObjectUserMessageChip("slack-resource"),
@@ -249,7 +268,7 @@ export const integrationUserMessageChips: {
     record.kind === "subagent"
       ? {
           trigger: <SubagentChipTrigger record={record} copyMarkdown={context.copyMarkdown} />,
-          accessibleLabel: subagentChipAccessibleLabel(record),
+          accessibleLabel: subagentChipAccessibleLabel(record, context.m),
           preview: { record },
         }
       : null,
@@ -259,7 +278,7 @@ export const integrationUserMessageChips: {
     record.kind === "unread-link"
       ? {
           trigger: <UnreadLinkChipTrigger record={record} copyMarkdown={context.copyMarkdown} />,
-          accessibleLabel: unreadLinkAccessibleLabel(record),
+          accessibleLabel: unreadLinkAccessibleLabel(record, context.m),
           preview: { record, onOpenLink: context.onOpenLink },
         }
       : null,
@@ -267,7 +286,7 @@ export const integrationUserMessageChips: {
     record.kind === "model"
       ? {
           trigger: <ModelChipTrigger record={record} copyMarkdown={context.copyMarkdown} />,
-          accessibleLabel: modelChipAccessibleLabel(record),
+          accessibleLabel: modelChipAccessibleLabel(record, context.m),
           preview: { record },
         }
       : null,

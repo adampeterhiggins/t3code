@@ -1,5 +1,6 @@
 import type { EnvironmentId, ResourceTelemetryProcess } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
+import { T, useGT, useMessages, Var } from "gt-react";
 import { ChevronDownIcon, ChevronRightIcon, GaugeIcon, MemoryStickIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -33,7 +34,9 @@ export function SidebarResourcePill() {
   );
   const refreshUsage = usage.refresh;
   const [open, setOpen] = useState(false);
+  const gt = useGT();
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- polling timer keeps the usage summary fresh while mounted
   useEffect(() => {
     if (environmentId === null) return;
     const interval = window.setInterval(() => {
@@ -51,7 +54,7 @@ export function SidebarResourcePill() {
           render={
             <PopoverTrigger
               render={
-                <Button size="micro" variant="outline" aria-label="Resource usage">
+                <Button size="micro" variant="outline" aria-label={gt("Resource usage")}>
                   <MemoryStickIcon />
                   <span className="tabular-nums">{formatBytes(usage.data.rssBytes)}</span>
                 </Button>
@@ -59,7 +62,9 @@ export function SidebarResourcePill() {
             />
           }
         />
-        <TooltipPopup side="bottom">Memory used by T3 Code and its agents</TooltipPopup>
+        <TooltipPopup side="bottom">
+          <T>Memory used by T3 Code and its agents</T>
+        </TooltipPopup>
       </Tooltip>
       <PopoverPopup align="start" padding="none" width="md">
         {open ? (
@@ -78,6 +83,7 @@ function ResourceUsageDetails({
   onNavigate: () => void;
 }) {
   const navigate = useNavigate();
+  const gt = useGT();
   const telemetry = useResourceTelemetry(environmentId);
   const snapshot = telemetry.data;
   const processes = snapshot?.processes ?? [];
@@ -101,17 +107,21 @@ function ResourceUsageDetails({
       <div className="flex items-start justify-between gap-2 px-3 pt-2.5 pb-2">
         <div className="min-w-0">
           <div className="text-3xs font-semibold uppercase tracking-widest text-muted-foreground">
-            Resources
+            <T>Resources</T>
           </div>
           <div className="mt-0.5 text-muted-foreground">
-            CPU{" "}
-            <span className="font-medium tabular-nums text-foreground">
-              {snapshot ? `${snapshot.groups.allT3.currentCpuPercent.toFixed(1)}%` : "—"}
-            </span>{" "}
-            Memory{" "}
-            <span className="font-medium tabular-nums text-foreground">
-              {snapshot ? formatBytes(snapshot.groups.allT3.currentRssBytes) : "—"}
-            </span>
+            <T>
+              CPU{" "}
+              <span className="font-medium tabular-nums text-foreground">
+                <Var>
+                  {snapshot ? `${snapshot.groups.allT3.currentCpuPercent.toFixed(1)}%` : "—"}
+                </Var>
+              </span>{" "}
+              Memory{" "}
+              <span className="font-medium tabular-nums text-foreground">
+                <Var>{snapshot ? formatBytes(snapshot.groups.allT3.currentRssBytes) : "—"}</Var>
+              </span>
+            </T>
           </div>
         </div>
         <Tooltip>
@@ -121,24 +131,30 @@ function ResourceUsageDetails({
                 size="icon-micro"
                 variant="ghost-muted"
                 onClick={openDiagnostics}
-                aria-label="Open diagnostics"
+                aria-label={gt("Open diagnostics")}
               >
                 <GaugeIcon />
               </Button>
             }
           />
-          <TooltipPopup side="top">Open diagnostics</TooltipPopup>
+          <TooltipPopup side="top">
+            <T>Open diagnostics</T>
+          </TooltipPopup>
         </Tooltip>
       </div>
       <div className="grid grid-cols-[minmax(0,1fr)_3.5rem_4.5rem] gap-2 border-y border-border/60 px-3 py-1.5 text-3xs text-muted-foreground">
-        <span>Name</span>
+        <span>
+          <T context="column header, process name">Name</T>
+        </span>
         <span className="text-right">CPU</span>
-        <span className="text-right">Mem</span>
+        <span className="text-right">
+          <T context="column header, abbreviation of memory">Mem</T>
+        </span>
       </div>
       <ScrollArea scrollFade hideScrollbars className="max-h-72">
         {visible.length === 0 ? (
           <div className="px-3 py-3 text-muted-foreground">
-            {telemetry.error ?? "Waiting for the process monitor."}
+            {telemetry.error ?? gt("Waiting for the process monitor.")}
           </div>
         ) : (
           <ul className="py-1">
@@ -166,7 +182,9 @@ function ResourceUsageRow({
   collapsed: boolean;
   onToggle: (process: ResourceTelemetryProcess) => void;
 }) {
-  const label = resourceProcessLabel(process);
+  const gt = useGT();
+  const messages = useMessages();
+  const label = resourceProcessLabel(process, messages);
   const ChevronIcon = collapsed ? ChevronRightIcon : ChevronDownIcon;
   return (
     <li className="grid grid-cols-[minmax(0,1fr)_3.5rem_4.5rem] items-center gap-2 px-3 py-0.5">
@@ -179,7 +197,9 @@ function ResourceUsageRow({
             size="icon-tiny"
             variant="ghost-muted"
             onClick={() => onToggle(process)}
-            aria-label={collapsed ? `Expand ${label}` : `Collapse ${label}`}
+            aria-label={
+              collapsed ? gt("Expand {label}", { label }) : gt("Collapse {label}", { label })
+            }
           >
             <ChevronIcon />
           </Button>

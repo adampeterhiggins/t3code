@@ -58,26 +58,29 @@ export function messageSkillChip(
   const { skill, threadRef } = input;
   const label = skill ? formatProviderSkillDisplayName(skill) : input.label || input.name;
   const path = skill?.path;
-  return buttonContextChip({
-    kind: "skill",
-    icon: <SkillChipIcon />,
-    label,
-    kindLabel: resolve(msg("Skill")),
-    copyMarkdown: input.copyMarkdown,
-    preview: {
+  return buttonContextChip(
+    {
+      kind: "skill",
+      icon: <SkillChipIcon />,
       label,
-      description: skill ? skillPreviewDescription(skill) : null,
-      onOpenInstructions:
-        path && threadRef && !isDetachedChatWindow
-          ? () => {
-              const instructionsPath = path;
-              openTimelineWorkspaceFile(() =>
-                useRightPanelStore.getState().openFile(threadRef, instructionsPath),
-              );
-            }
-          : undefined,
+      kindLabel: resolve(msg("Skill")),
+      copyMarkdown: input.copyMarkdown,
+      preview: {
+        label,
+        description: skill ? skillPreviewDescription(skill) : null,
+        onOpenInstructions:
+          path && threadRef && !isDetachedChatWindow
+            ? () => {
+                const instructionsPath = path;
+                openTimelineWorkspaceFile(() =>
+                  useRightPanelStore.getState().openFile(threadRef, instructionsPath),
+                );
+              }
+            : undefined,
+      },
     },
-  });
+    resolve,
+  );
 }
 
 function SkillInlineText(props: {

@@ -8,8 +8,11 @@ import { Extension } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { type EditorState, Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import { msg } from "gt-react";
 import { FolderGit2Icon, MessageSquareTextIcon } from "lucide-react";
 import { createRoot, type Root } from "react-dom/client";
+
+import { m } from "~/i18n/messages";
 
 import { ContextChip, type ContextChipKind, ContextChipLabel } from "./ContextChip";
 import { GitHubRefIcon, gitHubRefTypeFromLink } from "./gitHubRefPresentation";
@@ -67,13 +70,9 @@ function loadingLinkIcon(link: ComposerObjectLink) {
 }
 
 /** The chip a link shows while its object loads, labelled from the link alone. */
-function LoadingLinkChip({ link }: { link: ComposerObjectLink }) {
+function LoadingLinkChip({ link, label }: { link: ComposerObjectLink; label: string }) {
   return (
-    <ContextChip
-      kind={loadingLinkChipKind(link)}
-      state="loading"
-      aria-label={`Attaching ${composerObjectLinkNoun(link.kind)}`}
-    >
+    <ContextChip kind={loadingLinkChipKind(link)} state="loading" aria-label={label}>
       {loadingLinkIcon(link)}
       <ContextChipLabel>{composerObjectLinkChipLabel(link)}</ContextChipLabel>
     </ContextChip>
@@ -120,7 +119,9 @@ function loadingLinkDecorations(doc: ProseMirrorNode, urls: ReadonlySet<string>)
           const dom = document.createElement("span");
           dom.contentEditable = "false";
           const root = createRoot(dom);
-          root.render(<LoadingLinkChip link={link} />);
+          // A separate root outside GT's provider, so the label resolves here.
+          const label = m(msg("Attaching {noun}", { noun: composerObjectLinkNoun(link.kind) }));
+          root.render(<LoadingLinkChip link={link} label={label} />);
           chipRoots.set(dom, root);
           return dom;
         },

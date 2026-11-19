@@ -1,5 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
+import { T, useGT } from "gt-react-native";
 import { useMemo, useState } from "react";
 import { View } from "react-native";
 
@@ -28,6 +29,7 @@ export function SettingsProjectThreadGroupSection(props: {
   readonly members: readonly EnvironmentProject[];
   readonly environments: readonly SettingsTarget[];
 }) {
+  const gt = useGT();
   const threads = useNavigationThreadShells();
   const { groupEnvironmentIds } = useAtomValue(threadListEnvironmentsAtom);
   const { groups } = useThreadGroups();
@@ -65,10 +67,10 @@ export function SettingsProjectThreadGroupSection(props: {
   };
 
   return (
-    <SettingsSection title="Thread group">
+    <SettingsSection title={gt("Thread group")}>
       <SettingsChoiceRow
-        label="None"
-        description="New threads start outside any group."
+        label={gt("None", { $context: "no thread group" })}
+        description={gt("New threads start outside any group.")}
         selected={current === null}
         separated={false}
         disabled={pending}
@@ -78,7 +80,7 @@ export function SettingsProjectThreadGroupSection(props: {
         <SettingsChoiceRow
           key={name}
           label={name}
-          description="New threads in this project join this group."
+          description={gt("New threads in this project join this group.")}
           selected={current === name}
           separated
           disabled={pending}
@@ -88,7 +90,7 @@ export function SettingsProjectThreadGroupSection(props: {
       {groupNames.length === 0 ? (
         <View className="px-4 pb-3">
           <Text className="text-sm text-foreground-muted">
-            Create a group from a thread's menu or the thread list filter to choose it here.
+            <T>Create a group from a thread's menu or the thread list filter to choose it here.</T>
           </Text>
         </View>
       ) : null}

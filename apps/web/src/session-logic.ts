@@ -504,7 +504,7 @@ export function projectedWorkEntry(
       };
     case "web_search": {
       const view = webToolView(item);
-      const label = webToolLabel(view);
+      const label = webToolLabel(view, resolve);
       return {
         ...common,
         label: label ?? title ?? resolve(msg("Searched the web")),

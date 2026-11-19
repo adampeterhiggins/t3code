@@ -3,6 +3,7 @@ import {
   describeContextRepositoryOwners,
 } from "@t3tools/client-runtime/context-repositories";
 import type { EnvironmentId, ProjectId, ThreadPullRequestLink } from "@t3tools/contracts";
+import { msg, useGT, useMessages } from "gt-react";
 import { useState } from "react";
 
 import type { ComposerTrigger } from "../../composer-logic";
@@ -31,16 +32,21 @@ const REFERENCE_MENU_TABS: ReadonlyArray<{
   id: ComposerReferenceTab;
   label: string;
 }> = [
-  { id: "checkouts", label: "Checkouts" },
-  { id: "pull-requests", label: "Pull requests" },
-  { id: "github-issues", label: "GitHub issues" },
-  { id: "linear-issues", label: "Linear issues" },
+  { id: "checkouts", label: msg("Checkouts") },
+  { id: "pull-requests", label: msg("Pull requests") },
+  { id: "github-issues", label: msg("GitHub issues") },
+  { id: "linear-issues", label: msg("Linear issues") },
+  // oxlint-disable-next-line t3code/no-untranslated-copy -- product name
   { id: "slack-messages", label: "Slack" },
+  // oxlint-disable-next-line t3code/no-untranslated-copy -- product name
   { id: "discord-messages", label: "Discord" },
+  // oxlint-disable-next-line t3code/no-untranslated-copy -- product name
   { id: "notion-pages", label: "Notion" },
+  // oxlint-disable-next-line t3code/no-untranslated-copy -- product name
   { id: "google-files", label: "Google" },
+  // oxlint-disable-next-line t3code/no-untranslated-copy -- product name
   { id: "granola-notes", label: "Granola" },
-  { id: "repositories", label: "Repositories" },
+  { id: "repositories", label: msg("Repositories") },
 ];
 const REFERENCE_MENU_RESULT_LIMIT = 20;
 const EMPTY_REFERENCE_MENU_ITEMS: ReadonlyArray<ComposerReferenceItem> = [];
@@ -60,6 +66,8 @@ export function useComposerReferenceMenu(input: {
   readonly githubIssueCwd: string | null;
 }) {
   const { environmentId, trigger } = input;
+  const gt = useGT();
+  const resolve = useMessages();
   const open = trigger?.kind === "pull-request";
   const query = open ? trigger.query : "";
   // A tab picked by hand holds until this `#` token closes; otherwise the query picks it.
@@ -177,24 +185,24 @@ export function useComposerReferenceMenu(input: {
         return {
           items: linearIssueMenu.items,
           isPending: linearIssueMenu.isPending,
-          loadingText: "Searching Linear issues...",
+          loadingText: gt("Searching Linear issues..."),
           emptyState:
             linearIssueMenu.error ??
             (query
-              ? `No Linear issue matches ${query}.`
-              : "No open Linear issues are assigned to you."),
+              ? gt("No Linear issue matches {query}.", { query })
+              : gt("No open Linear issues are assigned to you.")),
         };
       case "notion-pages":
         return {
           items: notionMenu.items,
           isPending: notionMenu.isPending,
-          emptyState: notionMenu.error ?? "No Notion pages found. Try searching by title.",
+          emptyState: notionMenu.error ?? gt("No Notion pages found. Try searching by title."),
         };
       case "google-files":
         return {
           items: googleMenu.items,
           isPending: googleMenu.isPending,
-          emptyState: googleMenu.error ?? "No Google sources found. Try another search.",
+          emptyState: googleMenu.error ?? gt("No Google sources found. Try another search."),
         };
       case "granola-notes":
         return {
@@ -202,71 +210,79 @@ export function useComposerReferenceMenu(input: {
           isPending: granolaMenu.isPending,
           emptyState:
             granolaMenu.error ??
-            "No meetings in the last 30 days match. Paste a note link to attach an older one.",
+            gt("No meetings in the last 30 days match. Paste a note link to attach an older one."),
         };
       case "slack-messages":
         return {
           items: slackMenu.items,
           isPending: slackMenu.isPending,
-          loadingText: "Searching Slack...",
+          loadingText: gt("Searching Slack..."),
           emptyState:
             slackMenu.error ??
-            (query ? `No Slack message matches ${query}.` : "Type a word to search Slack."),
+            (query
+              ? gt("No Slack message matches {query}.", { query })
+              : gt("Type a word to search Slack.")),
         };
       case "discord-messages":
         return {
           items: discordMenu.items,
           isPending: discordMenu.isPending,
-          loadingText: "Searching Discord...",
+          loadingText: gt("Searching Discord..."),
           emptyState:
             discordMenu.error ??
-            (query ? `No Discord message matches ${query}.` : "Type a word to search Discord."),
+            (query
+              ? gt("No Discord message matches {query}.", { query })
+              : gt("Type a word to search Discord.")),
         };
       case "github-issues":
         return {
           items: githubIssueMenu.items,
           isPending: githubIssueMenu.isPending,
-          loadingText: "Searching GitHub issues...",
+          loadingText: gt("Searching GitHub issues..."),
           emptyState:
             githubIssueMenu.error ??
             (query
-              ? `No GitHub issue matches ${query}.`
-              : "No open GitHub issues in this repository."),
+              ? gt("No GitHub issue matches {query}.", { query })
+              : gt("No open GitHub issues in this repository.")),
         };
       case "repositories":
         return {
           items: repositoryMenu.items,
           isPending: repositoryMenu.isPending,
-          loadingText: "Listing repositories...",
+          loadingText: gt("Listing repositories..."),
           emptyState:
             repositoryMenu.owners.length === 0
-              ? "Type an owner like #acme/ to list its repositories, or add repository owners in Settings."
+              ? gt(
+                  "Type an owner like #acme/ to list its repositories, or add repository owners in Settings.",
+                )
               : (repositoryMenu.error ??
-                `No repositories in ${describeContextRepositoryOwners(repositoryMenu.owners)} match.`),
+                gt("No repositories in {owners} match.", {
+                  owners: describeContextRepositoryOwners(repositoryMenu.owners, resolve),
+                })),
         };
       case "checkouts":
         return {
           items: checkoutMenu.items,
           isPending: checkoutMenu.isPending,
-          loadingText: "Looking up checkouts...",
-          hint: "Enter references. Command-Enter also links it to the thread.",
+          loadingText: gt("Looking up checkouts..."),
+          hint: gt("Enter references. Command-Enter also links it to the thread."),
           emptyState:
             checkoutMenu.error ??
             (query
-              ? `No checkout matches ${query}. Paste a path to use another folder.`
-              : "No local checkouts yet. Paste a path to add one."),
+              ? gt("No checkout matches {query}. Paste a path to use another folder.", { query })
+              : gt("No local checkouts yet. Paste a path to add one.")),
         };
       case "pull-requests":
         return {
           items: pullRequestMenu.items,
           isPending: pullRequestMenu.isPending,
           emptyState: !pullRequestMenu.available
-            ? "Pull requests are not available for this project."
+            ? gt("Pull requests are not available for this project.")
             : pullRequestMenu.failed
-              ? "Pull requests could not be read for this project."
+              ? gt("Pull requests could not be read for this project.")
               : query
-                ? `No pull request matches ${query}.`
-                : "No pull requests found in this repository.",
+                ? gt("No pull request matches {query}.", { query })
+                : gt("No pull requests found in this repository."),
         };
     }
   })();
@@ -284,7 +300,8 @@ export function useComposerReferenceMenu(input: {
     items,
     tab,
     /** Hidden when only one tab is available. */
-    tabs: tabs.length > 1 ? tabs : null,
+    tabs:
+      tabs.length > 1 ? tabs.map((option) => ({ ...option, label: resolve(option.label) })) : null,
     chooseTab: (id: string) => {
       if (!open) return;
       setTabChoice({

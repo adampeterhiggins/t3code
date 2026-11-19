@@ -22,6 +22,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
 import { type MouseEvent as ReactMouseEvent, type ReactNode, useRef, useState } from "react";
 
 import type { SidebarProjectSnapshot } from "../../sidebarProjectGrouping";
@@ -47,27 +48,32 @@ import {
 } from "../ui/menu";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "../ui/preview-card";
 import { SidebarHeaderIconButton } from "./SidebarThreadHeader";
+import { m, type MessageResolver } from "../../i18n/messages";
 
 /** Stored loosely: groups come and go, so Sidebar.logic's resolveSidebarPages cleans it on read. */
 
 export const BUILT_IN_PAGES = {
-  threads: { label: "Threads", Icon: ListIcon },
-  automations: { label: "Automations", Icon: CalendarClockIcon },
-  snoozed: { label: "Snoozed", Icon: AlarmClockIcon },
-  hidden: { label: "Hidden", Icon: EyeOffIcon },
-  settled: { label: "Settled", Icon: CircleCheckIcon },
+  threads: { label: msg("Threads"), Icon: ListIcon },
+  automations: { label: msg("Automations"), Icon: CalendarClockIcon },
+  snoozed: { label: msg("Snoozed"), Icon: AlarmClockIcon },
+  hidden: { label: msg("Hidden"), Icon: EyeOffIcon },
+  settled: { label: msg("Settled"), Icon: CircleCheckIcon },
 } as const;
 
-export function sidebarPageLabel(page: SidebarPage): string {
-  return page.startsWith("group:")
-    ? page.slice("group:".length)
-    : BUILT_IN_PAGES[page as keyof typeof BUILT_IN_PAGES].label;
+/** Labels pages in `resolve`'s language; components pass `useMessages()`. */
+export function sidebarPageLabeler(resolve: MessageResolver = m): (page: SidebarPage) => string {
+  return (page) =>
+    page.startsWith("group:")
+      ? page.slice("group:".length)
+      : resolve(BUILT_IN_PAGES[page as keyof typeof BUILT_IN_PAGES].label);
 }
+
+export const sidebarPageLabel = (page: SidebarPage): string => sidebarPageLabeler()(page);
 
 /** A page's glyph: the built-in icon, or a group's own icon and accent. */
 function SidebarPageIcon(props: { page: SidebarPage; groupStyles: ThreadGroups }) {
   if (props.page.startsWith("group:")) {
-    const name = sidebarPageLabel(props.page);
+    const name = props.page.slice("group:".length);
     return <ThreadGroupIcon style={props.groupStyles[name]} name={name} />;
   }
   const Icon = BUILT_IN_PAGES[props.page as keyof typeof BUILT_IN_PAGES].Icon;
@@ -79,12 +85,16 @@ function ChoiceCount(props: { count: number }) {
 }
 
 /** A Projects or Organisations trigger's summary of what it keeps or leaves out. */
-function scopeSummary(picked: readonly string[], excluded: readonly string[]): string {
+function scopeSummary(
+  picked: readonly string[],
+  excluded: readonly string[],
+  resolve: MessageResolver,
+): string {
   if (picked.length === 1) return picked[0]!;
-  if (picked.length > 1) return `${picked.length} selected`;
-  if (excluded.length === 1) return `Not ${excluded[0]!}`;
-  if (excluded.length > 1) return `${excluded.length} excluded`;
-  return "All";
+  if (picked.length > 1) return resolve(msg("{count} selected", { count: picked.length }));
+  if (excluded.length === 1) return resolve(msg("Not {name}", { name: excluded[0]! }));
+  if (excluded.length > 1) return resolve(msg("{count} excluded", { count: excluded.length }));
+  return resolve(msg("All", { $context: "no filter applied" }));
 }
 
 /** Rows kept in the hover preview before the rest collapse to a count. */
@@ -103,6 +113,8 @@ function SidebarShowFilter(props: {
   onNewGroup: () => void;
 }) {
   const single = props.pages.length === 1 ? props.pages[0]! : null;
+  const messages = useMessages();
+  const pageLabel = sidebarPageLabeler(messages);
 
   return (
     <MenuSub>
@@ -112,11 +124,13 @@ function SidebarShowFilter(props: {
         ) : (
           <LayersIcon aria-hidden className="size-3.5" />
         )}
-        <span className="flex-1">Show</span>
+        <span className="flex-1">
+          <T context="filter for which thread lists to show">Show</T>
+        </span>
         <span className="min-w-0 max-w-32 truncate text-xs text-muted-foreground">
           {props.excluded.length > 0
-            ? scopeSummary([], props.excluded.map(sidebarPageLabel))
-            : props.pages.map(sidebarPageLabel).join(", ")}
+            ? scopeSummary([], props.excluded.map(pageLabel), messages)
+            : props.pages.map(pageLabel).join(", ")}
         </span>
       </MenuSubTrigger>
       <MenuSubPopup className="min-w-44">
@@ -146,7 +160,7 @@ function SidebarShowFilter(props: {
               <span className="flex w-full min-w-0 items-center gap-2">
                 <SidebarPageIcon page={page} groupStyles={props.groupStyles} />
                 <MenuChoiceLabel
-                  label={sidebarPageLabel(page)}
+                  label={pageLabel(page)}
                   excluded={props.excluded.includes(page)}
                   onOnly={() => props.onOnly(page)}
                   onExclude={
@@ -166,7 +180,7 @@ function SidebarShowFilter(props: {
         <MenuItem onClick={props.onNewGroup}>
           <span className="flex min-w-0 items-center gap-2">
             <PlusIcon aria-hidden className="size-3.5 shrink-0" />
-            New group…
+            <T>New group…</T>
           </span>
         </MenuItem>
       </MenuSubPopup>
@@ -188,6 +202,8 @@ function SidebarProjectFilter(props: {
 }) {
   const { canPinProjectGroup, toggleProjectGroupPin } = useProjectPin();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const gt = useGT();
+  const messages = useMessages();
   const [open, setOpen] = useState(false);
   const projects = useOrderWhileOpen(
     pickableProjectGroups(props.projects),
@@ -207,11 +223,14 @@ function SidebarProjectFilter(props: {
         ) : (
           <FolderIcon aria-hidden className="size-3.5" />
         )}
-        <span className="flex-1">Projects</span>
+        <span className="flex-1">
+          <T>Projects</T>
+        </span>
         <span className="min-w-0 max-w-32 truncate text-xs text-muted-foreground">
           {scopeSummary(
             scopedProjects.map((project) => project.displayName),
             excludedProjects.map((project) => project.displayName),
+            messages,
           )}
         </span>
       </MenuSubTrigger>
@@ -219,7 +238,7 @@ function SidebarProjectFilter(props: {
         <MenuSearch
           items={projects}
           getText={(project) => project.displayName}
-          placeholder="Search projects"
+          placeholder={gt("Search projects")}
         >
           {(visible, query) => (
             <>
@@ -233,7 +252,7 @@ function SidebarProjectFilter(props: {
                 >
                   <span className="flex min-w-0 items-center gap-2">
                     <LayersIcon aria-hidden className="size-3.5 shrink-0" />
-                    All projects
+                    <T>All projects</T>
                   </span>
                 </MenuCheckboxItem>
               ) : null}
@@ -290,7 +309,7 @@ function SidebarProjectFilter(props: {
                           variant="ghost-muted"
                           tabIndex={-1}
                           aria-hidden="true"
-                          title={`Project settings for ${project.displayName}`}
+                          title={gt("Project settings for {name}", { name: project.displayName })}
                           onPointerDown={(event) => event.stopPropagation()}
                           onClick={(event) => props.onProjectSettings(event, project)}
                         >
@@ -324,15 +343,20 @@ function SidebarOrganisationFilter(props: {
   const picked = props.organisations.filter((option) => scoped.has(option.key));
   const left = props.organisations.filter((option) => excluded.has(option.key));
   const navigate = useNavigate();
+  const gt = useGT();
+  const messages = useMessages();
   return (
     <MenuSub>
       <MenuSubTrigger>
         <BuildingIcon aria-hidden className="size-3.5" />
-        <span className="flex-1">Organisations</span>
+        <span className="flex-1">
+          <T>Organisations</T>
+        </span>
         <span className="min-w-0 max-w-32 truncate text-xs text-muted-foreground">
           {scopeSummary(
             picked.map((option) => option.label),
             left.map((option) => option.label),
+            messages,
           )}
         </span>
       </MenuSubTrigger>
@@ -340,7 +364,7 @@ function SidebarOrganisationFilter(props: {
         <MenuSearch
           items={props.organisations}
           getText={(option) => option.label}
-          placeholder="Search organisations"
+          placeholder={gt("Search organisations")}
         >
           {(visible, query) => (
             <>
@@ -354,7 +378,7 @@ function SidebarOrganisationFilter(props: {
                 >
                   <span className="flex min-w-0 items-center gap-2">
                     <LayersIcon aria-hidden className="size-3.5 shrink-0" />
-                    All organisations
+                    <T>All organisations</T>
                   </span>
                 </MenuCheckboxItem>
               ) : null}
@@ -394,7 +418,7 @@ function SidebarOrganisationFilter(props: {
         <MenuItem onClick={() => void navigate({ to: "/settings/organisations" })}>
           <span className="flex min-w-0 items-center gap-2">
             <SettingsIcon aria-hidden className="size-3.5 shrink-0" />
-            Organisation settings…
+            <T>Organisation settings…</T>
           </span>
         </MenuItem>
       </MenuSubPopup>
@@ -424,7 +448,13 @@ function FilterPreviewName(props: { icon: ReactNode; label: string }) {
 
 function FilterPreviewMore(props: { count: number }) {
   if (props.count <= 0) return null;
-  return <li className="pl-5 text-xs text-muted-foreground">{props.count} more</li>;
+  return (
+    <li className="pl-5 text-xs text-muted-foreground">
+      <T>
+        <Var>{props.count}</Var> more
+      </T>
+    </li>
+  );
 }
 
 /** A dimension's picks then exclusions that still resolve to a choice, in their saved order. */
@@ -473,19 +503,23 @@ function SidebarFilterPreview(props: {
   const visiblePages = pageChoices.slice(0, FILTER_PREVIEW_ROW_LIMIT);
   const visibleOrganisations = organisations.slice(0, FILTER_PREVIEW_ROW_LIMIT);
   const visibleProjects = projects.slice(0, FILTER_PREVIEW_ROW_LIMIT);
+  const gt = useGT();
+  const pageLabel = sidebarPageLabeler(useMessages());
 
   return (
     <div className="flex max-h-80 flex-col gap-2.5 overflow-y-auto p-2.5">
       {pagesFiltered ? (
-        <FilterPreviewSection label="Show">
+        <FilterPreviewSection
+          label={gt("Show", { $context: "filter for which thread lists to show" })}
+        >
           {visiblePages.map((page) => (
             <FilterPreviewName
               key={page}
               icon={<SidebarPageIcon page={page} groupStyles={props.groupStyles} />}
               label={
                 props.excludedPages.length > 0
-                  ? `Not ${sidebarPageLabel(page)}`
-                  : sidebarPageLabel(page)
+                  ? gt("Not {name}", { name: pageLabel(page) })
+                  : pageLabel(page)
               }
             />
           ))}
@@ -493,24 +527,26 @@ function SidebarFilterPreview(props: {
         </FilterPreviewSection>
       ) : null}
       {organisations.length > 0 ? (
-        <FilterPreviewSection label="Organisations">
+        <FilterPreviewSection label={gt("Organisations")}>
           {visibleOrganisations.map(({ choice: option, excluded }) => (
             <FilterPreviewName
               key={option.key}
               icon={<OrganisationIcon option={option} />}
-              label={excluded ? `Not ${option.label}` : option.label}
+              label={excluded ? gt("Not {name}", { name: option.label }) : option.label}
             />
           ))}
           <FilterPreviewMore count={organisations.length - visibleOrganisations.length} />
         </FilterPreviewSection>
       ) : null}
       {projects.length > 0 ? (
-        <FilterPreviewSection label="Projects">
+        <FilterPreviewSection label={gt("Projects")}>
           {visibleProjects.map(({ choice: project, excluded }) => (
             <FilterPreviewName
               key={project.projectKey}
               icon={<ProjectFavicon project={project} className="size-3.5" />}
-              label={excluded ? `Not ${project.displayName}` : project.displayName}
+              label={
+                excluded ? gt("Not {name}", { name: project.displayName }) : project.displayName
+              }
             />
           ))}
           <FilterPreviewMore count={projects.length - visibleProjects.length} />
@@ -552,36 +588,38 @@ export function SidebarFilterMenu(props: {
     props.scopedProjectKeys.length > 0 || props.excludedProjectKeys.length > 0;
   const activeCount =
     Number(pagesFiltered) + Number(organisationsFiltered) + Number(projectsFiltered);
-  const scopeCount = (
-    picked: readonly string[],
-    excluded: readonly string[],
-    one: string,
-    many: string,
-  ) => {
-    const count = picked.length > 0 ? picked.length : excluded.length;
-    return `${count} ${count === 1 ? one : many}${picked.length > 0 ? "" : " excluded"}`;
-  };
+  const gt = useGT();
+  const pageLabel = sidebarPageLabeler(useMessages());
+  const organisationScope = () =>
+    props.scopedOrganisationKeys.length > 0
+      ? gt("{count, plural, one {{count} organisation} other {{count} organisations}}", {
+          count: props.scopedOrganisationKeys.length,
+        })
+      : gt(
+          "{count, plural, one {{count} organisation excluded} other {{count} organisations excluded}}",
+          { count: props.excludedOrganisationKeys.length },
+        );
+  const projectScope = () =>
+    props.scopedProjectKeys.length > 0
+      ? gt("{count, plural, one {{count} project} other {{count} projects}}", {
+          count: props.scopedProjectKeys.length,
+        })
+      : gt("{count, plural, one {{count} project excluded} other {{count} projects excluded}}", {
+          count: props.excludedProjectKeys.length,
+        });
   const summary = [
     pagesFiltered
       ? props.excludedPages.length > 0
-        ? `Showing all but ${props.excludedPages.map(sidebarPageLabel).join(", ")}`
-        : `Showing ${props.pages.map(sidebarPageLabel).join(", ")}`
+        ? gt("Showing all but {pages}", { pages: props.excludedPages.map(pageLabel).join(", ") })
+        : gt("Showing {pages}", { pages: props.pages.map(pageLabel).join(", ") })
       : null,
-    organisationsFiltered
-      ? scopeCount(
-          props.scopedOrganisationKeys,
-          props.excludedOrganisationKeys,
-          "organisation",
-          "organisations",
-        )
-      : null,
-    projectsFiltered
-      ? scopeCount(props.scopedProjectKeys, props.excludedProjectKeys, "project", "projects")
-      : null,
+    organisationsFiltered ? organisationScope() : null,
+    projectsFiltered ? projectScope() : null,
   ]
     .filter((part) => part !== null)
     .join(" · ");
-  const label = activeCount > 0 ? `Filter threads (${summary})` : "Filter threads";
+  const label =
+    activeCount > 0 ? gt("Filter threads ({summary})", { summary }) : gt("Filter threads");
   const menuOpenRef = useRef(false);
   const [menuOpen, setMenuOpen] = useState(false);
   // "Only" settles the filter, so it also closes the menu.
@@ -603,7 +641,7 @@ export function SidebarFilterMenu(props: {
   const button = (
     <SidebarHeaderIconButton
       label={label}
-      tooltip={activeCount > 0 ? false : "Filter threads"}
+      tooltip={activeCount > 0 ? false : gt("Filter threads")}
       isActive={activeCount > 0}
     />
   );
@@ -725,6 +763,7 @@ function SidebarFilterPill(props: {
   excluded?: boolean;
   onRemove: () => void;
 }) {
+  const gt = useGT();
   return (
     <span
       className={
@@ -745,12 +784,22 @@ function SidebarFilterPill(props: {
         ) : null}
       </span>
       <span className="min-w-0 truncate">
-        {props.excluded ? <span className="sr-only">Not </span> : null}
-        {props.label}
+        {props.excluded ? (
+          <T>
+            <span className="sr-only">Not </span>
+            <Var>{props.label}</Var>
+          </T>
+        ) : (
+          props.label
+        )}
       </span>
       <button
         type="button"
-        aria-label={`Remove ${props.excluded ? "Not " : ""}${props.label} filter`}
+        aria-label={
+          props.excluded
+            ? gt("Remove Not {label} filter", { label: props.label })
+            : gt("Remove {label} filter", { label: props.label })
+        }
         className="flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-full text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
         onClick={props.onRemove}
       >
@@ -798,6 +847,8 @@ export function SidebarFilterPills(props: {
     props.scopedProjectKeys,
     props.excludedProjectKeys,
   );
+  const gt = useGT();
+  const pageLabel = sidebarPageLabeler(useMessages());
   const searchQuery = props.searchQuery.trim();
   const pageChoices = pagesExcluded ? props.excludedPages : pages;
   const pillCount =
@@ -809,7 +860,7 @@ export function SidebarFilterPills(props: {
       {searchQuery ? (
         <SidebarFilterPill
           icon={<SearchIcon className="size-3.5" />}
-          label={`Search: ${searchQuery}`}
+          label={gt("Search: {query}", { query: searchQuery })}
           onRemove={props.onClearSearch}
         />
       ) : null}
@@ -817,7 +868,7 @@ export function SidebarFilterPills(props: {
         <SidebarFilterPill
           key={page}
           icon={<SidebarPageIcon page={page} groupStyles={props.groupStyles} />}
-          label={sidebarPageLabel(page)}
+          label={pageLabel(page)}
           excluded={pagesExcluded}
           onRemove={() => {
             if (pagesExcluded) {
@@ -879,7 +930,7 @@ export function SidebarFilterPills(props: {
             props.onExcludedProjectKeysChange([]);
           }}
         >
-          Clear all
+          <T>Clear all</T>
         </button>
       ) : null}
     </div>

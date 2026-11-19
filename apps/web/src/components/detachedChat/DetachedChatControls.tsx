@@ -1,6 +1,7 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { Schema } from "effect";
+import { useGT } from "gt-react";
 import {
   AppWindowIcon,
   PanelBottomCloseIcon,
@@ -25,13 +26,14 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { handoffIsolatedFloatingLocation, openExpandedThreadInMain } from "./openMainThread";
 
 export function DetachedChatHeaderActions(props: { readonly threadRef: ScopedThreadRef | null }) {
+  const gt = useGT();
   if (!isDetachedChatWindow) return null;
   const { threadRef } = props;
   return (
     <div className="ml-auto flex shrink-0 items-center gap-1">
       {threadRef ? (
         <DetachedHeaderIconButton
-          label="New quick message"
+          label={gt("New quick message")}
           onClick={() => {
             void startDetachedFreshComposer().then(() => focusDetachedComposerInput(document));
           }}
@@ -41,7 +43,7 @@ export function DetachedChatHeaderActions(props: { readonly threadRef: ScopedThr
       ) : null}
       {threadRef ? (
         <DetachedHeaderIconButton
-          label="Open in main window"
+          label={gt("Open in main window")}
           onClick={() => {
             void openExpandedThreadInMain(threadRef, {
               open: (request) => window.desktopBridge?.openMainDestination?.(request),
@@ -54,7 +56,10 @@ export function DetachedChatHeaderActions(props: { readonly threadRef: ScopedThr
           <AppWindowIcon />
         </DetachedHeaderIconButton>
       ) : null}
-      <DetachedHeaderIconButton label="Hide" onClick={dismissDetachedChat}>
+      <DetachedHeaderIconButton
+        label={gt("Hide", { $context: "hide the window" })}
+        onClick={dismissDetachedChat}
+      >
         <XIcon />
       </DetachedHeaderIconButton>
     </div>

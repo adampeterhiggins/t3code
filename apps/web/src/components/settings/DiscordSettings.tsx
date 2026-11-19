@@ -16,6 +16,7 @@ import {
 import { useAtomValue } from "@effect/atom-react";
 import { createModelSelection } from "@t3tools/shared/model";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
+import { msg, T, useGT, useMessages } from "gt-react";
 import { ExternalLinkIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -42,7 +43,8 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Switch } from "../ui/switch";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
+import { m, type MessageResolver } from "../../i18n/messages";
 import { useSettingsScope } from "./SettingsScopeContext";
 
 /**
@@ -53,6 +55,8 @@ import { useSettingsScope } from "./SettingsScopeContext";
 export function DiscordSettingsSection() {
   const { environment: scopedEnvironment } = useSettingsScope();
   const primaryEnvironment = usePrimaryEnvironment();
+  const searchableSetting = useSearchableSetting();
+  const gt = useGT();
   // The bot belongs to an environment, not a project, so a project or
   // stale selection in the header falls back to the primary environment.
   const environment = [scopedEnvironment, primaryEnvironment].find(
@@ -63,14 +67,14 @@ export function DiscordSettingsSection() {
     <SettingsSection {...searchableSetting("discord")}>
       {environmentId === null ? (
         <SettingsRow
-          title="Discord bot"
-          description="Connect to an environment to set up Discord."
+          title={gt("Discord bot")}
+          description={gt("Connect to an environment to set up Discord.")}
         />
       ) : (
         <DiscordIntegrationRows
           key={environmentId}
           environmentId={environmentId}
-          environmentLabel={environment?.label ?? "this environment"}
+          environmentLabel={environment?.label ?? gt("this environment")}
         />
       )}
     </SettingsSection>
@@ -83,14 +87,17 @@ function DiscordIntegrationRows(props: {
 }) {
   const enabled = useEnvironmentSettings(props.environmentId, (s) => s.enableDiscordIntegration);
   const updateSettings = useUpdateEnvironmentSettings(props.environmentId);
+  const gt = useGT();
   return (
     <>
       <SettingsRow
-        title="Enable Discord integration"
-        description="Attach Discord messages and threads. Turn off to keep pasted Discord links as links without setup prompts. Your connected bot is kept."
+        title={gt("Enable Discord integration")}
+        description={gt(
+          "Attach Discord messages and threads. Turn off to keep pasted Discord links as links without setup prompts. Your connected bot is kept.",
+        )}
         control={
           <Switch
-            aria-label="Enable Discord integration"
+            aria-label={gt("Enable Discord integration")}
             checked={enabled}
             onCheckedChange={(checked) => updateSettings({ enableDiscordIntegration: checked })}
           />
@@ -106,17 +113,26 @@ function DiscordIntegrationRows(props: {
   );
 }
 
-function describeConnection(state: DiscordConnectionState | null): string {
-  if (state === null) return "Reading Discord status.";
+function describeConnection(
+  state: DiscordConnectionState | null,
+  resolve: MessageResolver = m,
+): string {
+  if (state === null) return resolve(msg("Reading Discord status."));
   switch (state.phase) {
     case "connected":
       return state.account
-        ? `Connected as ${state.account.botName}. Reads servers the bot is in; never posts.`
-        : "Connected.";
+        ? resolve(
+            msg("Connected as {name}. Reads servers the bot is in; never posts.", {
+              name: state.account.botName,
+            }),
+          )
+        : resolve(msg("Connected."));
     case "failed":
-      return state.message ?? "Discord rejected the bot token.";
+      return state.message ?? resolve(msg("Discord rejected the bot token."));
     case "disconnected":
-      return "Attach Discord messages and threads to messages as context for the agent.";
+      return resolve(
+        msg("Attach Discord messages and threads to messages as context for the agent."),
+      );
   }
 }
 
@@ -138,6 +154,8 @@ function DiscordConnectionRows({
   const pendingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [botToken, setBotToken] = useState("");
+  const gt = useGT();
+  const messages = useMessages();
 
   async function run<A, E>(request: () => Promise<AtomCommandResult<A, E>>) {
     if (pendingRef.current) return null;
@@ -151,7 +169,7 @@ function DiscordConnectionRows({
     if (result._tag === "Failure") {
       if (!isAtomCommandInterrupted(result)) {
         const failure = squashAtomCommandFailure(result);
-        setError(failure instanceof Error ? failure.message : "Discord request failed.");
+        setError(failure instanceof Error ? failure.message : m(msg("Discord request failed.")));
       }
       return null;
     }
@@ -167,12 +185,16 @@ function DiscordConnectionRows({
 
   async function confirmDisconnect() {
     const confirmed = await ensureLocalApi().dialogs.confirm(
-      `Disconnect Discord from ${environmentLabel}? Messages already attached stay as they are.`,
+      m(
+        msg("Disconnect Discord from {environment}? Messages already attached stay as they are.", {
+          environment: environmentLabel,
+        }),
+      ),
     );
     if (confirmed) await run(() => disconnect({ environmentId, input: {} }));
   }
 
-  const status = error ?? describeConnection(state);
+  const status = error ?? describeConnection(state, messages);
   const statusClass = error !== null || state?.phase === "failed" ? "text-destructive" : undefined;
   const signedOut = state?.phase === "disconnected" || state?.phase === "failed";
   const applicationId = state?.phase === "connected" ? state.account?.applicationId : undefined;
@@ -180,7 +202,7 @@ function DiscordConnectionRows({
   return (
     <>
       <SettingsRow
-        title="Discord bot"
+        title={gt("Discord bot")}
         description={<span className={statusClass}>{status}</span>}
         control={
           state?.phase === "connected" ? (
@@ -193,12 +215,12 @@ function DiscordConnectionRows({
                     void ensureLocalApi().shell.openExternal(discordBotInviteUrl(applicationId))
                   }
                 >
-                  Add bot to a server
+                  <T>Add bot to a server</T>
                   <ExternalLinkIcon className="size-3.5" aria-hidden="true" />
                 </Button>
               ) : null}
               <Button size="sm" variant="outline" disabled={pending} onClick={confirmDisconnect}>
-                Disconnect
+                <T>Disconnect</T>
               </Button>
             </div>
           ) : null
@@ -207,8 +229,10 @@ function DiscordConnectionRows({
       {state?.phase === "connected" ? <DiscordServersRow environmentId={environmentId} /> : null}
       {signedOut ? (
         <SettingsRow
-          title="Bot token"
-          description="Discord reads through a bot you create. At discord.com/developers/applications, create an application. Under Bot, reset and copy the token and turn on Message Content Intent, then paste the token here. Once connected, add the bot to each server to read."
+          title={gt("Bot token")}
+          description={gt(
+            "Create an application at discord.com/developers/applications. Under Bot, reset and copy the token, turn on Message Content Intent, and paste the token here. Then add the bot to each server to read.",
+          )}
           control={
             <form
               className="flex w-full flex-wrap gap-2 sm:w-auto"
@@ -221,14 +245,14 @@ function DiscordConnectionRows({
                 size="sm"
                 type="password"
                 autoComplete="off"
-                aria-label="Discord bot token"
-                placeholder="Bot token"
+                aria-label={gt("Discord bot token")}
+                placeholder={gt("Bot token")}
                 className="min-w-0 flex-1 sm:w-64"
                 value={botToken}
                 onChange={(event) => setBotToken(event.target.value)}
               />
               <Button size="sm" type="submit" disabled={pending || botToken.trim().length === 0}>
-                {state?.phase === "failed" ? "Reconnect Discord" : "Connect Discord"}
+                {state?.phase === "failed" ? <T>Reconnect Discord</T> : <T>Connect Discord</T>}
               </Button>
               <Button
                 size="sm"
@@ -240,7 +264,7 @@ function DiscordConnectionRows({
                   )
                 }
               >
-                Create Discord app
+                <T>Create Discord app</T>
                 <ExternalLinkIcon className="size-3.5" aria-hidden="true" />
               </Button>
             </form>
@@ -262,7 +286,9 @@ function DiscordServersRow({ environmentId }: { readonly environmentId: Environm
   const [leaving, setLeaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { refresh } = servers;
+  const gt = useGT();
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- window focus listener re-reads the servers after an invite is approved in the browser
   useEffect(() => {
     window.addEventListener("focus", refresh);
     return () => window.removeEventListener("focus", refresh);
@@ -270,7 +296,12 @@ function DiscordServersRow({ environmentId }: { readonly environmentId: Environm
 
   async function confirmLeave(server: DiscordServer) {
     const confirmed = await ensureLocalApi().dialogs.confirm(
-      `Remove the bot from ${server.name}? T3 Code can't read it again until you add the bot back.`,
+      m(
+        msg(
+          "Remove the bot from {server}? T3 Code can't read it again until you add the bot back.",
+          { server: server.name },
+        ),
+      ),
     );
     if (!confirmed) return;
     setLeaving(server.id);
@@ -279,7 +310,7 @@ function DiscordServersRow({ environmentId }: { readonly environmentId: Environm
     setLeaving(null);
     if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
       const failure = squashAtomCommandFailure(result);
-      setError(failure instanceof Error ? failure.message : "Could not remove the bot.");
+      setError(failure instanceof Error ? failure.message : m(msg("Could not remove the bot.")));
     }
     refresh();
   }
@@ -288,16 +319,21 @@ function DiscordServersRow({ environmentId }: { readonly environmentId: Environm
   const description =
     error ??
     (servers.error
-      ? "Could not read the bot's servers."
+      ? gt("Could not read the bot's servers.")
       : list === undefined
-        ? "Reading the bot's servers."
+        ? gt("Reading the bot's servers.")
         : list.length === 0
-          ? "The bot isn't in any server yet. Add it to a server to attach its messages."
-          : `The bot can read ${list.length === 1 ? "1 server" : `${list.length} servers`}.`);
+          ? gt("The bot isn't in any server yet. Add it to a server to attach its messages.")
+          : gt(
+              "{count, plural, one {The bot can read 1 server.} other {The bot can read {count} servers.}}",
+              {
+                count: list.length,
+              },
+            ));
 
   return (
     <SettingsRow
-      title="Servers"
+      title={gt("Servers")}
       description={
         <span className={error !== null || servers.error ? "text-destructive" : undefined}>
           {description}
@@ -305,7 +341,7 @@ function DiscordServersRow({ environmentId }: { readonly environmentId: Environm
       }
       control={
         <Button size="sm" variant="outline" disabled={servers.isPending} onClick={refresh}>
-          Refresh
+          <T>Refresh</T>
         </Button>
       }
     >
@@ -328,7 +364,11 @@ function DiscordServersRow({ environmentId }: { readonly environmentId: Environm
                   disabled={leaving !== null}
                   onClick={() => void confirmLeave(server)}
                 >
-                  {leaving === server.id ? "Removing…" : "Remove"}
+                  {leaving === server.id ? (
+                    <T>Removing…</T>
+                  ) : (
+                    <T context="verb, removes the bot from a server">Remove</T>
+                  )}
                 </Button>
               ) : null}
             </li>
@@ -372,14 +412,17 @@ function DiscordMentionTriggerRows({ environmentId }: { readonly environmentId: 
   );
   const save = (patch: Partial<DiscordMentionTriggerSettings>) =>
     updateSettings({ discordMentionTrigger: { ...trigger, ...patch } });
+  const gt = useGT();
   return (
     <>
       <SettingsRow
-        title="Start threads from Discord mentions"
-        description="Poll once a minute for new @mentions of the bot, or of the user ID below. Choose a project first. Older mentions are ignored. Threads use the project's permission mode and run while this server is online."
+        title={gt("Start threads from Discord mentions")}
+        description={gt(
+          "Poll once a minute for new @mentions of the bot or the user ID below. Choose a project first. Older mentions are ignored. Threads use the project's permission mode and run while this server is online.",
+        )}
         control={
           <Switch
-            aria-label="Start threads from Discord mentions"
+            aria-label={gt("Start threads from Discord mentions")}
             checked={trigger.enabled}
             disabled={disabled || trigger.projectId === null}
             onCheckedChange={(enabled) => save({ enabled })}
@@ -387,8 +430,8 @@ function DiscordMentionTriggerRows({ environmentId }: { readonly environmentId: 
         }
       />
       <SettingsRow
-        title="Mention project"
-        description="The project whose workspace receives the request."
+        title={gt("Mention project")}
+        description={gt("The project whose workspace receives the request.")}
         control={
           <Select
             value={trigger.projectId ?? "none"}
@@ -397,10 +440,12 @@ function DiscordMentionTriggerRows({ environmentId }: { readonly environmentId: 
             }
           >
             <SelectTrigger disabled={disabled}>
-              <SelectValue>{project?.title ?? "Choose project"}</SelectValue>
+              <SelectValue>{project?.title ?? gt("Choose project")}</SelectValue>
             </SelectTrigger>
             <SelectPopup>
-              <SelectItem value="none">Choose project</SelectItem>
+              <SelectItem value="none">
+                <T>Choose project</T>
+              </SelectItem>
               {projects.map((entry) => (
                 <SelectItem key={entry.id} value={entry.id}>
                   {entry.title}
@@ -411,15 +456,17 @@ function DiscordMentionTriggerRows({ environmentId }: { readonly environmentId: 
         }
       />
       <SettingsRow
-        title="Mention channels"
-        description="Comma-separated channel names or IDs. Leave empty to watch every channel the bot can read."
+        title={gt("Mention channels")}
+        description={gt(
+          "Comma-separated channel names or IDs. Leave empty to watch every channel the bot can read.",
+        )}
         control={
           <Input
             key={trigger.channels.join(",")}
             size="sm"
-            aria-label="Mention channels"
+            aria-label={gt("Mention channels")}
             disabled={disabled}
-            placeholder="All channels"
+            placeholder={gt("All channels")}
             defaultValue={trigger.channels.join(", ")}
             onBlur={(event) =>
               save({
@@ -435,30 +482,32 @@ function DiscordMentionTriggerRows({ environmentId }: { readonly environmentId: 
         }
       />
       <SettingsRow
-        title="Discord user ID to watch"
-        description="Optional. Start threads from mentions of this user instead of the bot. In Discord, turn on Developer Mode, then right-click a user and choose Copy User ID."
+        title={gt("Discord user ID to watch")}
+        description={gt(
+          "Optional. Start threads from mentions of this user instead of the bot. In Discord, turn on Developer Mode, then right-click a user and choose Copy User ID.",
+        )}
         control={
           <Input
             key={trigger.mentionUserId}
             size="sm"
-            aria-label="Discord user ID to watch"
+            aria-label={gt("Discord user ID to watch")}
             disabled={disabled}
             inputMode="numeric"
             maxLength={32}
-            placeholder="The bot"
+            placeholder={gt("The bot")}
             defaultValue={trigger.mentionUserId}
             onBlur={(event) => save({ mentionUserId: event.target.value.trim() })}
           />
         }
       />
       <SettingsRow
-        title="Mention keyword"
-        description="Optional word or phrase that must also appear in the mention."
+        title={gt("Mention keyword")}
+        description={gt("Optional word or phrase that must also appear in the mention.")}
         control={
           <Input
             key={trigger.keyword}
             size="sm"
-            aria-label="Mention keyword"
+            aria-label={gt("Mention keyword")}
             disabled={disabled}
             maxLength={64}
             defaultValue={trigger.keyword}
@@ -467,13 +516,13 @@ function DiscordMentionTriggerRows({ environmentId }: { readonly environmentId: 
         }
       />
       <SettingsRow
-        title="Mention prompt"
-        description="Instructions sent with the Discord thread snapshot."
+        title={gt("Mention prompt")}
+        description={gt("Instructions sent with the Discord thread snapshot.")}
         control={
           <Textarea
             key={trigger.prompt}
             size="sm"
-            aria-label="Mention prompt"
+            aria-label={gt("Mention prompt")}
             disabled={disabled}
             maxLength={8000}
             defaultValue={trigger.prompt}
@@ -482,11 +531,11 @@ function DiscordMentionTriggerRows({ environmentId }: { readonly environmentId: 
         }
       />
       <SettingsRow
-        title="Mention model"
+        title={gt("Mention model")}
         description={
           trigger.modelSelection === null
-            ? "Uses the project's default provider and model."
-            : "Provider and model used for mention threads."
+            ? gt("Uses the project's default provider and model.")
+            : gt("Provider and model used for mention threads.")
         }
         control={
           <div className="flex flex-wrap items-center gap-2">
@@ -510,7 +559,7 @@ function DiscordMentionTriggerRows({ environmentId }: { readonly environmentId: 
               disabled={disabled || trigger.modelSelection === null}
               onClick={() => save({ modelSelection: null })}
             >
-              Use project default
+              <T>Use project default</T>
             </Button>
           </div>
         }

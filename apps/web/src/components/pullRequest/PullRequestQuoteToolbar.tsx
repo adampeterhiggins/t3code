@@ -1,4 +1,5 @@
 import { ASSISTANT_CITATION_MAX_TEXT_LENGTH } from "@t3tools/contracts";
+import { useGT } from "gt-react";
 import { QuoteIcon } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -69,6 +70,7 @@ export function PullRequestQuoteToolbar({
   viewport: HTMLElement | null;
   onCite: (quote: PullRequestQuote) => void;
 }) {
+  const gt = useGT();
   const [selection, setSelection] = useState<{
     source: HTMLElement;
     range: Range;
@@ -169,7 +171,7 @@ export function PullRequestQuoteToolbar({
       size="xs"
       variant="glass"
       disabled={tooLong}
-      aria-label={tooLong ? "Selection is too long to cite" : "Cite selection in composer"}
+      aria-label={tooLong ? gt("Selection is too long to cite") : gt("Cite selection in composer")}
       className="fixed z-50 max-w-[calc(100vw-1rem)]"
       style={{ left: selection.position.x, top: selection.position.y }}
       onPointerDown={(event) => event.preventDefault()}
@@ -183,7 +185,7 @@ export function PullRequestQuoteToolbar({
       }}
     >
       <QuoteIcon aria-hidden="true" className="size-3.5" />
-      {tooLong ? "Shorten selection" : "Cite"}
+      {tooLong ? gt("Shorten selection") : gt("Cite", { $context: "quote selected text" })}
     </Button>,
     document.body,
   );

@@ -1,3 +1,4 @@
+import { T } from "gt-react";
 import { BrainIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -17,7 +18,11 @@ export function ThoughtPreviewContent(props: {
     <div {...follow} className="flex max-h-[60vh] flex-col gap-1.5 overflow-auto p-3">
       <div className="flex items-center gap-1.5 text-xs text-secondary-label">
         <BrainIcon aria-hidden className="size-3.5 shrink-0 text-icon-muted" />
-        {props.streaming ? "Thinking" : "Thought"}
+        {props.streaming ? (
+          <T context="the agent is reasoning now">Thinking</T>
+        ) : (
+          <T context="noun, the agent's finished reasoning">Thought</T>
+        )}
       </div>
       <div className="select-text">{props.children}</div>
       <p className="font-mono text-3xs text-muted-foreground select-text">{props.timestamp}</p>

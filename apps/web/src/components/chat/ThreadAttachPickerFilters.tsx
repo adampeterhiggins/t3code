@@ -1,4 +1,5 @@
 import type { ProjectId, ProviderInstanceId } from "@t3tools/contracts";
+import { msg, T, useGT, useMessages } from "gt-react";
 import { ArrowDownUpIcon, BotIcon, FolderIcon, ListFilterIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -24,10 +25,10 @@ import {
 } from "./composerThreadReferences";
 
 const SORT_LABELS = {
-  updated: "Recently updated",
-  newest: "Newest",
-  oldest: "Oldest",
-  title: "Title A–Z",
+  updated: msg("Recently updated"),
+  newest: msg("Newest", { $context: "sort order, newest first" }),
+  oldest: msg("Oldest", { $context: "sort order, oldest first" }),
+  title: msg("Title A–Z"),
 } as const satisfies Record<ThreadAttachPickerView["sort"], string>;
 
 type Choice<T extends string> = {
@@ -95,6 +96,8 @@ export function ThreadAttachPickerFilterBar(props: {
   onChange: (view: ThreadAttachPickerView) => void;
 }) {
   const { view } = props;
+  const gt = useGT();
+  const m = useMessages();
   const [menuOpen, setMenuOpen] = useState(false);
   // "Only" settles the filter, so it also closes the menu.
   const pickOnly = (next: ThreadAttachPickerView) => {
@@ -110,30 +113,34 @@ export function ThreadAttachPickerFilterBar(props: {
         <Menu open={menuOpen} onOpenChange={setMenuOpen}>
           <MenuTrigger render={<Button type="button" size="xs" variant="outline" />}>
             <ListFilterIcon />
-            Filter
+            <T>Filter</T>
           </MenuTrigger>
           <MenuPopup align="start">
             <MenuSub>
-              <MenuSubTrigger>Project</MenuSubTrigger>
+              <MenuSubTrigger>
+                <T>Project</T>
+              </MenuSubTrigger>
               <MenuSubPopup>
                 <ChoiceChecklist
                   choices={props.projects}
                   selected={view.projectIds}
-                  placeholder="Search projects"
-                  empty="No projects in these threads"
+                  placeholder={gt("Search projects")}
+                  empty={gt("No projects in these threads")}
                   onChange={(projectIds) => props.onChange({ ...view, projectIds })}
                   onOnly={(projectId) => pickOnly({ ...view, projectIds: [projectId] })}
                 />
               </MenuSubPopup>
             </MenuSub>
             <MenuSub>
-              <MenuSubTrigger>Provider</MenuSubTrigger>
+              <MenuSubTrigger>
+                <T>Provider</T>
+              </MenuSubTrigger>
               <MenuSubPopup>
                 <ChoiceChecklist
                   choices={props.providers}
                   selected={view.providerInstanceIds}
-                  placeholder="Search providers"
-                  empty="No providers in these threads"
+                  placeholder={gt("Search providers")}
+                  empty={gt("No providers in these threads")}
                   onChange={(providerInstanceIds) =>
                     props.onChange({ ...view, providerInstanceIds })
                   }
@@ -153,13 +160,13 @@ export function ThreadAttachPickerFilterBar(props: {
             variant="ghost-muted"
             onClick={() => props.onChange(DEFAULT_THREAD_ATTACH_PICKER_VIEW)}
           >
-            Reset
+            <T>Reset</T>
           </Button>
         ) : null}
         <Menu>
           <MenuTrigger render={<Button type="button" size="xs" variant="ghost" />}>
             <ArrowDownUpIcon />
-            {SORT_LABELS[view.sort]}
+            {m(SORT_LABELS[view.sort])}
           </MenuTrigger>
           <MenuPopup align="end">
             <MenuRadioGroup
@@ -170,7 +177,7 @@ export function ThreadAttachPickerFilterBar(props: {
             >
               {(Object.keys(SORT_LABELS) as Array<ThreadAttachPickerView["sort"]>).map((sort) => (
                 <MenuRadioItem key={sort} value={sort}>
-                  {SORT_LABELS[sort]}
+                  {m(SORT_LABELS[sort])}
                 </MenuRadioItem>
               ))}
             </MenuRadioGroup>

@@ -1,6 +1,8 @@
 import { COMPOSER_CONTEXT_KINDS, type KnownComposerContextKind } from "@t3tools/contracts";
+import { msg } from "gt-react";
 import type { ComponentProps, ComponentType, ReactElement } from "react";
 
+import { m, type MessageResolver } from "~/i18n/messages";
 import { isPullRequestSummaryContext } from "~/lib/composerContextRecords";
 import { preloadGhosttyTerminal } from "~/terminal/ghostty/surface";
 import { ModelPreview, type ModelPreviewProps } from "./chat/ModelContextChip";
@@ -241,15 +243,18 @@ export interface ContextChipSpec<
 > extends ContextPreviewHoverProps<ContextPreviewPropsByKind[K]> {}
 
 /** The common chip: a button that does nothing but open its kind's preview. */
-export function buttonContextChip<K extends KnownComposerContextKind>(input: {
-  kind: K & ContextChipKind;
-  icon: ReactElement;
-  label: string;
-  /** What the chip is, for screen readers: "Skill", "Linear issue". */
-  kindLabel: string;
-  copyMarkdown?: string | undefined;
-  preview: ContextPreviewPropsByKind[K];
-}): ContextChipSpec<K> {
+export function buttonContextChip<K extends KnownComposerContextKind>(
+  input: {
+    kind: K & ContextChipKind;
+    icon: ReactElement;
+    label: string;
+    /** What the chip is, for screen readers: "Skill", "Linear issue". */
+    kindLabel: string;
+    copyMarkdown?: string | undefined;
+    preview: ContextPreviewPropsByKind[K];
+  },
+  resolve: MessageResolver = m,
+): ContextChipSpec<K> {
   const accessibleLabel = `${input.kindLabel}, ${input.label}`;
   return {
     trigger: (
@@ -257,7 +262,7 @@ export function buttonContextChip<K extends KnownComposerContextKind>(input: {
         kind={input.kind}
         icon={input.icon}
         label={input.label}
-        aria-label={`${accessibleLabel}. Show details`}
+        aria-label={resolve(msg("{label}. Show details", { label: accessibleLabel }))}
         copyMarkdown={input.copyMarkdown}
       />
     ),

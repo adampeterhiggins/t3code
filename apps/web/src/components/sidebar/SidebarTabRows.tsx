@@ -26,7 +26,7 @@ import {
   type SidebarTabSortOrder,
 } from "@t3tools/contracts/settings";
 
-import { useGT } from "gt-react";
+import { useGT, useMessages } from "gt-react";
 import { ChevronDownIcon } from "lucide-react";
 import { ChevronUpIcon, TerminalIcon, XIcon } from "lucide-react";
 import {
@@ -355,6 +355,7 @@ export function SidebarTabOverflowRow(props: {
 }) {
   const { hidden, providerEntriesByEnvironment } = props;
   const gt = useGT();
+  const messages = useMessages();
   const summary = (() => {
     // Most urgent first, the same precedence as a row's own status.
     const precedence = [
@@ -372,7 +373,8 @@ export function SidebarTabOverflowRow(props: {
       counts.set(status, (counts.get(status) ?? 0) + 1);
     }
     const status = precedence.find((candidate) => counts.has(candidate)) ?? null;
-    const topStatus = status === null ? null : resolveSidebarTopStatus(status, false, false);
+    const topStatus =
+      status === null ? null : resolveSidebarTopStatus(status, false, false, messages);
     const providers = new Map<
       string,
       {
@@ -554,6 +556,7 @@ export const SidebarTabRow = memo(function SidebarTabRow(props: {
 }) {
   const { thread, onFileDropThreads, sortable } = props;
   const gt = useGT();
+  const messages = useMessages();
   const threadRef = scopeThreadRef(thread.environmentId, thread.id);
   const threadKey = scopedThreadKey(threadRef);
   const isPairTarget = useContext(SidebarTabPairTargetContext) === threadKey;
@@ -566,7 +569,7 @@ export const SidebarTabRow = memo(function SidebarTabRow(props: {
   const terminalStatus = terminalStatusFromRunningIds(runningTerminalIds);
   const isUnread = hasUnseenCompletion({ ...thread, lastVisitedAt });
   const status = resolveSidebarThreadStatus(thread);
-  const topStatus = resolveSidebarTopStatus(status, false, isUnread);
+  const topStatus = resolveSidebarTopStatus(status, false, isUnread, messages);
   const shouldRecede = shouldRecedeSidebarThread({
     status,
     isUnread,

@@ -5,6 +5,7 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
+import { msg, T, useGT, useMessages } from "gt-react-native";
 import { useState } from "react";
 import { Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -38,8 +39,8 @@ import { leaveSettingsPage } from "./settings-navigation";
 import { workspaceHasColumns } from "../layout/workspace/workspace-selection-store";
 
 const APPEARANCE_OPTIONS = [
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
+  { value: "light", label: msg("Light", { $context: "theme appearance" }) },
+  { value: "dark", label: msg("Dark", { $context: "theme appearance" }) },
 ] as const;
 
 const CANVAS_PRESETS: Readonly<Record<MobileThemeAppearance, ReadonlyArray<string>>> = {
@@ -63,6 +64,7 @@ function ColorField(props: {
   readonly presets: ReadonlyArray<string>;
   readonly onChange: (value: string) => void;
 }) {
+  const gt = useGT();
   const valid = isThemeHexColor(props.value);
   return (
     <View className="gap-3 p-4">
@@ -73,7 +75,7 @@ function ColorField(props: {
           style={valid ? { backgroundColor: props.value } : undefined}
         />
         <AppTextInput
-          accessibilityLabel={`${props.label} hex color`}
+          accessibilityLabel={gt("{color} hex color", { color: props.label })}
           autoCapitalize="none"
           autoCorrect={false}
           className="min-h-11 min-w-0 flex-1 rounded-xl border-continuous bg-card px-3 text-base text-foreground"
@@ -84,7 +86,9 @@ function ColorField(props: {
         />
       </View>
       {valid ? null : (
-        <Text className="text-sm text-danger-foreground">Use a hex color such as #1a2b3c.</Text>
+        <Text className="text-sm text-danger-foreground">
+          <T>Use a hex color such as #1a2b3c.</T>
+        </Text>
       )}
       <View className="flex-row flex-wrap gap-2">
         {props.presets.map((preset) => (
@@ -110,6 +114,12 @@ function ColorField(props: {
 export function SettingsThemeEditorRouteScreen({
   route,
 }: StaticScreenProps<{ readonly themeId?: string }>) {
+  const gt = useGT();
+  const messages = useMessages();
+  const appearanceOptions = APPEARANCE_OPTIONS.map((option) => ({
+    value: option.value,
+    label: messages(option.label),
+  }));
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const published = useAtomValue(publishedEnvironmentThemesAtom);
@@ -181,7 +191,7 @@ export function SettingsThemeEditorRouteScreen({
     );
     setPending(false);
     if (failures.length === environmentIds.length) {
-      Dialog.alert("Could not save theme", failures.join("\n\n"));
+      Dialog.alert(gt("Could not save theme"), failures.join("\n\n"));
       return;
     }
     leave();
@@ -190,9 +200,12 @@ export function SettingsThemeEditorRouteScreen({
   const remove = () => {
     if (existing === null) return;
     Dialog.confirm({
-      title: "Delete theme",
-      message: `${existing.name} will no longer be available on any device connected to these environments. Devices using it keep a copy.`,
-      confirmText: "Delete theme",
+      title: gt("Delete theme"),
+      message: gt(
+        "{name} will no longer be available on any device connected to these environments. Devices using it keep a copy.",
+        { name: existing.name },
+      ),
+      confirmText: gt("Delete theme"),
       destructive: true,
       onConfirm: () => {
         void (async () => {
@@ -202,7 +215,7 @@ export function SettingsThemeEditorRouteScreen({
           );
           setPending(false);
           if (failures.length > 0) {
-            Dialog.alert("Could not delete theme", failures.join("\n\n"));
+            Dialog.alert(gt("Could not delete theme"), failures.join("\n\n"));
             return;
           }
           leave();
@@ -212,7 +225,7 @@ export function SettingsThemeEditorRouteScreen({
   };
 
   return (
-    <SettingsScreen title={existing === null ? "Create theme" : "Edit theme"}>
+    <SettingsScreen title={existing === null ? gt("Create theme") : gt("Edit theme")}>
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
@@ -244,18 +257,22 @@ export function SettingsThemeEditorRouteScreen({
               </ScopedTheme>
             </>
           ) : (
-            <Text className="text-sm text-foreground-muted">Name the theme to preview it.</Text>
+            <Text className="text-sm text-foreground-muted">
+              <T>Name the theme to preview it.</T>
+            </Text>
           )}
         </View>
 
-        <SettingsSection title="Theme">
+        <SettingsSection title={gt("Theme")}>
           <View className="gap-3 p-4">
-            <Text className="text-sm font-t3-medium text-foreground-muted">Name</Text>
+            <Text className="text-sm font-t3-medium text-foreground-muted">
+              <T>Name</T>
+            </Text>
             <AppTextInput
-              accessibilityLabel="Theme name"
+              accessibilityLabel={gt("Theme name")}
               className="min-h-11 rounded-xl border-continuous bg-card px-3 text-base text-foreground"
               maxLength={48}
-              placeholder="My theme"
+              placeholder={gt("My theme")}
               returnKeyType="done"
               value={name}
               onChangeText={setName}
@@ -264,7 +281,7 @@ export function SettingsThemeEditorRouteScreen({
           {existing === null ? (
             <View className="px-4 pb-4">
               <SegmentedControl
-                options={APPEARANCE_OPTIONS}
+                options={appearanceOptions}
                 selected={appearance}
                 onSelect={(value) => {
                   setAppearance(value);
@@ -278,27 +295,35 @@ export function SettingsThemeEditorRouteScreen({
         </SettingsSection>
 
         <SettingsSection
-          title="Colors"
+          title={gt("Colors")}
           {...(hasTunedColors
             ? {
-                footer:
+                footer: gt(
                   "Changing a color rebuilds this theme from its background and accent, replacing colors fine-tuned on desktop.",
+                ),
               }
             : {})}
         >
           <ColorField
-            label="Background"
+            label={gt("Background", { $context: "theme color" })}
             presets={CANVAS_PRESETS[previewAppearance]}
             value={canvas}
             onChange={setCanvas}
           />
-          <ColorField label="Accent" presets={ACCENT_PRESETS} value={accent} onChange={setAccent} />
+          <ColorField
+            label={gt("Accent", { $context: "theme color" })}
+            presets={ACCENT_PRESETS}
+            value={accent}
+            onChange={setAccent}
+          />
         </SettingsSection>
 
-        <SettingsSection footer="Saved themes are shared with every device connected to your environments.">
+        <SettingsSection
+          footer={gt("Saved themes are shared with every device connected to your environments.")}
+        >
           <SettingsActionRow
             icon="checkmark.circle"
-            label={existing === null ? "Create theme" : "Save theme"}
+            label={existing === null ? gt("Create theme") : gt("Save theme")}
             disabled={!valid || pending || environmentIds.length === 0}
             loading={pending}
             onPress={() => void save()}
@@ -306,7 +331,7 @@ export function SettingsThemeEditorRouteScreen({
           {existing !== null ? (
             <SettingsActionRow
               icon="trash"
-              label="Delete theme"
+              label={gt("Delete theme")}
               tone="danger"
               disabled={pending}
               onPress={remove}

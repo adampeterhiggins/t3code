@@ -1,6 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { linearLinkForThread } from "@t3tools/client-runtime/state/linear";
 import type { EnvironmentId, LinearThreadLink, ScopedThreadRef } from "@t3tools/contracts";
+import { T, useGT } from "gt-react";
 import { ExternalLinkIcon, PencilIcon, UnlinkIcon } from "lucide-react";
 
 import { useLinearLinkClickHandler } from "~/browser/useLinearLinkClickHandler";
@@ -42,6 +43,7 @@ export function useUnlinkLinearIssue() {
  */
 export function LinearThreadLinkRow(props: { threadRef: ScopedThreadRef; link: LinearThreadLink }) {
   const { threadRef, link } = props;
+  const gt = useGT();
   const summary = useEnvironmentQuery(
     linearEnvironment.issueSummary({
       environmentId: threadRef.environmentId,
@@ -63,7 +65,7 @@ export function LinearThreadLinkRow(props: { threadRef: ScopedThreadRef; link: L
       linkUrl={link.url}
       icon={<LinearIcon className="size-4 shrink-0" />}
       label={`${identifier} ${title}`}
-      accessibleLabel={`Linked Linear issue ${identifier}: ${title}`}
+      accessibleLabel={gt("Linked Linear issue {identifier}: {title}", { identifier, title })}
       threadRef={threadRef}
       url={url}
       trailing={
@@ -84,18 +86,18 @@ export function LinearThreadLinkRow(props: { threadRef: ScopedThreadRef; link: L
         onClick={(event) => openLink(event, url)}
       >
         <ExternalLinkIcon />
-        Open in Linear
+        <T>Open in Linear</T>
       </MenuItem>
       {canEdit ? (
         <>
           <MenuItem onClick={() => openLinearIssuePicker(threadRef, "link")}>
             <PencilIcon />
-            Change issue…
+            <T>Change issue…</T>
           </MenuItem>
           <MenuSeparator />
           <MenuItem onClick={() => void unlink(threadRef)}>
             <UnlinkIcon />
-            Unlink issue
+            <T>Unlink issue</T>
           </MenuItem>
         </>
       ) : null}

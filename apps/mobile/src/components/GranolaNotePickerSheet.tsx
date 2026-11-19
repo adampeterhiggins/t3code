@@ -6,10 +6,12 @@ import { formatComposerContextReference } from "@t3tools/shared/composerContextR
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
+import { msg, useGT, useMessages } from "gt-react-native";
 import { useState, type ReactNode } from "react";
 import { ActivityIndicator, Alert, FlatList, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { m, type MessageResolver } from "../i18n/messages";
 import { useEnvironmentServerConfig } from "../state/entities";
 import { granolaEnvironment } from "../state/granola";
 import { useDebouncedValue } from "../state/queries";
@@ -54,11 +56,17 @@ export function granolaNoteDetail(note: {
 }
 
 /** Granola's failures carry a reason; a rate limit deserves a clearer hint than its detail. */
-function granolaErrorMessage(error: unknown, fallback: string): string {
+function granolaErrorMessage(
+  error: unknown,
+  fallback: string,
+  resolve: MessageResolver = m,
+): string {
   if (typeof error === "object" && error !== null && "reason" in error) {
-    if (error.reason === "rate-limited") return "Granola is busy. Try again shortly.";
+    if (error.reason === "rate-limited") return resolve(msg("Granola is busy. Try again shortly."));
     if (error.reason === "not-connected" || error.reason === "revoked") {
-      return "Granola is not connected. Connect it from Settings > Integrations on desktop or web.";
+      return resolve(
+        msg("Granola is not connected. Connect it from Settings > Integrations on desktop or web."),
+      );
     }
   }
   return error instanceof Error && error.message.trim() ? error.message : fallback;
@@ -117,13 +125,14 @@ export function useGranolaNotePicker(target: GranolaNotePickerTarget | null): {
  * desktop or web.
  */
 function GranolaNotePickerSheet(props: OpenedGranolaNotePicker & { readonly onClose: () => void }) {
+  const gt = useGT();
   const connection = useEnvironmentQuery(
     granolaEnvironment.connection({ environmentId: props.environmentId, input: {} }),
   );
   const phase = connection.data?.phase;
   return (
     <PickerSheet
-      title={props.mode === "link" ? "Link Granola note" : "Granola note"}
+      title={props.mode === "link" ? gt("Link Granola note") : gt("Granola note")}
       onClose={props.onClose}
     >
       {phase === "connected" ? (
@@ -135,7 +144,9 @@ function GranolaNotePickerSheet(props: OpenedGranolaNotePicker & { readonly onCl
           ) : (
             <Text className="text-center text-foreground-muted">
               {connection.error ??
-                "Granola is not connected on this environment. Connect it from Settings > Integrations on desktop or web."}
+                gt(
+                  "Granola is not connected on this environment. Connect it from Settings > Integrations on desktop or web.",
+                )}
             </Text>
           )}
         </View>
@@ -145,6 +156,7 @@ function GranolaNotePickerSheet(props: OpenedGranolaNotePicker & { readonly onCl
 }
 
 function GranolaNoteSearch(props: OpenedGranolaNotePicker & { readonly onClose: () => void }) {
+  const gt = useGT();
   const [query, setQuery] = useState("");
   const trimmed = query.trim();
   const settled = useDebouncedValue(trimmed, SEARCH_DEBOUNCE_MS);
@@ -165,8 +177,8 @@ function GranolaNoteSearch(props: OpenedGranolaNotePicker & { readonly onClose: 
     });
     if (result._tag === "Failure") {
       Alert.alert(
-        "Could not link Granola note",
-        granolaErrorMessage(squashAtomCommandFailure(result), "Try again."),
+        m(msg("Could not link Granola note")),
+        granolaErrorMessage(squashAtomCommandFailure(result), m(msg("Try again."))),
       );
       return;
     }
@@ -184,8 +196,8 @@ function GranolaNoteSearch(props: OpenedGranolaNotePicker & { readonly onClose: 
     });
     if (fetched._tag === "Failure") {
       Alert.alert(
-        "Could not attach Granola note",
-        granolaErrorMessage(squashAtomCommandFailure(fetched), "Try again."),
+        m(msg("Could not attach Granola note")),
+        granolaErrorMessage(squashAtomCommandFailure(fetched), m(msg("Try again."))),
       );
       return;
     }
@@ -200,7 +212,10 @@ function GranolaNoteSearch(props: OpenedGranolaNotePicker & { readonly onClose: 
         props.insertion,
       )
     ) {
-      Alert.alert("Too many context items", "Remove some context from the draft and try again.");
+      Alert.alert(
+        m(msg("Too many context items")),
+        m(msg("Remove some context from the draft and try again.")),
+      );
       return;
     }
     props.onClose();
@@ -216,12 +231,12 @@ function GranolaNoteSearch(props: OpenedGranolaNotePicker & { readonly onClose: 
     <View className="flex-1">
       <View className="px-4 pb-3">
         <AppTextInput
-          accessibilityLabel="Search Granola notes"
+          accessibilityLabel={gt("Search Granola notes")}
           autoFocus
           autoCapitalize="none"
           autoCorrect={false}
           clearButtonMode="while-editing"
-          placeholder="Search meetings or paste a Granola link"
+          placeholder={gt("Search meetings or paste a Granola link")}
           returnKeyType="search"
           value={query}
           onChangeText={setQuery}
@@ -246,6 +261,8 @@ function GranolaNoteResults(props: {
   readonly attaching: string | null;
   readonly onPick: (note: GranolaNoteSummary) => void;
 }) {
+  const gt = useGT();
+  const resolve = useMessages();
   const insets = useSafeAreaInsets();
   const result = useAtomValue(
     granolaEnvironment.notes({
@@ -257,7 +274,11 @@ function GranolaNoteResults(props: {
   const pending = props.pendingInput || result.waiting;
   const error =
     result._tag === "Failure"
-      ? granolaErrorMessage(Cause.squash(result.cause), "Could not search Granola.")
+      ? granolaErrorMessage(
+          Cause.squash(result.cause),
+          resolve(msg("Could not search Granola.")),
+          resolve,
+        )
       : null;
   return (
     <FlatList
@@ -277,7 +298,9 @@ function GranolaNoteResults(props: {
               }
             >
               {error ??
-                (props.query ? "No matching meetings." : "No meetings in the last 30 days.")}
+                (props.query
+                  ? gt("No matching meetings.")
+                  : gt("No meetings in the last 30 days."))}
             </Text>
           )}
         </View>

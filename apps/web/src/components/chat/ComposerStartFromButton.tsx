@@ -1,3 +1,4 @@
+import { useGT } from "gt-react";
 import { EllipsisIcon } from "lucide-react";
 import type { ChatComposerProps } from "./ChatComposer";
 import { shortcutLabelForCommand } from "../../keybindings";
@@ -10,6 +11,7 @@ export function ComposerStartFromButton({
   keybindings,
   terminalOpen,
 }: Pick<ChatComposerProps, "onStartFrom" | "keybindings" | "terminalOpen"> & { inline?: boolean }) {
+  const gt = useGT();
   const startFromShortcutLabel = onStartFrom
     ? shortcutLabelForCommand(keybindings, "chat.startFrom", {
         context: { terminalFocus: false, terminalOpen, modelPickerOpen: false },
@@ -24,7 +26,7 @@ export function ComposerStartFromButton({
             variant="ghost"
             size="icon-sm"
             className={inline ? "shrink-0" : "absolute end-2 top-2 z-10 sm:end-2.5 sm:top-2.5"}
-            aria-label="Start from a pull request, branch, issue, or automation"
+            aria-label={gt("Start from a pull request, branch, issue, or automation")}
             onClick={onStartFrom}
           />
         }
@@ -32,8 +34,11 @@ export function ComposerStartFromButton({
         <EllipsisIcon />
       </TooltipTrigger>
       <TooltipPopup>
-        Start from a PR, branch, issue, or automation
-        {startFromShortcutLabel ? ` (${startFromShortcutLabel})` : null}
+        {startFromShortcutLabel
+          ? gt("Start from a PR, branch, issue, or automation ({shortcut})", {
+              shortcut: startFromShortcutLabel,
+            })
+          : gt("Start from a PR, branch, issue, or automation")}
       </TooltipPopup>
     </Tooltip>
   );

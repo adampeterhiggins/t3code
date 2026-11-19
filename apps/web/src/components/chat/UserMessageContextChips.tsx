@@ -315,38 +315,44 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
     },
     previewChip("element", (record, context) =>
       record.kind === "element"
-        ? buttonContextChip({
-            kind: "element",
-            icon: <MousePointerClickIcon />,
-            label: record.label,
-            kindLabel: context.m(msg("Browser element")),
-            copyMarkdown: context.copyMarkdown,
-            preview: { record },
-          })
+        ? buttonContextChip(
+            {
+              kind: "element",
+              icon: <MousePointerClickIcon />,
+              label: record.label,
+              kindLabel: context.m(msg("Browser element")),
+              copyMarkdown: context.copyMarkdown,
+              preview: { record },
+            },
+            context.m,
+          )
         : null,
     ),
     previewChip("preview-annotation", (record, context) => {
       if (record.kind !== "preview-annotation") return null;
       const image = context.annotationImage;
       const screenshotUrl = image?.previewUrl ?? null;
-      return buttonContextChip({
-        kind: "preview-annotation",
-        icon: <MousePointerClickIcon />,
-        label: record.label,
-        kindLabel: context.m(msg("Preview annotation")),
-        copyMarkdown: context.copyMarkdown,
-        preview: {
-          record,
-          screenshotUrl,
-          onExpandScreenshot:
-            image && screenshotUrl
-              ? () => {
-                  const preview = buildExpandedImagePreview([image], image.id);
-                  if (preview) context.row.onImageExpand(preview);
-                }
-              : undefined,
+      return buttonContextChip(
+        {
+          kind: "preview-annotation",
+          icon: <MousePointerClickIcon />,
+          label: record.label,
+          kindLabel: context.m(msg("Preview annotation")),
+          copyMarkdown: context.copyMarkdown,
+          preview: {
+            record,
+            screenshotUrl,
+            onExpandScreenshot:
+              image && screenshotUrl
+                ? () => {
+                    const preview = buildExpandedImagePreview([image], image.id);
+                    if (preview) context.row.onImageExpand(preview);
+                  }
+                : undefined,
+          },
         },
-      });
+        context.m,
+      );
     }),
     previewChip("review-comment", (record, context) => {
       if (record.kind !== "review-comment") return null;

@@ -1,6 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { googleLinkForThread } from "@t3tools/client-runtime/state/google";
 import type { EnvironmentId, ScopedThreadRef, GoogleThreadLink } from "@t3tools/contracts";
+import { T, useGT } from "gt-react";
 import { ExternalLinkIcon, PencilIcon, UnlinkIcon } from "lucide-react";
 
 import { useLinkClickHandler } from "~/browser/useOpenLink";
@@ -38,6 +39,7 @@ export function useUnlinkGoogleFile() {
 /** The thread details row for the thread's linked Google file, event or email, showing its title when linked. */
 export function GoogleThreadLinkRow(props: { threadRef: ScopedThreadRef; link: GoogleThreadLink }) {
   const { threadRef, link } = props;
+  const gt = useGT();
   const googleEnabled = useEnvironmentSettings(
     threadRef.environmentId,
     (s) => s.enableGoogleIntegration,
@@ -54,7 +56,7 @@ export function GoogleThreadLinkRow(props: { threadRef: ScopedThreadRef; link: G
       linkUrl={link.url}
       icon={<GoogleSourceIcon fileType={link.fileType} className="size-4 shrink-0" />}
       label={link.title}
-      accessibleLabel={`Linked Google file, event or email: ${link.title}`}
+      accessibleLabel={gt("Linked Google file, event or email: {title}", { title: link.title })}
       threadRef={threadRef}
       url={link.url}
     >
@@ -63,12 +65,12 @@ export function GoogleThreadLinkRow(props: { threadRef: ScopedThreadRef; link: G
         onClick={(event) => openLink(event, link.url)}
       >
         <ExternalLinkIcon />
-        Open in Google
+        <T>Open in Google</T>
       </MenuItem>
       {googleEnabled && canEdit ? (
         <MenuItem onClick={() => openGoogleFilePicker(threadRef, "link")}>
           <PencilIcon />
-          Change document…
+          <T>Change document…</T>
         </MenuItem>
       ) : null}
       {canEdit ? (
@@ -76,7 +78,7 @@ export function GoogleThreadLinkRow(props: { threadRef: ScopedThreadRef; link: G
           <MenuSeparator />
           <MenuItem onClick={() => void unlink(threadRef)}>
             <UnlinkIcon />
-            Unlink document
+            <T>Unlink document</T>
           </MenuItem>
         </>
       ) : null}

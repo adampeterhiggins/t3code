@@ -8,6 +8,7 @@ import {
   SlackIcon,
 } from "../Icons";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import { T } from "gt-react";
 import { useEnvironmentSettings } from "~/hooks/useSettings";
 import { MenuItem } from "../ui/menu";
 import { openLinearIssuePicker } from "./LinearIssuePicker";
@@ -74,42 +75,43 @@ export function ComposerIntegrationAttachMenuItems(props: {
     <>
       <MenuItem onClick={() => props.onPick("linear-issue")}>
         <LinearIcon />
-        Linear issue
+        <T>Linear issue</T>
       </MenuItem>
       {notionEnabled ? (
         <MenuItem onClick={() => props.onPick("notion-page")}>
           <NotionIcon />
-          Notion page
+          <T>Notion page</T>
         </MenuItem>
       ) : null}
       {googleEnabled ? (
         <MenuItem onClick={() => props.onPick("google-file")}>
           <GoogleIcon />
+          {/* oxlint-disable-next-line t3code/no-untranslated-copy -- product name */}
           Google
         </MenuItem>
       ) : null}
       {granolaEnabled ? (
         <MenuItem onClick={() => props.onPick("granola-note")}>
           <GranolaIcon />
-          Granola note
+          <T>Granola note</T>
         </MenuItem>
       ) : null}
       {slackEnabled ? (
         <MenuItem onClick={() => props.onPick("slack-message")}>
           <SlackIcon />
-          Slack message
+          <T>Slack message</T>
         </MenuItem>
       ) : null}
       {discordEnabled ? (
         <MenuItem onClick={() => props.onPick("discord-message")}>
           <DiscordIcon />
-          Discord message
+          <T>Discord message</T>
         </MenuItem>
       ) : null}
       {props.githubIssuesAvailable ? (
         <MenuItem onClick={() => props.onPick("github-issue")}>
           <GitHubIcon />
-          GitHub issue
+          <T>GitHub issue</T>
         </MenuItem>
       ) : null}
     </>

@@ -1,5 +1,7 @@
 import type { ProjectId, ScheduledTask } from "@t3tools/contracts";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
 
 type AutomationCandidate = Pick<
   ScheduledTask,
@@ -9,10 +11,11 @@ type AutomationCandidate = Pick<
 /** Why Run now cannot start a task, or null when it can. */
 export function automationRunBlocker(
   task: Pick<ScheduledTask, "schedule" | "lastRunStatus">,
+  resolve: MFunctionType = mFallback,
 ): string | null {
   // The server refuses a webhook task: its prompt is rendered from the request that triggers it.
-  if (task.schedule.type === "webhook") return "Runs when its webhook URL is called";
-  if (task.lastRunStatus === "running") return "Already running";
+  if (task.schedule.type === "webhook") return resolve(msg("Runs when its webhook URL is called"));
+  if (task.lastRunStatus === "running") return resolve(msg("Already running"));
   return null;
 }
 

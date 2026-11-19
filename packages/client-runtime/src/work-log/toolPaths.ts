@@ -7,6 +7,8 @@ import {
 import { isWindowsAbsolutePath } from "@t3tools/shared/path";
 import { collectToolFilePaths } from "@t3tools/shared/toolActivity";
 import { Atom } from "effect/reactivity";
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
 
 import { toolGroupAction, type WorkLogPresentationEntry } from "./presentation.ts";
 
@@ -74,6 +76,7 @@ export function resolveToolPath(
   path: string,
   workspaceRoot: string | null | undefined,
   roots: ReadonlyArray<ToolPathRoot> = [],
+  resolve: MFunctionType = mFallback,
 ) {
   const windows =
     isWindowsAbsolutePath(path) || Boolean(workspaceRoot && isWindowsAbsolutePath(workspaceRoot));
@@ -124,7 +127,8 @@ export function resolveToolPath(
   }
   return {
     absolutePath,
-    rootLabel: root?.label ?? "External",
+    rootLabel:
+      root?.label ?? resolve(msg("External", { $context: "path outside every known workspace" })),
     project: root?.project ?? null,
     segments: relative.split("/").filter(Boolean),
     // The thread's own checkout. A list of its files can skip repeating the name.
@@ -193,6 +197,7 @@ export function toolPathTextParts(
   workspaceRoot: string | null | undefined,
   roots: ReadonlyArray<ToolPathRoot> = [],
   targets: ReadonlyArray<string> = [],
+  resolve: MFunctionType = mFallback,
 ): ReadonlyArray<ToolPathPart> {
   // Quoted absolute targets can contain spaces; unquoted shell paths stop at syntax delimiters.
   const pattern =
@@ -204,7 +209,7 @@ export function toolPathTextParts(
     path: NonNullable<ReturnType<typeof resolveToolPath>>;
   }[] = [];
   for (const target of targets) {
-    const path = resolveToolPath(target, workspaceRoot, roots);
+    const path = resolveToolPath(target, workspaceRoot, roots, resolve);
     if (!path) continue;
     for (const spelling of new Set([
       target,
@@ -239,7 +244,7 @@ export function toolPathTextParts(
     if (text[start - 1] === ":" && match[0].startsWith("//")) continue;
     if (start > 1 && text.slice(start - 2, start) === ":/") continue;
     const value = match[1] ?? match[2] ?? match[0];
-    const path = resolveToolPath(value, workspaceRoot, roots);
+    const path = resolveToolPath(value, workspaceRoot, roots, resolve);
     if (!path) continue;
     matches.push({ start, length: match[0].length, path });
   }

@@ -9,7 +9,9 @@ import {
 } from "@t3tools/client-runtime/state/agent-list-view";
 import type { OrchestrationV2ProjectedTurnItem, ThreadId, TurnItemId } from "@t3tools/contracts";
 import { filterFacets } from "@t3tools/shared/filterFacets";
+import { msg } from "gt-react";
 
+import { m, type MessageResolver } from "../../i18n/messages";
 import type { TimelineEntry, WorkLogEntry } from "../../session-logic";
 import { workEntryDisplayLabel, workEntryIsVisibleInGroup } from "./MessagesTimeline.logic";
 
@@ -127,6 +129,7 @@ function workRow(
 function eventRow(
   projectedItem: OrchestrationV2ProjectedTurnItem,
   createdAt: string,
+  resolve: MessageResolver,
 ): AgentTranscriptRow {
   const { item } = projectedItem;
   const title = item.title?.trim() || null;
@@ -136,7 +139,9 @@ function eventRow(
     createdAt,
     label:
       item.type === "subagent"
-        ? `Started agent: ${title ?? (item.prompt.trim().split("\n")[0] || "Agent")}`
+        ? resolve(msg("Started agent: {title}"), {
+            title: title ?? (item.prompt.trim().split("\n")[0] || resolve(msg("Agent"))),
+          })
         : (title ?? item.type.replaceAll("_", " ")),
     detail: null,
     tone: "info",
@@ -148,6 +153,7 @@ function eventRow(
 function entryRow(
   entry: TimelineEntry,
   workspaceRoot: string | undefined,
+  resolve: MessageResolver,
 ): AgentTranscriptRow | null {
   switch (entry.kind) {
     case "message": {
@@ -184,7 +190,7 @@ function entryRow(
     case "work":
       return workRow(entry.entry, entry.createdAt, workspaceRoot);
     case "event":
-      return eventRow(entry.projectedItem, entry.createdAt);
+      return eventRow(entry.projectedItem, entry.createdAt, resolve);
     case "mcp-app":
       return null;
     case "html-render":
@@ -192,7 +198,7 @@ function entryRow(
         kind: "notice",
         id: entry.id,
         createdAt: entry.createdAt,
-        label: `Rendered: ${entry.htmlRender.title}`,
+        label: resolve(msg("Rendered: {title}"), { title: entry.htmlRender.title }),
         detail: null,
         tone: "info",
         childThreadId: null,
@@ -211,7 +217,12 @@ export type AgentTranscriptRowCache = WeakMap<TimelineEntry, AgentTranscriptRow 
  */
 export function deriveAgentTranscriptRows(
   entries: ReadonlyArray<TimelineEntry>,
-  options: { readonly prompt: string | null; readonly workspaceRoot: string | undefined },
+  options: {
+    readonly prompt: string | null;
+    readonly workspaceRoot: string | undefined;
+    /** Components pass `useMessages()`; a new resolver needs a new cache. */
+    readonly resolve?: MessageResolver;
+  },
   cache?: AgentTranscriptRowCache,
 ): ReadonlyArray<AgentTranscriptRow> {
   const prompt = options.prompt?.trim() || null;
@@ -230,7 +241,7 @@ export function deriveAgentTranscriptRows(
     }
     let row = cache?.get(entry);
     if (row === undefined) {
-      row = entryRow(entry, options.workspaceRoot);
+      row = entryRow(entry, options.workspaceRoot, options.resolve ?? m);
       cache?.set(entry, row);
     }
     if (row !== null) rows.push(row);

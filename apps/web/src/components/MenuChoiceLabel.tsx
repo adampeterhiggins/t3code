@@ -1,3 +1,5 @@
+import { useGT } from "gt-react";
+
 import { HighlightedSearchText } from "./ui/highlighted-search-text";
 
 /** A hover action on the highlighted row, such as "Only". It follows the label on the same
@@ -29,6 +31,7 @@ export function MenuChoiceLabel(props: {
   onExclude?: (() => void) | undefined;
   excluded?: boolean;
 }) {
+  const gt = useGT();
   return (
     <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
       <span
@@ -40,8 +43,16 @@ export function MenuChoiceLabel(props: {
       >
         <HighlightedSearchText text={props.label} query={props.query ?? ""} />
       </span>
-      <ChoiceActionButton label="Only" onClick={props.onOnly} />
-      {props.onExclude ? <ChoiceActionButton label="Exclude" onClick={props.onExclude} /> : null}
+      <ChoiceActionButton
+        label={gt("Only", { $context: "filter to only this choice" })}
+        onClick={props.onOnly}
+      />
+      {props.onExclude ? (
+        <ChoiceActionButton
+          label={gt("Exclude", { $context: "filter out this choice" })}
+          onClick={props.onExclude}
+        />
+      ) : null}
     </span>
   );
 }

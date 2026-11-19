@@ -1,3 +1,4 @@
+import { useGT } from "gt-react";
 import { useRef, useState, type PointerEvent } from "react";
 import { updateClientSettings } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
@@ -10,6 +11,7 @@ export function ChatWidthResizeHandles({
 }: {
   timelineElement: HTMLElement | null;
 }) {
+  const gt = useGT();
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{
     side: "start" | "end";
@@ -67,8 +69,8 @@ export function ChatWidthResizeHandles({
   const handleProps = {
     role: "separator",
     "aria-orientation": "vertical",
-    "aria-label": "Resize chat width",
-    title: "Drag to resize, double-click to reset",
+    "aria-label": gt("Resize chat width"),
+    title: gt("Drag to resize, double-click to reset"),
     onPointerMove,
     onPointerUp: endDrag,
     onPointerCancel: endDrag,

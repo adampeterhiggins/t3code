@@ -1,4 +1,6 @@
 import type { OrchestrationV2TurnItem, OrchestrationV2WebSearchResult } from "@t3tools/contracts";
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
 
 type WebSearchItem = Extract<OrchestrationV2TurnItem, { type: "web_search" }>;
 
@@ -110,9 +112,16 @@ export function webUrlBreadcrumb(url: string): string {
 }
 
 /** The row label: what was read, or what was searched for. */
-export function webToolLabel(view: WebToolView): string | undefined {
+export function webToolLabel(
+  view: WebToolView,
+  resolve: MFunctionType = mFallback,
+): string | undefined {
   if (view.action === "fetch") {
-    return view.url === undefined ? undefined : `Fetched ${webUrlBreadcrumb(view.url)}`;
+    return view.url === undefined
+      ? undefined
+      : resolve(msg("Fetched {page}", { page: webUrlBreadcrumb(view.url) }));
   }
-  return view.query === undefined ? undefined : `Searched “${view.query}”`;
+  return view.query === undefined
+    ? undefined
+    : resolve(msg("Searched “{query}”", { query: view.query }));
 }

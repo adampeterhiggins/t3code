@@ -682,7 +682,7 @@ function itemSummary(
     return formatSubagentDisplayTitle(title || resolve(msg("Subagent")));
   if (item.type === "web_search") {
     return (
-      webToolLabel(webToolView(item)) ??
+      webToolLabel(webToolView(item), resolve) ??
       (title ? capitalizePhrase(title) : resolve(msg("Searched the web")))
     );
   }

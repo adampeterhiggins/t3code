@@ -1,5 +1,6 @@
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import * as Schema from "effect/Schema";
+import { msg } from "gt-react";
 import {
   MessageDraftError,
   type ChatAttachment,
@@ -11,6 +12,7 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 
+import { m } from "../../i18n/messages";
 import { LOCAL_MESSAGE_DRAFT_ORIGIN, messageDraftEnvironment } from "../../state/messageDrafts";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { stackedThreadToast, toastManager } from "../ui/toast";
@@ -27,7 +29,7 @@ const isMessageDraftError = Schema.is(MessageDraftError);
 
 function failureMessage(error: unknown) {
   if (isMessageDraftError(error) && error.reason === "not-found") {
-    return "This draft was already opened or sent on another device";
+    return m(msg("This draft was already opened or sent on another device"));
   }
   return error instanceof Error && error.message.trim().length > 0 ? error.message : null;
 }
@@ -67,7 +69,10 @@ export function useMessageDraftActions() {
       },
     });
     if (result._tag === "Success") return result.value;
-    reportFailure("Could not save the draft", failureMessage(squashAtomCommandFailure(result)));
+    reportFailure(
+      m(msg("Could not save the draft")),
+      failureMessage(squashAtomCommandFailure(result)),
+    );
     return null;
   };
 
@@ -77,14 +82,20 @@ export function useMessageDraftActions() {
   ): Promise<MessageDraft | null> => {
     const result = await takeCommand({ environmentId, input: { draftId } });
     if (result._tag === "Success") return result.value;
-    reportFailure("Could not open the draft", failureMessage(squashAtomCommandFailure(result)));
+    reportFailure(
+      m(msg("Could not open the draft")),
+      failureMessage(squashAtomCommandFailure(result)),
+    );
     return null;
   };
 
   const remove = async (environmentId: EnvironmentId, draftId: MessageDraftId) => {
     const result = await removeCommand({ environmentId, input: { draftId } });
     if (result._tag === "Success") return true;
-    reportFailure("Could not delete the draft", failureMessage(squashAtomCommandFailure(result)));
+    reportFailure(
+      m(msg("Could not delete the draft")),
+      failureMessage(squashAtomCommandFailure(result)),
+    );
     return false;
   };
 
@@ -95,7 +106,10 @@ export function useMessageDraftActions() {
   ) => {
     const result = await sendCommand({ environmentId, input: { draftId, mode } });
     if (result._tag === "Success") return true;
-    reportFailure("Could not send the draft", failureMessage(squashAtomCommandFailure(result)));
+    reportFailure(
+      m(msg("Could not send the draft")),
+      failureMessage(squashAtomCommandFailure(result)),
+    );
     return false;
   };
 

@@ -7,6 +7,7 @@ import {
   type ProjectId,
   type ProviderInstanceId,
 } from "@t3tools/contracts";
+import { T, useGT } from "gt-react";
 import { PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
@@ -41,7 +42,7 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Textarea } from "../ui/textarea";
 import { SETTINGS_PICKER_TRIGGER_CLASSNAME, SettingsRow } from "./settingsLayout";
 import { scheduledTaskDefaultModel } from "./scheduledTasksSettings.logic";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 
 const ANY_TEAM = "__any__";
 
@@ -69,6 +70,8 @@ export function LinearAssignmentTriggerRows({
   ).data;
   // `null` is closed, `"new"` adds a rule, otherwise the rule being edited.
   const [editing, setEditing] = useState<LinearAssignmentTrigger | "new" | null>(null);
+  const searchableSetting = useSearchableSetting();
+  const gt = useGT();
 
   const save = (next: ReadonlyArray<LinearAssignmentTrigger>) =>
     updateSettings({ linearAssignmentTriggers: next });
@@ -77,8 +80,10 @@ export function LinearAssignmentTriggerRows({
     <>
       <SettingsRow
         {...searchableSetting("linear-assignment-triggers")}
-        title="Start threads from assignments"
-        description="When an issue is newly assigned to you, start a thread for it. Issues already assigned when you add a rule are skipped. Checks every 2 minutes."
+        title={gt("Start threads from assignments")}
+        description={gt(
+          "When an issue is newly assigned to you, start a thread for it. Issues already assigned when you add a rule are skipped. Checks every 2 minutes.",
+        )}
         control={
           <Button
             size="sm"
@@ -87,7 +92,7 @@ export function LinearAssignmentTriggerRows({
             onClick={() => setEditing("new")}
           >
             <PlusIcon />
-            Add rule
+            <T>Add rule</T>
           </Button>
         }
       />
@@ -96,21 +101,22 @@ export function LinearAssignmentTriggerRows({
           (entry) => entry.environmentId === environmentId && entry.id === rule.projectId,
         );
         const team = filterOptions?.teams.find((entry) => entry.id === rule.teamId);
-        const filters = [
-          rule.teamId === null ? "Any team" : (team?.name ?? "Unknown team"),
-          rule.labelName === null ? "any label" : `label “${rule.labelName}”`,
-        ].join(", ");
+        const teamName = rule.teamId === null ? gt("Any team") : (team?.name ?? gt("Unknown team"));
+        const filters =
+          rule.labelName === null
+            ? gt("{team}, any label", { team: teamName })
+            : gt("{team}, label “{label}”", { team: teamName, label: rule.labelName });
         return (
           <SettingsRow
             key={rule.id}
-            title={project?.title ?? "Missing project"}
+            title={project?.title ?? gt("Missing project")}
             description={`${filters} · ${rule.modelSelection.model}`}
             control={
               <div className="flex gap-1">
                 <Button
                   size="icon-sm"
                   variant="ghost"
-                  aria-label="Edit rule"
+                  aria-label={gt("Edit rule")}
                   disabled={!canOperate}
                   onClick={() => setEditing(rule)}
                 >
@@ -119,7 +125,7 @@ export function LinearAssignmentTriggerRows({
                 <Button
                   size="icon-sm"
                   variant="ghost"
-                  aria-label="Remove rule"
+                  aria-label={gt("Remove rule")}
                   disabled={!canOperate}
                   onClick={() => save(rules.filter((entry) => entry.id !== rule.id))}
                 >
@@ -196,6 +202,7 @@ function AssignmentTriggerDialog({
     activeModel,
   );
   const canSave = project !== undefined && activeSelection !== null;
+  const gt = useGT();
 
   return (
     <Dialog
@@ -207,19 +214,21 @@ function AssignmentTriggerDialog({
       <DialogPopup className="max-w-xl">
         <DialogHeader>
           <DialogTitle>
-            {rule === null ? "New assignment rule" : "Edit assignment rule"}
+            {rule === null ? <T>New assignment rule</T> : <T>Edit assignment rule</T>}
           </DialogTitle>
           <DialogDescription>
-            Each matching issue newly assigned to you starts one thread in a new worktree, with the
-            issue attached and linked.
+            <T>
+              Each matching issue newly assigned to you starts one thread in a new worktree, with
+              the issue attached and linked.
+            </T>
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>
           <div className="space-y-5">
-            <Field label="Project" htmlFor="linear-trigger-project">
+            <Field label={gt("Project")} htmlFor="linear-trigger-project">
               <Select value={projectId} onValueChange={(value) => setProjectId(value ?? "")}>
                 <SelectTrigger size="sm" id="linear-trigger-project">
-                  <SelectValue placeholder="Select a project">{project?.title}</SelectValue>
+                  <SelectValue placeholder={gt("Select a project")}>{project?.title}</SelectValue>
                 </SelectTrigger>
                 <SelectPopup>
                   {projects.map((entry) => (
@@ -231,17 +240,19 @@ function AssignmentTriggerDialog({
               </Select>
             </Field>
             <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Linear team" htmlFor="linear-trigger-team">
+              <Field label={gt("Linear team")} htmlFor="linear-trigger-team">
                 <Select value={teamId} onValueChange={(value) => setTeamId(value ?? ANY_TEAM)}>
                   <SelectTrigger size="sm" id="linear-trigger-team">
                     <SelectValue>
                       {teamId === ANY_TEAM
-                        ? "Any team"
-                        : (teams.find((team) => team.id === teamId)?.name ?? "Unknown team")}
+                        ? gt("Any team")
+                        : (teams.find((team) => team.id === teamId)?.name ?? gt("Unknown team"))}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectPopup>
-                    <SelectItem value={ANY_TEAM}>Any team</SelectItem>
+                    <SelectItem value={ANY_TEAM}>
+                      <T>Any team</T>
+                    </SelectItem>
                     {teams.map((team) => (
                       <SelectItem key={team.id} value={team.id}>
                         {team.name}
@@ -250,26 +261,31 @@ function AssignmentTriggerDialog({
                   </SelectPopup>
                 </Select>
               </Field>
-              <Field label="Label" hint="Optional" htmlFor="linear-trigger-label">
+              <Field
+                label={gt("Label", { $context: "a Linear issue label" })}
+                hint={gt("Optional")}
+                htmlFor="linear-trigger-label"
+              >
                 <Input
                   id="linear-trigger-label"
                   size="sm"
-                  placeholder="Any label"
+                  placeholder={gt("Any label")}
                   value={labelName}
                   onChange={(event) => setLabelName(event.target.value)}
                 />
               </Field>
             </div>
-            <Field label="Prompt" hint="Optional" htmlFor="linear-trigger-prompt">
+            <Field label={gt("Prompt")} hint={gt("Optional")} htmlFor="linear-trigger-prompt">
               <Textarea
                 id="linear-trigger-prompt"
                 className="max-h-64 overflow-y-auto"
+                // oxlint-disable-next-line t3code/no-untranslated-copy -- the server's English default prompt, sent to the agent
                 placeholder="This Linear issue was just assigned to me. Work on it."
                 value={prompt}
                 onChange={(event) => setPrompt(event.target.value)}
               />
             </Field>
-            <Field label="Model">
+            <Field label={gt("Model")}>
               <ProviderModelPicker
                 environmentId={environmentId}
                 activeInstanceId={activeInstanceId}
@@ -292,7 +308,9 @@ function AssignmentTriggerDialog({
           </div>
         </DialogPanel>
         <DialogFooter>
-          <DialogClose render={<Button size="sm" variant="ghost" />}>Cancel</DialogClose>
+          <DialogClose render={<Button size="sm" variant="ghost" />}>
+            <T>Cancel</T>
+          </DialogClose>
           <Button
             size="sm"
             disabled={!canSave}
@@ -308,7 +326,7 @@ function AssignmentTriggerDialog({
               });
             }}
           >
-            Save
+            <T>Save</T>
           </Button>
         </DialogFooter>
       </DialogPopup>

@@ -67,6 +67,7 @@ import {
   XIcon,
   AtSignIcon,
 } from "lucide-react";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
 import {
   useEffect,
   useLayoutEffect,
@@ -139,21 +140,21 @@ import {
 import { continueAgentInChat, subagentContextSubject } from "./agentChatActions";
 
 const TOOL_SORT_LABELS: Record<SubagentToolCallSort, string> = {
-  newest: "Newest first",
-  oldest: "Oldest first",
-  duration: "Longest first",
+  newest: msg("Newest first", { $context: "sort order" }),
+  oldest: msg("Oldest first", { $context: "sort order" }),
+  duration: msg("Longest first", { $context: "sort order" }),
 };
 
 const TOOL_STATUS_LABELS: Record<SubagentToolCall["status"], string> = {
-  running: "Running",
-  completed: "Completed",
-  failed: "Failed",
+  running: msg("Running", { $context: "tool call status" }),
+  completed: msg("Completed", { $context: "tool call status" }),
+  failed: msg("Failed", { $context: "tool call status" }),
 };
 
 const TRANSCRIPT_KIND_LABELS: Record<AgentTranscriptKind, string> = {
-  message: "Messages",
-  reasoning: "Thinking",
-  tool: "Tool calls",
+  message: msg("Messages", { $context: "transcript filter" }),
+  reasoning: msg("Thinking", { $context: "transcript filter: model reasoning" }),
+  tool: msg("Tool calls", { $context: "transcript filter" }),
 };
 
 const NO_OPTIMISTIC_MESSAGES: [] = [];
@@ -223,6 +224,7 @@ function HeaderText(props: { text: string; tone?: "error" | undefined }) {
 
 /** Text clamped to four lines, with Show all only when it overflows. */
 function ClampedText(props: { text: string }) {
+  const gt = useGT();
   const ref = useRef<HTMLParagraphElement>(null);
   const [open, setOpen] = useState(false);
   const [overflows, setOverflows] = useState(false);
@@ -251,7 +253,7 @@ function ClampedText(props: { text: string }) {
           className="text-2xs text-muted-foreground hover:text-foreground"
           onClick={() => setOpen(!open)}
         >
-          {open ? "Show less" : "Show all"}
+          {open ? gt("Show less") : gt("Show all")}
         </button>
       ) : null}
     </div>
@@ -271,7 +273,9 @@ function Artifacts(props: { outputFile: string | null; sessionUrl: string | unde
   if (!props.outputFile && !props.sessionUrl) return null;
   return (
     <div className="flex flex-col gap-0.5 ps-4.5">
-      <HeaderLabel>Artifacts</HeaderLabel>
+      <HeaderLabel>
+        <T>Artifacts</T>
+      </HeaderLabel>
       {props.outputFile ? (
         <p className="select-text break-all font-mono text-2xs text-muted-foreground">
           {props.outputFile}
@@ -284,7 +288,7 @@ function Artifacts(props: { outputFile: string | null; sessionUrl: string | unde
           rel="noreferrer"
           className="self-start text-xs text-info-foreground hover:underline"
         >
-          Open remote session
+          <T>Open remote session</T>
         </a>
       ) : null}
     </div>
@@ -294,7 +298,9 @@ function Artifacts(props: { outputFile: string | null; sessionUrl: string | unde
 function ShowingCount(props: { shown: number; total: number }) {
   return (
     <p className="px-0.5 pt-1.5 text-2xs text-muted-foreground">
-      Showing {props.shown} of {props.total}
+      <T>
+        Showing <Var>{props.shown}</Var> of <Var>{props.total}</Var>
+      </T>
     </p>
   );
 }
@@ -311,6 +317,7 @@ function CheckboxGroup<K extends string>(props: {
   onChange: (next: ReadonlyArray<K>) => void;
   onOnly: (key: K) => void;
 }) {
+  const resolve = useMessages();
   const keys = (Object.keys(props.labels) as K[]).filter((key) => props.counts.has(key));
   if (keys.length === 0) return null;
   return (
@@ -327,7 +334,7 @@ function CheckboxGroup<K extends string>(props: {
           }
         >
           <span className="flex w-full min-w-0 items-center gap-2">
-            <MenuChoiceLabel label={props.labels[key]} onOnly={() => props.onOnly(key)} />
+            <MenuChoiceLabel label={resolve(props.labels[key])} onOnly={() => props.onOnly(key)} />
             <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
               {props.counts.get(key)}
             </span>
@@ -345,6 +352,7 @@ function FilterMenu(props: {
   onOpenChange: (open: boolean) => void;
   children: ReactNode;
 }) {
+  const gt = useGT();
   return (
     <Menu open={props.open} onOpenChange={props.onOpenChange}>
       <MenuTrigger
@@ -353,7 +361,7 @@ function FilterMenu(props: {
             type="button"
             size="icon-micro"
             variant={props.active ? "ghost" : "ghost-muted"}
-            aria-label="Filter activity"
+            aria-label={gt("Filter activity")}
           />
         }
       >
@@ -369,11 +377,12 @@ function ToolCallStepsToggle(props: {
   chronological: boolean;
   onToggle: () => void;
 }) {
+  const gt = useGT();
   const label = props.chronological
     ? props.shown
-      ? "Hide model call steps"
-      : "Show model call steps"
-    : "Steps show when sorted by time";
+      ? gt("Hide model call steps")
+      : gt("Show model call steps")
+    : gt("Steps show when sorted by time");
   return (
     <Tooltip>
       {/* A disabled button drops pointer events, so the span keeps the tooltip hoverable. */}
@@ -447,6 +456,8 @@ export function AgentDetailPanel(props: {
   readonly onOpenRecord?: ((key: string) => void) | undefined;
 }) {
   const { parentRef } = props;
+  const gt = useGT();
+  const resolve = useMessages();
   const navigate = useNavigate();
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const showToolCallSteps = useClientSettings((settings) => settings.showSubagentToolCallSteps);
@@ -507,7 +518,7 @@ export function AgentDetailPanel(props: {
     child !== null && deriveCanInterruptRunningThread(true, deriveThreadRuntime(child));
 
   const ownItems = child ? child.turnItems.filter((item) => item.threadId === childThreadId) : [];
-  const calls = deriveSubagentToolCalls(ownItems, props.workspaceRoot);
+  const calls = deriveSubagentToolCalls(ownItems, props.workspaceRoot, resolve);
   // The checkout the agent works in, for the transcript and fetched diffs.
   const agentRoot = subagentWorkspaceRoot(ownItems, props.workspaceRoot);
   const visibleCalls = applySubagentToolCallView(calls, toolView);
@@ -545,9 +556,9 @@ export function AgentDetailPanel(props: {
   }, [childThreadId, pendingToolCall]);
 
   const prompt = subagent?.prompt ?? null;
-  // Rows depend on these options, so the cache goes with them.
+  // Rows depend on these options (the resolver too, so a language switch drops the cache).
   const transcriptSetup = {
-    options: { prompt, workspaceRoot: agentRoot ?? undefined },
+    options: { prompt, workspaceRoot: agentRoot ?? undefined, resolve },
     cache: new WeakMap() as AgentTranscriptRowCache,
   };
   const ownVisibleItems: ReadonlyArray<OrchestrationV2ProjectedTurnItem> =
@@ -610,7 +621,7 @@ export function AgentDetailPanel(props: {
   };
   const openStartedAgent = (startedThreadId: ThreadId) => {
     const entry = children.find((candidate) => candidate.entry.childThreadId === startedThreadId);
-    openAgent({ childThreadId: startedThreadId, title: entry?.entry.title ?? "Agent" });
+    openAgent({ childThreadId: startedThreadId, title: entry?.entry.title ?? gt("Agent") });
   };
 
   const handle = useAgentHandle(parentRef.environmentId, subagent?.threadId ?? null, childThreadId);
@@ -618,7 +629,7 @@ export function AgentDetailPanel(props: {
     <div className="flex min-w-0">
       <Button size="xs" variant="ghost-muted" onClick={props.onBack}>
         <ChevronLeftIcon aria-hidden />
-        <span className="truncate">{props.backLabel ?? "Agents"}</span>
+        <span className="truncate">{props.backLabel ?? gt("Agents")}</span>
       </Button>
     </div>
   ) : null;
@@ -629,15 +640,17 @@ export function AgentDetailPanel(props: {
       <div className="flex h-full flex-col">
         {backButton ? <div className="px-2 pt-1.5">{backButton}</div> : null}
         <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
-          <p className="text-sm font-medium">Agent unavailable</p>
+          <p className="text-sm font-medium">
+            <T>Agent unavailable</T>
+          </p>
           <p className="max-w-64 text-xs text-muted-foreground">
             {owner === null
-              ? "Loading this thread's agents…"
-              : "This agent is no longer recorded on this thread."}
+              ? gt("Loading this thread's agents…")
+              : gt("This agent is no longer recorded on this thread.")}
           </p>
           {props.onBack ? null : (
             <Button size="xs" variant="ghost-muted" onClick={showAllAgents}>
-              View agents
+              <T>View agents</T>
             </Button>
           )}
         </div>
@@ -718,7 +731,7 @@ export function AgentDetailPanel(props: {
               })
         }
       >
-        {history.loading ? "Loading earlier activity…" : "Load earlier activity"}
+        {history.loading ? gt("Loading earlier activity…") : gt("Load earlier activity")}
       </Button>
       {history.error ? (
         <span className="min-w-0 truncate text-2xs text-destructive-foreground">
@@ -735,8 +748,8 @@ export function AgentDetailPanel(props: {
       <div className="min-h-0 flex-1">
         <EmptyActivity>
           {live
-            ? "This agent's activity shows here once it starts."
-            : "This provider recorded no activity for this agent."}
+            ? gt("This agent's activity shows here once it starts.")
+            : gt("This provider recorded no activity for this agent.")}
         </EmptyActivity>
       </div>
     );
@@ -759,15 +772,18 @@ export function AgentDetailPanel(props: {
           ) : (
             <p className="px-0.5 text-xs text-muted-foreground">
               {child === null
-                ? "Loading tool calls…"
+                ? gt("Loading tool calls…")
                 : calls.length > 0
-                  ? "No tool calls match these filters."
-                  : subagentEmptyToolCallsText({
-                      live,
-                      recordedItems: ownItems.length,
-                      reportedToolUses: runtime.usage?.toolUses,
-                      progress: runtime.progress,
-                    })}
+                  ? gt("No tool calls match these filters.")
+                  : subagentEmptyToolCallsText(
+                      {
+                        live,
+                        recordedItems: ownItems.length,
+                        reportedToolUses: runtime.usage?.toolUses,
+                        progress: runtime.progress,
+                      },
+                      resolve,
+                    )}
             </p>
           )}
           {narrowed && visibleCalls.length > 0 ? (
@@ -783,12 +799,12 @@ export function AgentDetailPanel(props: {
         {loadEarlier}
         <EmptyActivity>
           {child === null
-            ? "Loading activity…"
+            ? gt("Loading activity…")
             : transcriptRows.length > 0
-              ? "Nothing in the transcript matches."
+              ? gt("Nothing in the transcript matches.")
               : live
-                ? (subagent.progress ?? "Starting…")
-                : "No activity recorded."}
+                ? (subagent.progress ?? gt("Starting…"))
+                : gt("No activity recorded.")}
         </EmptyActivity>
       </div>
     );
@@ -832,7 +848,7 @@ export function AgentDetailPanel(props: {
           <h2 className="min-w-0 flex-1 truncate text-sm font-medium">{title}</h2>
           <AgentHandle handle={handle ?? subagentHandleSlug(title)} copyable />
           <ActionButton
-            label="Attach to chat"
+            label={gt("Attach to chat")}
             onClick={() =>
               void attachAgentToChat(parentRef, {
                 environmentId: parentRef.environmentId,
@@ -847,34 +863,34 @@ export function AgentDetailPanel(props: {
           {props.onOpenInTab ? (
             childThreadId === null ? null : (
               <ActionButton
-                label="Open in new tab"
+                label={gt("Open in new tab")}
                 onClick={() => props.onOpenInTab?.({ childThreadId, title })}
               >
                 <PanelRightOpenIcon />
               </ActionButton>
             )
           ) : (
-            <ActionButton label="Show all agents" onClick={showAllAgents}>
+            <ActionButton label={gt("Show all agents")} onClick={showAllAgents}>
               <BotIcon />
             </ActionButton>
           )}
           {childThreadId === null ? null : (
-            <ActionButton label="Open agent thread" onClick={() => openThread(childThreadId)}>
+            <ActionButton label={gt("Open agent thread")} onClick={() => openThread(childThreadId)}>
               <SquareArrowOutUpRightIcon />
             </ActionButton>
           )}
-          <ActionButton label="Continue in chat" onClick={continueInChat}>
+          <ActionButton label={gt("Continue in chat")} onClick={continueInChat}>
             <MessageSquarePlusIcon />
           </ActionButton>
           {canStop ? (
-            <ActionButton label="Stop agent" onClick={stop}>
+            <ActionButton label={gt("Stop agent")} onClick={stop}>
               <CircleStopIcon />
             </ActionButton>
           ) : null}
         </div>
         <p className="truncate ps-3.5 font-mono text-2xs text-muted-foreground">
           {[
-            STATUS_VISUALS[runtime.status].label,
+            resolve(STATUS_VISUALS[runtime.status].label),
             ...(providerName ? [providerName] : []),
             ...subagentIdentityParts(runtime, runStats.runs),
           ].join(" · ")}
@@ -891,18 +907,24 @@ export function AgentDetailPanel(props: {
           ) : null}
           {subject.prompt ? (
             <div className="flex min-w-0 flex-col gap-0.5 py-0.5 ps-4.5">
-              <HeaderLabel>Prompt</HeaderLabel>
+              <HeaderLabel>
+                <T context="noun, the agent's task prompt">Prompt</T>
+              </HeaderLabel>
               <ClampedText text={subject.prompt} />
             </div>
           ) : null}
           {outcome ? (
             subject.error ? (
-              <HeaderDisclosure label="Error" preview={outcome} tone="error">
+              <HeaderDisclosure
+                label={gt("Error", { $context: "agent outcome" })}
+                preview={outcome}
+                tone="error"
+              >
                 <HeaderText text={outcome} tone="error" />
               </HeaderDisclosure>
             ) : (
               <HeaderDisclosure
-                label="Result"
+                label={gt("Result", { $context: "agent outcome" })}
                 // Bounded so a long report's preview never parses more than the line can show.
                 preview={markdownPlainText(outcome.slice(0, 1_500))}
               >
@@ -919,10 +941,10 @@ export function AgentDetailPanel(props: {
           <Artifacts outputFile={runtime.outputFile} sessionUrl={runtime.runHandles?.sessionUrl} />
           {children.length > 0 ? (
             <HeaderDisclosure
-              label={`Agents · ${children.length}`}
+              label={gt("Agents · {count}", { count: children.length })}
               preview={
                 childrenWorking > 0
-                  ? `${childrenWorking} working`
+                  ? gt("{count} working", { count: childrenWorking })
                   : children.map(({ entry }) => entry.title).join(", ")
               }
             >
@@ -957,12 +979,12 @@ export function AgentDetailPanel(props: {
                 render={
                   <button
                     type="button"
-                    aria-label="Switch between tool calls and transcript"
+                    aria-label={gt("Switch between tool calls and transcript")}
                     className="flex h-5 shrink-0 items-center gap-1 rounded-sm px-0.5 text-3xs font-medium uppercase tracking-wider text-muted-foreground hover:bg-accent hover:text-foreground"
                   />
                 }
               >
-                {tools ? "Tool calls" : "Transcript"}
+                {tools ? gt("Tool calls") : gt("Transcript")}
                 {(tools ? calls.length : transcriptRows.length) > 0 ? (
                   <span className="font-mono tracking-normal">
                     · {tools ? calls.length : transcriptRows.length}
@@ -977,8 +999,12 @@ export function AgentDetailPanel(props: {
                     if (value === "transcript" || value === "tools") setMode(value);
                   }}
                 >
-                  <MenuRadioItem value="tools">Tool calls</MenuRadioItem>
-                  <MenuRadioItem value="transcript">Transcript</MenuRadioItem>
+                  <MenuRadioItem value="tools">
+                    <T>Tool calls</T>
+                  </MenuRadioItem>
+                  <MenuRadioItem value="transcript">
+                    <T>Transcript</T>
+                  </MenuRadioItem>
                 </MenuRadioGroup>
               </MenuPopup>
             </Menu>
@@ -987,8 +1013,8 @@ export function AgentDetailPanel(props: {
                 size="compact"
                 type="search"
                 value={query}
-                placeholder={tools ? "Search tool calls" : "Search transcript"}
-                aria-label={tools ? "Search tool calls" : "Search transcript"}
+                placeholder={tools ? gt("Search tool calls") : gt("Search transcript")}
+                aria-label={tools ? gt("Search tool calls") : gt("Search transcript")}
                 onChange={(event) => setQuery(event.target.value)}
               />
             </div>
@@ -1000,7 +1026,7 @@ export function AgentDetailPanel(props: {
               {tools ? (
                 <>
                   <CheckboxGroup
-                    label="Status"
+                    label={gt("Status", { $context: "field label" })}
                     labels={TOOL_STATUS_LABELS}
                     selected={toolView.statuses}
                     counts={toolFacets.statuses}
@@ -1009,7 +1035,7 @@ export function AgentDetailPanel(props: {
                   />
                   <MenuSeparator />
                   <CheckboxGroup<SubagentToolKind>
-                    label="Kind"
+                    label={gt("Kind", { $context: "tool call kind" })}
                     labels={TOOL_KIND_LABELS}
                     selected={toolView.kinds}
                     counts={toolFacets.kinds}
@@ -1019,7 +1045,7 @@ export function AgentDetailPanel(props: {
                 </>
               ) : (
                 <CheckboxGroup
-                  label="Show"
+                  label={gt("Show", { $context: "which transcript entries to show" })}
                   labels={TRANSCRIPT_KIND_LABELS}
                   selected={transcriptView.kinds}
                   counts={transcriptKindCounts}
@@ -1040,7 +1066,9 @@ export function AgentDetailPanel(props: {
                           ? "ghost-muted"
                           : "ghost"
                       }
-                      aria-label={`Sort tool calls: ${TOOL_SORT_LABELS[toolView.sort]}`}
+                      aria-label={gt("Sort tool calls: {sort}", {
+                        sort: resolve(TOOL_SORT_LABELS[toolView.sort]),
+                      })}
                     />
                   }
                 >
@@ -1055,7 +1083,7 @@ export function AgentDetailPanel(props: {
                   >
                     {(Object.keys(TOOL_SORT_LABELS) as SubagentToolCallSort[]).map((sort) => (
                       <MenuRadioItem key={sort} value={sort}>
-                        {TOOL_SORT_LABELS[sort]}
+                        {resolve(TOOL_SORT_LABELS[sort])}
                       </MenuRadioItem>
                     ))}
                   </MenuRadioGroup>
@@ -1078,7 +1106,7 @@ export function AgentDetailPanel(props: {
                 type="button"
                 size="icon-micro"
                 variant="ghost-muted"
-                aria-label="Reset activity filters"
+                aria-label={gt("Reset activity filters")}
                 onClick={resetView}
               >
                 <XIcon />
@@ -1093,7 +1121,7 @@ export function AgentDetailPanel(props: {
                     <FilterPill
                       key={`status:${status}`}
                       icon={<CircleDotIcon />}
-                      label={TOOL_STATUS_LABELS[status]}
+                      label={resolve(TOOL_STATUS_LABELS[status])}
                       onRemove={() =>
                         setToolView({
                           ...toolView,
@@ -1124,7 +1152,7 @@ export function AgentDetailPanel(props: {
                   <FilterPill
                     key={`show:${kind}`}
                     icon={<ListFilterIcon />}
-                    label={TRANSCRIPT_KIND_LABELS[kind]}
+                    label={resolve(TRANSCRIPT_KIND_LABELS[kind])}
                     onRemove={() =>
                       setTranscriptView({
                         ...transcriptView,

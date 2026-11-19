@@ -13,7 +13,7 @@ import {
   GitBranchIcon,
   TerminalIcon,
 } from "lucide-react";
-import { T, useGT, Var } from "gt-react";
+import { T, useGT, useMessages, Var } from "gt-react";
 import type { ComponentProps, ReactNode } from "react";
 
 import { useComposerDraftActiveModelSelection } from "~/composerDraftStore";
@@ -173,6 +173,7 @@ const EMPTY_PROVIDER_ENTRIES: ReadonlyMap<string, ProviderEntrySummary> = new Ma
 
 function LiveThreadPreview(props: ThreadPreviewProps & { shell: EnvironmentThreadShell }) {
   const gt = useGT();
+  const resolve = useMessages();
   const { shell: thread, read, onOpenThread } = props;
   const threadRef = scopeThreadRef(thread.environmentId, thread.id);
   const project = useProject(scopeProjectRef(thread.environmentId, thread.projectId));
@@ -224,7 +225,7 @@ function LiveThreadPreview(props: ThreadPreviewProps & { shell: EnvironmentThrea
     activeThreadBranch: thread.branch,
     currentGitBranch: gitStatus.data?.refName ?? null,
   });
-  const items = read?.items ?? latestThreadPreviewItems(detail?.projection.messages ?? []);
+  const items = read?.items ?? latestThreadPreviewItems(detail?.projection.messages ?? [], resolve);
 
   return (
     <ThreadPreviewLayout

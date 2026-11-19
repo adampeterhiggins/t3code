@@ -4,8 +4,10 @@ import { notionPageContextRecord } from "@t3tools/client-runtime/state/notion";
 import type { ScopedThreadRef, NotionPageSummary } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
+import { msg, T, useGT } from "gt-react";
 import { useState } from "react";
 import { useComposerDraftStore } from "~/composerDraftStore";
+import { m } from "~/i18n/messages";
 import { useEnvironmentSettings } from "~/hooks/useSettings";
 import { useIssueContextStore } from "~/issueContextStore";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
@@ -70,7 +72,7 @@ function useLinkNotionPage() {
         const failure = squashAtomCommandFailure(result);
         toastManager.add({
           type: "error",
-          title: "Could not link the Notion page",
+          title: m(msg("Could not link the Notion page")),
           description: failure instanceof Error ? failure.message : undefined,
         });
       }
@@ -96,6 +98,7 @@ function NotionPagePickerDialog({
     threadRef.environmentId,
     (s) => s.enableNotionIntegration,
   );
+  const gt = useGT();
   const navigate = useNavigate();
   const attachPage = useAttachNotionPage();
   const linkPage = useLinkNotionPage();
@@ -121,11 +124,11 @@ function NotionPagePickerDialog({
     connection.error ??
     result.error ??
     (connection.data === null
-      ? "Reading Notion status…"
+      ? gt("Reading Notion status…")
       : result.isPending || settled !== query.trim()
-        ? "Searching Notion…"
+        ? gt("Searching Notion…")
         : pages.length === 0
-          ? "No pages found. Share pages with the Notion connection to see them here."
+          ? gt("No pages found. Share pages with the Notion connection to see them here.")
           : null);
   if (!notionEnabled) return null;
   return (
@@ -136,23 +139,23 @@ function NotionPagePickerDialog({
       }}
     >
       <CommandDialogPopup
-        aria-label={mode === "link" ? "Link Notion page" : "Attach Notion page"}
+        aria-label={mode === "link" ? gt("Link Notion page") : gt("Attach Notion page")}
         className="overflow-hidden"
       >
         {connected || connection.data === null ? (
           <CommandPaletteContent
             inputProps={{
-              placeholder: "Search Notion pages or paste a page link",
+              placeholder: gt("Search Notion pages or paste a page link"),
               startAddon: <NotionIcon />,
             }}
             footerActionLabel={
               mode === "link"
                 ? attaching
-                  ? "Linking…"
-                  : "Link page"
+                  ? gt("Linking…")
+                  : gt("Link page")
                 : attaching
-                  ? "Attaching…"
-                  : "Attach page"
+                  ? gt("Attaching…")
+                  : gt("Attach page")
             }
             mode="none"
             value={query}
@@ -188,7 +191,7 @@ function NotionPagePickerDialog({
             )}
             {result.data?.hasMore ? (
               <p className="px-4 py-2 text-xs text-muted-foreground">
-                Showing the first 30 pages. Search by title to narrow the results.
+                <T>Showing the first 30 pages. Search by title to narrow the results.</T>
               </p>
             ) : null}
           </CommandPaletteContent>
@@ -196,8 +199,8 @@ function NotionPagePickerDialog({
           <div className="flex flex-col items-center gap-3 px-6 py-10 text-center text-sm">
             <p className="text-muted-foreground">
               {mode === "link"
-                ? "Connect Notion to link a page selected during sign-in."
-                : "Connect Notion to attach pages selected during sign-in."}
+                ? gt("Connect Notion to link a page selected during sign-in.")
+                : gt("Connect Notion to attach pages selected during sign-in.")}
             </p>
             <Button
               size="sm"
@@ -206,7 +209,7 @@ function NotionPagePickerDialog({
                 void navigate({ to: "/settings/integrations" });
               }}
             >
-              Connect Notion
+              <T>Connect Notion</T>
             </Button>
           </div>
         )}

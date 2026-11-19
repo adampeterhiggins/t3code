@@ -5,6 +5,9 @@ import {
   type RepositoryIdentity,
 } from "@t3tools/contracts";
 import type { Organisations } from "@t3tools/contracts/settings";
+import { msg } from "gt-react-native";
+
+import { m, type MessageResolver } from "../../i18n/messages";
 
 export interface ThreadListOrganisation {
   readonly key: string;
@@ -56,6 +59,7 @@ export function repositoryOrganisationKeyOf(
 export function buildOrganisationOptions(
   projects: ReadonlyArray<Pick<OrganisationProject, "repositoryIdentity">>,
   organisations: Organisations = {},
+  resolve: MessageResolver = m,
 ): ReadonlyArray<ThreadListOrganisation> {
   const byKey = new Map<string, ThreadListOrganisation>();
   for (const project of projects) {
@@ -76,7 +80,7 @@ export function buildOrganisationOptions(
     }))
     .sort((left, right) => left.label.localeCompare(right.label));
   return projects.some((project) => repositoryOrganisationOf(project.repositoryIdentity) === null)
-    ? [...named, { key: NO_ORGANISATION_KEY, label: "No organisation" }]
+    ? [...named, { key: NO_ORGANISATION_KEY, label: resolve(msg("No organisation")) }]
     : named;
 }
 

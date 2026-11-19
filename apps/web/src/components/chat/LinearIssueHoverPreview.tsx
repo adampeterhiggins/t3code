@@ -1,4 +1,5 @@
 import type { EnvironmentId } from "@t3tools/contracts";
+import { T, useGT } from "gt-react";
 import type { ReactElement } from "react";
 
 import { useLinearLinkClickHandler } from "~/browser/useLinearLinkClickHandler";
@@ -23,6 +24,7 @@ export function LinearIssueHoverPreview(props: {
 }
 
 function LinearIssuePreviewBody(props: { environmentId: EnvironmentId; issueId: string }) {
+  const gt = useGT();
   const issue = useEnvironmentQuery(
     linearEnvironment.issue({ environmentId: props.environmentId, input: { id: props.issueId } }),
   );
@@ -31,7 +33,7 @@ function LinearIssuePreviewBody(props: { environmentId: EnvironmentId; issueId: 
   const openLinearLink = useLinearLinkClickHandler(keepAnchorDefault);
   const detail = issue.data;
   if (detail === null) {
-    return <p className="text-muted-foreground">{issue.error ?? "Loading issue…"}</p>;
+    return <p className="text-muted-foreground">{issue.error ?? gt("Loading issue…")}</p>;
   }
   return (
     <div className="flex flex-col gap-2">
@@ -46,7 +48,7 @@ function LinearIssuePreviewBody(props: { environmentId: EnvironmentId; issueId: 
           className="shrink-0 underline-offset-2 hover:text-foreground hover:underline"
           onClick={(event) => openLinearLink(event, detail.url)}
         >
-          Open in Linear
+          <T>Open in Linear</T>
         </a>
       </div>
       <LinearIssueMarkdown markdown={detail.markdown} url={detail.url} />

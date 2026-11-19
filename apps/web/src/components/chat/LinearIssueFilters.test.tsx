@@ -1,8 +1,23 @@
 // @vitest-environment jsdom
 import type { LinearFilterOptions } from "@t3tools/contracts";
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
+
+// Rendered without GT's provider, so its hooks and components resolve the English source.
+vi.mock("gt-react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("gt-react")>();
+  const resolve = (text: string, values: Record<string, unknown> = {}) =>
+    actual.gtFallback(actual.decodeMsg(text), { ...values, $locale: "en" });
+  const passthrough = ({ children }: { children?: ReactNode }) => children;
+  return {
+    ...actual,
+    useGT: () => resolve,
+    useMessages: () => resolve,
+    T: passthrough,
+    Var: passthrough,
+  };
+});
 
 import {
   DEFAULT_LINEAR_ISSUE_FILTERS,

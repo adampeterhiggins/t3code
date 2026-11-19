@@ -15,6 +15,7 @@ import {
   UserIcon,
   UsersIcon,
 } from "lucide-react";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
 import { type ReactNode, useState } from "react";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
@@ -88,29 +89,29 @@ export function useLinearIssuePickerView(environmentId: EnvironmentId): PickerVi
 }
 
 const PRIORITIES: ReadonlyArray<{ value: number; label: string }> = [
-  { value: 1, label: "Urgent" },
-  { value: 2, label: "High" },
-  { value: 3, label: "Medium" },
-  { value: 4, label: "Low" },
-  { value: 0, label: "No priority" },
+  { value: 1, label: msg("Urgent", { $context: "Linear issue priority" }) },
+  { value: 2, label: msg("High", { $context: "Linear issue priority" }) },
+  { value: 3, label: msg("Medium", { $context: "Linear issue priority" }) },
+  { value: 4, label: msg("Low", { $context: "Linear issue priority" }) },
+  { value: 0, label: msg("No priority", { $context: "Linear issue priority" }) },
 ];
 
 const STATE_TYPE_LABELS: Readonly<Record<string, string>> = {
-  triage: "Triage",
-  backlog: "Backlog",
-  unstarted: "Todo",
-  started: "In progress",
-  completed: "Done",
-  canceled: "Canceled",
+  triage: msg("Triage", { $context: "Linear issue status group" }),
+  backlog: msg("Backlog", { $context: "Linear issue status group" }),
+  unstarted: msg("Todo", { $context: "Linear issue status group" }),
+  started: msg("In progress", { $context: "Linear issue status group" }),
+  completed: msg("Done", { $context: "Linear issue status group" }),
+  canceled: msg("Canceled", { $context: "Linear issue status group" }),
 };
 
 const SORT_LABELS: Readonly<Record<LinearIssueSort["field"], string>> = {
-  updated: "Updated",
-  created: "Created",
-  priority: "Priority",
-  dueDate: "Due date",
-  status: "Status",
-  title: "Title",
+  updated: msg("Updated", { $context: "sort by date updated" }),
+  created: msg("Created", { $context: "sort by date created" }),
+  priority: msg("Priority", { $context: "sort by priority" }),
+  dueDate: msg("Due date", { $context: "sort by due date" }),
+  status: msg("Status", { $context: "sort by status" }),
+  title: msg("Title", { $context: "sort by title" }),
 };
 
 function toggle<T>(values: ReadonlyArray<T>, value: T, checked: boolean): T[] {
@@ -157,17 +158,23 @@ export function LinearIssueFilterBar(props: {
 }) {
   const { options, view } = props;
   const { filters, sort } = view;
+  const gt = useGT();
+  const resolve = useMessages();
   const [menuOpen, setMenuOpen] = useState(false);
   const setFilters = (patch: Partial<LinearIssueFilters>) =>
     props.onChange({ ...view, filters: { ...filters, ...patch } });
   const unavailableOptions = (emptyLabel: string) => {
     if (props.optionsPending && options !== null) return null;
     if (options === null && (props.optionsPending || props.optionsError === null)) {
-      return <MenuLoadingItem>Loading filters…</MenuLoadingItem>;
+      return (
+        <MenuLoadingItem>
+          <T>Loading filters…</T>
+        </MenuLoadingItem>
+      );
     }
     return (
       <MenuItem disabled>
-        {props.optionsError !== null ? "Could not load filters" : emptyLabel}
+        {props.optionsError !== null ? gt("Could not load filters") : emptyLabel}
       </MenuItem>
     );
   };
@@ -195,7 +202,7 @@ export function LinearIssueFilterBar(props: {
     placeholder: string,
     entries: ReadonlyArray<{ value: T; label: string }>,
     selection: Selection<T>,
-    emptyLabel = "No options",
+    emptyLabel = gt("No options"),
   ) =>
     entries.length === 0 ? (
       unavailableOptions(emptyLabel)
@@ -209,7 +216,7 @@ export function LinearIssueFilterBar(props: {
     placeholder: string,
     entries: ReadonlyArray<{ value: T; label: string; groupKey: string; groupLabel: string }>,
     selection: Selection<T>,
-    emptyLabel = "No options",
+    emptyLabel = gt("No options"),
   ) =>
     entries.length === 0 ? (
       unavailableOptions(emptyLabel)
@@ -231,8 +238,8 @@ export function LinearIssueFilterBar(props: {
 
   const narrowed = options === null ? null : narrowLinearFilterOptions(options, filters);
   const users = [
-    { value: "me", label: "Me" },
-    { value: "none", label: "Unassigned" },
+    { value: "me", label: gt("Me", { $context: "assignee filter: the current user" }) },
+    { value: "none", label: gt("Unassigned") },
     ...(options?.users ?? [])
       .filter((user) => !user.isMe)
       .map((user) => ({ value: user.id, label: user.name })),
@@ -247,7 +254,7 @@ export function LinearIssueFilterBar(props: {
     label: project.name,
   });
   const projects = [
-    { value: "none", label: "No project" },
+    { value: "none", label: gt("No project") },
     ...(narrowed?.projects ?? []).map(projectEntry),
   ];
   const milestones = (options?.projects ?? []).flatMap((project) => project.milestones);
@@ -258,10 +265,14 @@ export function LinearIssueFilterBar(props: {
         value: state.name,
         label: state.name,
         groupKey: type,
-        groupLabel: label,
+        groupLabel: resolve(label),
       })),
   );
   const labels = (options?.labels ?? []).map((label) => ({ value: label.name, label: label.name }));
+  const priorities = PRIORITIES.map((priority) => ({
+    ...priority,
+    label: resolve(priority.label),
+  }));
   // A dimension's toggle and "Only", from its picked values and how to replace them.
   const selection = <T,>(selected: ReadonlyArray<T>, set: (values: T[]) => void): Selection<T> => ({
     selected,
@@ -287,37 +298,37 @@ export function LinearIssueFilterBar(props: {
   const dimensions: ReadonlyArray<FilterDimension> = [
     {
       id: "assignee",
-      label: "Assignee",
+      label: gt("Assignee"),
       items: (
         <>
-          {options === null ? unavailableOptions("No assignees") : null}
-          {checkboxes("Search people", users, assignees)}
+          {options === null ? unavailableOptions(gt("No assignees")) : null}
+          {checkboxes(gt("Search people"), users, assignees)}
         </>
       ),
     },
     {
       id: "team",
-      label: "Team",
-      items: checkboxes("Search teams", teams, pickedTeams, "No teams"),
+      label: gt("Team"),
+      items: checkboxes(gt("Search teams"), teams, pickedTeams, gt("No teams")),
     },
     {
       id: "project",
-      label: "Project",
+      label: gt("Project", { $context: "field label" }),
       items: (
         <>
-          {options === null ? unavailableOptions("No projects") : null}
-          {checkboxes("Search projects", projects, pickedProjects)}
+          {options === null ? unavailableOptions(gt("No projects")) : null}
+          {checkboxes(gt("Search projects"), projects, pickedProjects)}
         </>
       ),
     },
     {
       id: "milestone",
-      label: "Milestone",
+      label: gt("Milestone"),
       items:
         (narrowed?.milestoneGroups.length ?? 0) === 0
-          ? unavailableOptions("No milestones")
+          ? unavailableOptions(gt("No milestones"))
           : groupedCheckboxes(
-              "Search milestones",
+              gt("Search milestones"),
               narrowed!.milestoneGroups.flatMap(({ project, milestones }) =>
                 milestones.map((m) => ({
                   value: m.id,
@@ -331,30 +342,30 @@ export function LinearIssueFilterBar(props: {
     },
     {
       id: "status",
-      label: "Status",
+      label: gt("Status", { $context: "field label" }),
       items: (
         <>
-          {groupedCheckboxes("Search statuses", states, pickedStates, "No statuses")}
+          {groupedCheckboxes(gt("Search statuses"), states, pickedStates, gt("No statuses"))}
           <MenuSeparator />
           <MenuCheckboxItem
             checked={filters.includeClosed}
             disabled={filters.stateNames.length > 0}
             onCheckedChange={(checked) => setFilters({ includeClosed: checked })}
           >
-            Include done and canceled
+            <T>Include done and canceled</T>
           </MenuCheckboxItem>
         </>
       ),
     },
     {
       id: "priority",
-      label: "Priority",
-      items: checkboxes("Search priorities", PRIORITIES, pickedPriorities),
+      label: gt("Priority", { $context: "field label" }),
+      items: checkboxes(gt("Search priorities"), priorities, pickedPriorities),
     },
     {
       id: "label",
-      label: "Label",
-      items: checkboxes("Search labels", labels, pickedLabels, "No labels"),
+      label: gt("Label", { $context: "field label, a Linear issue label" }),
+      items: checkboxes(gt("Search labels"), labels, pickedLabels, gt("No labels")),
     },
   ];
   const shownDimensions = dimensions.map((dimension) =>
@@ -363,7 +374,9 @@ export function LinearIssueFilterBar(props: {
           ...dimension,
           items: (
             <>
-              <MenuLoadingItem>Loading filters…</MenuLoadingItem>
+              <MenuLoadingItem>
+                <T>Loading filters…</T>
+              </MenuLoadingItem>
               {dimension.items}
             </>
           ),
@@ -372,7 +385,9 @@ export function LinearIssueFilterBar(props: {
   );
 
   const labelOf = <T,>(entries: ReadonlyArray<{ value: T; label: string }>, value: T) =>
-    entries.find((entry) => entry.value === value)?.label ?? "Unknown";
+    entries.find((entry) => entry.value === value)?.label ?? gt("Unknown");
+  const dimensionLabel = (id: string) =>
+    dimensions.find((dimension) => dimension.id === id)?.label ?? id;
   // One pill per picked value, in menu order, named "Dimension: value".
   const pills = <T,>(
     picked: Selection<T>,
@@ -383,39 +398,42 @@ export function LinearIssueFilterBar(props: {
     picked.selected.map((value) => ({
       key: `${dimension}:${String(value)}`,
       icon,
-      label: `${dimension}: ${nameOf(value)}`,
+      label: gt("{dimension}: {value}", {
+        dimension: dimensionLabel(dimension),
+        value: nameOf(value),
+      }),
       remove: () => picked.onToggle(value, false),
     }));
   const applied: AppliedFilter[] = [
-    ...pills(assignees, "Assignee", <UserIcon />, (id) => labelOf(users, id)),
+    ...pills(assignees, "assignee", <UserIcon />, (id) => labelOf(users, id)),
     ...pills(
       pickedTeams,
-      "Team",
+      "team",
       <UsersIcon />,
-      (id) => allTeams.find((team) => team.id === id)?.key ?? "Unknown",
+      (id) => allTeams.find((team) => team.id === id)?.key ?? gt("Unknown"),
     ),
-    ...pills(pickedProjects, "Project", <BoxIcon />, (id) =>
+    ...pills(pickedProjects, "project", <BoxIcon />, (id) =>
       labelOf([projects[0]!, ...(options?.projects ?? []).map(projectEntry)], id),
     ),
     ...pills(
       pickedMilestones,
-      "Milestone",
+      "milestone",
       <FlagIcon />,
-      (id) => milestones.find((m) => m.id === id)?.name ?? "Unknown",
+      (id) => milestones.find((m) => m.id === id)?.name ?? gt("Unknown"),
     ),
-    ...pills(pickedStates, "Status", <CircleDotIcon />, (name) => name),
+    ...pills(pickedStates, "status", <CircleDotIcon />, (name) => name),
     ...(filters.includeClosed && filters.stateNames.length === 0
       ? [
           {
             key: "includeClosed",
             icon: <CircleDotIcon />,
-            label: "Status: Any",
+            label: gt("Status: Any"),
             remove: () => setFilters({ includeClosed: false }),
           },
         ]
       : []),
-    ...pills(pickedPriorities, "Priority", <SignalIcon />, (value) => labelOf(PRIORITIES, value)),
-    ...pills(pickedLabels, "Label", <TagIcon />, (name) => name),
+    ...pills(pickedPriorities, "priority", <SignalIcon />, (value) => labelOf(priorities, value)),
+    ...pills(pickedLabels, "label", <TagIcon />, (name) => name),
   ];
   const isDefault = JSON.stringify(view) === JSON.stringify(DEFAULT_PICKER_VIEW);
 
@@ -432,7 +450,7 @@ export function LinearIssueFilterBar(props: {
           >
             <MenuTrigger render={<Button type="button" size="xs" variant="outline" />}>
               <ListFilterIcon />
-              Filter
+              <T context="verb, opens filter options">Filter</T>
             </MenuTrigger>
             <MenuPopup align="start">
               {shownDimensions.map((dimension) => (
@@ -451,15 +469,15 @@ export function LinearIssueFilterBar(props: {
               variant="ghost-muted"
               onClick={() => props.onChange(DEFAULT_PICKER_VIEW)}
             >
-              Reset
+              <T context="verb, resets filters">Reset</T>
             </Button>
           )}
           <Menu>
             <MenuTrigger render={<Button type="button" size="xs" variant="ghost" />}>
               <ArrowDownUpIcon />
               {props.searching && sort.field !== "updated" && sort.field !== "created"
-                ? "Relevance"
-                : `${SORT_LABELS[sort.field]} ${sort.direction === "desc" ? "↓" : "↑"}`}
+                ? gt("Relevance", { $context: "sort order" })
+                : `${resolve(SORT_LABELS[sort.field])} ${sort.direction === "desc" ? "↓" : "↑"}`}
             </MenuTrigger>
             <MenuPopup align="end">
               <MenuRadioGroup
@@ -470,7 +488,7 @@ export function LinearIssueFilterBar(props: {
               >
                 {(Object.keys(SORT_LABELS) as Array<LinearIssueSort["field"]>).map((field) => (
                   <MenuRadioItem key={field} value={field}>
-                    {SORT_LABELS[field]}
+                    {resolve(SORT_LABELS[field])}
                   </MenuRadioItem>
                 ))}
               </MenuRadioGroup>
@@ -481,8 +499,12 @@ export function LinearIssueFilterBar(props: {
                   props.onChange({ ...view, sort: { ...sort, direction } })
                 }
               >
-                <MenuRadioItem value="desc">Descending</MenuRadioItem>
-                <MenuRadioItem value="asc">Ascending</MenuRadioItem>
+                <MenuRadioItem value="desc">
+                  <T context="sort direction">Descending</T>
+                </MenuRadioItem>
+                <MenuRadioItem value="asc">
+                  <T context="sort direction">Ascending</T>
+                </MenuRadioItem>
               </MenuRadioGroup>
             </MenuPopup>
           </Menu>
@@ -506,7 +528,9 @@ export function LinearIssueFilterBar(props: {
           className="flex items-center gap-2 px-3 pb-2 text-muted-foreground text-xs"
         >
           <span className="min-w-0 flex-1">
-            Could not load Linear filters: {props.optionsError}
+            <T>
+              Could not load Linear filters: <Var>{props.optionsError}</Var>
+            </T>
           </span>
           <Button
             type="button"
@@ -515,7 +539,7 @@ export function LinearIssueFilterBar(props: {
             disabled={props.optionsPending}
             onClick={props.onRetryOptions}
           >
-            {props.optionsPending ? "Retrying…" : "Retry"}
+            {props.optionsPending ? gt("Retrying…") : gt("Retry")}
           </Button>
         </div>
       ) : null}

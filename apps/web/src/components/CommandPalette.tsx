@@ -2012,7 +2012,9 @@ function OpenCommandPaletteDialog(props: {
         value: "attention-inbox",
         label: gt("Needs attention"),
         items: attentionEntries.map((entry) => {
-          const { label, Icon, iconClassName } = ATTENTION_REASON_PRESENTATION[entry.reason];
+          const presentation = ATTENTION_REASON_PRESENTATION[entry.reason];
+          const { Icon, iconClassName } = presentation;
+          const label = messages(presentation.label);
           const projectTitle = attentionProjectTitleByKey.get(
             `${entry.thread.environmentId}:${entry.thread.projectId}`,
           );

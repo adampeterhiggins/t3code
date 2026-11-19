@@ -1,7 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { resolveToolPath, toolPathTextParts } from "@t3tools/client-runtime/work-log/tool-paths";
 import type { EnvironmentId } from "@t3tools/contracts";
-import { msg, useGT } from "gt-react";
+import { msg, useGT, useMessages } from "gt-react";
 import { CheckIcon, CopyIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -137,7 +137,10 @@ export function ToolPathText(props: {
   singleLine?: boolean;
 }) {
   const roots = useAtomValue(toolPathRootsAtom(props.environmentId));
-  const path = props.pathOnly ? resolveToolPath(props.text, props.workspaceRoot, roots) : null;
+  const messages = useMessages();
+  const path = props.pathOnly
+    ? resolveToolPath(props.text, props.workspaceRoot, roots, messages)
+    : null;
   if (path) {
     const breadcrumb = (
       <ToolPathBreadcrumb
@@ -150,30 +153,34 @@ export function ToolPathText(props: {
     return <span className="flex w-full min-w-0 items-baseline">{breadcrumb}</span>;
   }
   const occurrences = new Map<string, number>();
-  const nodes = toolPathTextParts(props.text, props.workspaceRoot, roots, props.targets).map(
-    (part, index) => {
-      if ("text" in part) {
-        if (!props.singleLine) return part.text;
-        // Activity rows force nowrap on every descendant, which drops the space
-        // between the verb and the path unless this declaration wins.
-        return (
-          // oxlint-disable-next-line react/no-array-index-key -- text parts have no identity; their order is fixed for a given text
-          <span key={`text:${index}`} className="shrink-0 whitespace-pre!">
-            {part.text}
-          </span>
-        );
-      }
-      const occurrence = (occurrences.get(part.path.absolutePath) ?? 0) + 1;
-      occurrences.set(part.path.absolutePath, occurrence);
+  const nodes = toolPathTextParts(
+    props.text,
+    props.workspaceRoot,
+    roots,
+    props.targets,
+    messages,
+  ).map((part, index) => {
+    if ("text" in part) {
+      if (!props.singleLine) return part.text;
+      // Activity rows force nowrap on every descendant, which drops the space
+      // between the verb and the path unless this declaration wins.
       return (
-        <ToolPathBreadcrumb
-          key={`${part.path.absolutePath}:${occurrence}`}
-          path={part.path}
-          singleLine={props.singleLine ?? false}
-        />
+        // oxlint-disable-next-line react/no-array-index-key -- text parts have no identity; their order is fixed for a given text
+        <span key={`text:${index}`} className="shrink-0 whitespace-pre!">
+          {part.text}
+        </span>
       );
-    },
-  );
+    }
+    const occurrence = (occurrences.get(part.path.absolutePath) ?? 0) + 1;
+    occurrences.set(part.path.absolutePath, occurrence);
+    return (
+      <ToolPathBreadcrumb
+        key={`${part.path.absolutePath}:${occurrence}`}
+        path={part.path}
+        singleLine={props.singleLine ?? false}
+      />
+    );
+  });
   if (!props.singleLine) return nodes;
   return <span className="flex w-full min-w-0 items-baseline">{nodes}</span>;
 }
