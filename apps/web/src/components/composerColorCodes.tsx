@@ -78,6 +78,7 @@ export function useComposerColorCodeHover() {
     window.clearTimeout(openTimer.current);
     window.clearTimeout(closeTimer.current);
   };
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- clears pending hover timers on unmount
   useEffect(
     () => () => {
       window.clearTimeout(openTimer.current);

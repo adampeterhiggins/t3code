@@ -141,11 +141,9 @@ interface AppliedFilter {
 }
 
 /**
- * Filters for the issue picker: a Filter menu with a submenu per dimension, Sort, and each
- * applied selection as a removable pill on its own row below. Team, project, and milestone
- * choices narrow to what the other picks allow (`narrowLinearFilterOptions`). Menus show no
- * counts: issues are filtered by Linear and capped, so the loaded ones cannot say how many each
- * choice would match. Statuses and labels match by name across teams; search text applies on top.
+ * Filters for the issue picker. Menus show no counts: issues are filtered by Linear and capped,
+ * so the loaded ones cannot say how many each choice would match. Statuses and labels match by
+ * name across teams.
  */
 export function LinearIssueFilterBar(props: {
   options: LinearFilterOptions | null;

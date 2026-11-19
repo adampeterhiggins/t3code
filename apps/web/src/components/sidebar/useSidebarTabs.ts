@@ -100,6 +100,7 @@ export function useSidebarTabs(
   // a toggle back would otherwise revive them. Only once settings load, so a page load that
   // briefly reads the default never wipes them.
   const clientSettingsHydrated = useClientSettingsHydrated();
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- writes the reset to localStorage once settings hydrate, so a later toggle back cannot revive old overrides
   useEffect(() => {
     if (!clientSettingsHydrated || storedTabGroupOverrides.showTabs === showTabs) return;
     setStoredTabGroupOverrides({ showTabs, groups: NO_TAB_GROUP_OVERRIDES });

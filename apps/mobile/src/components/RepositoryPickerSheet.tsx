@@ -1,3 +1,4 @@
+import { LegendList } from "@legendapp/list/react-native";
 import {
   configuredContextRepositoryOwners,
   contextRepositoryCandidateLabels,
@@ -14,7 +15,7 @@ import { formatComposerContextReference } from "@t3tools/shared/composerContextR
 import type { EnvironmentId } from "@t3tools/contracts";
 import { msg, useGT, useMessages } from "gt-react-native";
 import { useMemo, useState, type ReactNode } from "react";
-import { ActivityIndicator, Alert, FlatList, Pressable, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { m } from "../i18n/messages";
@@ -179,9 +180,14 @@ function RepositoryPickerSheet(props: OpenedRepositoryPicker & { readonly onClos
           onChangeText={setQuery}
         />
       </View>
-      <FlatList
+      {/* oxlint-disable-next-line t3code/require-registered-list-scroll -- PickerSheet is a Modal with an inline header; there is no navigation header to register with. */}
+      <LegendList
         data={rows}
         keyExtractor={(row) => row.remoteUrl}
+        extraData={{ clones, attach }}
+        estimatedItemSize={64}
+        recycleItems
+        className="flex-1"
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) }}
         ListEmptyComponent={

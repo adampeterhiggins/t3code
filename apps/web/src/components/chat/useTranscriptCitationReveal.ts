@@ -44,6 +44,7 @@ export function useTranscriptCitationReveal({
       });
   });
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- scrolls the list to the citation and runs the highlight fade timer
   useEffect(() => {
     if (!target?.citation.segments) return;
     reveal(target);

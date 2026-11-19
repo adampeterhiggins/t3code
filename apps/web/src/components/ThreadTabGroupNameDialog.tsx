@@ -33,6 +33,7 @@ function finish(name: string | null | undefined) {
 
 export function ThreadTabGroupNameDialogHost() {
   const request = useRequest((state) => state.request);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- resolves a pending name request when the host unmounts
   useEffect(() => () => finish(undefined), []);
   return request ? <NameDialog initial={request.name} /> : null;
 }

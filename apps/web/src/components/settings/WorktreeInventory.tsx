@@ -217,7 +217,7 @@ function CheckoutCell({ checkout }: { checkout: WorktreeCheckout }) {
 function PullRequestCell({ pullRequest }: { pullRequest: ManagedWorktree["pullRequest"] }) {
   const gt = useGT();
   const messages = useMessages();
-  if (pullRequest === null) return <span className="text-muted-foreground/60">—</span>;
+  if (pullRequest === null) return <span className="text-muted-foreground/60">-</span>;
   const presentation = pullRequest.state
     ? PULL_REQUEST_STATE_PRESENTATION[pullRequest.state]
     : null;
@@ -565,6 +565,12 @@ function removalNotice(
   return `${removedText} ${keptText}`;
 }
 
+const EMPTY_LISTING = { worktrees: [] as readonly ManagedWorktree[], loadedAtMs: 0 };
+const listingOf = (worktrees: readonly ManagedWorktree[]) => ({
+  worktrees,
+  loadedAtMs: Date.now(),
+});
+
 function WorktreesOnEnvironment({
   environmentId,
   name,
@@ -584,7 +590,8 @@ function WorktreesOnEnvironment({
     DEFAULT_WORKTREE_DATE_FORMATS,
     WorktreeDateFormats,
   );
-  const [worktrees, setWorktrees] = useState<readonly ManagedWorktree[]>([]);
+  // Relative dates count from when the list was read, so they agree with the rows beside them.
+  const [{ worktrees, loadedAtMs }, setListing] = useState(EMPTY_LISTING);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [sizes, setSizes] = useState<Record<string, number | null>>({});
   const [measuring, setMeasuring] = useState<ReadonlySet<string>>(new Set());
@@ -593,8 +600,6 @@ function WorktreesOnEnvironment({
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<WorktreeFilters>(ALL_WORKTREE_FILTERS);
   const [sort, setSort] = useState<WorktreeSort>({ column: "updated", direction: "desc" });
-  // Relative dates count from when the list was read, so they agree with the rows beside them.
-  const [loadedAtMs, setLoadedAtMs] = useState(0);
   const gt = useGT();
   const messages = useMessages();
 
@@ -603,19 +608,18 @@ function WorktreesOnEnvironment({
     const result = await list({ environmentId, input: {} });
     setBusy(false);
     if (result._tag === "Success") {
-      setWorktrees(result.value.worktrees);
-      setLoadedAtMs(Date.now());
+      setListing(listingOf(result.value.worktrees));
       setSelected(new Set());
     } else setNotice(m(msg("Could not load worktrees. Refresh to try again.")));
   };
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- loads the worktree list from the environment over RPC on mount
   useEffect(() => {
     let cancelled = false;
     void list({ environmentId, input: {} }).then((result) => {
       if (cancelled) return;
       setBusy(false);
       if (result._tag === "Success") {
-        setWorktrees(result.value.worktrees);
-        setLoadedAtMs(Date.now());
+        setListing(listingOf(result.value.worktrees));
       } else setNotice(m(msg("Could not load worktrees. Refresh to try again.")));
     });
     return () => {
@@ -642,7 +646,10 @@ function WorktreesOnEnvironment({
     setMeasuring((current) => new Set([...current, ...paths]));
     const queue = [...paths];
     const worker = async () => {
-      for (let path = queue.shift(); path !== undefined; path = queue.shift()) {
+      // A `for (let path = queue.shift(); ...)` header crashes the React Compiler.
+      for (;;) {
+        const path = queue.shift();
+        if (path === undefined) return;
         const result = await size({ environmentId, input: { path } });
         const bytes = result._tag === "Success" ? result.value.bytes : null;
         setSizes((current) => ({ ...current, [path]: bytes }));

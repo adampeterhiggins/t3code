@@ -68,8 +68,6 @@ export function sidebarPageLabeler(resolve: MessageResolver = m): (page: Sidebar
       : resolve(BUILT_IN_PAGES[page as keyof typeof BUILT_IN_PAGES].label);
 }
 
-export const sidebarPageLabel = (page: SidebarPage): string => sidebarPageLabeler()(page);
-
 /** A page's glyph: the built-in icon, or a group's own icon and accent. */
 function SidebarPageIcon(props: { page: SidebarPage; groupStyles: ThreadGroups }) {
   if (props.page.startsWith("group:")) {

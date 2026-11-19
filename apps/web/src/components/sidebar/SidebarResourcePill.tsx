@@ -114,12 +114,12 @@ function ResourceUsageDetails({
               CPU{" "}
               <span className="font-medium tabular-nums text-foreground">
                 <Var>
-                  {snapshot ? `${snapshot.groups.allT3.currentCpuPercent.toFixed(1)}%` : "—"}
+                  {snapshot ? `${snapshot.groups.allT3.currentCpuPercent.toFixed(1)}%` : "-"}
                 </Var>
               </span>{" "}
               Memory{" "}
               <span className="font-medium tabular-nums text-foreground">
-                <Var>{snapshot ? formatBytes(snapshot.groups.allT3.currentRssBytes) : "—"}</Var>
+                <Var>{snapshot ? formatBytes(snapshot.groups.allT3.currentRssBytes) : "-"}</Var>
               </span>
             </T>
           </div>

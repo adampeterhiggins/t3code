@@ -1,16 +1,7 @@
 /**
- * Fork: one subagent in the sidebar, shown in place in the Agents panel (with Back) and as its
- * own agent tab beside the parent chat. The header carries identity (status, compact model and
- * effort, runs, elapsed time), the prompt clamped to four lines, the result, artifacts, and the
- * agents this agent started. Below it, the agent's activity read from its child thread: a live
- * compact transcript (messages, reasoning, tool calls in order, each with its time) or its tool
- * calls alone, with search, filters, and model-call step dividers. Paths read relative to the
- * checkout the agent works in.
- * Usage sits in a footer.
- *
- * The child thread is subscribed only while this view is mounted. A nested agent (spawned by
- * one of this thread's agents) has its record on the thread that spawned it, read from its child
- * thread's lineage. An agent recorded before its child thread exists shows its record alone.
+ * Fork: one subagent, in place in the Agents panel and as its own agent tab. Its child thread is
+ * subscribed only while mounted; a nested agent's record lives on the thread that spawned it, and
+ * an agent recorded before its child thread exists shows its record alone.
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
@@ -229,6 +220,7 @@ function ClampedText(props: { text: string }) {
   const [open, setOpen] = useState(false);
   const [overflows, setOverflows] = useState(false);
   // Re-measured on resize: the panel width and the text both move the clamp.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- ResizeObserver measuring whether the DOM text overflows its clamp
   useLayoutEffect(() => {
     const node = ref.current;
     if (!node || open) return;
@@ -549,6 +541,7 @@ export function AgentDetailPanel(props: {
       setToolCallFocus({ id: pendingToolCall, token: (toolCallFocus?.token ?? 0) + 1 });
     }
   }
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- consumes the one-shot drill store entry after commit; a store write during render is unsafe
   useEffect(() => {
     if (pendingToolCall !== null && childThreadId !== null) {
       useAgentDrillStore.getState().takeToolCall(childThreadId);

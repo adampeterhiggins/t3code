@@ -70,6 +70,7 @@ export function SettingsConductorSection(props: {
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   // Once the re-read file shows our last write, it is the source again, so a
   // later edit from another client is not overwritten from a stale copy.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- drops the pending-write ref once the server's re-read file catches up; a ref can't be cleared during render
   useEffect(() => {
     if (lastWritten.current?.contents === model.targetRaw) lastWritten.current = null;
   }, [model.targetRaw]);

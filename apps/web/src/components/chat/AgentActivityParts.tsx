@@ -166,6 +166,7 @@ const ToolCallRow = memo(function ToolCallRow(props: {
     if (focusToken !== null) setExpanded(true);
   }
   const rowRef = useRef<HTMLLIElement>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- scrolls the DOM row into view for each new focus
   useLayoutEffect(() => {
     if (focusToken !== null) rowRef.current?.scrollIntoView({ block: "center" });
   }, [focusToken]);
@@ -410,11 +411,8 @@ function UsageStat(props: { icon: LucideIcon; label: string; value: string }) {
 }
 
 /**
- * A subagent's usage as icon + number with each label in its tooltip, and
- * `Σ total` opening the full breakdown. `leading` sits at the start; `extra`
- * appends rows to the breakdown (runs, attempt). `active` is the subject's
- * work state (`isActiveSubagentStatus`), so missing usage stays provisional
- * until the agent settles.
+ * A subagent's usage, with `Σ total` opening the full breakdown. `active` is the subject's work
+ * state (`isActiveSubagentStatus`), so missing usage stays provisional until the agent settles.
  */
 export function AgentUsageFooter(props: {
   usage: OrchestrationV2SubagentUsage | null;
@@ -512,7 +510,7 @@ export function AgentUsageFooter(props: {
           <TooltipTrigger render={<span tabIndex={0} className="shrink-0 outline-none" />}>
             Σ{" "}
             <span className="text-foreground">
-              {usage ? formatSubagentTokenCount(usage.totalTokens) : "—"}
+              {usage ? formatSubagentTokenCount(usage.totalTokens) : "-"}
             </span>
           </TooltipTrigger>
           <TooltipPopup side="top" align="end">

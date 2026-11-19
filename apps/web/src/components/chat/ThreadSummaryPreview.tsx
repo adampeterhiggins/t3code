@@ -46,6 +46,7 @@ export function ThreadSummaryPreview(props: {
   const project = useProject(thread ? scopeProjectRef(environmentId, thread.projectId) : null);
   const providerLabel = useThreadProviderLabel(environmentId, threadId);
   const [preview, setPreview] = useState<{ summary: string } | { error: string } | null>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- fetches the summary from the caller's loader while the hover preview is mounted
   useEffect(() => {
     if (loadSummary === null) return;
     let active = true;

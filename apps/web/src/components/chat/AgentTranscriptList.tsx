@@ -401,6 +401,7 @@ export function AgentTranscriptList(props: {
       if (!expanded.has(row.id)) setExpanded(new Set(expanded).add(row.id));
     }
   }
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- scrolls the imperative LegendList to the focused row
   useEffect(() => {
     if (focusScroll === null) return;
     void listRef.current?.scrollToIndex({

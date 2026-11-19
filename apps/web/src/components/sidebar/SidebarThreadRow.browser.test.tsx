@@ -1,6 +1,11 @@
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { EnvironmentId, ThreadId, type ScopedThreadRef } from "@t3tools/contracts";
+import {
+  type ContextMenuSource,
+  EnvironmentId,
+  ThreadId,
+  type ScopedThreadRef,
+} from "@t3tools/contracts";
 import { expect, it, vi } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
 
@@ -12,9 +17,13 @@ const environmentId = EnvironmentId.make("search-menu-env");
 const threadId = ThreadId.make("search-menu-thread");
 const threadRef = scopeThreadRef(environmentId, threadId);
 
-function searchResult(
-  onContextMenu: (threadRef: ScopedThreadRef, position: { x: number; y: number }) => void,
-) {
+type OnContextMenu = (
+  threadRef: ScopedThreadRef,
+  position: { x: number; y: number },
+  source: ContextMenuSource,
+) => void;
+
+function searchResult(onContextMenu: OnContextMenu) {
   const thread = {
     id: threadId,
     environmentId,
@@ -46,8 +55,7 @@ function searchResult(
 }
 
 it("opens the thread menu from a search result instead of the browser menu", async () => {
-  const onContextMenu =
-    vi.fn<(threadRef: ScopedThreadRef, position: { x: number; y: number }) => void>();
+  const onContextMenu = vi.fn<OnContextMenu>();
   // The row reports the menu; the sidebar owns navigation.
   await using screen = await render(searchResult(onContextMenu), { router: false });
   const row = screen.getByRole("option", { name: "Reconcile Party Guest RSVPs" });
@@ -63,10 +71,14 @@ it("opens the thread menu from a search result instead of the browser menu", asy
   title.dispatchEvent(contextMenu);
 
   expect(contextMenu.defaultPrevented).toBe(true);
-  expect(onContextMenu).toHaveBeenCalledWith(threadRef, { x: 40, y: 80 });
+  expect(onContextMenu).toHaveBeenCalledWith(threadRef, { x: 40, y: 80 }, "mouse");
 
   row.element().focus();
   await userEvent.keyboard("{Shift>}{F10}{/Shift}");
   const rect = row.element().getBoundingClientRect();
-  expect(onContextMenu).toHaveBeenLastCalledWith(threadRef, { x: rect.left, y: rect.bottom });
+  expect(onContextMenu).toHaveBeenLastCalledWith(
+    threadRef,
+    { x: rect.left, y: rect.bottom },
+    "keyboard",
+  );
 });

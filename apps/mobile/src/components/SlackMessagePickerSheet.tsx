@@ -1,3 +1,4 @@
+import { LegendList } from "@legendapp/list/react-native";
 import type {
   EnvironmentId,
   SlackMessageSummary,
@@ -13,7 +14,7 @@ import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
 import { msg, T, useGT, useMessages } from "gt-react-native";
 import { useState, type ReactNode } from "react";
-import { ActivityIndicator, Alert, FlatList, Pressable, ScrollView, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { m, type MessageResolver } from "../i18n/messages";
@@ -355,7 +356,8 @@ function SlackMessageList(props: {
   const insets = useSafeAreaInsets();
   const { pending, error } = props;
   return (
-    <FlatList
+    // oxlint-disable-next-line t3code/require-registered-list-scroll -- PickerSheet is a Modal with an inline header; there is no navigation header to register with.
+    <LegendList
       data={props.messages}
       ListHeaderComponent={
         props.header ? (
@@ -363,6 +365,10 @@ function SlackMessageList(props: {
         ) : undefined
       }
       keyExtractor={(message) => message.url}
+      extraData={{ attaching: props.attaching, onPick: props.onPick }}
+      estimatedItemSize={64}
+      recycleItems
+      className="flex-1"
       keyboardShouldPersistTaps="handled"
       contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) }}
       ListEmptyComponent={

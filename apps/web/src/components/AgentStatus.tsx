@@ -70,6 +70,7 @@ export function AgentElapsed({ agent }: { agent: RuntimeSubagent }) {
   const live = agent.status === "running" || agent.status === "waiting";
   const startedAt = agent.startedAt;
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- interval timer that writes the live elapsed time straight to the DOM node
   useEffect(() => {
     if (!live || !startedAt) {
       return;

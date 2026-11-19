@@ -320,7 +320,7 @@ export function forgeToolPreview(
               : null,
           meta: [
             str(target.group_label),
-            resolve(msg("current {value}", { value: scalarText(target.current_value) ?? "—" })),
+            resolve(msg("current {value}", { value: scalarText(target.current_value) ?? "-" })),
           ].filter((meta): meta is string => meta !== null),
           url: null,
           body: null,

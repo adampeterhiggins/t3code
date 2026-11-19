@@ -1,11 +1,6 @@
 /**
- * Fork: carry a subagent's work into chat, from its agents list row or its agent tab.
- *
- * - Attach to chat lives in `agentReferences.ts`: the agent's `@handle` chip carries its task and
- *   result.
- * - Continue in chat opens a new chat tab whose draft carries the agent's task, outcome and
- *   latest tool calls as a chat-summary chip. It starts a fresh conversation; the agent's own
- *   provider session is not resumed.
+ * Fork: Continue in chat opens a new chat tab whose draft carries the agent's task, outcome and
+ * latest tool calls. It starts a fresh conversation; the agent's provider session is not resumed.
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {

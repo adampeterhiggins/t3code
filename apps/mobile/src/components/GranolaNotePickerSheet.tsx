@@ -1,3 +1,4 @@
+import { LegendList } from "@legendapp/list/react-native";
 import type { EnvironmentId, GranolaNoteSummary, ThreadId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { granolaNoteContextRecord } from "@t3tools/client-runtime/state/granola";
@@ -8,7 +9,7 @@ import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
 import { msg, useGT, useMessages } from "gt-react-native";
 import { useState, type ReactNode } from "react";
-import { ActivityIndicator, Alert, FlatList, Pressable, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { m, type MessageResolver } from "../i18n/messages";
@@ -281,9 +282,14 @@ function GranolaNoteResults(props: {
         )
       : null;
   return (
-    <FlatList
+    // oxlint-disable-next-line t3code/require-registered-list-scroll -- PickerSheet is a Modal with an inline header; there is no navigation header to register with.
+    <LegendList
       data={notes}
       keyExtractor={(note) => note.id}
+      extraData={{ attaching: props.attaching, onPick: props.onPick }}
+      estimatedItemSize={64}
+      recycleItems
+      className="flex-1"
       keyboardShouldPersistTaps="handled"
       contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) }}
       ListEmptyComponent={

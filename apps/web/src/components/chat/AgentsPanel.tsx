@@ -1,19 +1,7 @@
 /**
- * Fork: the Agents right-panel surface, the whole fleet of a thread's subagents. Lineage in the
- * thread details panel lists the same agents compactly; both read the list logic in
- * `agentListView.ts`/`agentFleet.ts` and share one filter and sort (`agentListViewStore.ts`).
- *
- * - Spawn order is stable; activity and completion update rows in place.
- * - Agents spawned by an agent sit indented under it, found through child-thread lineage.
- * - Clicking an agent drills into its detail view in place (`AgentDetailPanel`), with Back to the
- *   list; an agent it started drills one level further, and a tool call clicked in a preview opens
- *   the agent on that call. An agent recorded before its child thread exists opens on its record.
- *   The drill-in is per thread and session-only (`agentDrillStore.ts`). **Open in new tab** pins an
- *   agent as its own agent tab.
- * - The footer counts agents by status and sums the usage they reported.
- * - Static status dots and DOM-write elapsed timers. Rows page in, and only working rows on
- *   screen (or an open preview) subscribe to a child thread; the detail view subscribes to its
- *   agent's child thread while it is shown.
+ * Fork: the Agents right-panel, a thread's whole subagent fleet. Only working rows on screen (or
+ * an open preview) subscribe to a child thread, and elapsed timers write to the DOM, so a large
+ * fleet stays cheap.
  */
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {

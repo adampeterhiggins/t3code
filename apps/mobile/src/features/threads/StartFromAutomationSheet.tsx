@@ -1,3 +1,4 @@
+import { LegendList } from "@legendapp/list/react-native";
 import { openSettings } from "../settings/settings-navigation";
 import { useAtomValue } from "@effect/atom-react";
 import {
@@ -17,7 +18,7 @@ import {
 import { StackActions, useNavigation } from "@react-navigation/native";
 import { T, useGT, useLocale, useMessages } from "gt-react-native";
 import { useState, type ReactNode } from "react";
-import { ActivityIndicator, FlatList, Pressable, View } from "react-native";
+import { ActivityIndicator, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { PickerSheet } from "../../components/PickerSheet";
@@ -155,9 +156,14 @@ function StartFromAutomationSheet(
           onChangeText={setQuery}
         />
       </View>
-      <FlatList
+      {/* oxlint-disable-next-line t3code/require-registered-list-scroll -- PickerSheet is a Modal with an inline header; there is no navigation header to register with. */}
+      <LegendList
         data={tasks}
         keyExtractor={(task) => task.id}
+        extraData={{ running, canRun, canEdit, run }}
+        estimatedItemSize={64}
+        recycleItems
+        className="flex-1"
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) }}
         ListHeaderComponent={

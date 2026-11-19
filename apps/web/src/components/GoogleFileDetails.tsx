@@ -33,9 +33,11 @@ export function GoogleFileDetails({
           <table className="w-full border-collapse text-xs tabular-nums">
             <tbody>
               {record.grid.map((row, r) => (
+                // oxlint-disable-next-line react/no-array-index-key -- a fixed snapshot: a cell's position is its identity
                 <tr key={r}>
                   {row.map((cell, c) => (
                     <td
+                      // oxlint-disable-next-line react/no-array-index-key -- a fixed snapshot: a cell's position is its identity
                       key={c}
                       className={
                         record.location

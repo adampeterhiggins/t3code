@@ -1,3 +1,4 @@
+import { LegendList } from "@legendapp/list/react-native";
 import { threadsForPullRequest } from "@t3tools/client-runtime/state/pull-requests";
 import {
   isAtomCommandInterrupted,
@@ -7,7 +8,7 @@ import type { EnvironmentId, ProjectId, PullRequestListEntry } from "@t3tools/co
 import { StackActions, useNavigation } from "@react-navigation/native";
 import { useGT } from "gt-react-native";
 import { useState, type ReactNode } from "react";
-import { ActivityIndicator, Alert, FlatList, Pressable, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText as Text, AppTextInput } from "../../components/ui/AppText";
@@ -149,9 +150,14 @@ function StartFromPullRequestSheet(
           onChangeText={setQuery}
         />
       </View>
-      <FlatList
+      {/* oxlint-disable-next-line t3code/require-registered-list-scroll -- PickerSheet is a Modal with an inline header; there is no navigation header to register with. */}
+      <LegendList
         data={entries}
         keyExtractor={(entry) => entry.url}
+        extraData={{ checkingOut, pick }}
+        estimatedItemSize={64}
+        recycleItems
+        className="flex-1"
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) }}
         ListEmptyComponent={
