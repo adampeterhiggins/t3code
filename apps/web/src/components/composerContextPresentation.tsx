@@ -12,6 +12,8 @@ import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments"
 import { videoMimeType } from "@t3tools/shared/video";
 import { MessageCircleIcon, MousePointerClickIcon } from "lucide-react";
 import { createContext, type ReactElement, type ComponentProps, use } from "react";
+import { msg, useGT, useMessages } from "gt-react";
+import type { MessageResolver } from "../i18n/messages";
 import {
   ComposerContextActionsContext,
   type ComposerContextActions,
@@ -29,11 +31,11 @@ import {
   fileContextReference,
   imageContextReference,
   isPullRequestSummaryContext,
-  pullRequestContextDisplayState,
-  pullRequestContextKindLabel,
   previewAnnotationContextId,
   previewAnnotationContextLabel,
   previewAnnotationContextRecord,
+  pullRequestContextDisplayState,
+  pullRequestContextKindLabel,
   reviewCommentContextId,
   reviewCommentContextLabel,
   terminalContextReference,
@@ -185,8 +187,9 @@ function useUploadStatusSuffix(
   key: string,
   upload: AttachmentUploadState | undefined,
 ): string | null {
+  const gt = useGT();
   const progress = useAttachmentUploadProgress(key, upload);
-  if (upload?.status === "failed") return "upload failed";
+  if (upload?.status === "failed") return gt("upload failed");
   return progress;
 }
 
@@ -209,15 +212,17 @@ function UploadFileChip({
   upload: AttachmentUploadState | undefined;
   uploadKey: string;
 }) {
+  const gt = useGT();
   const suffix = useUploadStatusSuffix(uploadKey, upload);
-  return <FileChip {...props} suffix={props.unresolved ? "attach again" : suffix} />;
+  return <FileChip {...props} suffix={props.unresolved ? gt("attach again") : suffix} />;
 }
 
 function UnresolvedContextChip(props: { label: string }) {
+  const gt = useGT();
   return (
     <UnresolvedChip
       label={props.label}
-      tooltip="This context is no longer available. Remove it or attach it again."
+      tooltip={gt("This context is no longer available. Remove it or attach it again.")}
     />
   );
 }
@@ -226,6 +231,7 @@ export interface ComposerContextRenderContext {
   label: string;
   actions: ComposerContextActions;
   resolvedTheme: "light" | "dark";
+  resolve: MessageResolver;
 }
 
 const composerContextPresentationRegistry = createContextPresentationRegistry<
@@ -235,7 +241,7 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
   handlers: {
     response: { chip: () => null },
     image: {
-      chip: (entry, { actions }) => {
+      chip: (entry, { actions, resolve }) => {
         if (entry.kind !== "image") return null;
         const { record, upload } = entry;
         return {
@@ -245,11 +251,11 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
               uploadKey={record.id}
               name={record.name}
               previewUrl={record.previewUrl}
-              size={formatAttachmentSize(record.sizeBytes)}
+              size={formatAttachmentSize(record.sizeBytes, resolve)}
               onClick={() => actions.expandImage(record.id)}
             />
           ),
-          accessibleLabel: `Image attachment, ${record.name}`,
+          accessibleLabel: resolve(msg("Image attachment, {name}", { name: record.name })),
           preview: {
             name: record.name,
             sizeBytes: record.sizeBytes,
@@ -260,11 +266,11 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
       },
     },
     file: {
-      chip: (entry, { actions, resolvedTheme }) => {
+      chip: (entry, { actions, resolvedTheme, resolve }) => {
         if (entry.kind !== "file") return null;
         const { record, upload } = entry;
         const needsReattach = composerFileNeedsReattach(record);
-        const size = formatAttachmentSize(record.sizeBytes);
+        const size = formatAttachmentSize(record.sizeBytes, resolve);
         const isVideo = videoMimeType(record) !== null;
         return {
           trigger: (
@@ -277,7 +283,13 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
               theme={resolvedTheme}
               error={upload?.status === "failed"}
               unresolved={needsReattach}
-              accessibleLabel={`${isVideo && !needsReattach ? "Preview video" : "File"} attachment, ${record.name}, ${size}`}
+              accessibleLabel={
+                isVideo && !needsReattach
+                  ? resolve(
+                      msg("Preview video attachment, {name}, {size}", { name: record.name, size }),
+                    )
+                  : resolve(msg("File attachment, {name}, {size}", { name: record.name, size }))
+              }
               onOpen={
                 needsReattach
                   ? undefined
@@ -285,7 +297,7 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
               }
             />
           ),
-          accessibleLabel: `File attachment, ${record.name}`,
+          accessibleLabel: resolve(msg("File attachment, {name}", { name: record.name })),
           preview: {
             name: record.name,
             sizeBytes: record.sizeBytes,
@@ -298,13 +310,13 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
       },
     },
     terminal: {
-      chip: (entry) => {
+      chip: (entry, { resolve }) => {
         if (entry.kind !== "terminal") return null;
         const label = formatTerminalContextLabel(entry.record);
         const expired = isTerminalContextExpired(entry.record);
         return {
           trigger: <TerminalChipTrigger label={label} expired={expired} />,
-          accessibleLabel: `Terminal excerpt, ${label}`,
+          accessibleLabel: resolve(msg("Terminal excerpt, {label}", { label })),
           preview: {
             label,
             terminalLabel: entry.record.terminalLabel,
@@ -318,25 +330,25 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
       },
     },
     element: {
-      chip: (entry) =>
+      chip: (entry, { resolve }) =>
         entry.kind === "element"
           ? buttonContextChip({
               kind: "element",
               icon: <MousePointerClickIcon />,
               label: entry.record.label,
-              kindLabel: "Browser element",
+              kindLabel: resolve(msg("Browser element")),
               preview: { record: entry.record },
             })
           : null,
     },
     "preview-annotation": {
-      chip: (entry) =>
+      chip: (entry, { resolve }) =>
         entry.kind === "preview-annotation"
           ? buttonContextChip({
               kind: "preview-annotation",
               icon: <MousePointerClickIcon />,
-              label: previewAnnotationContextLabel(entry.record),
-              kindLabel: "Preview annotation",
+              label: previewAnnotationContextLabel(entry.record, resolve),
+              kindLabel: resolve(msg("Preview annotation")),
               preview: {
                 record: previewAnnotationContextRecord(entry.record),
                 screenshotUrl:
@@ -346,12 +358,14 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
           : null,
     },
     "review-comment": {
-      chip: (entry, { actions }) => {
+      chip: (entry, { actions, resolve }) => {
         if (entry.kind !== "review-comment") return null;
         const comment = entry.record;
-        const label = reviewCommentContextLabel(comment);
+        const label = reviewCommentContextLabel(comment, resolve);
         const isPullRequest = isPullRequestSummaryContext(comment);
-        const kindLabel = isPullRequest ? pullRequestContextKindLabel(comment) : "Review comment";
+        const kindLabel = isPullRequest
+          ? pullRequestContextKindLabel(comment, resolve)
+          : resolve(msg("Review comment"));
         const kind = isPullRequest
           ? PULL_REQUEST_CHIP_KINDS[pullRequestContextDisplayState(comment) ?? "unknown"]
           : "review-comment";
@@ -381,7 +395,9 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
               kind={kind}
               icon={isPullRequest ? <PullRequestGlyph.pullRequest /> : <MessageCircleIcon />}
               label={label}
-              aria-label={`${kindLabel}, ${label}. Show details`}
+              aria-label={resolve(
+                msg("{label}. Show details", { label: `${kindLabel}, ${label}` }),
+              )}
             />
           ),
           accessibleLabel: `${kindLabel}, ${label}`,
@@ -390,7 +406,7 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
       },
     },
     mention: {
-      chip: (entry, { actions, resolvedTheme }) => {
+      chip: (entry, { actions, resolvedTheme, resolve }) => {
         if (entry.kind !== "mention") return null;
         const { path } = entry.record;
         const fileTag = (
@@ -418,7 +434,7 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
               kind="mention"
               render={<button type="button" />}
               onClick={() => actions.openMention(path)}
-              aria-label={`Preview ${path}`}
+              aria-label={resolve(msg("Preview {path}", { path }))}
               contentEditable={false}
               spellCheck={false}
               data-composer-mention-chip="true"
@@ -432,14 +448,14 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
       },
     },
     skill: {
-      chip: (entry, { actions }) => {
+      chip: (entry, { actions, resolve }) => {
         if (entry.kind !== "skill") return null;
         const { label, description, path } = entry.record;
         return buttonContextChip({
           kind: "skill",
           icon: <SkillChipIcon />,
           label,
-          kindLabel: "Skill",
+          kindLabel: resolve(msg("Skill")),
           preview: {
             label,
             description,
@@ -452,23 +468,23 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
       },
     },
     thread: {
-      chip: (entry, { actions }) => {
+      chip: (entry, { actions, resolve }) => {
         if (entry.kind !== "thread") return null;
         const unreadable =
           actions.environmentId !== null && entry.record.environmentId !== actions.environmentId;
         return {
           trigger: <ThreadChipTrigger record={entry.record} unreadable={unreadable} />,
-          accessibleLabel: `Thread, ${entry.record.title}`,
+          accessibleLabel: resolve(msg("Thread, {title}", { title: entry.record.title })),
           preview: { record: entry.record, unreadable },
         };
       },
     },
     environment: {
-      chip: (entry) =>
+      chip: (entry, { resolve }) =>
         entry.kind === "environment"
           ? {
               trigger: <EnvironmentContextChip record={entry.record} />,
-              accessibleLabel: `Machine, ${entry.record.label}`,
+              accessibleLabel: resolve(msg("Machine, {label}", { label: entry.record.label })),
               preview: {},
             }
           : null,
@@ -485,10 +501,12 @@ export function ComposerContextRecordChip(props: {
 }): ReactElement {
   const actions = use(ComposerContextActionsContext);
   const { resolvedTheme } = useTheme();
+  const resolve = useMessages();
   return composerContextPresentationRegistry.render(props.entry.kind, props.entry, {
     label: props.label,
     actions,
     resolvedTheme,
+    resolve,
   });
 }
 
@@ -501,9 +519,11 @@ export function ComposerContextReferenceChip(props: {
   const records = use(ComposerContextRecordsContext);
   const actions = use(ComposerContextActionsContext);
   const { resolvedTheme } = useTheme();
+  const resolve = useMessages();
   return composerContextPresentationRegistry.render(props.kind, records.get(props.contextId), {
     label: props.label,
     actions,
     resolvedTheme,
+    resolve,
   });
 }

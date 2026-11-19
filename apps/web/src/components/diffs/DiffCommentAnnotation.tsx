@@ -1,6 +1,8 @@
 import * as Schema from "effect/Schema";
+import { msg, T, useGT, useMessages } from "gt-react";
 import { ChevronDownIcon, MessageCircle, Trash2 } from "lucide-react";
 import { useLayoutEffect, useRef, useState, type MouseEvent } from "react";
+import { reviewCommentRangeText } from "~/lib/composerContextRecords";
 
 import { Button } from "~/components/ui/button";
 import { Group, GroupSeparator } from "~/components/ui/group";
@@ -38,14 +40,17 @@ type AgentActionChoice = typeof AgentActionChoiceSchema.Type;
 const AGENT_ACTION_CHOICE_STORAGE_KEY = "t3code:diff-comment-agent-action:v1";
 
 const AGENT_ACTION_CHOICES = {
-  send: { label: "Send to agent", description: "Starts a turn now" },
-  composer: { label: "Add to composer", description: "Insert as a chip and keep writing" },
+  send: { label: msg("Send to agent"), description: msg("Starts a turn now") },
+  composer: {
+    label: msg("Add to composer"),
+    description: msg("Insert as a chip and keep writing"),
+  },
 } as const satisfies Record<AgentActionChoice, { label: string; description: string }>;
 
 // Not a remembered choice: a draft is a one-off detour, not how the reader usually hands over.
 const SAVE_DRAFT_ACTION = {
-  label: "Save as draft",
-  description: "Keep it in the thread to send later",
+  label: msg("Save as draft"),
+  description: msg("Keep it in the thread to send later"),
 } as const;
 
 interface DiffCommentAnnotationProps {
@@ -81,21 +86,23 @@ export function DiffCommentAnnotation({
   onCancel,
   onComment,
   onDelete,
-  placeholder = "Add a comment…",
-  submitLabel = "Comment",
+  placeholder,
+  submitLabel,
   pending = false,
   agentAction,
   focusOnMount = true,
   completionScope = null,
 }: DiffCommentAnnotationProps) {
+  const gt = useGT();
+  const messages = useMessages();
   const [localDraftText, setLocalDraftText] = useState("");
   const displayedText = kind === "draft" && !onTextChange ? localDraftText : text;
   const trimmedText = displayedText.trim();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const shortcutHint =
     agentAction && onComment
-      ? "⌘/Ctrl Enter for review, with Shift for agent"
-      : "⌘/Ctrl Enter to send";
+      ? gt("⌘/Ctrl Enter for review, with Shift for agent")
+      : gt("⌘/Ctrl Enter to send");
   const [agentChoice, setAgentChoice] = useLocalStorage(
     AGENT_ACTION_CHOICE_STORAGE_KEY,
     "send",
@@ -131,7 +138,7 @@ export function DiffCommentAnnotation({
             <Button
               variant="ghost-muted"
               size="icon-xs"
-              aria-label="Delete comment"
+              aria-label={gt("Delete comment")}
               onClick={onDelete}
             >
               <Trash2 className="size-3" />
@@ -170,8 +177,10 @@ export function DiffCommentAnnotation({
         size="sm"
         value={displayedText}
         dir={textDirection(displayedText)}
-        placeholder={placeholder}
-        aria-label={`Comment on lines ${rangeLabel}`}
+        placeholder={placeholder ?? gt("Add a comment…")}
+        aria-label={gt("Comment on lines {rangeLabel}", {
+          rangeLabel: reviewCommentRangeText(rangeLabel, messages),
+        })}
         onValueChange={onTextChange ?? setLocalDraftText}
         onFocus={(event) => {
           const end = event.currentTarget.value.length;
@@ -205,7 +214,7 @@ export function DiffCommentAnnotation({
         </Tooltip>
         {speech ? <TextFieldSpeechControls speech={speech} disabled={pending} /> : null}
         <Button variant="ghost" size="xs" onClick={onCancel}>
-          Cancel
+          <T>Cancel</T>
         </Button>
         {onComment ? (
           <Button
@@ -214,7 +223,7 @@ export function DiffCommentAnnotation({
             disabled={speech?.preparing || pending || (!speech?.blocksSubmission && !trimmedText)}
             onClick={() => submit(speech, onComment)}
           >
-            {submitLabel}
+            {submitLabel ?? gt("Comment", { $context: "verb, submit button" })}
           </Button>
         ) : null}
         {agentAction ? (
@@ -265,6 +274,8 @@ function AgentActionButton(props: {
   primary: boolean;
   text: string;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const variant = props.primary ? "default" : "outline";
   const run = (choice: AgentActionChoice) => {
     props.onChoose(choice);
@@ -277,9 +288,15 @@ function AgentActionButton(props: {
     if (!api || props.disabled) return;
     const selected = await api.contextMenu.show(
       [
-        { id: "send", label: AGENT_ACTION_CHOICES.send.label, icon: "arrow-up" },
-        { id: "composer", label: AGENT_ACTION_CHOICES.composer.label, icon: "message-square-plus" },
-        ...(saveDraft ? [{ id: "draft", label: SAVE_DRAFT_ACTION.label, icon: "file-text" }] : []),
+        { id: "send", label: m(AGENT_ACTION_CHOICES.send.label), icon: "arrow-up" },
+        {
+          id: "composer",
+          label: m(AGENT_ACTION_CHOICES.composer.label),
+          icon: "message-square-plus",
+        },
+        ...(saveDraft
+          ? [{ id: "draft", label: m(SAVE_DRAFT_ACTION.label), icon: "file-text" }]
+          : []),
       ],
       { x: event.clientX, y: event.clientY },
     );
@@ -294,14 +311,18 @@ function AgentActionButton(props: {
         disabled={props.disabled}
         onClick={() => run(props.choice)}
       >
-        {AGENT_ACTION_CHOICES[props.choice].label}
+        {m(AGENT_ACTION_CHOICES[props.choice].label)}
       </Button>
       <GroupSeparator />
       <Menu>
         <MenuTrigger
           disabled={props.disabled}
           render={
-            <Button size="icon-xs" variant={variant} aria-label="More ways to hand to the agent" />
+            <Button
+              size="icon-xs"
+              variant={variant}
+              aria-label={gt("More ways to hand to the agent")}
+            />
           }
         >
           <ChevronDownIcon aria-hidden="true" />
@@ -310,9 +331,9 @@ function AgentActionButton(props: {
           {(["send", "composer"] as const).map((choice) => (
             <MenuItem key={choice} onClick={() => run(choice)}>
               <span className="flex min-w-0 flex-col py-0.5">
-                <MenuItemLabel>{AGENT_ACTION_CHOICES[choice].label}</MenuItemLabel>
+                <MenuItemLabel>{m(AGENT_ACTION_CHOICES[choice].label)}</MenuItemLabel>
                 <span className="truncate text-xs text-muted-foreground">
-                  {AGENT_ACTION_CHOICES[choice].description}
+                  {m(AGENT_ACTION_CHOICES[choice].description)}
                 </span>
               </span>
             </MenuItem>
@@ -320,9 +341,9 @@ function AgentActionButton(props: {
           {saveDraft ? (
             <MenuItem onClick={() => saveDraft(props.text)}>
               <span className="flex min-w-0 flex-col py-0.5">
-                <MenuItemLabel>{SAVE_DRAFT_ACTION.label}</MenuItemLabel>
+                <MenuItemLabel>{m(SAVE_DRAFT_ACTION.label)}</MenuItemLabel>
                 <span className="truncate text-xs text-muted-foreground">
-                  {SAVE_DRAFT_ACTION.description}
+                  {m(SAVE_DRAFT_ACTION.description)}
                 </span>
               </span>
             </MenuItem>

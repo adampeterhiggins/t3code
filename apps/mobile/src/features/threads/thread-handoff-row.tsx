@@ -35,6 +35,7 @@ import {
   type ServerProvider,
 } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
+import { useGT } from "gt-react-native";
 import { useMemo } from "react";
 import { Pressable, View, type ColorValue } from "react-native";
 import { AppText as Text } from "../../components/ui/AppText";
@@ -98,6 +99,7 @@ export function ThreadHandoffRow(props: {
   iconColor: ColorValue;
   surfaceColor: string;
 }) {
+  const gt = useGT();
   const { item } = props.projectedItem;
   const endpointsAtom = useMemo(
     () => handoffEndpointsAtom(props.environmentId, props.projectedItem),
@@ -112,7 +114,7 @@ export function ThreadHandoffRow(props: {
       endpoints={endpoints}
       iconColor={color}
       surfaceColor={props.surfaceColor}
-      label="Context handoff"
+      label={gt("Context handoff")}
       failed={item.status === "failed"}
     />
   );
@@ -199,6 +201,7 @@ export function ThreadModelChangeRow(props: {
   iconColor: ColorValue;
   surfaceColor: string;
 }) {
+  const gt = useGT();
   const { item } = props.projectedItem;
   const config = useAtomValue(serverEnvironment.configValueAtom(props.environmentId));
   if (item.type !== "model_change") return null;
@@ -228,7 +231,7 @@ export function ThreadModelChangeRow(props: {
   const showAccount = item.from.instanceId !== item.to.instanceId;
   return (
     <ThreadContextDivider
-      label={item.title ?? "Model changed"}
+      label={item.title ?? gt("Model changed")}
       icon="arrow.left.arrow.right"
       iconColor={props.iconColor}
     >
@@ -281,6 +284,7 @@ export function ThreadForkRow(props: {
   projectedItem: OrchestrationV2ProjectedTurnItem;
   iconColor: ColorValue;
 }) {
+  const gt = useGT();
   const { item } = props.projectedItem;
   const config = useAtomValue(serverEnvironment.configValueAtom(props.environmentId));
   // Instance ids only: the thread projection updates on every streamed event.
@@ -306,7 +310,7 @@ export function ThreadForkRow(props: {
     <ThreadContextDivider
       label={
         accountLabel ??
-        (item.source.type === "run" ? "Forked from conversation" : "Conversation fork")
+        (item.source.type === "run" ? gt("Forked from conversation") : gt("Conversation fork"))
       }
       icon="arrow.triangle.branch"
       iconColor={props.iconColor}
@@ -324,6 +328,7 @@ function HandoffEndpoint(props: {
   providers: ReadonlyArray<HandoffProvider>;
   surfaceColor: string;
 }) {
+  const gt = useGT();
   const provider = props.providers.find((candidate) => candidate.instanceId === props.instanceId);
   const model = provider?.models.find((candidate) => candidate.slug === props.model);
   const label =
@@ -339,7 +344,7 @@ function HandoffEndpoint(props: {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={visible}
-      accessibilityHint="Show provider account"
+      accessibilityHint={gt("Show provider account")}
       className="min-h-6 max-w-full flex-row items-center justify-center gap-1.5"
       hitSlop={{ top: 8, bottom: 8 }}
       onPress={() =>

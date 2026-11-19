@@ -12,11 +12,13 @@ import {
   type OrchestrationV2Subagent,
   type ThreadId,
 } from "@t3tools/contracts";
-import { deriveSubagentElapsedMs, formatDuration } from "@t3tools/shared/orchestrationTiming";
+import { deriveSubagentElapsedMs } from "@t3tools/shared/orchestrationTiming";
+import { formatDuration } from "@t3tools/shared/orchestrationTimingCopy";
 import { StackActions, useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import * as DateTime from "effect/DateTime";
 import { Atom } from "effect/reactivity";
 import * as Haptics from "expo-haptics";
+import { T, useGT, useMessages } from "gt-react-native";
 import { useMemo } from "react";
 import { Platform, Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -66,6 +68,8 @@ export function ThreadAgentsSheet({ route }: StaticScreenProps<AgentsTarget>) {
   const navigation = useNavigation();
   const openInspector = useOpenThreadInspector();
   const insets = useSafeAreaInsets();
+  const gt = useGT();
+  const messages = useMessages();
   const turn = useThreadTurnSubagents(target);
   const subagents = turn?.subagents ?? [];
   const hasLiveAgent = (turn?.liveCount ?? 0) > 0;
@@ -78,12 +82,12 @@ export function ThreadAgentsSheet({ route }: StaticScreenProps<AgentsTarget>) {
   const workflowGroups = useMemo(
     () =>
       new Map(
-        deriveWorkflowGroups(projectedSubagentsToRuntime(subagents)).map((group) => [
+        deriveWorkflowGroups(projectedSubagentsToRuntime(subagents), messages).map((group) => [
           group.workflow.id,
           group,
         ]),
       ),
-    [subagents],
+    [messages, subagents],
   );
 
   const openChildThread = (child: { environmentId: EnvironmentId; threadId: ThreadId }) => {
@@ -122,7 +126,7 @@ export function ThreadAgentsSheet({ route }: StaticScreenProps<AgentsTarget>) {
     >
       {subagents.length === 0 ? (
         <Text className="pt-6 text-center text-sm text-foreground-muted">
-          No agents in this turn.
+          <T>No agents in this turn.</T>
         </Text>
       ) : (
         subagents.map((subagent) => {
@@ -156,7 +160,7 @@ export function ThreadAgentsSheet({ route }: StaticScreenProps<AgentsTarget>) {
 
   return (
     <View collapsable={false} className="flex-1 bg-sheet">
-      <SheetHeader title="Agents" onClose={() => navigation.goBack()} />
+      <SheetHeader title={gt("Agents")} onClose={() => navigation.goBack()} />
       <ScreenContent>{content}</ScreenContent>
     </View>
   );
@@ -174,6 +178,7 @@ function AgentRow(props: {
   readonly onAttach: (subagent: OrchestrationV2Subagent, reference: AgentReference) => void;
 }) {
   const { subagent, reference } = props;
+  const gt = useGT();
   const { presentationById } = useEnvironments();
   const target = subagentThreadTarget(subagent, props.environmentId, (id) =>
     presentationById.has(id),
@@ -196,10 +201,14 @@ function AgentRow(props: {
       <Pressable
         accessibilityHint={
           subagent.remoteChild !== undefined
-            ? `Runs on ${subagent.remoteChild.label}. Connect to it to open its thread.`
+            ? gt("Runs on {label}. Connect to it to open its thread.", {
+                label: subagent.remoteChild.label,
+              })
             : reference
-              ? "Provider-managed agent. Its work appears in the transcript. Long press for actions."
-              : "Provider-managed agent. Its work appears in the transcript."
+              ? gt(
+                  "Provider-managed agent. Its work appears in the transcript. Long press for actions.",
+                )
+              : gt("Provider-managed agent. Its work appears in the transcript.")
         }
       >
         {row}
@@ -209,8 +218,8 @@ function AgentRow(props: {
         accessibilityRole="link"
         accessibilityHint={
           reference
-            ? "Opens this agent's thread. Long press for actions."
-            : "Opens this agent's thread"
+            ? gt("Opens this agent's thread. Long press for actions.")
+            : gt("Opens this agent's thread")
         }
         onPress={() => props.onOpen(target)}
         className="active:opacity-70"
@@ -220,9 +229,9 @@ function AgentRow(props: {
     );
 
   const actions = [
-    { id: "attach", title: "Attach to chat" },
-    { id: "copy-handle", title: "Copy handle" },
-    ...(target === null ? [] : [{ id: "open", title: "Open agent" }]),
+    { id: "attach", title: gt("Attach to chat") },
+    { id: "copy-handle", title: gt("Copy handle") },
+    ...(target === null ? [] : [{ id: "open", title: gt("Open agent") }]),
   ];
   return (
     <View className="flex-row items-center">
@@ -268,6 +277,7 @@ function useSubagentElapsed(
 ): string | null {
   const running = isOrchestrationV2WorkActive(subagent.status);
   const nowMs = useVisibleSecondClock(tickSeconds && running);
+  const messages = useMessages();
   const elapsedMs = deriveSubagentElapsedMs(
     {
       status: subagent.status,
@@ -276,5 +286,5 @@ function useSubagentElapsed(
     },
     nowMs,
   );
-  return elapsedMs === null || elapsedMs === 0 ? null : formatDuration(elapsedMs);
+  return elapsedMs === null || elapsedMs === 0 ? null : formatDuration(elapsedMs, messages);
 }

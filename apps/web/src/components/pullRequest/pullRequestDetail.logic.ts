@@ -11,12 +11,12 @@ import { stripInlineContextReferences } from "~/lib/composerContextReferences";
 import type { Nodes as MdastNodes } from "mdast";
 import { fromMarkdown } from "mdast-util-from-markdown";
 import {
-  capitalizeTerm,
   sourceControlClients,
   type ChangeRequestTerminology,
 } from "@t3tools/client-runtime/source-control-clients";
 import * as Schema from "effect/Schema";
 import {
+  COMPOSER_CONTEXT_REVIEW_TEXT_MAX_CHARS,
   GitCommandError,
   PullRequestDetail,
   PullRequestOperationError,
@@ -53,6 +53,9 @@ import {
   visibleThreadPullRequests,
 } from "@t3tools/client-runtime/thread-pull-requests";
 
+import { msg } from "gt-react";
+
+import { m, type MessageResolver } from "~/i18n/messages";
 import {
   buildDiffReviewComment,
   inferReviewCommentFenceLanguage,
@@ -60,11 +63,13 @@ import {
 } from "~/reviewCommentContext";
 import { resolveFileDiffPath, resolveFileDiffPreviousPath } from "~/lib/diffRendering";
 
+import { changeRequestTermKind } from "./changeRequestTerm";
+
 export const PULL_REQUEST_MERGE_METHOD_LABELS: Record<PullRequestMergeMethod, string> = {
-  merge: "Merge",
-  squash: "Squash and merge",
-  rebase: "Rebase and merge",
-  "fast-forward": "Fast-forward merge",
+  merge: msg("Merge"),
+  squash: msg("Squash and merge"),
+  rebase: msg("Rebase and merge"),
+  "fast-forward": msg("Fast-forward merge"),
 };
 
 export function allowsSinglePullRequestMerge(input: {
@@ -258,18 +263,18 @@ export function threadPullRequestPanelTarget(thread: {
   return legacy ?? thread.branchPullRequest ?? null;
 }
 
-export function pullRequestHandoffLabels(inThisThread: boolean) {
+export function pullRequestHandoffLabels(inThisThread: boolean, resolve: MessageResolver = m) {
   // Beside a composer a remark's Fix shares its header with Add to chat.
   return inThisThread
     ? {
-        fixFinding: "Fix",
-        fixCheck: "Fix in this thread",
-        fixFindings: "Fix findings in this thread",
+        fixFinding: resolve(msg("Fix", { $context: "verb, fix a review finding" })),
+        fixCheck: resolve(msg("Fix in this thread")),
+        fixFindings: resolve(msg("Fix findings in this thread")),
       }
     : {
-        fixFinding: "Fix in a thread",
-        fixCheck: "Fix",
-        fixFindings: "Fix findings in a thread",
+        fixFinding: resolve(msg("Fix in a thread")),
+        fixCheck: resolve(msg("Fix", { $context: "verb, fix a review finding" })),
+        fixFindings: resolve(msg("Fix findings in a thread")),
       };
 }
 
@@ -340,8 +345,11 @@ export function classifyPullRequestChecks(
   return "passing";
 }
 
-export function describePullRequestChecks(checks: ReadonlyArray<PullRequestCheck>): string {
-  if (checks.length === 0) return "No checks reported";
+export function describePullRequestChecks(
+  checks: ReadonlyArray<PullRequestCheck>,
+  resolve: MessageResolver = m,
+): string {
+  if (checks.length === 0) return resolve(msg("No checks reported"));
   const failed = checks.filter(
     (check) => check.status === "failure" || check.status === "cancelled",
   ).length;
@@ -349,13 +357,24 @@ export function describePullRequestChecks(checks: ReadonlyArray<PullRequestCheck
   const actionRequired = checks.filter((check) => check.status === "action-required").length;
   const passed = checks.filter((check) => check.status === "success").length;
   const parts: string[] = [];
-  if (pending > 0) parts.push(`${pending} of ${checks.length} running`);
-  if (actionRequired > 0) parts.push(`${actionRequired} of ${checks.length} awaiting action`);
+  const total = checks.length;
+  if (pending > 0) parts.push(resolve(msg("{pending} of {total} running", { pending, total })));
+  if (actionRequired > 0) {
+    parts.push(
+      resolve(msg("{actionRequired} of {total} awaiting action", { actionRequired, total })),
+    );
+  }
   if (failed > 0) {
-    parts.push(parts.length > 0 ? `${failed} failed` : `${failed} of ${checks.length} failing`);
+    parts.push(
+      parts.length > 0
+        ? resolve(msg("{failed} failed", { failed }))
+        : resolve(msg("{failed} of {total} failing", { failed, total })),
+    );
   }
   if (parts.length === 0) {
-    return passed === checks.length ? "All checks passed" : `${passed} of ${checks.length} passing`;
+    return passed === total
+      ? resolve(msg("All checks passed"))
+      : resolve(msg("{passed} of {total} passing", { passed, total }));
   }
   return parts.join(" · ");
 }
@@ -843,14 +862,20 @@ export function buildPullRequestTimeline(
     "provider" | "createdAt" | "author" | "commits" | "comments" | "mergedAt" | "closedAt"
   > &
     Partial<Pick<PullRequestDetailView, "reviewThreads" | "overviewThreads">>,
+  resolve: MessageResolver = m,
 ): ReadonlyArray<PullRequestTimelineEvent> {
-  const term = sourceControlClients.get(detail.provider).changeRequest.singular;
+  const term = changeRequestTermKind(sourceControlClients.get(detail.provider).changeRequest);
   return [
     {
       id: "created",
       at: detail.createdAt,
       kind: "opened" as const,
-      title: `opened this ${term}`,
+      title: resolve(
+        msg(
+          "opened this {term, select, mr {merge request} cr {change request} other {pull request}}",
+          { term },
+        ),
+      ),
       body: null,
       markdown: false,
       url: null,
@@ -866,7 +891,7 @@ export function buildPullRequestTimeline(
       id: commit.oid,
       at: commit.committedDate,
       kind: "commit" as const,
-      title: `Commit ${commit.oid.slice(0, 7)}`,
+      title: resolve(msg("Commit {sha}", { sha: commit.oid.slice(0, 7) })),
       body: commit.messageHeadline || null,
       markdown: false,
       url: null,
@@ -905,7 +930,12 @@ export function buildPullRequestTimeline(
             id: "merged",
             at: detail.mergedAt,
             kind: "merged" as const,
-            title: `${capitalizeTerm(term)} merged`,
+            title: resolve(
+              msg(
+                "{term, select, mr {Merge request} cr {Change request} other {Pull request}} merged",
+                { term },
+              ),
+            ),
             body: null,
             markdown: false,
             url: null,
@@ -925,7 +955,12 @@ export function buildPullRequestTimeline(
             id: "closed",
             at: detail.closedAt,
             kind: "closed" as const,
-            title: `${capitalizeTerm(term)} closed`,
+            title: resolve(
+              msg(
+                "{term, select, mr {Merge request} cr {Change request} other {Pull request}} closed",
+                { term },
+              ),
+            ),
             body: null,
             markdown: false,
             url: null,
@@ -994,6 +1029,21 @@ function reviewThreadDisplay(
   };
 }
 
+function reviewThreadText(thread: PullRequestReviewThread): string {
+  return thread.comments
+    .flatMap((comment) => {
+      const body = readableBody(comment.body);
+      return body === null ? [] : [`${comment.author?.login ?? "ghost"}: ${body}`];
+    })
+    .join("\n")
+    .trim();
+}
+
+/** A thread's line, marked when it is numbered as in the base branch, the diff's left side. */
+function reviewThreadLine(thread: PullRequestReviewThread): string | null {
+  return thread.line === null ? null : `${thread.line}${thread.side === "left" ? " (before)" : ""}`;
+}
+
 /**
  * A review thread as the composer's own annotation context, so a finding arrives as the same
  * `path L5` chip that annotating a file gives, rather than as quoted text in the prompt. The code
@@ -1005,24 +1055,18 @@ function reviewThreadContext(
   pullRequestNumber: number,
 ): ReviewCommentContext {
   const lineIndex = Math.max(0, (thread.line ?? 1) - 1);
+  const line = reviewThreadLine(thread);
   return {
     id: `pull-request-finding:${thread.id}`,
     sectionId: `pull-request:${pullRequestNumber}`,
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- context title sent to the agent
     sectionTitle: `PR #${pullRequestNumber} review`,
     filePath: thread.path,
     startIndex: lineIndex,
     endIndex: lineIndex,
-    rangeLabel:
-      thread.line === null ? "file" : `L${thread.line}${thread.side === "left" ? " (before)" : ""}`,
+    rangeLabel: line === null ? "file" : `L${line}`,
     // Strip bot bookkeeping comments before bounding finding text.
-    text: bounded(
-      thread.comments
-        .flatMap((comment) => {
-          const body = readableBody(comment.body);
-          return body === null ? [] : [`${comment.author?.login ?? "ghost"}: ${body}`];
-        })
-        .join("\n"),
-    ),
+    text: bounded(reviewThreadText(thread)),
     diff: thread.diffHunk ?? "",
     fenceLanguage: thread.diffHunk ? "diff" : inferReviewCommentFenceLanguage(thread.path),
     thread: reviewThreadDisplay(thread.comments),
@@ -1032,8 +1076,10 @@ function reviewThreadContext(
 // A task added to an existing thread's composer has no checkout prepared for it.
 function checkoutInstruction(inThisThread: boolean | undefined): string {
   return inThisThread
-    ? "Work on its branch, switching to it or checking it out first if this workspace is not on it"
-    : "Work in the prepared checkout";
+    ? // oxlint-disable-next-line t3code/no-untranslated-copy -- agent prompt
+      "Work on its branch, switching to it or checking it out first if this workspace is not on it"
+    : // oxlint-disable-next-line t3code/no-untranslated-copy -- agent prompt
+      "Work in the prepared checkout";
 }
 
 // The attached pull request chip names the title, URL and branches.
@@ -1292,6 +1338,7 @@ function pullRequestContextComment(
     // Use URLs because repositories can share pull request numbers.
     id: `pull-request-context:${input.url}`,
     sectionId: `pull-request:${input.number}`,
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- context title sent to the agent
     sectionTitle: `PR #${input.number}`,
     filePath: `PR #${input.number}`,
     startIndex: 0,
@@ -1477,6 +1524,7 @@ export function buildPullRequestLinesReferenceContext(
     id: `pr-lines-reference:${pullRequest.number}:${anchor.pathHash}:${anchor.start.line}:${anchor.end.line}`,
     // Not `pull-request:`, which a hand-off owns and sweeps; this chip is the reader's own.
     sectionId: `pull-request-lines:${pullRequest.number}`,
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- context sent to the agent
     sectionTitle: `PR #${pullRequest.number}`,
     filePath,
     fileDiff: file,
@@ -1505,6 +1553,7 @@ export function buildPullRequestLinesReferenceContext(
       : `${anchor.start.line} to ${anchor.end.line}`;
   return {
     ...referenced,
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- context sent to the agent
     rangeLabel: anchor.start.side === "deletions" ? `${lines} (before)` : lines,
   };
 }
@@ -1543,6 +1592,7 @@ export function buildPullRequestCommentReferenceContext(
     id,
     // Not `pull-request:`, which with a `PR #` path would read as the whole pull request's chip.
     sectionId: `pull-request-comment:${pullRequest.number}`,
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- context sent to the agent
     sectionTitle: `PR #${pullRequest.number}`,
     filePath: comment.path ?? `PR #${pullRequest.number}`,
     startIndex: 0,
@@ -1569,15 +1619,25 @@ export type PullRequestChatSubject = Extract<PullRequestFinding, { kind: "thread
  * URL because host ids are only unique within a repository. Null when there are no words in it.
  */
 export function buildPullRequestCommentContext(
-  pullRequest: { readonly number: number; readonly url: string },
+  pullRequest: {
+    readonly number: number;
+    readonly url: string;
+    readonly reviewThreads: ReadonlyArray<PullRequestReviewThread>;
+    readonly reviewThreadsTruncated?: boolean | undefined;
+  },
   subject: PullRequestChatSubject,
 ): ReviewCommentContext | null {
   const pullRequestNumber = pullRequest.number;
+  // Unlike a batch fix, one remark brought in to talk about travels whole.
   if (subject.kind === "thread") {
-    const context = reviewThreadContext(subject.thread, pullRequestNumber);
-    return context.text === ""
+    const text = reviewThreadText(subject.thread);
+    return text === ""
       ? null
-      : { ...context, id: `pr-comment:${pullRequest.url}:thread:${subject.thread.id}` };
+      : {
+          ...reviewThreadContext(subject.thread, pullRequestNumber),
+          id: `pr-comment:${pullRequest.url}:thread:${subject.thread.id}`,
+          text,
+        };
   }
   const comment = subject.comment;
   const body = readableBody(comment.body);
@@ -1586,18 +1646,79 @@ export function buildPullRequestCommentContext(
   return {
     id: `pr-comment:${pullRequest.url}:comment:${comment.id}`,
     sectionId: `pull-request:${pullRequestNumber}`,
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- context title sent to the agent
     sectionTitle: `PR #${pullRequestNumber} conversation`,
     // The chip wears `filePath rangeLabel`: the file a remark names, or who wrote one that names none.
     filePath: comment.path ?? `@${author}`,
     startIndex: 0,
     endIndex: 0,
     rangeLabel: "comment",
-    text: bounded(`${author}: ${body}`),
+    text: remarkText(`${author}: ${body}`.trim(), reviewLineComments(comment, pullRequest)),
     diff: "",
     ...(comment.path === null
       ? {}
       : { fenceLanguage: inferReviewCommentFenceLanguage(comment.path) }),
   };
+}
+
+/**
+ * The record keeps only the first COMPOSER_CONTEXT_REVIEW_TEXT_MAX_CHARS, so a long summary gives
+ * up its tail, never more than half, before the review link and line comments that follow it.
+ */
+function remarkText(remark: string, review: ReadonlyArray<string>): string {
+  if (review.length === 0) return remark;
+  const after = review.join("\n\n");
+  const room = Math.max(
+    COMPOSER_CONTEXT_REVIEW_TEXT_MAX_CHARS / 2,
+    COMPOSER_CONTEXT_REVIEW_TEXT_MAX_CHARS - after.length - 200,
+  );
+  if (remark.length <= room) return `${remark}\n\n${after}`;
+  let end = room;
+  const last = remark.charCodeAt(end - 1);
+  if (last >= 0xd800 && last <= 0xdbff) end -= 1;
+  const omitted = remark.length - end;
+  return `${remark.slice(0, end)}\n… ${omitted} more characters of the review summary are omitted; read it at the review link.\n\n${after}`;
+}
+
+/** A GitHub review summary's link and the line comments it posted, which live in other threads. */
+function reviewLineComments(
+  comment: PullRequestComment,
+  pullRequest: {
+    readonly reviewThreads: ReadonlyArray<PullRequestReviewThread>;
+    readonly reviewThreadsTruncated?: boolean | undefined;
+  },
+): ReadonlyArray<string> {
+  const reviewThreads = pullRequest.reviewThreads;
+  const anchor = comment.kind === "review" ? parsePullRequestAnchor(comment.url) : null;
+  // Only GitHub links line comments to their review, so no other host can say it posted none.
+  if (anchor?.kind !== "timeline" || !/^pullrequestreview-\d+$/i.test(anchor.anchor)) return [];
+  const posted = reviewThreads.flatMap((thread) =>
+    thread.comments.flatMap((lineComment) => {
+      const body = readableBody(lineComment.body);
+      if (body === null || !pullRequestAnchorMatchesUrl(anchor.anchor, lineComment.reviewUrl)) {
+        return [];
+      }
+      const line = reviewThreadLine(thread);
+      const at = line === null ? "" : ` line ${line}`;
+      return [`${lineComment.author?.login ?? "ghost"} on \`${thread.path}\`${at}: ${body}`];
+    }),
+  );
+  // Threads or their replies can be partly loaded; then an empty match proves nothing.
+  const complete =
+    pullRequest.reviewThreadsTruncated === false &&
+    reviewThreads.every((thread) => thread.nextCommentsCursor === undefined);
+  const more = complete ? [] : ["More may exist; see the review link."];
+  return [
+    `Review: ${comment.url}`,
+    ...(posted.length === 0
+      ? [
+          complete
+            ? "This review posted no line comments."
+            : "No line comments from this review were loaded.",
+          ...more,
+        ]
+      : [`Line comments in this review:\n\n${posted.join("\n\n")}`, ...more]),
+  ];
 }
 
 const ANSWER_INSTRUCTIONS = [
@@ -1708,12 +1829,14 @@ export function buildPullRequestQuoteContext(input: {
     ...context,
     id: `pr-quote:${input.number}:${Date.now().toString(36)}-${++selectionChipSequence}`,
     sectionId: `pull-request-quote:${input.number}`,
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- context sent to the agent
     sectionTitle: `Quoted from ${where} on PR #${input.number}`,
     filePath: quote.source === "description" ? "Description" : `@${quote.author}`,
     rangeLabel:
       snippet.length <= QUOTE_LABEL_MAX_LENGTH
         ? `“${snippet}”`
         : `“${snippet.slice(0, QUOTE_LABEL_MAX_LENGTH - 1).trimEnd()}…”`,
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- context sent to the agent
     text: `${quote.author} wrote in ${where}:\n\n${text.replace(/^/gmu, "> ")}`,
     thread: {
       ...(quote.url === null ? {} : { url: boundedField(quote.url) }),
@@ -1764,6 +1887,7 @@ export function buildAskAboutGuideStopHandoff(input: {
       {
         id: `pull-request-guide-stop:${input.url}:${stop.index}`,
         sectionId: `pull-request:${input.number}`,
+        // oxlint-disable-next-line t3code/no-untranslated-copy -- context title sent to the agent
         sectionTitle: `PR #${input.number} review guide`,
         filePath: `Guide stop ${stop.index + 1}`,
         startIndex: 0,
@@ -1827,7 +1951,7 @@ export function checkoutFailureDescription(failure: unknown): string {
     : failure;
   return readableFailure(
     description,
-    "Check that the branch still exists and is not checked out elsewhere, then try again.",
+    m(msg("Check that the branch still exists and is not checked out elsewhere, then try again.")),
   );
 }
 

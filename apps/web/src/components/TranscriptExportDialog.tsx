@@ -8,9 +8,11 @@ import type {
 } from "@t3tools/contracts";
 import { CopyIcon, DownloadIcon } from "lucide-react";
 import { Atom } from "effect/reactivity";
+import { msg, T, useGT } from "gt-react";
 import { useEffect, useRef, useState } from "react";
 
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
+import { m } from "~/i18n/messages";
 import { runtime } from "~/lib/runtime";
 import { saveMarkdownFile, showSavedFileInFolder } from "~/lib/saveTextFile";
 import {
@@ -80,9 +82,11 @@ type LoadState =
 
 /** Full snapshots by thread, loaded on first view so switching tabs back is instant. */
 function useFullThread(threadRef: ScopedThreadRef): LoadState {
+  const gt = useGT();
   const [loaded, setLoaded] = useState<ReadonlyMap<ThreadId, LoadState>>(() => new Map());
   const requested = useRef(new Set<ThreadId>());
   const connected = readPreparedConnection(threadRef.environmentId) !== null;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- loads the thread snapshot over the environment connection once per thread
   useEffect(() => {
     const prepared = readPreparedConnection(threadRef.environmentId);
     const { threadId } = threadRef;
@@ -95,20 +99,20 @@ function useFullThread(threadRef: ScopedThreadRef): LoadState {
       (error: unknown) =>
         settle({
           status: "failed",
-          message: error instanceof Error ? error.message : "Could not load this thread.",
+          message: error instanceof Error ? error.message : m(msg("Could not load this thread.")),
         }),
     );
   }, [threadRef]);
   if (!connected) {
-    return { status: "failed", message: "This thread's environment is not connected." };
+    return { status: "failed", message: gt("This thread's environment is not connected.") };
   }
   return loaded.get(threadRef.threadId) ?? { status: "loading" };
 }
 
 function revealLabel(): string {
-  if (isMacPlatform(navigator.platform)) return "Reveal in Finder";
-  if (isWindowsPlatform(navigator.platform)) return "Reveal in File Explorer";
-  return "Reveal in Files";
+  if (isMacPlatform(navigator.platform)) return m(msg("Reveal in Finder"));
+  if (isWindowsPlatform(navigator.platform)) return m(msg("Reveal in File Explorer"));
+  return m(msg("Reveal in Files"));
 }
 
 function formatTokenEstimate(characters: number): string {
@@ -118,6 +122,7 @@ function formatTokenEstimate(characters: number): string {
 }
 
 function TranscriptExportDialog({ threadRef: openedRef }: { threadRef: ScopedThreadRef }) {
+  const gt = useGT();
   const { environmentId } = openedRef;
   // A thread with sibling chat tabs can export any of them; it starts on the one it was opened from.
   const tabGroup = useThreadTabGroup(environmentId, openedRef.threadId);
@@ -133,6 +138,7 @@ function TranscriptExportDialog({ threadRef: openedRef }: { threadRef: ScopedThr
   const [detail, setDetail] = useState(lastOptions.detail);
   const [includeHeader, setIncludeHeader] = useState(lastOptions.includeHeader);
   const [saving, setSaving] = useState(false);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the module-level options for the next open of this dialog
   useEffect(() => {
     lastOptions = { detail, includeHeader };
   }, [detail, includeHeader]);
@@ -143,6 +149,7 @@ function TranscriptExportDialog({ threadRef: openedRef }: { threadRef: ScopedThr
         projectTitle: project?.title ?? null,
         detail,
         includeHeader,
+        // oxlint-disable-next-line react/purity -- the export stamps the time its preview was built
         exportedAt: new Date(),
       })
     : null;
@@ -151,15 +158,19 @@ function TranscriptExportDialog({ threadRef: openedRef }: { threadRef: ScopedThr
   const fileName = thread ? transcriptFileName(thread.title) : null;
 
   const { copyToClipboard } = useCopyToClipboard({
-    target: "transcript",
+    target: {
+      target: "transcript",
+      unavailableMessage: msg("Clipboard API is unavailable while copying transcript."),
+      failureMessage: msg("Failed to copy transcript to the clipboard."),
+    },
     onCopy: () => {
       closeTranscriptExportDialog();
-      toastManager.add({ type: "success", title: "Transcript copied" });
+      toastManager.add({ type: "success", title: m(msg("Transcript copied")) });
     },
     onError: (error) => {
       toastManager.add({
         type: "error",
-        title: "Could not copy transcript",
+        title: m(msg("Could not copy transcript")),
         description: error.message,
       });
     },
@@ -176,21 +187,25 @@ function TranscriptExportDialog({ threadRef: openedRef }: { threadRef: ScopedThr
           saved.kind === "path"
             ? {
                 type: "success",
-                title: "Transcript saved",
+                title: m(msg("Transcript saved")),
                 description: saved.path,
                 actionProps: {
                   children: revealLabel(),
                   onClick: () => showSavedFileInFolder(saved.path),
                 },
               }
-            : { type: "success", title: "Transcript saved", description: saved.fileName },
+            : {
+                type: "success",
+                title: m(msg("Transcript saved")),
+                description: saved.fileName,
+              },
         );
       }
     } catch (error) {
       toastManager.add({
         type: "error",
-        title: "Could not save transcript",
-        description: error instanceof Error ? error.message : "An error occurred.",
+        title: m(msg("Could not save transcript")),
+        description: error instanceof Error ? error.message : m(msg("An error occurred.")),
       });
     }
     setSaving(false);
@@ -228,10 +243,12 @@ function TranscriptExportDialog({ threadRef: openedRef }: { threadRef: ScopedThr
           }}
         >
           <DialogHeader>
-            <DialogTitle>Export transcript</DialogTitle>
+            <DialogTitle>
+              <T>Export transcript</T>
+            </DialogTitle>
             <DialogDescription>
               <span className="block truncate">
-                {[title, project?.title].filter(Boolean).join(" · ") || "Loading thread…"}
+                {[title, project?.title].filter(Boolean).join(" · ") || gt("Loading thread…")}
               </span>
             </DialogDescription>
           </DialogHeader>
@@ -249,7 +266,7 @@ function TranscriptExportDialog({ threadRef: openedRef }: { threadRef: ScopedThr
                   >
                     <SelectTrigger
                       size="compact"
-                      aria-label="Tab to export"
+                      aria-label={gt("Tab to export")}
                       className="w-auto min-w-0 max-w-56"
                     >
                       <span className="min-w-0 truncate">
@@ -266,18 +283,22 @@ function TranscriptExportDialog({ threadRef: openedRef }: { threadRef: ScopedThr
                   </Select>
                 ) : null}
                 <ToggleGroup
-                  aria-label="Transcript detail"
+                  aria-label={gt("Transcript detail")}
                   value={[detail]}
                   onValueChange={(next) => {
                     const value = next[0];
                     if (value === "concise" || value === "full") setDetail(value);
                   }}
                 >
-                  <Toggle value="concise">Concise</Toggle>
-                  <Toggle value="full">Full</Toggle>
+                  <Toggle value="concise">
+                    <T context="transcript detail level">Concise</T>
+                  </Toggle>
+                  <Toggle value="full">
+                    <T context="transcript detail level">Full</T>
+                  </Toggle>
                 </ToggleGroup>
                 <label className="ms-auto flex cursor-pointer items-center gap-2 px-1 text-muted-foreground text-xs">
-                  Header
+                  <T context="toggle, include the transcript header">Header</T>
                   <Switch size="sm" checked={includeHeader} onCheckedChange={setIncludeHeader} />
                 </label>
               </div>
@@ -306,11 +327,11 @@ function TranscriptExportDialog({ threadRef: openedRef }: { threadRef: ScopedThr
               }}
             >
               <CopyIcon />
-              Copy
+              <T context="button, copies the transcript">Copy</T>
             </Button>
             <Button type="submit" disabled={!transcript || saving}>
               <DownloadIcon />
-              Save…
+              <T>Save…</T>
             </Button>
           </DialogFooter>
         </form>

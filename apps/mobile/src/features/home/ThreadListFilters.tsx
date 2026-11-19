@@ -1,3 +1,4 @@
+import { useGT, useMessages } from "gt-react-native";
 import { Pressable, ScrollView } from "react-native";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { ListFilterMenu } from "../layout/workspace/ListFilterMenu";
@@ -29,6 +30,8 @@ export function ThreadListFilters(
     readonly gutter: number;
   },
 ) {
+  const gt = useGT();
+  const m = useMessages();
   const selectedEnvironment = props.environments.find(
     (environment) => environment.environmentId === props.selectedEnvironmentId,
   );
@@ -43,13 +46,13 @@ export function ThreadListFilters(
       contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 2, paddingBottom: 10, gap: 8 }}
     >
       <ListFilterMenu
-        label={selectedEnvironment?.label ?? "All environments"}
-        accessibilityLabel="Filter threads by environment"
+        label={selectedEnvironment?.label ?? gt("All environments")}
+        accessibilityLabel={gt("Filter threads by environment")}
         active={selectedEnvironment !== undefined}
         actions={[
           {
             id: "all",
-            title: "All environments",
+            title: gt("All environments"),
             state: props.selectedEnvironmentId === null ? "on" : "off",
           },
           ...props.environments.map((environment) => ({
@@ -72,13 +75,13 @@ export function ThreadListFilters(
         }}
       />
       <ListFilterMenu
-        label={selectedProject?.label ?? "All projects"}
-        accessibilityLabel="Filter threads by project"
+        label={selectedProject?.label ?? gt("All projects")}
+        accessibilityLabel={gt("Filter threads by project")}
         active={selectedProject !== undefined}
         actions={[
           {
             id: "all",
-            title: "All projects",
+            title: gt("All projects"),
             state: props.selectedProjectKey === null ? "on" : "off",
           },
           ...props.projects.map((project) => ({
@@ -101,19 +104,24 @@ export function ThreadListFilters(
         <ListFilterMenu
           label={
             props.organisationKeys.length === 0
-              ? "All organisations"
+              ? gt("All organisations")
               : props.organisationKeys.length === 1
                 ? (props.organisations.find(
                     (organisation) => organisation.key === props.organisationKeys[0],
-                  )?.label ?? "1 organisation")
-                : `${props.organisationKeys.length} organisations`
+                  )?.label ??
+                  gt("{count, plural, one {{count} organisation} other {{count} organisations}}", {
+                    count: 1,
+                  }))
+                : gt("{count, plural, one {{count} organisation} other {{count} organisations}}", {
+                    count: props.organisationKeys.length,
+                  })
           }
-          accessibilityLabel="Filter threads by organisation"
+          accessibilityLabel={gt("Filter threads by organisation")}
           active={props.organisationKeys.length > 0}
           actions={[
             {
               id: "all",
-              title: "All organisations",
+              title: gt("All organisations"),
               state: props.organisationKeys.length === 0 ? "on" : "off",
             },
             ...props.organisations.map((organisation) => ({
@@ -136,19 +144,19 @@ export function ThreadListFilters(
         />
       ) : null}
       <ListFilterMenu
-        label="Show"
-        accessibilityLabel="Choose which thread pages to show"
+        label={gt("Show", { $context: "filter menu for which thread pages are listed" })}
+        accessibilityLabel={gt("Choose which thread pages to show")}
         active={!isDefaultThreadListPages(props.pages)}
         actions={[
           ...props.availablePages.map((page) => ({
             id: JSON.stringify(page),
             title: filterChoiceTitle(
-              threadListPageLabel(page, props.groups),
+              threadListPageLabel(page, props.groups, m),
               props.pageCounts?.get(page),
             ),
             state: props.pages.includes(page) ? ("on" as const) : ("off" as const),
           })),
-          ...(props.onCreateGroup ? [{ id: "new-group", title: "New group…" }] : []),
+          ...(props.onCreateGroup ? [{ id: "new-group", title: gt("New group…") }] : []),
         ]}
         onSelect={(id) => {
           if (id === "new-group") props.onCreateGroup?.();
@@ -161,7 +169,7 @@ export function ThreadListFilters(
       {props.selectedEnvironmentId !== null || props.selectedProjectKey !== null ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Reset thread filters"
+          accessibilityLabel={gt("Reset thread filters")}
           className="h-8 w-8 items-center justify-center"
           onPress={() => {
             props.onEnvironmentChange(null);

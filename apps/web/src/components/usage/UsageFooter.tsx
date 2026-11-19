@@ -4,14 +4,16 @@ import type { ServerProviderUsageWindow, UsageFooterDisplay } from "@t3tools/con
 import {
   collectLimitAccounts,
   collectLimitPools,
-  cursorUsageWindowDetails,
   displayLimitWindows,
-  formatResetsIn,
   type LimitAccount,
   type LimitPool,
   type LimitPoolWindow,
-  limitsNotice,
 } from "@t3tools/shared/usageLimits";
+import {
+  cursorUsageWindowDetails,
+  formatResetsIn,
+  limitsNotice,
+} from "@t3tools/shared/usageLimitsCopy";
 import { useNavigate } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
 import {
@@ -21,6 +23,7 @@ import {
   SettingsIcon,
   SlidersHorizontalIcon,
 } from "lucide-react";
+import { T, useGT, useMessages } from "gt-react";
 import { useState } from "react";
 
 import { useLocalStorage } from "../../hooks/useLocalStorage";
@@ -30,6 +33,7 @@ import {
   updateClientSettings,
   useClientSettings,
 } from "../../hooks/useSettings";
+import type { MessageResolver } from "../../i18n/messages";
 import { cn } from "../../lib/utils";
 import { environmentPresentations } from "../../state/presentation";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
@@ -127,9 +131,13 @@ function UsedPercent({
   );
 }
 
-function poolWindowLabel(pool: LimitPool, window: LimitPoolWindow): string {
+function poolWindowLabel(
+  pool: LimitPool,
+  window: LimitPoolWindow,
+  resolve: MessageResolver,
+): string {
   return pool.driver === "cursor"
-    ? (cursorUsageWindowDetails(window.id, pool)?.label ?? window.label)
+    ? (cursorUsageWindowDetails(window.id, pool, resolve)?.label ?? window.label)
     : window.label;
 }
 
@@ -148,8 +156,9 @@ function UsedWindow({
   readonly window: ServerProviderUsageWindow;
   readonly now: number;
 }) {
+  const m = useMessages();
   const used = window.usedPercent;
-  const detail = window.spend ? formatSpend(window.spend) : formatResetsIn(window, now);
+  const detail = window.spend ? formatSpend(window.spend) : formatResetsIn(window, now, m);
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-baseline gap-2 text-sm">
@@ -173,6 +182,7 @@ function UsedWindow({
 }
 
 function AccountName({ account }: { readonly account: LimitAccount }) {
+  const gt = useGT();
   if (account.displayName && account.displayName !== providerLabel(account.driver)) {
     return <span className="max-w-1/2 shrink-0 truncate">{account.displayName}</span>;
   }
@@ -180,14 +190,18 @@ function AccountName({ account }: { readonly account: LimitAccount }) {
     return (
       <RedactedSensitiveText
         value={account.email}
-        ariaLabel="Toggle account visibility"
-        revealTooltip="Click to reveal account"
-        hideTooltip="Click to hide account"
+        ariaLabel={gt("Toggle account visibility")}
+        revealTooltip={gt("Click to reveal account")}
+        hideTooltip={gt("Click to hide account")}
         className="max-w-1/2 shrink-0 truncate"
       />
     );
   }
-  return account.displayName ? null : <span className="shrink-0">Default account</span>;
+  return account.displayName ? null : (
+    <span className="shrink-0">
+      <T>Default account</T>
+    </span>
+  );
 }
 
 function AccountCard({
@@ -202,12 +216,13 @@ function AccountCard({
   /** Drops the card chrome when it is the only thing in a popup. */
   readonly bare?: boolean;
 }) {
+  const m = useMessages();
   // A one-account pool gives this account's windows in the same order and labels as Usage → Limits.
   const pool = collectLimitPools([account], now)[0];
   const windows = pool
     ? displayLimitWindows(pool).flatMap((window) => window.members.map((m) => m.window))
     : [];
-  const notice = limitsNotice(account.limits);
+  const notice = limitsNotice(account.limits, m);
   const credits = account.limits.resetCredits;
   return (
     <div
@@ -233,7 +248,7 @@ function AccountCard({
       ))}
       {credits && credits.availableCount > 0 ? (
         <span className="text-xs text-muted-foreground tabular-nums">
-          {resetCreditsSummary(credits, now)}
+          {resetCreditsSummary(credits, now, false, m)}
         </span>
       ) : null}
     </div>
@@ -282,9 +297,11 @@ function AccountRow({
   readonly active: boolean;
   readonly onSelect: () => void;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const own = collectLimitPools([account], now)[0];
   const window = own ? busiestPoolWindow(own) : null;
-  const name = showAccount ? (accountShortName(account) ?? "Default account") : null;
+  const name = showAccount ? (accountShortName(account) ?? gt("Default account")) : null;
   return (
     <Button
       variant="ghost"
@@ -315,7 +332,7 @@ function AccountRow({
       <span className="ms-auto flex items-center gap-2 text-xs text-muted-foreground tabular-nums">
         {window ? (
           <>
-            <span>{nextResetLabel(window, now)}</span>
+            <span>{nextResetLabel(window, now, m)}</span>
             <UsedPercent
               usedPercent={window.usedPercent}
               className="min-w-9 text-end font-medium text-foreground"
@@ -343,6 +360,7 @@ function UsagePanel({
   readonly onRefresh: () => void;
   readonly onNavigate: (to: "/usage" | "/settings/providers") => void;
 }) {
+  const gt = useGT();
   const [layout, setLayout] = useLocalStorage(LAYOUT_STORAGE_KEY, "compact", LayoutSchema);
   const [selected, setSelected] = useState<string | null>(null);
   const [panel, setPanel] = useState<HTMLDivElement | null>(null);
@@ -354,13 +372,15 @@ function UsagePanel({
   return (
     <div ref={setPanel} className={cn("flex flex-col gap-2", detailed ? "w-96" : "w-80")}>
       <div className="flex items-center gap-2">
-        <span className="text-sm font-medium">Usage limits</span>
+        <span className="text-sm font-medium">
+          <T>Usage limits</T>
+        </span>
         <div className="ms-auto flex items-center gap-1">
           <UsageFooterCustomizeMenu pools={pools} />
           <Button
             variant="ghost"
             size="icon-xs"
-            aria-label="Refresh limits"
+            aria-label={gt("Refresh limits")}
             aria-busy={refreshing}
             disabled={refreshing}
             onClick={onRefresh}
@@ -377,11 +397,17 @@ function UsagePanel({
           if (next === "compact" || next === "detailed") setLayout(next);
         }}
       >
-        <ToggleGroupItem value="detailed">Detailed</ToggleGroupItem>
-        <ToggleGroupItem value="compact">Compact</ToggleGroupItem>
+        <ToggleGroupItem value="detailed">
+          <T>Detailed</T>
+        </ToggleGroupItem>
+        <ToggleGroupItem value="compact">
+          <T>Compact</T>
+        </ToggleGroupItem>
       </ToggleGroup>
       {rows.length === 0 ? (
-        <p className="px-2 py-4 text-center text-sm text-muted-foreground">All hidden.</p>
+        <p className="px-2 py-4 text-center text-sm text-muted-foreground">
+          <T>All hidden.</T>
+        </p>
       ) : detailed ? (
         <div className="flex max-h-[min(40rem,calc(100dvh-14rem))] flex-col gap-2 overflow-y-auto">
           {rows.map(({ account }) => (
@@ -410,7 +436,7 @@ function UsagePanel({
         onClick={() => onNavigate("/usage")}
       >
         <ChartNoAxesColumnIcon />
-        Open Usage
+        <T>Open Usage</T>
       </Button>
       <Button
         variant="ghost"
@@ -419,7 +445,7 @@ function UsagePanel({
         onClick={() => onNavigate("/settings/providers")}
       >
         <SettingsIcon />
-        Usage providers
+        <T>Usage providers</T>
       </Button>
       {selectedAccount && panel ? (
         <Popover open onOpenChange={(open) => (open ? undefined : setSelected(null))}>
@@ -453,6 +479,8 @@ function FooterItem({
   readonly display: UsageFooterDisplay;
   readonly now: number;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   return (
     <span className="flex items-center gap-1.5 whitespace-nowrap">
       {item.accountName ? (
@@ -474,11 +502,13 @@ function FooterItem({
       </span>
       {item.accountName ? <span className="sr-only">{item.accountName}</span> : null}
       {item.windows.length === 0 ? (
-        <span className="text-muted-foreground">n/a</span>
+        <span className="text-muted-foreground">
+          <T>n/a</T>
+        </span>
       ) : (
         item.windows.map((window, index) => {
-          const label = poolWindowLabel(item, window);
-          const reset = display.showReset ? nextResetLabel(window, now) : null;
+          const label = poolWindowLabel(item, window, m);
+          const reset = display.showReset ? nextResetLabel(window, now, m) : null;
           return (
             <span key={window.id} className="flex items-center gap-1.5">
               {index > 0 ? <span className="text-muted-foreground/60">·</span> : null}
@@ -488,7 +518,7 @@ function FooterItem({
               <UsedPercent
                 usedPercent={window.usedPercent}
                 shownPercent={footerPercent(window, display.value)}
-                suffix={display.value === "remaining" ? " left" : ""}
+                suffix={display.value === "remaining" ? gt(" left") : ""}
                 className="text-foreground"
               />
               {reset ? <span className="text-muted-foreground">{reset}</span> : null}
@@ -519,6 +549,7 @@ export function useUsageLimitPools(): readonly LimitPool[] {
 
 /** Checkboxes for each provider and, with one entry per account, each of its accounts. */
 export function UsageFooterProviderItems({ pools }: { readonly pools: readonly LimitPool[] }) {
+  const gt = useGT();
   const display = useClientSettings((settings) => settings.usageFooterDisplay);
   const separate = display.accounts === "separate";
   return (
@@ -554,7 +585,7 @@ export function UsageFooterProviderItems({ pools }: { readonly pools: readonly L
                     }
                   >
                     <span className="block truncate ps-5">
-                      {accountShortName(account) ?? "Default account"}
+                      {accountShortName(account) ?? gt("Default account")}
                     </span>
                   </MenuCheckboxItem>
                 ))
@@ -567,6 +598,8 @@ export function UsageFooterProviderItems({ pools }: { readonly pools: readonly L
 }
 
 function UsageFooterWindowsSubmenu({ pool }: { readonly pool: LimitPool }) {
+  const gt = useGT();
+  const m = useMessages();
   const chosen = useClientSettings(
     (settings) => settings.usageFooterDisplay.windows[pool.driver] ?? EMPTY_WINDOW_IDS,
   );
@@ -588,8 +621,10 @@ function UsageFooterWindowsSubmenu({ pool }: { readonly pool: LimitPool }) {
       <MenuSubTrigger>
         <span className="min-w-0 flex-1 truncate ps-5 text-muted-foreground">
           {shown.length === 0
-            ? "Limit: busiest"
-            : `Limits: ${shown.map((window) => poolWindowLabel(pool, window)).join(", ")}`}
+            ? gt("Limit: busiest")
+            : gt("Limits: {limits}", {
+                limits: shown.map((window) => poolWindowLabel(pool, window, m)).join(", "),
+              })}
         </span>
       </MenuSubTrigger>
       <MenuSubPopup>
@@ -599,7 +634,7 @@ function UsageFooterWindowsSubmenu({ pool }: { readonly pool: LimitPool }) {
             if (value === "busiest") setChosen([]);
           }}
         >
-          <RadioChoice value="busiest" label="Busiest limit" />
+          <RadioChoice value="busiest" label={gt("Busiest limit")} />
         </MenuRadioGroup>
         <MenuSeparator />
         {windows.map((window) => (
@@ -608,7 +643,7 @@ function UsageFooterWindowsSubmenu({ pool }: { readonly pool: LimitPool }) {
             checked={chosen.includes(window.id)}
             onCheckedChange={(checked) => setChosen(toggleKey(chosen, window.id, !checked))}
           >
-            {poolWindowLabel(pool, window)}
+            {poolWindowLabel(pool, window, m)}
           </MenuCheckboxItem>
         ))}
       </MenuSubPopup>
@@ -619,22 +654,27 @@ function UsageFooterWindowsSubmenu({ pool }: { readonly pool: LimitPool }) {
 const EMPTY_WINDOW_IDS: readonly string[] = [];
 
 function UsageFooterCustomizeMenu({ pools }: { readonly pools: readonly LimitPool[] }) {
+  const gt = useGT();
   const display = useClientSettings((settings) => settings.usageFooterDisplay);
   return (
     <Menu>
       <MenuTrigger
-        render={<Button variant="ghost" size="icon-xs" aria-label="Customize usage footer" />}
+        render={<Button variant="ghost" size="icon-xs" aria-label={gt("Customize usage footer")} />}
       >
         <SlidersHorizontalIcon />
       </MenuTrigger>
       <MenuPopup align="end">
         <MenuGroup>
-          <MenuGroupLabel>Providers</MenuGroupLabel>
+          <MenuGroupLabel>
+            <T>Providers</T>
+          </MenuGroupLabel>
           <UsageFooterProviderItems pools={pools} />
         </MenuGroup>
         <MenuSeparator />
         <MenuGroup>
-          <MenuGroupLabel>Accounts</MenuGroupLabel>
+          <MenuGroupLabel>
+            <T>Accounts</T>
+          </MenuGroupLabel>
           <MenuRadioGroup
             value={display.accounts}
             onValueChange={(value) => {
@@ -642,33 +682,35 @@ function UsageFooterCustomizeMenu({ pools }: { readonly pools: readonly LimitPoo
                 updateUsageFooterDisplay({ accounts: value });
             }}
           >
-            <RadioChoice value="combined" label="One per provider" />
-            <RadioChoice value="separate" label="One per account" />
+            <RadioChoice value="combined" label={gt("One per provider")} />
+            <RadioChoice value="separate" label={gt("One per account")} />
           </MenuRadioGroup>
         </MenuGroup>
         <MenuSeparator />
         <MenuGroup>
-          <MenuGroupLabel>Format</MenuGroupLabel>
+          <MenuGroupLabel>
+            <T>Format</T>
+          </MenuGroupLabel>
           <MenuRadioGroup
             value={display.value}
             onValueChange={(value) => {
               if (value === "used" || value === "remaining") updateUsageFooterDisplay({ value });
             }}
           >
-            <RadioChoice value="used" label="Percent used" />
-            <RadioChoice value="remaining" label="Percent left" />
+            <RadioChoice value="used" label={gt("Percent used")} />
+            <RadioChoice value="remaining" label={gt("Percent left")} />
           </MenuRadioGroup>
           <MenuCheckboxItem
             checked={display.showReset}
             onCheckedChange={(showReset) => updateUsageFooterDisplay({ showReset })}
           >
-            Time to reset
+            <T>Time to reset</T>
           </MenuCheckboxItem>
           <MenuCheckboxItem
             checked={display.showNames}
             onCheckedChange={(showNames) => updateUsageFooterDisplay({ showNames })}
           >
-            Provider names
+            <T>Provider names</T>
           </MenuCheckboxItem>
         </MenuGroup>
       </MenuPopup>
@@ -696,6 +738,7 @@ function UsageFooterBar({
   readonly display: UsageFooterDisplay;
   readonly now: number;
 }) {
+  const gt = useGT();
   const navigate = useNavigate();
   const refreshAll = useRefreshUsageLimits();
   const [open, setOpen] = useState(false);
@@ -710,7 +753,7 @@ function UsageFooterBar({
   return (
     <div
       role="status"
-      aria-label="Usage limits"
+      aria-label={gt("Usage limits")}
       className="flex h-7 shrink-0 items-center border-t bg-background px-2 text-xs max-md:hidden"
     >
       <Popover
@@ -726,12 +769,14 @@ function UsageFooterBar({
           <PopoverTrigger render={<Button variant="ghost" size="micro" />}>
             <span className="flex items-center gap-1.5 font-normal text-muted-foreground">
               <ChartNoAxesColumnIcon className="size-3.5" />
-              Usage
+              <T>Usage</T>
             </span>
           </PopoverTrigger>
         ) : (
           <PopoverTrigger
-            render={<Button variant="ghost" size="icon-micro" aria-label="Show all usage limits" />}
+            render={
+              <Button variant="ghost" size="icon-micro" aria-label={gt("Show all usage limits")} />
+            }
           >
             <ChevronUpIcon />
           </PopoverTrigger>

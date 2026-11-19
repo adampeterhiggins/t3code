@@ -263,6 +263,21 @@ export const formatLocalMinute = (iso: string) => {
   return Number.isFinite(at) ? LOCAL_MINUTE_FORMAT.format(at) : iso;
 };
 
+const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+
+// English only: the server never imports `@t3tools/shared/usageLimitsCopy` (see docs/internals/i18n.md).
+export const formatDuration = (ms: number) => {
+  const remaining = Math.max(0, ms);
+  const days = Math.floor(remaining / DAY_MS);
+  const hours = Math.floor((remaining % DAY_MS) / HOUR_MS);
+  const minutes = Math.floor((remaining % HOUR_MS) / MINUTE_MS);
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+};
+
 export const loadLiveSettings = Effect.fn("cli.loadLiveSettings")(function* (
   client: LiveRpcClient,
 ) {

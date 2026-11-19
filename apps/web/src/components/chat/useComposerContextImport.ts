@@ -1,4 +1,6 @@
 import { importComposerSnapshotRecord } from "~/lib/composerSnapshotImport";
+import { msg } from "gt-react";
+import { m } from "~/i18n/messages";
 import {
   ConnectionBlockedError,
   ConnectionTransientError,
@@ -166,15 +168,15 @@ export function useComposerContextImport(input: {
     const fail = (reason: string) => {
       toastManager.add({
         type: "error",
-        title: `Couldn't bring ${record.name} into this message`,
-        description: `${reason} Remove the chip or attach the file again.`,
+        title: m(msg("Couldn't bring {name} into this message", { name: record.name })),
+        description: m(msg("{reason} Remove the chip or attach the file again.", { reason })),
       });
     };
     let file = copiedComposerAttachmentFile(sourceEnvironmentId, record.attachmentId);
     if (!file) {
       const sourceConnection = readPreparedConnection(sourceEnvironmentId);
       if (!sourceConnection) {
-        fail("The environment it came from is not connected.");
+        fail(m(msg("The environment it came from is not connected.")));
         return;
       }
       const result = await createAssetUrl({
@@ -189,14 +191,14 @@ export function useComposerContextImport(input: {
         const cause = result._tag === "Failure" ? Cause.squash(result.cause) : null;
         fail(
           isUnreachable(cause)
-            ? "The environment it came from is not reachable right now."
-            : "The original attachment is no longer available.",
+            ? m(msg("The environment it came from is not reachable right now."))
+            : m(msg("The original attachment is no longer available.")),
         );
         return;
       }
       const blob = await downloadAttachmentBlob(url);
       if (!blob) {
-        fail("Downloading it from the source failed.");
+        fail(m(msg("Downloading it from the source failed.")));
         return;
       }
       file = new File([blob], record.name, { type: record.mimeType || blob.type });
@@ -235,7 +237,7 @@ export function useComposerContextImport(input: {
       (pendingThreadImportsRef.current.get(importTargetKey) ?? 0) > 0 &&
       countReservedAttachments() >= PROVIDER_SEND_TURN_MAX_ATTACHMENTS
     ) {
-      fail("The attachment limit has been reached.");
+      fail(m(msg("The attachment limit has been reached.")));
       return;
     }
     if (record.kind === "image") {
@@ -261,7 +263,7 @@ export function useComposerContextImport(input: {
         },
       );
       if (!accepted.includes(localId))
-        fail("The draft rejected this attachment (duplicate or attachment limit reached).");
+        fail(m(msg("The draft rejected this attachment (duplicate or attachment limit reached).")));
     } else {
       const accepted = addComposerFilesToDraft([
         {
@@ -274,7 +276,7 @@ export function useComposerContextImport(input: {
         },
       ]);
       if (!accepted.includes(localId))
-        fail("The draft rejected this attachment (duplicate or attachment limit reached).");
+        fail(m(msg("The draft rejected this attachment (duplicate or attachment limit reached).")));
     }
   };
   const importAttachmentRecord = async (

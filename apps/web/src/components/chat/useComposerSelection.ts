@@ -2,6 +2,8 @@ import { getProviderModelCapabilities } from "../../providerModels";
 import { preserveCompatibleOptions } from "../ChatView.modelOptions";
 import type { ProviderInteractionMode } from "@t3tools/contracts";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
+import { msg, useMessages } from "gt-react";
+import type { MessageResolver } from "~/i18n/messages";
 import { useApplyThreadModelPick } from "./useApplyThreadModelPick";
 import {
   type UnifiedSettings,
@@ -41,19 +43,24 @@ function makeModelChangeAvailability(
     "nextModelSelection"
   > | null,
   canForkModel: boolean,
+  resolve: MessageResolver,
 ) {
   const reasonFor = (instanceId: ProviderInstanceId, model: string) =>
     context === null
       ? null
-      : getStartedThreadModelChangeBlockReason({
-          ...context,
-          nextModelSelection: { instanceId, model },
-        });
+      : getStartedThreadModelChangeBlockReason(
+          { ...context, nextModelSelection: { instanceId, model } },
+          resolve,
+        );
   return {
     getModelDisabledReason: (instanceId: ProviderInstanceId, model: string) => {
       if (canForkModel) return null;
       const reason = reasonFor(instanceId, model);
-      return reason ? `${reason.description} Start a new thread to use this model.` : null;
+      return reason
+        ? resolve(
+            msg("{reason} Start a new thread to use this model.", { reason: reason.description }),
+          )
+        : null;
     },
     modelRequiresFork: (instanceId: ProviderInstanceId, model: string) =>
       reasonFor(instanceId, model) !== null,
@@ -116,6 +123,7 @@ export function useComposerSelection(input: ComposerSelectionInput) {
     setPendingServerThreadStartFromOriginByThreadId,
     scheduleComposerFocus,
   } = input;
+  const messages = useMessages();
   const navigate = useNavigate();
   const setStickyComposerModelSelection = useComposerDraftStore(
     (store) => store.setStickyModelSelection,
@@ -174,6 +182,7 @@ export function useComposerSelection(input: ComposerSelectionInput) {
         }
       : null,
     canForkModel,
+    messages,
   );
 
   const onProviderModelSelect = (

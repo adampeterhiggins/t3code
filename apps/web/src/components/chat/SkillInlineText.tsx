@@ -6,8 +6,10 @@ import {
   type ServerProviderSkill,
 } from "@t3tools/contracts";
 import { formatProviderSkillDisplayName, matchInlineSkills } from "@t3tools/shared/inlineSkills";
+import { msg, useMessages } from "gt-react";
 import { Children, cloneElement, isValidElement, type ReactNode } from "react";
 
+import { m, type MessageResolver } from "~/i18n/messages";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { openTimelineWorkspaceFile } from "../quickMessage/detachedTimelineActions";
 import { isDetachedChatWindow } from "../quickMessage/quickMessageWindow";
@@ -42,14 +44,17 @@ export function messageSkillByName(
  * The chip for a skill in a sent message, whether it arrived as a skill record or as `$name`
  * typed into the text: both are the same skill and must read the same.
  */
-export function messageSkillChip(input: {
-  name: string;
-  /** The label the record was sent with; the provider's display name wins when it has one. */
-  label?: string | undefined;
-  skill: MessageSkill | undefined;
-  copyMarkdown: string;
-  threadRef: ScopedThreadRef | null;
-}): ContextChipSpec<"skill"> {
+export function messageSkillChip(
+  input: {
+    name: string;
+    /** The label the record was sent with; the provider's display name wins when it has one. */
+    label?: string | undefined;
+    skill: MessageSkill | undefined;
+    copyMarkdown: string;
+    threadRef: ScopedThreadRef | null;
+  },
+  resolve: MessageResolver = m,
+): ContextChipSpec<"skill"> {
   const { skill, threadRef } = input;
   const label = skill ? formatProviderSkillDisplayName(skill) : input.label || input.name;
   const path = skill?.path;
@@ -57,7 +62,7 @@ export function messageSkillChip(input: {
     kind: "skill",
     icon: <SkillChipIcon />,
     label,
-    kindLabel: "Skill",
+    kindLabel: resolve(msg("Skill")),
     copyMarkdown: input.copyMarkdown,
     preview: {
       label,
@@ -81,6 +86,7 @@ function SkillInlineText(props: {
   threadRef: ScopedThreadRef | null;
   environmentId: EnvironmentId | null;
 }) {
+  const messages = useMessages();
   const chips: Array<{ start: number; end: number; node: ReactNode }> = [];
   for (const { start, end, skill, rawText } of matchInlineSkills(props.text, props.skills)) {
     chips.push({
@@ -90,12 +96,15 @@ function SkillInlineText(props: {
         <ContextPreviewHover
           key={`${start}:${skill.name}`}
           kind="skill"
-          {...messageSkillChip({
-            name: skill.name,
-            skill,
-            copyMarkdown: rawText,
-            threadRef: props.threadRef,
-          })}
+          {...messageSkillChip(
+            {
+              name: skill.name,
+              skill,
+              copyMarkdown: rawText,
+              threadRef: props.threadRef,
+            },
+            messages,
+          )}
         />
       ),
     });

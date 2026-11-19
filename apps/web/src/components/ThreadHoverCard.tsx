@@ -13,6 +13,7 @@ import {
   GitBranchIcon,
   TerminalIcon,
 } from "lucide-react";
+import { T, useGT, Var } from "gt-react";
 import type { ComponentProps, ReactNode } from "react";
 
 import { useComposerDraftActiveModelSelection } from "~/composerDraftStore";
@@ -84,13 +85,20 @@ export function ThreadPreview(props: ThreadPreviewProps) {
   if (props.unreadable) {
     return (
       <p className="px-1 py-2 text-xs">
-        On another machine, so this machine's agent can't read it. Remove it or switch back to send.
+        <T>
+          On another machine, so this machine's agent can't read it. Remove it or switch back to
+          send.
+        </T>
       </p>
     );
   }
   if (shell) return <LiveThreadPreview {...props} shell={shell} />;
   if (props.read) return <ReadThreadPreview {...props} read={props.read} />;
-  return <p className="px-1 py-2 text-xs">Thread no longer available</p>;
+  return (
+    <p className="px-1 py-2 text-xs">
+      <T>Thread no longer available</T>
+    </p>
+  );
 }
 
 function ThreadPreviewLayout(props: {
@@ -114,14 +122,20 @@ function ThreadPreviewLayout(props: {
           </span>
         ) : null}
         {props.onOpen ? (
-          <PreviewCornerAction onClick={props.onOpen}>Open thread</PreviewCornerAction>
+          <PreviewCornerAction onClick={props.onOpen}>
+            <T>Open thread</T>
+          </PreviewCornerAction>
         ) : null}
       </div>
       <div className="grid gap-1.5 pl-0.5 text-muted-foreground">{props.children}</div>
       {props.items.length > 0 ? (
         <div className="space-y-1 border-t border-border/60 pt-2">
           {props.moreItems > 0 ? (
-            <p className="text-muted-foreground">+{props.moreItems} earlier</p>
+            <p className="text-muted-foreground">
+              <T>
+                +<Var>{props.moreItems}</Var> earlier
+              </T>
+            </p>
           ) : null}
           <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1">
             {props.items.map((item) => (
@@ -158,6 +172,7 @@ function PreviewLine(props: { icon: ReactNode; children: ReactNode; className?: 
 const EMPTY_PROVIDER_ENTRIES: ReadonlyMap<string, ProviderEntrySummary> = new Map();
 
 function LiveThreadPreview(props: ThreadPreviewProps & { shell: EnvironmentThreadShell }) {
+  const gt = useGT();
   const { shell: thread, read, onOpenThread } = props;
   const threadRef = scopeThreadRef(thread.environmentId, thread.id);
   const project = useProject(scopeProjectRef(thread.environmentId, thread.projectId));
@@ -253,7 +268,7 @@ function LiveThreadPreview(props: ThreadPreviewProps & { shell: EnvironmentThrea
         <div className="flex min-w-0 items-start gap-2 text-warning">
           <CircleAlertIcon aria-hidden className="mt-0.5 size-3 shrink-0 stroke-current" />
           <div className="min-w-0 flex-1 wrap-break-word">
-            You're currently checked out on another branch.
+            <T>You're currently checked out on another branch.</T>
           </div>
         </div>
       ) : null}
@@ -284,7 +299,9 @@ function LiveThreadPreview(props: ThreadPreviewProps & { shell: EnvironmentThrea
         <PreviewLine
           icon={<ArrowRightLeftIcon className="size-3 shrink-0 stroke-muted-foreground" />}
         >
-          Handed off from {previousProviderNames.join(", ")}
+          <T>
+            Handed off from <Var>{previousProviderNames.join(", ")}</Var>
+          </T>
         </PreviewLine>
       ) : null}
       {thread.startedBy !== null ? <StartedByHoverLine thread={thread} /> : null}
@@ -297,8 +314,10 @@ function LiveThreadPreview(props: ThreadPreviewProps & { shell: EnvironmentThrea
             />
           }
         >
-          {runningTerminalIds.length} terminal{" "}
-          {runningTerminalIds.length === 1 ? "process" : "processes"} running
+          {gt(
+            "{count, plural, one {{count} terminal process running} other {{count} terminal processes running}}",
+            { count: runningTerminalIds.length },
+          )}
         </PreviewLine>
       ) : null}
       {thread.runtime?.lastError ? (
@@ -311,8 +330,8 @@ function LiveThreadPreview(props: ThreadPreviewProps & { shell: EnvironmentThrea
           <CircleAlertIcon className="size-3 shrink-0 stroke-current" />
           <div className="min-w-0 truncate">
             {thread.runtime.lastErrorClass === "usage_limit"
-              ? "Usage limit reached"
-              : "Error occurred"}
+              ? gt("Usage limit reached")
+              : gt("Error occurred")}
           </div>
         </div>
       ) : null}

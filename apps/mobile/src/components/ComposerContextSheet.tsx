@@ -1,3 +1,5 @@
+import { msg, T, useGT, useMessages, Var } from "gt-react-native";
+
 import { Button } from "./ui/Button";
 import * as Dialog from "./ui/Dialog";
 import { useOpenPullRequest } from "../native/useOpenPullRequest";
@@ -12,6 +14,7 @@ import type {
 } from "@t3tools/contracts";
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
+import { changeRequestTermKind } from "../lib/changeRequestTerm";
 import { videoMimeType } from "@t3tools/shared/video";
 import { Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -44,39 +47,45 @@ import { useAppearancePreferences } from "../features/settings/appearance/Appear
 import { getMobileTerminalTheme } from "../features/terminal/terminalTheme";
 
 const LINEAR_OBJECT_TYPE_LABELS = {
-  project: "Project",
-  document: "Document",
-  initiative: "Initiative",
+  project: msg("Project", { $context: "Linear object type" }),
+  document: msg("Document", { $context: "Linear object type" }),
+  initiative: msg("Initiative", { $context: "Linear object type" }),
 } as const;
 
 const GITHUB_REF_TYPE_LABELS = {
-  release: "Release",
-  tag: "Tag",
-  branch: "Branch",
-  commit: "Commit",
-  file: "File",
-  "workflow-run": "Workflow run",
-  "workflow-job": "Workflow job",
+  release: msg("Release", { $context: "GitHub ref type" }),
+  tag: msg("Tag", { $context: "GitHub ref type" }),
+  branch: msg("Branch", { $context: "GitHub ref type" }),
+  commit: msg("Commit", { $context: "GitHub ref type" }),
+  file: msg("File", { $context: "GitHub ref type" }),
+  "workflow-run": msg("Workflow run"),
+  "workflow-job": msg("Workflow job"),
 } as const;
 
 const THREAD_TAB_SUMMARY_ROLE_LABELS = {
-  user: "User",
-  assistant: "Agent",
-  reasoning: "Thinking",
-  tools: "Tools",
-  error: "Error",
+  user: msg("User", { $context: "message author role" }),
+  assistant: msg("Agent", { $context: "message author role" }),
+  reasoning: msg("Thinking", { $context: "message author role" }),
+  tools: msg("Tools", { $context: "message author role" }),
+  error: msg("Error", { $context: "message author role" }),
 } as const satisfies Record<ThreadTabSummaryRole, string>;
 
 /* oxlint-disable react/no-array-index-key -- Captured summaries are immutable text snapshots without entry IDs. */
 function ThreadTabSummaryFields(props: { summary: string }) {
+  const gt = useGT();
+  const m = useMessages();
   const chats = (() => parseThreadTabSummary(props.summary))();
-  if (chats === null) return <ContextField label="Summary" value={props.summary} />;
+  if (chats === null) return <ContextField label={gt("Summary")} value={props.summary} />;
   return chats.map((chat, chatIndex) => {
     const fileCount = chat.files.length + chat.moreFiles;
     const facts = [
       chats.length > 1 ? chat.title : null,
-      chat.latestTurn ? `Latest turn ${chat.latestTurn}` : null,
-      fileCount > 0 ? `${fileCount} ${fileCount === 1 ? "file" : "files"} changed` : null,
+      chat.latestTurn ? gt("Latest turn {turn}", { turn: chat.latestTurn }) : null,
+      fileCount > 0
+        ? gt("{count, plural, one {{count} file changed} other {{count} files changed}}", {
+            count: fileCount,
+          })
+        : null,
     ].filter((fact) => fact !== null);
     return (
       <View key={chatIndex} className="gap-3">
@@ -84,25 +93,30 @@ function ThreadTabSummaryFields(props: { summary: string }) {
           <Text className="text-sm text-foreground-muted">{facts.join(" · ")}</Text>
         ) : null}
         <ContextField
-          label="Files changed"
+          label={gt("Files changed")}
           code
           value={
             chat.files.length > 0
               ? [
                   ...chat.files,
-                  ...(chat.moreFiles > 0 ? [`…and ${chat.moreFiles} more`] : []),
+                  ...(chat.moreFiles > 0
+                    ? [gt("…and {count} more", { count: chat.moreFiles })]
+                    : []),
                 ].join("\n")
               : null
           }
         />
-        <ContextField label="Latest plan" value={chat.plan} />
+        <ContextField label={gt("Latest plan")} value={chat.plan} />
         {chat.blocks.length === 0 ? (
-          <Text className="text-sm text-foreground-muted">No messages yet.</Text>
+          <Text className="text-sm text-foreground-muted">{gt("No messages yet.")}</Text>
         ) : null}
         {chat.blocks.map((block, index) =>
           block.kind === "omitted" ? (
             <Text key={index} className="text-center text-sm text-foreground-muted">
-              {block.turns} earlier {block.turns === 1 ? "turn" : "turns"} not included
+              {gt(
+                "{count, plural, one {{count} earlier turn not included} other {{count} earlier turns not included}}",
+                { count: block.turns },
+              )}
             </Text>
           ) : (
             <View
@@ -112,7 +126,7 @@ function ThreadTabSummaryFields(props: { summary: string }) {
               }
             >
               <Text className="text-xs text-foreground-muted">
-                {THREAD_TAB_SUMMARY_ROLE_LABELS[block.role]}
+                {m(THREAD_TAB_SUMMARY_ROLE_LABELS[block.role])}
               </Text>
               {block.role === "tools" ? (
                 threadTabSummaryTools(block.text).map((tool, toolIndex) => (
@@ -127,7 +141,7 @@ function ThreadTabSummaryFields(props: { summary: string }) {
                     }
                     style={{ fontFamily: REVIEW_MONO_FONT_FAMILY }}
                   >
-                    {tool.failed ? `${tool.label} (failed)` : tool.label}
+                    {tool.failed ? gt("{label} (failed)", { label: tool.label }) : tool.label}
                   </Text>
                 ))
               ) : (
@@ -154,12 +168,17 @@ function ThreadTabSummaryFields(props: { summary: string }) {
 
 /* oxlint-enable react/no-array-index-key */
 
-function ContextField(props: { label: string; value: string | null | undefined; code?: boolean }) {
+function ContextField(props: {
+  label: string;
+  value: string | null | undefined;
+  code?: boolean;
+  language?: "html" | "css";
+}) {
   if (!props.value) return null;
   return (
     <View className="gap-1">
       <Text className="text-xs text-foreground-muted">{props.label}</Text>
-      {props.code && (props.label === "HTML" || props.label === "Styles") ? (
+      {props.code && props.language ? (
         <View
           className="overflow-hidden rounded-xl border border-border"
           style={{ height: Math.min(260, Math.max(100, props.value.split("\n").length * 22 + 36)) }}
@@ -167,7 +186,7 @@ function ContextField(props: { label: string; value: string | null | undefined; 
           <SourceFileSurface
             embedded
             contents={props.value}
-            path={props.label === "HTML" ? "element.html" : "styles.css"}
+            path={props.language === "html" ? "element.html" : "styles.css"}
           />
         </View>
       ) : (
@@ -184,6 +203,7 @@ function ContextField(props: { label: string; value: string | null | undefined; 
 }
 
 function ContextSource(props: { source: ElementContextSource | null }) {
+  const gt = useGT();
   const source = props.source;
   if (!source) return null;
   const location = source.fileName
@@ -191,7 +211,7 @@ function ContextSource(props: { source: ElementContextSource | null }) {
     : null;
   return (
     <ContextField
-      label="Source"
+      label={gt("Source", { $context: "where an element is defined in source code" })}
       value={[source.functionName, location].filter(Boolean).join("\n")}
       code
     />
@@ -219,6 +239,8 @@ export function ComposerContextSheet(props: {
         ? { environmentId: props.environmentId, projectId: props.projectId }
         : undefined,
   });
+  const gt = useGT();
+  const m = useMessages();
   const reviewColors = useReviewCommentColors();
   const insets = useSafeAreaInsets();
   const { themeId, themeAppearance } = useAppearancePreferences();
@@ -306,10 +328,12 @@ export function ComposerContextSheet(props: {
     record?.kind === "review-comment" && "pullRequest" in record
       ? record.pullRequest?.url
       : undefined;
-  const changeRequestTerm = (
-    (pullRequestUrl ? sourceControlClients.findByChangeRequestUrl(pullRequestUrl) : undefined) ??
-    sourceControlClients.get(undefined)
-  ).changeRequest.singular;
+  const term = changeRequestTermKind(
+    (
+      (pullRequestUrl ? sourceControlClients.findByChangeRequestUrl(pullRequestUrl) : undefined) ??
+      sourceControlClients.get(undefined)
+    ).changeRequest,
+  );
   const terminal = record?.kind === "terminal" && !("payload" in record) ? record : null;
   return (
     <Sheet title={terminal?.terminalLabel ?? props.label} onClose={props.onClose}>
@@ -326,18 +350,24 @@ export function ComposerContextSheet(props: {
       >
         {terminal ? (
           <Text className="text-sm text-foreground-muted">
-            Lines {terminal.lineStart}–{terminal.lineEnd}
+            <T>
+              Lines <Var>{terminal.lineStart}</Var>–<Var>{terminal.lineEnd}</Var>
+            </T>
           </Text>
         ) : null}
         {!record ? (
           <Text className="text-foreground">
-            Context unavailable. The reference was copied without its payload. Copy it again from
-            the original message or remove it.
+            <T>
+              Context unavailable. The reference was copied without its payload. Copy it again from
+              the original message or remove it.
+            </T>
           </Text>
         ) : "payload" in record ? (
           <Text className="text-foreground">
-            This context type is not supported by this version of the app. Its payload will be
-            preserved when sent.
+            <T>
+              This context type is not supported by this version of the app. Its payload will be
+              preserved when sent.
+            </T>
           </Text>
         ) : (
           <>
@@ -370,7 +400,15 @@ export function ComposerContextSheet(props: {
               <>
                 {record.pullRequest ? (
                   <ContextField
-                    label={`#${record.pullRequest.number} · ${record.pullRequest.isDraft ? "draft" : record.pullRequest.state}`}
+                    label={`#${record.pullRequest.number} · ${
+                      record.pullRequest.isDraft
+                        ? gt("draft", { $context: "pull request state" })
+                        : record.pullRequest.state === "open"
+                          ? gt("open", { $context: "pull request state" })
+                          : record.pullRequest.state === "closed"
+                            ? gt("closed", { $context: "pull request state" })
+                            : gt("merged", { $context: "pull request state" })
+                    }`}
                     value={`${record.pullRequest.title}\n${record.pullRequest.headBranch} → ${record.pullRequest.baseBranch}`}
                   />
                 ) : null}
@@ -386,11 +424,20 @@ export function ComposerContextSheet(props: {
             ) : null}
             {record.kind === "preview-annotation" ? (
               <>
-                <ContextField label="Page" value={record.pageTitle ?? record.pageUrl} />
-                <ContextField label="URL" value={record.pageUrl} />
-                <ContextField label="Comment" value={record.comment} />
-                <ContextField label="Selection" value={record.targetSummary} />
-                <ContextField label="Requested changes" value={record.styleChanges.join("\n")} />
+                <ContextField
+                  label={gt("Page", { $context: "web page" })}
+                  value={record.pageTitle ?? record.pageUrl}
+                />
+                <ContextField label={gt("URL")} value={record.pageUrl} />
+                <ContextField label={gt("Comment", { $context: "noun" })} value={record.comment} />
+                <ContextField
+                  label={gt("Selection", { $context: "selected part of a web page" })}
+                  value={record.targetSummary}
+                />
+                <ContextField
+                  label={gt("Requested changes")}
+                  value={record.styleChanges.join("\n")}
+                />
                 {record.elements?.map(
                   (element, index) => (
                     /* oxlint-disable react/no-array-index-key -- Captured DOM elements are a fixed snapshot without persistent element IDs. */ <View
@@ -398,13 +445,27 @@ export function ComposerContextSheet(props: {
                       className="gap-3"
                     >
                       <ContextField
-                        label="Element"
+                        label={gt("Element", { $context: "HTML element on a web page" })}
                         value={element.componentName ?? element.tagName}
                       />
-                      <ContextField label="Selector" value={element.selector} code />
+                      <ContextField
+                        label={gt("Selector", { $context: "CSS selector" })}
+                        value={element.selector}
+                        code
+                      />
                       <ContextSource source={element.source} />
-                      <ContextField label="HTML" value={element.htmlPreview} code />
-                      <ContextField label="Styles" value={element.styles} code />
+                      <ContextField
+                        label={gt("HTML")}
+                        value={element.htmlPreview}
+                        code
+                        language="html"
+                      />
+                      <ContextField
+                        label={gt("Styles", { $context: "CSS styles" })}
+                        value={element.styles}
+                        code
+                        language="css"
+                      />
                     </View>
                   ) /* oxlint-enable react/no-array-index-key */,
                 )}
@@ -412,12 +473,24 @@ export function ComposerContextSheet(props: {
             ) : null}
             {record.kind === "element" ? (
               <>
-                <ContextField label="Page" value={record.pageUrl} />
-                <ContextField label="Element" value={record.componentName ?? record.tagName} />
-                <ContextField label="Selector" value={record.selector} code />
+                <ContextField label={gt("Page", { $context: "web page" })} value={record.pageUrl} />
+                <ContextField
+                  label={gt("Element", { $context: "HTML element on a web page" })}
+                  value={record.componentName ?? record.tagName}
+                />
+                <ContextField
+                  label={gt("Selector", { $context: "CSS selector" })}
+                  value={record.selector}
+                  code
+                />
                 <ContextSource source={record.source} />
-                <ContextField label="HTML" value={record.htmlPreview} code />
-                <ContextField label="Styles" value={record.styles} code />
+                <ContextField label={gt("HTML")} value={record.htmlPreview} code language="html" />
+                <ContextField
+                  label={gt("Styles", { $context: "CSS styles" })}
+                  value={record.styles}
+                  code
+                  language="css"
+                />
               </>
             ) : null}
             {record.kind === "linear-issue" ? (
@@ -435,12 +508,18 @@ export function ComposerContextSheet(props: {
                     accessibilityRole="link"
                     onPress={() => {
                       void tryOpenExternalUrl(record.url, "linear").then((opened) => {
-                        if (!opened) Dialog.alert("Could not open Linear", "Try again later.");
+                        if (!opened)
+                          Dialog.alert(
+                            gt("Could not open {product}", { product: "Linear" }),
+                            gt("Try again later."),
+                          );
                       });
                     }}
                     className="rounded-xl bg-subtle p-4"
                   >
-                    <Text className="text-foreground">Open in Linear</Text>
+                    <Text className="text-foreground">
+                      {gt("Open in {product}", { product: "Linear" })}
+                    </Text>
                   </Pressable>
                 ) : null}
                 {/* Plain text like the other captured context here: exactly what the agent received. */}
@@ -456,7 +535,7 @@ export function ComposerContextSheet(props: {
                     {record.title}
                   </Text>
                   <Text className="text-sm text-foreground-muted">
-                    {LINEAR_OBJECT_TYPE_LABELS[record.objectType]}
+                    {m(LINEAR_OBJECT_TYPE_LABELS[record.objectType])}
                     {record.status === null ? "" : ` · ${record.status}`}
                   </Text>
                 </View>
@@ -465,12 +544,18 @@ export function ComposerContextSheet(props: {
                     accessibilityRole="link"
                     onPress={() => {
                       void tryOpenExternalUrl(record.url, "linear").then((opened) => {
-                        if (!opened) Dialog.alert("Could not open Linear", "Try again later.");
+                        if (!opened)
+                          Dialog.alert(
+                            gt("Could not open {product}", { product: "Linear" }),
+                            gt("Try again later."),
+                          );
                       });
                     }}
                     className="rounded-xl bg-subtle p-4"
                   >
-                    <Text className="text-foreground">Open in Linear</Text>
+                    <Text className="text-foreground">
+                      {gt("Open in {product}", { product: "Linear" })}
+                    </Text>
                   </Pressable>
                 ) : null}
                 {/* Plain text like the other captured context here: exactly what the agent received. */}
@@ -487,7 +572,9 @@ export function ComposerContextSheet(props: {
                   </Text>
                   <Text className="text-sm text-foreground-muted">
                     {record.repository}#{record.number} ·{" "}
-                    {record.state === "open" ? "Open" : "Closed"}
+                    {record.state === "open"
+                      ? gt("Open", { $context: "issue state" })
+                      : gt("Closed", { $context: "issue state" })}
                   </Text>
                 </View>
                 {/^https?:\/\//i.test(record.url) ? (
@@ -495,12 +582,18 @@ export function ComposerContextSheet(props: {
                     accessibilityRole="link"
                     onPress={() => {
                       void tryOpenExternalUrl(record.url, "github-issue").then((opened) => {
-                        if (!opened) Dialog.alert("Could not open GitHub", "Try again later.");
+                        if (!opened)
+                          Dialog.alert(
+                            gt("Could not open {product}", { product: "GitHub" }),
+                            gt("Try again later."),
+                          );
                       });
                     }}
                     className="rounded-xl bg-subtle p-4"
                   >
-                    <Text className="text-foreground">Open on GitHub</Text>
+                    <Text className="text-foreground">
+                      {gt("Open on {product}", { product: "GitHub" })}
+                    </Text>
                   </Pressable>
                 ) : null}
                 {/* Plain text like the other captured context here: exactly what the agent received. */}
@@ -519,7 +612,7 @@ export function ComposerContextSheet(props: {
                     {record.refType === "workflow-run" || record.refType === "workflow-job"
                       ? record.repository
                       : `${record.repository}@${record.refType === "commit" || /^[0-9a-f]{40}$/i.test(record.ref) ? record.ref.slice(0, 7) : record.ref}`}{" "}
-                    · {GITHUB_REF_TYPE_LABELS[record.refType]}
+                    · {m(GITHUB_REF_TYPE_LABELS[record.refType])}
                   </Text>
                 </View>
                 {/^https?:\/\//i.test(record.url) ? (
@@ -527,12 +620,18 @@ export function ComposerContextSheet(props: {
                     accessibilityRole="link"
                     onPress={() => {
                       void tryOpenExternalUrl(record.url, "markdown-link").then((opened) => {
-                        if (!opened) Dialog.alert("Could not open GitHub", "Try again later.");
+                        if (!opened)
+                          Dialog.alert(
+                            gt("Could not open {product}", { product: "GitHub" }),
+                            gt("Try again later."),
+                          );
                       });
                     }}
                     className="rounded-xl bg-subtle p-4"
                   >
-                    <Text className="text-foreground">Open on GitHub</Text>
+                    <Text className="text-foreground">
+                      {gt("Open on {product}", { product: "GitHub" })}
+                    </Text>
                   </Pressable>
                 ) : null}
                 {/* Plain text like the other captured context here: exactly what the agent received. */}
@@ -553,12 +652,18 @@ export function ComposerContextSheet(props: {
                     accessibilityRole="link"
                     onPress={() => {
                       void tryOpenExternalUrl(record.url, "markdown-link").then((opened) => {
-                        if (!opened) Dialog.alert("Could not open Notion", "Try again later.");
+                        if (!opened)
+                          Dialog.alert(
+                            gt("Could not open {product}", { product: "Notion" }),
+                            gt("Try again later."),
+                          );
                       });
                     }}
                     className="rounded-xl bg-subtle p-4"
                   >
-                    <Text className="text-foreground">Open in Notion</Text>
+                    <Text className="text-foreground">
+                      {gt("Open in {product}", { product: "Notion" })}
+                    </Text>
                   </Pressable>
                 ) : null}
                 {/* Plain text like the other captured context here: exactly what the agent received. */}
@@ -579,12 +684,18 @@ export function ComposerContextSheet(props: {
                     accessibilityRole="link"
                     onPress={() => {
                       void tryOpenExternalUrl(record.url, "markdown-link").then((opened) => {
-                        if (!opened) Dialog.alert("Could not open Google", "Try again later.");
+                        if (!opened)
+                          Dialog.alert(
+                            gt("Could not open {product}", { product: "Google" }),
+                            gt("Try again later."),
+                          );
                       });
                     }}
                     className="rounded-xl bg-subtle p-4"
                   >
-                    <Text className="text-foreground">Open in Google</Text>
+                    <Text className="text-foreground">
+                      {gt("Open in {product}", { product: "Google" })}
+                    </Text>
                   </Pressable>
                 ) : null}
                 {/* Plain text like the other captured context here: exactly what the agent received. */}
@@ -610,12 +721,18 @@ export function ComposerContextSheet(props: {
                     accessibilityRole="link"
                     onPress={() => {
                       void tryOpenExternalUrl(record.url, "markdown-link").then((opened) => {
-                        if (!opened) Dialog.alert("Could not open Granola", "Try again later.");
+                        if (!opened)
+                          Dialog.alert(
+                            gt("Could not open {product}", { product: "Granola" }),
+                            gt("Try again later."),
+                          );
                       });
                     }}
                     className="rounded-xl bg-subtle p-4"
                   >
-                    <Text className="text-foreground">Open in Granola</Text>
+                    <Text className="text-foreground">
+                      {gt("Open in {product}", { product: "Granola" })}
+                    </Text>
                   </Pressable>
                 ) : null}
                 {/* Plain text like the other captured context here: exactly what the agent received. */}
@@ -628,7 +745,7 @@ export function ComposerContextSheet(props: {
               <View className="gap-3">
                 <View className="gap-1">
                   <Text selectable className="text-lg font-t3-semibold text-foreground">
-                    T3 Code prompt link
+                    {gt("{product} prompt link", { product: "T3 Code" })}
                   </Text>
                   {record.target ? (
                     <Text className="text-sm text-foreground-muted">{record.target}</Text>
@@ -647,11 +764,15 @@ export function ComposerContextSheet(props: {
                 <View className="gap-1">
                   <Text selectable className="text-lg font-t3-semibold text-foreground">
                     {record.reason === "timed-out"
-                      ? `Loading this ${composerObjectLinkNoun(record.linkKind)} timed out`
-                      : `Could not read this ${composerObjectLinkNoun(record.linkKind)}`}
+                      ? gt("Loading this {noun} timed out", {
+                          noun: composerObjectLinkNoun(record.linkKind),
+                        })
+                      : gt("Could not read this {noun}", {
+                          noun: composerObjectLinkNoun(record.linkKind),
+                        })}
                   </Text>
                   <Text className="text-sm text-foreground-muted">
-                    The agent receives the link, not its contents.
+                    <T>The agent receives the link, not its contents.</T>
                   </Text>
                 </View>
                 {/^https?:\/\//i.test(record.url) ? (
@@ -659,12 +780,13 @@ export function ComposerContextSheet(props: {
                     accessibilityRole="link"
                     onPress={() => {
                       void tryOpenExternalUrl(record.url, "markdown-link").then((opened) => {
-                        if (!opened) Dialog.alert("Could not open the link", "Try again later.");
+                        if (!opened)
+                          Dialog.alert(gt("Could not open the link"), gt("Try again later."));
                       });
                     }}
                     className="rounded-xl bg-subtle p-4"
                   >
-                    <Text className="text-foreground">Open link</Text>
+                    <Text className="text-foreground">{gt("Open link")}</Text>
                   </Pressable>
                 ) : null}
                 <Text selectable className="text-sm text-foreground">
@@ -692,12 +814,18 @@ export function ComposerContextSheet(props: {
                     accessibilityRole="link"
                     onPress={() => {
                       void tryOpenExternalUrl(record.url, "slack").then((opened) => {
-                        if (!opened) Dialog.alert("Could not open Slack", "Try again later.");
+                        if (!opened)
+                          Dialog.alert(
+                            gt("Could not open {product}", { product: "Slack" }),
+                            gt("Try again later."),
+                          );
                       });
                     }}
                     className="rounded-xl bg-subtle p-4"
                   >
-                    <Text className="text-foreground">Open in Slack</Text>
+                    <Text className="text-foreground">
+                      {gt("Open in {product}", { product: "Slack" })}
+                    </Text>
                   </Pressable>
                 ) : null}
                 {/* Plain text like the other captured context here: exactly what the agent received. */}
@@ -716,12 +844,18 @@ export function ComposerContextSheet(props: {
                     accessibilityRole="link"
                     onPress={() => {
                       void tryOpenExternalUrl(record.url, "slack").then((opened) => {
-                        if (!opened) Dialog.alert("Could not open Slack", "Try again later.");
+                        if (!opened)
+                          Dialog.alert(
+                            gt("Could not open {product}", { product: "Slack" }),
+                            gt("Try again later."),
+                          );
                       });
                     }}
                     className="rounded-xl bg-subtle p-4"
                   >
-                    <Text className="text-foreground">Open in Slack</Text>
+                    <Text className="text-foreground">
+                      {gt("Open in {product}", { product: "Slack" })}
+                    </Text>
                   </Pressable>
                 ) : null}
                 {/* Plain text like the other captured context here: exactly what the agent received. */}
@@ -748,12 +882,18 @@ export function ComposerContextSheet(props: {
                     accessibilityRole="link"
                     onPress={() => {
                       void tryOpenExternalUrl(record.url, "discord").then((opened) => {
-                        if (!opened) Dialog.alert("Could not open Discord", "Try again later.");
+                        if (!opened)
+                          Dialog.alert(
+                            gt("Could not open {product}", { product: "Discord" }),
+                            gt("Try again later."),
+                          );
                       });
                     }}
                     className="rounded-xl bg-subtle p-4"
                   >
-                    <Text className="text-foreground">Open in Discord</Text>
+                    <Text className="text-foreground">
+                      {gt("Open in {product}", { product: "Discord" })}
+                    </Text>
                   </Pressable>
                 ) : null}
                 {/* Plain text like the other captured context here: exactly what the agent received. */}
@@ -764,25 +904,35 @@ export function ComposerContextSheet(props: {
             ) : null}
             {record.kind === "thread-tab" ? (
               <View className="gap-3">
-                <ContextField label="Chat" value={record.title} />
+                <ContextField label={gt("Chat", { $context: "noun" })} value={record.title} />
                 {/* What the agent receives in place of the other chat, laid out by turn. */}
                 <ThreadTabSummaryFields summary={record.summary} />
               </View>
             ) : null}
             {record.kind === "repository" ? (
               <View className="gap-3">
-                <ContextField label="Repository" value={record.nameWithOwner} />
-                <ContextField label="Remote" value={record.remoteUrl} />
                 <ContextField
-                  label="Clone"
+                  label={gt("Repository", { $context: "noun" })}
+                  value={record.nameWithOwner}
+                />
+                <ContextField
+                  label={gt("Remote", { $context: "git remote URL" })}
+                  value={record.remoteUrl}
+                />
+                <ContextField
+                  label={gt("Clone", { $context: "noun, cloning a repository" })}
                   value={
                     record.outcome
                       ? contextRepositoryOutcomeLabel(record.outcome)
-                      : `Cloned into the workspace's context folder as ${record.directoryName} when sent, unless it is already there.`
+                      : gt(
+                          "Cloned into the workspace's context folder as {directory} when sent, unless it is already there.",
+                          { directory: record.directoryName },
+                        )
                   }
                 />
-                <ContextField label="Detail" value={record.outcome?.detail} />
+                <ContextField label={gt("Detail")} value={record.outcome?.detail} />
                 <ContextField
+                  // oxlint-disable-next-line t3code/no-untranslated-copy -- product name
                   label="Git"
                   value={
                     record.outcome?.git
@@ -794,19 +944,23 @@ export function ComposerContextSheet(props: {
             ) : null}
             {record.kind === "image" ? (
               <ContextField
-                label="File"
+                label={gt("File", { $context: "noun" })}
                 value={`${record.mimeType} · ${formatAttachmentSize(record.sizeBytes)}`}
               />
             ) : null}
             {record.kind === "mention" ? (
-              <ContextField label="Path" value={record.path} code />
+              <ContextField
+                label={gt("Path", { $context: "file path" })}
+                value={record.path}
+                code
+              />
             ) : null}
             {record.kind === "thread" ? (
               <View className="gap-3">
-                <ContextField label="Thread" value={record.title} />
+                <ContextField label={gt("Thread", { $context: "noun" })} value={record.title} />
                 {props.onOpenThread ? (
                   <Button
-                    label="Open thread"
+                    label={gt("Open thread")}
                     tone="secondary"
                     onPress={() =>
                       props.onOpenThread?.({
@@ -821,12 +975,16 @@ export function ComposerContextSheet(props: {
             ) : null}
             {record.kind === "subagent" ? (
               <View className="gap-3">
-                <ContextField label="Agent" value={`@${record.handle}`} code />
-                <ContextField label="Title" value={record.title} />
-                <ContextField label="Status when referenced" value={record.status} />
+                <ContextField
+                  label={gt("Agent", { $context: "noun" })}
+                  value={`@${record.handle}`}
+                  code
+                />
+                <ContextField label={gt("Title", { $context: "noun" })} value={record.title} />
+                <ContextField label={gt("Status when referenced")} value={record.status} />
                 {/* Exactly what the agent receives about the referenced agent. */}
-                <ContextField label="Task" value={record.prompt} />
-                <ContextField label="Result" value={record.result} />
+                <ContextField label={gt("Task", { $context: "noun" })} value={record.prompt} />
+                <ContextField label={gt("Result", { $context: "noun" })} value={record.result} />
                 {props.onOpenThread && record.childThreadId !== null ? (
                   <Pressable
                     accessibilityRole="button"
@@ -839,44 +997,55 @@ export function ComposerContextSheet(props: {
                     }
                     className="rounded-xl bg-subtle p-4"
                   >
-                    <Text className="text-foreground">Open agent</Text>
+                    <Text className="text-foreground">{gt("Open agent")}</Text>
                   </Pressable>
                 ) : null}
               </View>
             ) : null}
             {record.kind === "model" ? (
               <View className="gap-3">
-                <ContextField label="Model" value={`${record.modelName} (${record.model})`} />
                 <ContextField
-                  label="Provider"
+                  label={gt("Model", { $context: "AI model" })}
+                  value={`${record.modelName} (${record.model})`}
+                />
+                <ContextField
+                  label={gt("Provider", { $context: "AI provider" })}
                   value={`${record.instanceName} · ${record.providerInstanceId}`}
                 />
                 <ContextField
-                  label="Traits"
+                  label={gt("Traits", { $context: "model options" })}
                   value={
                     record.options.length > 0
                       ? record.options
                           .map((option) => `${option.label}: ${option.valueLabel}`)
                           .join("\n")
-                      : "None set; uses the model's defaults."
+                      : gt("None set; uses the model's defaults.")
                   }
                 />
-                <ContextField label="Written" value={new Date(record.writtenAt).toLocaleString()} />
+                <ContextField
+                  label={gt("Written", { $context: "time a note was written" })}
+                  value={new Date(record.writtenAt).toLocaleString()}
+                />
               </View>
             ) : null}
             {record.kind === "environment" ? (
-              <ContextField label="Machine" value={record.label} />
+              <ContextField label={gt("Machine", { $context: "computer" })} value={record.label} />
             ) : null}
             {record.kind === "skill" ? (
               <View className="gap-3">
-                <ContextField label="Skill" value={record.name} />
                 <ContextField
-                  label="Description"
-                  value={props.skillDescription ?? "No description is available for this skill."}
+                  label={gt("Skill", { $context: "agent skill" })}
+                  value={record.name}
+                />
+                <ContextField
+                  label={gt("Description")}
+                  value={
+                    props.skillDescription ?? gt("No description is available for this skill.")
+                  }
                 />
                 {props.onOpenSkill ? (
                   <Button
-                    label="View instructions"
+                    label={gt("View instructions")}
                     tone="secondary"
                     onPress={props.onOpenSkill}
                     fullWidth
@@ -907,17 +1076,28 @@ export function ComposerContextSheet(props: {
             onPress={() => {
               props.onClose();
               void openPullRequest(pullRequestUrl).catch(() =>
-                Dialog.alert(`Could not open ${changeRequestTerm}`, "Try again when connected."),
+                Dialog.alert(
+                  gt(
+                    "Could not open {term, select, mr {merge request} cr {change request} other {pull request}}",
+                    { term },
+                  ),
+                  gt("Try again when connected."),
+                ),
               );
             }}
             className="rounded-xl bg-subtle p-4"
           >
-            <Text className="text-foreground">Open {changeRequestTerm}</Text>
+            <Text className="text-foreground">
+              {gt(
+                "Open {term, select, mr {merge request} cr {change request} other {pull request}}",
+                { term },
+              )}
+            </Text>
           </Pressable>
         ) : null}
         {props.onOpenAttachment ? (
           <Button
-            label="Open attachment"
+            label={gt("Open attachment")}
             tone="secondary"
             onPress={props.onOpenAttachment}
             fullWidth
@@ -925,14 +1105,22 @@ export function ComposerContextSheet(props: {
         ) : null}
         {props.onOpenPullRequest && !pullRequestUrl ? (
           <Button
-            label={`Open ${changeRequestTerm}`}
+            label={gt(
+              "Open {term, select, mr {merge request} cr {change request} other {pull request}}",
+              { term },
+            )}
             tone="secondary"
             onPress={props.onOpenPullRequest}
             fullWidth
           />
         ) : null}
         {props.onRemove ? (
-          <Button label="Remove from draft" tone="secondary" onPress={props.onRemove} fullWidth />
+          <Button
+            label={gt("Remove from draft")}
+            tone="secondary"
+            onPress={props.onRemove}
+            fullWidth
+          />
         ) : null}
       </ScrollView>
     </Sheet>

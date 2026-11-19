@@ -13,7 +13,6 @@ import {
   type ScheduledTaskUpsertSchedule,
   type ServerProvider,
 } from "@t3tools/contracts";
-import { formatDuration } from "@t3tools/shared/usageLimits";
 import * as Clock from "effect/Clock";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
@@ -25,6 +24,7 @@ import { Argument, Command, Flag } from "effect/cli";
 import {
   LiveUsageError,
   LiveRpcFailedError,
+  formatDuration,
   formatLocalMinute,
   jsonFlag,
   liveLocationFlags,

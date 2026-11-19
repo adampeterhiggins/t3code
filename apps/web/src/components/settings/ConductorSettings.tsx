@@ -14,9 +14,11 @@ import {
   type ConductorEditTarget,
 } from "@t3tools/shared/conductorSettingsEditor";
 import { setupProjectScript } from "@t3tools/shared/projectScripts";
+import { msg, T, useGT } from "gt-react";
 import { useRef, useState } from "react";
 
 import { useConductorSettings } from "~/hooks/useConductorSettings";
+import { m } from "~/i18n/messages";
 import { projectEnvironment } from "~/state/projects";
 import { useAtomCommand } from "~/state/use-atom-command";
 import {
@@ -63,6 +65,7 @@ function ConductorSettingsSection({
   cwd: string;
   setupActionName: string | null;
 }) {
+  const gt = useGT();
   const [target, setTarget] = useState<ConductorEditTarget>("local");
   const writeFile = useAtomCommand(projectEnvironment.writeFile, { reportFailure: false });
 
@@ -87,8 +90,8 @@ function ConductorSettingsSection({
       } catch {
         toastManager.add({
           type: "error",
-          title: `Could not update ${label}`,
-          description: "The file is not valid TOML. Fix it by hand first.",
+          title: m(msg("Could not update {file}", { file: label })),
+          description: m(msg("The file is not valid TOML. Fix it by hand first.")),
         });
         return;
       }
@@ -106,7 +109,7 @@ function ConductorSettingsSection({
         const error = squashAtomCommandFailure(result);
         toastManager.add({
           type: "error",
-          title: `Could not save ${label}`,
+          title: m(msg("Could not save {file}", { file: label })),
           description: error instanceof Error ? error.message : undefined,
         });
       }
@@ -116,7 +119,7 @@ function ConductorSettingsSection({
       clearProjectFileQueryData(environmentId, cwd, path);
       toastManager.add({
         type: "error",
-        title: `Could not save ${label}`,
+        title: m(msg("Could not save {file}", { file: label })),
         description: error instanceof Error ? error.message : undefined,
       });
     });
@@ -124,66 +127,76 @@ function ConductorSettingsSection({
 
   const disabled = model.targetInvalid;
 
-  const resetButton = (label: string, field: ConductorEditField, patch: ConductorSettingsPatch) =>
+  const resetButton = (
+    ariaLabel: string,
+    field: ConductorEditField,
+    patch: ConductorSettingsPatch,
+  ) =>
     field.isSet ? (
       <SettingResetButton
-        label={label}
-        tooltip={`Remove from ${targetLabel}`}
+        ariaLabel={ariaLabel}
+        tooltip={gt("Remove from {file}", { file: targetLabel })}
         disabled={disabled}
         onClick={() => save(patch)}
       />
     ) : null;
 
   return (
-    <SettingsSection id="project-conductor" title="Conductor">
+    <SettingsSection id="project-conductor" title={gt("Conductor")}>
       <SettingsRow
-        title="Save changes to"
+        title={gt("Save changes to")}
         description={
-          <>
-            New worktrees copy these files and run these scripts, as Conductor does.{" "}
+          <T>
+            New worktrees copy these files and run these scripts.{" "}
             <b className="font-medium">Only me</b> writes the uncommitted{" "}
             <code>.conductor/settings.local.toml</code>; <b className="font-medium">Repository</b>{" "}
             writes <code>.conductor/settings.toml</code> for everyone who clones it.
-          </>
+          </T>
         }
         control={
           <ToggleGroup
-            aria-label="Conductor settings file"
+            aria-label={gt("Conductor settings file")}
             value={[target]}
             onValueChange={(next) => {
               const value = next[0];
               if (value === "local" || value === "shared") setTarget(value);
             }}
           >
-            <Toggle value="local">Only me</Toggle>
-            <Toggle value="shared">Repository</Toggle>
+            <Toggle value="local">
+              <T>Only me</T>
+            </Toggle>
+            <Toggle value="shared">
+              <T context="settings file shared through the repository">Repository</T>
+            </Toggle>
           </ToggleGroup>
         }
       />
       {model.targetInvalid ? (
         <SettingsRow
           className="text-warning"
-          title={`${targetLabel} is invalid`}
-          description="It is not valid TOML, so it is ignored and cannot be edited here. Fix it in an editor."
+          title={gt("{file} is invalid", { file: targetLabel })}
+          description={gt(
+            "It is not valid TOML, so it is ignored and cannot be edited here. Fix it in an editor.",
+          )}
         />
       ) : null}
       {model.otherInvalidFiles.map((path) => (
         <SettingsRow
           key={path}
           className="text-warning"
-          title={`${path} is invalid`}
-          description="It fails to parse, so new worktrees ignore it."
+          title={gt("{file} is invalid", { file: path })}
+          description={gt("It fails to parse, so new worktrees ignore it.")}
         />
       ))}
 
       <SettingsRow
-        title="Setup script"
-        description="Runs in each new worktree after it is created."
+        title={gt("Setup script")}
+        description={gt("Runs in each new worktree after it is created.")}
         status={<FieldStatus field={model.setup} />}
-        resetAction={resetButton("setup script", model.setup, { setup: null })}
+        resetAction={resetButton(gt("Reset setup script to default"), model.setup, { setup: null })}
       >
         <ScriptField
-          ariaLabel="Setup script"
+          ariaLabel={gt("Setup script")}
           field={model.setup}
           disabled={disabled}
           onCommit={(next) => save({ setup: next })}
@@ -191,13 +204,15 @@ function ConductorSettingsSection({
       </SettingsRow>
 
       <SettingsRow
-        title="Archive script"
-        description="Runs in a worktree just before T3 Code removes it."
+        title={gt("Archive script")}
+        description={gt("Runs in a worktree just before T3 Code removes it.")}
         status={<FieldStatus field={model.archive} />}
-        resetAction={resetButton("archive script", model.archive, { archive: null })}
+        resetAction={resetButton(gt("Reset archive script to default"), model.archive, {
+          archive: null,
+        })}
       >
         <ScriptField
-          ariaLabel="Archive script"
+          ariaLabel={gt("Archive script")}
           field={model.archive}
           disabled={disabled}
           onCommit={(next) => save({ archive: next })}
@@ -205,13 +220,17 @@ function ConductorSettingsSection({
       </SettingsRow>
 
       <SettingsRow
-        title="Files to copy"
-        description="Gitignored files matching these patterns are copied from this checkout into each new worktree. Uses .gitignore syntax, one pattern per line."
+        title={gt("Files to copy")}
+        description={gt(
+          "Gitignored files matching these patterns are copied from this checkout into each new worktree. Uses .gitignore syntax, one pattern per line.",
+        )}
         status={<FieldStatus field={model.filesToCopy} />}
-        resetAction={resetButton("files to copy", model.filesToCopy, { fileIncludeGlobs: null })}
+        resetAction={resetButton(gt("Reset files to copy to default"), model.filesToCopy, {
+          fileIncludeGlobs: null,
+        })}
       >
         <ScriptField
-          ariaLabel="Files to copy"
+          ariaLabel={gt("Files to copy")}
           field={model.filesToCopy}
           disabled={disabled || model.filesToCopy.lockedByWorktreeInclude}
           onCommit={(next) => save({ fileIncludeGlobs: next })}
@@ -219,21 +238,21 @@ function ConductorSettingsSection({
       </SettingsRow>
 
       <SettingsRow
-        title="Environment variables"
+        title={gt("Environment variables")}
         description={
-          <>
+          <T>
             Passed to the setup, archive, and run scripts, one <code>KEY=value</code> per line,
             alongside CONDUCTOR_ROOT_PATH, CONDUCTOR_WORKSPACE_PATH, CONDUCTOR_PORT, and the other
             Conductor variables.
-          </>
+          </T>
         }
         status={<FieldStatus field={model.environment} />}
-        resetAction={resetButton("environment variables", model.environment, {
+        resetAction={resetButton(gt("Reset environment variables to default"), model.environment, {
           environment: null,
         })}
       >
         <ScriptField
-          ariaLabel="Environment variables"
+          ariaLabel={gt("Environment variables")}
           field={model.environment}
           disabled={disabled}
           onCommit={(next) => {
@@ -241,7 +260,7 @@ function ConductorSettingsSection({
             if (typeof parsed === "string") {
               toastManager.add({
                 type: "error",
-                title: "Environment variables not saved",
+                title: m(msg("Environment variables not saved")),
                 description: parsed,
               });
               return;

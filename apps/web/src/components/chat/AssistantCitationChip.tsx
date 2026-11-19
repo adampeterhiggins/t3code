@@ -9,6 +9,7 @@ import {
   serializeAssistantCitation,
 } from "@t3tools/shared/assistantCitations";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { T, useGT, Var } from "gt-react";
 import { PencilIcon, QuoteIcon } from "lucide-react";
 import {
   useEffect,
@@ -138,11 +139,12 @@ export function ResponseReplyCard({
   leading: boolean;
   trailing: boolean;
 }) {
+  const gt = useGT();
   return (
     <ResponseCard
       citation={record.citation}
       copyMarkdown={copyMarkdown}
-      label={`Go to the response this replies to: ${record.label}`}
+      label={gt("Go to the response this replies to: {label}", { label: record.label })}
       title={record.subagents?.map((subagent) => subagent.title).join(", ")}
       preview={flat(record.citation.text)}
       leading={leading}
@@ -180,6 +182,7 @@ export function AssistantCitationChip({
     renderInput: (props: CitationCommentInputProps) => ReactNode;
   };
 }) {
+  const gt = useGT();
   const navigate = useNavigate();
   const commentInputRef = useRef<CitationCommentInputHandle>(null);
   const commentPopupRef = useRef<HTMLDivElement>(null);
@@ -245,10 +248,15 @@ export function AssistantCitationChip({
   const sourceThread = useQuietThreadShell(
     quotedElsewhere ? scopeThreadRef(citation.environmentId, citation.threadId) : null,
   );
-  const sourceTitle = quotedElsewhere ? sourceThread?.title || "another thread" : null;
+  const sourceTitle = quotedElsewhere ? sourceThread?.title || gt("another thread") : null;
   const sourceLine = sourceTitle ? (
     <span className="min-w-0 truncate">
-      From <span className="text-foreground">{sourceTitle}</span>
+      <T>
+        From{" "}
+        <span className="text-foreground">
+          <Var>{sourceTitle}</Var>
+        </span>
+      </T>
     </span>
   ) : null;
   const sourceLinkProps = {
@@ -273,7 +281,7 @@ export function AssistantCitationChip({
           <Link
             {...sourceLinkProps}
             className="inline-flex h-full min-w-0 items-center gap-[0.33em] rounded-sm text-inherit no-underline focus-visible:outline-2 focus-visible:outline-foreground"
-            aria-label={`View cited assistant text: ${label}`}
+            aria-label={gt("View cited assistant text: {label}", { label })}
           />
         }
       >
@@ -301,7 +309,7 @@ export function AssistantCitationChip({
         kind="citation"
         icon={<QuoteIcon />}
         label={label}
-        accessibleLabel={`Quoted assistant text: ${label}`}
+        accessibleLabel={gt("Quoted assistant text: {label}", { label })}
         copyMarkdown={serializeAssistantCitation(citation)}
       >
         <div className="flex max-h-[calc(var(--available-height)_-_1rem_-_2px)] flex-col gap-2 p-1 text-sm">
@@ -315,7 +323,7 @@ export function AssistantCitationChip({
                 />
               }
             >
-              Go to source
+              <T>Go to source</T>
             </PopoverClose>
           </div>
           <AssistantCitationQuote
@@ -355,7 +363,9 @@ export function AssistantCitationChip({
           }}
         >
           <PopoverTrigger
-            aria-label={citation.comment ? "Edit citation comment" : "Add comment to citation"}
+            aria-label={
+              citation.comment ? gt("Edit citation comment") : gt("Add comment to citation")
+            }
             data-citation-comment-trigger="true"
             render={<ContextChipAction />}
           >
@@ -388,7 +398,7 @@ export function AssistantCitationChip({
                   : undefined
               }
               ref={commentPopupRef}
-              aria-label="Edit citation comment"
+              aria-label={gt("Edit citation comment")}
               width="md"
               padding="compact"
               onPointerDown={(event) => event.stopPropagation()}

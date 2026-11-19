@@ -1,5 +1,6 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { RefreshIcon } from "~/components/ui/refresh-icon";
+import { T, useGT } from "gt-react";
 import { ExternalLinkIcon } from "lucide-react";
 
 import { Button } from "../ui/button";
@@ -8,7 +9,7 @@ import { PullRequestGlyph } from "./pullRequestIcons";
 import { usePullRequestLinkClick } from "./PullRequestMarkdownContext";
 
 export function PullRequestsUnavailableState({
-  title = "Could not load pull requests",
+  title,
   error,
   onRetry,
   refreshing = false,
@@ -23,6 +24,7 @@ export function PullRequestsUnavailableState({
   /** Thread the host link can open beside; the surrounding detail's by default. */
   threadRef?: ScopedThreadRef | null;
 }) {
+  const gt = useGT();
   const onLinkClick = usePullRequestLinkClick(threadRef);
   return (
     <Empty className="scrollbar-gutter-both min-h-0 justify-center-safe overflow-y-auto [&>*]:shrink-0">
@@ -30,7 +32,7 @@ export function PullRequestsUnavailableState({
         <PullRequestGlyph.pullRequest />
       </EmptyMedia>
       <EmptyHeader>
-        <EmptyTitle>{title}</EmptyTitle>
+        <EmptyTitle>{title ?? gt("Could not load pull requests")}</EmptyTitle>
         <EmptyDescription>{error}</EmptyDescription>
       </EmptyHeader>
       {onRetry || host ? (
@@ -44,7 +46,7 @@ export function PullRequestsUnavailableState({
               aria-busy={refreshing}
             >
               <RefreshIcon size="sm" refreshing={refreshing} />
-              Retry
+              <T>Retry</T>
             </Button>
           ) : null}
           {host ? (

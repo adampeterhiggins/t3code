@@ -4,14 +4,16 @@ import {
 } from "@t3tools/client-runtime/work-log/presentation";
 import { toServerClock } from "@t3tools/client-runtime/clock";
 import type { EnvironmentId } from "@t3tools/contracts";
-import { formatDuration } from "@t3tools/shared/orchestrationTiming";
+import { formatDuration } from "@t3tools/shared/orchestrationTimingCopy";
 import * as DateTime from "effect/DateTime";
+import { msg } from "gt-react";
+import { m } from "~/i18n/messages";
 import { workEntryDisplayIndicatesToolFailure, type WorkLogEntry } from "../../session-logic";
 
 export function formatWorkingTimerNow(startIso: string, environmentId: EnvironmentId): string {
   const startedAtMs = Date.parse(startIso);
   if (!Number.isFinite(startedAtMs)) {
-    return "0s";
+    return m(msg("{seconds}s", { seconds: 0 }));
   }
 
   const elapsedSeconds = Math.max(
@@ -19,10 +21,10 @@ export function formatWorkingTimerNow(startIso: string, environmentId: Environme
     Math.floor((toServerClock(environmentId, Date.now()) - startedAtMs) / 1000),
   );
   if (elapsedSeconds < 60) {
-    return `${elapsedSeconds}s`;
+    return m(msg("{seconds}s", { seconds: elapsedSeconds }));
   }
 
-  return formatDuration(elapsedSeconds * 1_000);
+  return formatDuration(elapsedSeconds * 1_000, m);
 }
 /** Calls at least this long stand out in a group's hover card. */
 export const SLOW_TOOL_CALL_MS = 10_000;

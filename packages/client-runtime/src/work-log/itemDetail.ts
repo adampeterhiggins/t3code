@@ -12,6 +12,8 @@ import {
   toolOutputImages,
 } from "@t3tools/shared/toolOutput";
 import * as DateTime from "effect/DateTime";
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
 import { webToolView } from "./webTool.ts";
 
 const MAX_TEXT_BLOCK_DEPTH = 4;
@@ -328,15 +330,26 @@ function readStartLine(input: Record<string, unknown>): number | null {
 }
 
 /** Fork: a file read's line range from its tool input: `Lines 10–49`, `From line 10`, `First 40 lines`. */
-export function toolReadRangeLabel(input: unknown): string | null {
+export function toolReadRangeLabel(
+  input: unknown,
+  resolve: MFunctionType = mFallback,
+): string | null {
   if (!isRecord(input)) return null;
   const start = readStartLine(input);
   const end = positiveInteger(input.end_line ?? input.endLine);
   const limit = positiveInteger(input.limit);
-  if (start !== null && end !== null) return `Lines ${start}–${end}`;
-  if (start !== null && limit !== null) return `Lines ${start}–${start + limit - 1}`;
-  if (start !== null) return `From line ${start}`;
-  if (limit !== null) return `First ${limit} lines`;
+  if (start !== null && end !== null) return resolve(msg("Lines {start}–{end}", { start, end }));
+  if (start !== null && limit !== null) {
+    return resolve(msg("Lines {start}–{end}", { start, end: start + limit - 1 }));
+  }
+  if (start !== null) return resolve(msg("From line {start}", { start }));
+  if (limit !== null) {
+    return resolve(
+      msg("{count, plural, one {First {count} lines} other {First {count} lines}}", {
+        count: limit,
+      }),
+    );
+  }
   return null;
 }
 

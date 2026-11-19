@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
+import { applyLanguage } from "../../i18n/messages.ts";
 import * as DesktopClientSettings from "../../settings/DesktopClientSettings.ts";
 import * as DesktopQuickMessage from "../../quickMessage/DesktopQuickMessage.ts";
 import { sendToQuickMessagePanel } from "../../quickMessage/sendToQuickMessagePanel.ts";
@@ -34,5 +35,6 @@ export const setClientSettings = DesktopIpc.makeIpcMethod({
     yield* sendToQuickMessagePanel(IpcChannels.CLIENT_SETTINGS_EVENT_CHANNEL, settings);
     yield* snapShot.configure(settings);
     yield* (yield* DesktopQuickMessage.DesktopQuickMessage).configure(settings);
+    yield* applyLanguage(settings.language);
   }),
 });

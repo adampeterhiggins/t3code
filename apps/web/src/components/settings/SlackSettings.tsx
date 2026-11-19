@@ -16,6 +16,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { createModelSelection } from "@t3tools/shared/model";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { ExternalLinkIcon } from "lucide-react";
+import { msg, T, useGT } from "gt-react";
 import { useRef, useState } from "react";
 
 import { getCustomModelOptionsByInstance } from "../../modelSelection";
@@ -34,6 +35,7 @@ import { Textarea } from "../ui/textarea";
 import { isElectron } from "../../env";
 import { writeTextToClipboard } from "../../hooks/useCopyToClipboard";
 import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hooks/useSettings";
+import { m } from "../../i18n/messages";
 import { ensureLocalApi } from "../../localApi";
 import { usePrimaryEnvironment } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
@@ -43,7 +45,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Switch } from "../ui/switch";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import { useSettingsScope } from "./SettingsScopeContext";
 
 /**
@@ -52,6 +54,8 @@ import { useSettingsScope } from "./SettingsScopeContext";
  * through its own Slack app, made from the manifest this section copies.
  */
 export function SlackSettingsSection() {
+  const gt = useGT();
+  const searchableSetting = useSearchableSetting();
   const { environment: scopedEnvironment } = useSettingsScope();
   const primaryEnvironment = usePrimaryEnvironment();
   // The account belongs to an environment, not a project, so a project or
@@ -64,14 +68,14 @@ export function SlackSettingsSection() {
     <SettingsSection {...searchableSetting("slack")}>
       {environmentId === null ? (
         <SettingsRow
-          title="Slack account"
-          description="Connect to an environment to set up Slack."
+          title={gt("Slack account")}
+          description={gt("Connect to an environment to set up Slack.")}
         />
       ) : (
         <SlackIntegrationRows
           key={environmentId}
           environmentId={environmentId}
-          environmentLabel={environment?.label ?? "this environment"}
+          environmentLabel={environment?.label ?? gt("this environment")}
         />
       )}
     </SettingsSection>
@@ -82,16 +86,19 @@ function SlackIntegrationRows(props: {
   readonly environmentId: EnvironmentId;
   readonly environmentLabel: string;
 }) {
+  const gt = useGT();
   const enabled = useEnvironmentSettings(props.environmentId, (s) => s.enableSlackIntegration);
   const updateSettings = useUpdateEnvironmentSettings(props.environmentId);
   return (
     <>
       <SettingsRow
-        title="Enable Slack integration"
-        description="Attach Slack messages and threads. Turn off to keep pasted Slack links as links without setup prompts. Your connected account is kept."
+        title={gt("Enable Slack integration")}
+        description={gt(
+          "Attach Slack messages and threads. Turn off to keep pasted Slack links as links without setup prompts. Your connected account is kept.",
+        )}
         control={
           <Switch
-            aria-label="Enable Slack integration"
+            aria-label={gt("Enable Slack integration")}
             checked={enabled}
             onCheckedChange={(checked) => updateSettings({ enableSlackIntegration: checked })}
           />
@@ -107,19 +114,25 @@ function SlackIntegrationRows(props: {
   );
 }
 
-function describeConnection(state: SlackConnectionState | null): string {
-  if (state === null) return "Reading Slack status.";
+function describeConnection(
+  state: SlackConnectionState | null,
+  gt: ReturnType<typeof useGT>,
+): string {
+  if (state === null) return gt("Reading Slack status.");
   switch (state.phase) {
     case "connected":
       return state.account
-        ? `Connected as ${state.account.userName} in ${state.account.teamName}. Reads as you; never posts.`
-        : "Connected.";
+        ? gt("Connected as {user} in {team}. Reads as you; never posts.", {
+            user: state.account.userName,
+            team: state.account.teamName,
+          })
+        : gt("Connected.");
     case "waiting":
-      return "Approve T3 Code on Slack's page in your browser.";
+      return gt("Approve T3 Code on Slack's page in your browser.");
     case "failed":
-      return state.message ?? "Slack sign-in failed.";
+      return state.message ?? gt("Slack sign-in failed.");
     case "disconnected":
-      return "Attach Slack messages and threads to messages as context for the agent.";
+      return gt("Attach Slack messages and threads to messages as context for the agent.");
   }
 }
 
@@ -130,6 +143,7 @@ function SlackConnectionRows({
   readonly environmentId: EnvironmentId;
   readonly environmentLabel: string;
 }) {
+  const gt = useGT();
   const connection = useEnvironmentQuery(slackEnvironment.connection({ environmentId, input: {} }));
   const state = connection.data;
   const commandOptions = { reportFailure: false, reportDefect: false };
@@ -160,7 +174,7 @@ function SlackConnectionRows({
     if (result._tag === "Failure") {
       if (!isAtomCommandInterrupted(result)) {
         const failure = squashAtomCommandFailure(result);
-        setError(failure instanceof Error ? failure.message : "Slack request failed.");
+        setError(failure instanceof Error ? failure.message : m(msg("Slack request failed.")));
       }
       return null;
     }
@@ -171,7 +185,7 @@ function SlackConnectionRows({
     try {
       await ensureLocalApi().shell.openExternal(url);
     } catch {
-      setError("Could not open the browser. Copy the link and open it yourself.");
+      setError(m(msg("Could not open the browser. Copy the link and open it yourself.")));
     }
   }
 
@@ -194,38 +208,50 @@ function SlackConnectionRows({
 
   async function confirmDisconnect() {
     const confirmed = await ensureLocalApi().dialogs.confirm(
-      `Disconnect Slack from ${environmentLabel}? Messages already attached stay as they are.`,
+      m(
+        msg("Disconnect Slack from {environment}? Messages already attached stay as they are.", {
+          environment: environmentLabel,
+        }),
+      ),
     );
     if (confirmed) await run(() => disconnect({ environmentId, input: {} }));
   }
 
-  const status = error ?? describeConnection(state);
+  const status = error ?? describeConnection(state, gt);
   const statusClass = error !== null || state?.phase === "failed" ? "text-destructive" : undefined;
   const signedOut = state?.phase === "disconnected" || state?.phase === "failed";
 
   return (
     <>
       <SettingsRow
-        title="Slack account"
+        title={gt("Slack account")}
         description={<span className={statusClass}>{status}</span>}
         control={
           state === null ? null : state.phase === "connected" ? (
             <Button size="sm" variant="outline" disabled={pending} onClick={confirmDisconnect}>
-              Disconnect
+              <T context="button, disconnects the account">Disconnect</T>
             </Button>
           ) : state.phase === "waiting" ? (
             <div className="flex flex-wrap gap-2 sm:justify-end">
               {authorizationUrl ? (
                 <>
                   <Button size="sm" onClick={() => openAuthorization(authorizationUrl)}>
-                    Open Slack
+                    <T>Open Slack</T>
                   </Button>
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => writeTextToClipboard(authorizationUrl, "Slack sign-in link")}
+                    onClick={() =>
+                      writeTextToClipboard(authorizationUrl, {
+                        target: "Slack sign-in link",
+                        unavailableMessage: msg(
+                          "Clipboard API is unavailable while copying Slack sign-in link.",
+                        ),
+                        failureMessage: msg("Failed to copy Slack sign-in link to the clipboard."),
+                      })
+                    }
                   >
-                    Copy link
+                    <T>Copy link</T>
                   </Button>
                 </>
               ) : null}
@@ -237,26 +263,28 @@ function SlackConnectionRows({
                   flowId ? run(() => cancelLogin({ environmentId, input: { flowId } })) : undefined
                 }
               >
-                Cancel
+                <T context="button, cancels sign-in">Cancel</T>
               </Button>
             </div>
           ) : (
             <Button size="sm" disabled={pending || clientId.length === 0} onClick={connect}>
-              {state.phase === "failed" ? "Reconnect Slack" : "Connect Slack"}
+              {state.phase === "failed" ? gt("Reconnect Slack") : gt("Connect Slack")}
             </Button>
           )
         }
       />
       {signedOut ? (
         <SettingsRow
-          title="Slack app"
-          description="Slack signs in through an app in your own workspace. At api.slack.com/apps, choose Create New App → From a manifest, paste the copied manifest, then enter the app's Client ID here."
+          title={gt("Slack app")}
+          description={gt(
+            "Slack signs in through an app in your own workspace. At api.slack.com/apps, choose Create New App → From a manifest, paste the copied manifest, then enter the app's Client ID here.",
+          )}
           control={
             <div className="flex w-full flex-wrap gap-2 sm:w-auto">
               <Input
                 size="sm"
-                aria-label="Slack app client ID"
-                placeholder="Client ID, e.g. 1234567890.1234567890"
+                aria-label={gt("Slack app client ID")}
+                placeholder={gt("Client ID, e.g. 1234567890.1234567890")}
                 className="min-w-0 flex-1 sm:w-64"
                 value={clientIdDraft ?? state?.clientId ?? ""}
                 onChange={(event) => setClientIdDraft(event.target.value)}
@@ -264,9 +292,17 @@ function SlackConnectionRows({
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => writeTextToClipboard(slackAppManifest(), "Slack app manifest")}
+                onClick={() =>
+                  writeTextToClipboard(slackAppManifest(), {
+                    target: "Slack app manifest",
+                    unavailableMessage: msg(
+                      "Clipboard API is unavailable while copying Slack app manifest.",
+                    ),
+                    failureMessage: msg("Failed to copy Slack app manifest to the clipboard."),
+                  })
+                }
               >
-                Copy manifest
+                <T>Copy manifest</T>
               </Button>
               <Button
                 size="sm"
@@ -275,7 +311,7 @@ function SlackConnectionRows({
                   void ensureLocalApi().shell.openExternal("https://api.slack.com/apps")
                 }
               >
-                Create Slack app
+                <T>Create Slack app</T>
                 <ExternalLinkIcon className="size-3.5" aria-hidden="true" />
               </Button>
             </div>
@@ -284,8 +320,11 @@ function SlackConnectionRows({
       ) : null}
       {state?.phase === "waiting" ? (
         <SettingsRow
-          title="Approving from another device?"
-          description={`If the browser can't reach ${environmentLabel}, Slack ends on a page that won't load. Paste that page's URL here.`}
+          title={gt("Approving from another device?")}
+          description={gt(
+            "If the browser can't reach {environment}, Slack ends on a page that won't load. Paste that page's URL here.",
+            { environment: environmentLabel },
+          )}
           control={
             <form
               className="flex w-full gap-2 sm:w-80"
@@ -296,13 +335,13 @@ function SlackConnectionRows({
             >
               <Input
                 size="sm"
-                aria-label="Redirect URL from Slack"
-                placeholder="Full redirect URL from Slack"
+                aria-label={gt("Redirect URL from Slack")}
+                placeholder={gt("Full redirect URL from Slack")}
                 value={pastedValue}
                 onChange={(event) => setPasted({ flowId, value: event.target.value })}
               />
               <Button size="sm" type="submit" disabled={pending || !pastedValue.trim()}>
-                Submit
+                <T context="button, submits the pasted redirect URL">Submit</T>
               </Button>
             </form>
           }
@@ -314,6 +353,7 @@ function SlackConnectionRows({
 
 /** The environment owns the trigger, including when clients disconnect. */
 function SlackMentionTriggerRows({ environmentId }: { readonly environmentId: EnvironmentId }) {
+  const gt = useGT();
   const settings = useEnvironmentSettings(environmentId);
   const trigger = settings.slackMentionTrigger;
   const updateSettings = useUpdateEnvironmentSettings(environmentId);
@@ -348,11 +388,13 @@ function SlackMentionTriggerRows({ environmentId }: { readonly environmentId: En
   return (
     <>
       <SettingsRow
-        title="Start threads from Slack mentions"
-        description="Poll once a minute for new @mentions of the connected account. Choose channels and a project first. Older mentions are ignored. Threads use the project's permission mode and run while this server is online."
+        title={gt("Start threads from Slack mentions")}
+        description={gt(
+          "Poll once a minute for new @mentions of the connected account. Choose channels and a project first. Older mentions are ignored. Threads use the project's permission mode and run while this server is online.",
+        )}
         control={
           <Switch
-            aria-label="Start threads from Slack mentions"
+            aria-label={gt("Start threads from Slack mentions")}
             checked={trigger.enabled}
             disabled={
               disabled ||
@@ -364,8 +406,8 @@ function SlackMentionTriggerRows({ environmentId }: { readonly environmentId: En
         }
       />
       <SettingsRow
-        title="Mention project"
-        description="The project whose workspace receives the request."
+        title={gt("Mention project")}
+        description={gt("The project whose workspace receives the request.")}
         control={
           <Select
             value={trigger.projectId ?? "none"}
@@ -374,10 +416,12 @@ function SlackMentionTriggerRows({ environmentId }: { readonly environmentId: En
             }
           >
             <SelectTrigger disabled={disabled}>
-              <SelectValue>{project?.title ?? "Choose project"}</SelectValue>
+              <SelectValue>{project?.title ?? gt("Choose project")}</SelectValue>
             </SelectTrigger>
             <SelectPopup>
-              <SelectItem value="none">Choose project</SelectItem>
+              <SelectItem value="none">
+                <T>Choose project</T>
+              </SelectItem>
               {projects.map((entry) => (
                 <SelectItem key={entry.id} value={entry.id}>
                   {entry.title}
@@ -388,13 +432,15 @@ function SlackMentionTriggerRows({ environmentId }: { readonly environmentId: En
         }
       />
       <SettingsRow
-        title="Mention channels"
-        description="Comma-separated channel names or IDs. Only channels your account can read are included."
+        title={gt("Mention channels")}
+        description={gt(
+          "Comma-separated channel names or IDs. Only channels your account can read are included.",
+        )}
         control={
           <Input
             key={trigger.channels.join(",")}
             size="sm"
-            aria-label="Mention channels"
+            aria-label={gt("Mention channels")}
             disabled={disabled}
             defaultValue={trigger.channels.join(", ")}
             onBlur={(event) =>
@@ -411,11 +457,13 @@ function SlackMentionTriggerRows({ environmentId }: { readonly environmentId: En
         }
       />
       <SettingsRow
-        title="Include direct messages"
-        description="Also include @mentions in direct and group messages. Ordinary messages without an @mention do not start threads."
+        title={gt("Include direct messages")}
+        description={gt(
+          "Also include @mentions in direct and group messages. Ordinary messages without an @mention do not start threads.",
+        )}
         control={
           <Switch
-            aria-label="Include direct messages in mention trigger"
+            aria-label={gt("Include direct messages in mention trigger")}
             disabled={disabled}
             checked={trigger.includeDirectMessages}
             onCheckedChange={(includeDirectMessages) => save({ includeDirectMessages })}
@@ -423,13 +471,13 @@ function SlackMentionTriggerRows({ environmentId }: { readonly environmentId: En
         }
       />
       <SettingsRow
-        title="Mention keyword"
-        description="Optional word or phrase that must also appear in the mention."
+        title={gt("Mention keyword")}
+        description={gt("Optional word or phrase that must also appear in the mention.")}
         control={
           <Input
             key={trigger.keyword}
             size="sm"
-            aria-label="Mention keyword"
+            aria-label={gt("Mention keyword")}
             disabled={disabled}
             maxLength={64}
             defaultValue={trigger.keyword}
@@ -438,13 +486,13 @@ function SlackMentionTriggerRows({ environmentId }: { readonly environmentId: En
         }
       />
       <SettingsRow
-        title="Mention prompt"
-        description="Instructions sent with the Slack thread snapshot."
+        title={gt("Mention prompt")}
+        description={gt("Instructions sent with the Slack thread snapshot.")}
         control={
           <Textarea
             key={trigger.prompt}
             size="sm"
-            aria-label="Mention prompt"
+            aria-label={gt("Mention prompt")}
             disabled={disabled}
             maxLength={8000}
             defaultValue={trigger.prompt}
@@ -453,11 +501,11 @@ function SlackMentionTriggerRows({ environmentId }: { readonly environmentId: En
         }
       />
       <SettingsRow
-        title="Mention model"
+        title={gt("Mention model")}
         description={
           trigger.modelSelection === null
-            ? "Uses the project's default provider and model."
-            : "Provider and model used for mention threads."
+            ? gt("Uses the project's default provider and model.")
+            : gt("Provider and model used for mention threads.")
         }
         control={
           <div className="flex flex-wrap items-center gap-2">
@@ -481,7 +529,7 @@ function SlackMentionTriggerRows({ environmentId }: { readonly environmentId: En
               disabled={disabled || trigger.modelSelection === null}
               onClick={() => save({ modelSelection: null })}
             >
-              Use project default
+              <T>Use project default</T>
             </Button>
           </div>
         }

@@ -1,6 +1,8 @@
 import { EDITORS, type CustomEditorIcon } from "@t3tools/contracts";
 import { CodeIcon, FolderClosedIcon, GlobeIcon, TerminalIcon } from "lucide-react";
 import { editorLabelForPlatform } from "../editorLabels";
+import { msg } from "gt-react";
+import { m, type MessageResolver } from "../i18n/messages";
 import { isMacPlatform, isWindowsPlatform } from "../lib/utils";
 import {
   AntigravityIcon,
@@ -33,7 +35,7 @@ import {
 type BuiltInEditorId = (typeof EDITORS)[number]["id"];
 
 /** Includes every application logo, even when its command is not installed on the host. */
-export function resolveEditorIconOptions(platform: string) {
+export function resolveEditorIconOptions(platform: string, resolve: MessageResolver = m) {
   const baseOptions: ReadonlyArray<{
     value: BuiltInEditorId;
     Icon: Icon;
@@ -151,17 +153,37 @@ export function resolveEditorIconOptions(platform: string) {
   ];
   return baseOptions.map((option) => ({
     ...option,
-    label: editorLabelForPlatform(option.value, platform),
+    label: editorLabelForPlatform(option.value, platform, resolve),
   }));
 }
 
-export function resolveCustomEditorIconOptions(platform: string) {
+export function resolveCustomEditorIconOptions(platform: string, resolve: MessageResolver = m) {
   return [
-    { value: "folder", label: "Folder (default)", Icon: FolderClosedIcon, kind: "generic" },
-    { value: "terminal", label: "Terminal", Icon: TerminalIcon, kind: "generic" },
-    { value: "code", label: "Code", Icon: CodeIcon, kind: "generic" },
-    { value: "globe", label: "Globe", Icon: GlobeIcon, kind: "generic" },
-    ...resolveEditorIconOptions(platform),
+    {
+      value: "folder",
+      label: resolve(msg("Folder (default)", { $context: "custom editor icon" })),
+      Icon: FolderClosedIcon,
+      kind: "generic",
+    },
+    {
+      value: "terminal",
+      label: resolve(msg("Terminal", { $context: "custom editor icon" })),
+      Icon: TerminalIcon,
+      kind: "generic",
+    },
+    {
+      value: "code",
+      label: resolve(msg("Code", { $context: "custom editor icon" })),
+      Icon: CodeIcon,
+      kind: "generic",
+    },
+    {
+      value: "globe",
+      label: resolve(msg("Globe", { $context: "custom editor icon" })),
+      Icon: GlobeIcon,
+      kind: "generic",
+    },
+    ...resolveEditorIconOptions(platform, resolve),
   ] as const;
 }
 

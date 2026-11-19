@@ -1,3 +1,4 @@
+import { T, Var, msg, useGT, useMessages } from "gt-react";
 import { ContextPreviewHover } from "../contextPreviewRegistry";
 import { AgentElapsed } from "./AgentElapsed";
 import type { ReactNode } from "react";
@@ -96,10 +97,11 @@ export function V2LifecycleRow(props: {
   readonly onOpenThread: (threadId: ThreadId) => void;
 }) {
   const { item } = props;
+  const gt = useGT();
   if (item.type === "run_interrupt_result") {
     return (
       <TimelineSystemDivider
-        label="Run interrupted"
+        label={gt("Run interrupted")}
         detail={item.message}
         icon={CircleStopIcon}
         wrapDetail
@@ -138,15 +140,19 @@ export function V2LifecycleRow(props: {
             <MessageSquareIcon className="size-4 text-secondary-label" aria-hidden />
           </span>
           <span className="min-w-0 flex-1 truncate text-sm font-medium">
-            {item.title ?? "Created thread"}
+            {item.title ?? gt("Created thread")}
           </span>
           <Button
             size="xs"
             variant="outline"
-            aria-label={`Open ${item.title ?? "created thread"}`}
+            aria-label={
+              item.title != null
+                ? gt("Open {title}", { title: item.title })
+                : gt("Open created thread")
+            }
             onClick={() => props.onOpenThread(item.targetThreadId)}
           >
-            Open chat
+            <T>Open chat</T>
           </Button>
         </div>
       );
@@ -155,13 +161,25 @@ export function V2LifecycleRow(props: {
       <WorkLogRow
         data-v2-item-type={item.type}
         icon={<T3Wordmark className="size-4 text-icon-muted" aria-hidden />}
-        label={<>Created thread{item.title ? ` · ${item.title}` : ""}</>}
+        label={
+          item.title ? (
+            <T>
+              Created thread · <Var>{item.title}</Var>
+            </T>
+          ) : (
+            <T>Created thread</T>
+          )
+        }
         trailing={
           <InlineButton
-            aria-label={`Open ${item.title ?? "created thread"}`}
+            aria-label={
+              item.title != null
+                ? gt("Open {title}", { title: item.title })
+                : gt("Open created thread")
+            }
             onClick={() => props.onOpenThread(item.targetThreadId)}
           >
-            Open chat
+            <T>Open chat</T>
           </InlineButton>
         }
       />
@@ -176,7 +194,7 @@ export function V2LifecycleRow(props: {
         origin={item.origin}
         status={item.status}
         driver={item.driver}
-        title={formatSubagentDisplayTitle(item.title ?? "Subagent")}
+        title={formatSubagentDisplayTitle(item.title ?? gt("Subagent"))}
         result={item.result}
         progress={item.progress}
         startedAt={item.startedAt}
@@ -194,14 +212,23 @@ const STATUS_VISUALS: Record<
   OrchestrationV2TurnItem["status"],
   { dotClass: string; label: string }
 > = {
-  pending: { dotClass: "bg-info", label: "Queued" },
-  running: { dotClass: "bg-info", label: "Running" },
-  waiting: { dotClass: "bg-info", label: "Waiting" },
-  idle: { dotClass: "bg-muted-foreground/50", label: "Idle · resumable" },
-  completed: { dotClass: "bg-success", label: "Completed" },
-  failed: { dotClass: "bg-destructive", label: "Failed" },
-  cancelled: { dotClass: "bg-muted-foreground/60", label: "Stopped" },
-  interrupted: { dotClass: "bg-muted-foreground/60", label: "Stopped" },
+  pending: { dotClass: "bg-info", label: msg("Queued", { $context: "subagent status" }) },
+  running: { dotClass: "bg-info", label: msg("Running", { $context: "subagent status" }) },
+  waiting: { dotClass: "bg-info", label: msg("Waiting", { $context: "subagent status" }) },
+  idle: {
+    dotClass: "bg-muted-foreground/50",
+    label: msg("Idle · resumable", { $context: "subagent status" }),
+  },
+  completed: { dotClass: "bg-success", label: msg("Completed", { $context: "subagent status" }) },
+  failed: { dotClass: "bg-destructive", label: msg("Failed", { $context: "subagent status" }) },
+  cancelled: {
+    dotClass: "bg-muted-foreground/60",
+    label: msg("Stopped", { $context: "subagent status" }),
+  },
+  interrupted: {
+    dotClass: "bg-muted-foreground/60",
+    label: msg("Stopped", { $context: "subagent status" }),
+  },
 };
 
 function subagentStatusVisual(status: OrchestrationV2TurnItem["status"]) {
@@ -352,11 +379,11 @@ const NOTIFICATION_OUTCOME_STATUS: Record<
 };
 
 const NOTIFICATION_OUTCOME_LABEL: Record<OrchestrationV2Notification["outcome"], string> = {
-  completed: "Finished",
-  failed: "Failed",
-  cancelled: "Stopped",
-  updated: "Updated",
-  unknown: "Finished",
+  completed: msg("Finished", { $context: "subagent task outcome" }),
+  failed: msg("Failed", { $context: "subagent task outcome" }),
+  cancelled: msg("Stopped", { $context: "subagent task outcome" }),
+  updated: msg("Updated", { $context: "subagent task outcome" }),
+  unknown: msg("Finished", { $context: "subagent task outcome" }),
 };
 
 export function SubagentNotificationLink(props: {
@@ -369,6 +396,8 @@ export function SubagentNotificationLink(props: {
   readonly onOpenThread: (threadId: ThreadId) => void;
   readonly fallback: ReactNode;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   // Follow-up tasks share a child conversation; this notice reports a particular task result.
   const agent = useAtomValue(
     environmentThreadDetails.threadAtom(props.parentRef),
@@ -391,7 +420,7 @@ export function SubagentNotificationLink(props: {
       origin={agent.origin}
       status={agent.status}
       driver={agent.driver}
-      title={formatSubagentDisplayTitle(agent.title ?? "Subagent")}
+      title={formatSubagentDisplayTitle(agent.title ?? gt("Subagent"))}
       result={agent.result}
       progress={agent.progress}
       startedAt={agent.startedAt}
@@ -403,7 +432,7 @@ export function SubagentNotificationLink(props: {
         : {
             event: {
               status: NOTIFICATION_OUTCOME_STATUS[props.outcome],
-              label: NOTIFICATION_OUTCOME_LABEL[props.outcome],
+              label: m(NOTIFICATION_OUTCOME_LABEL[props.outcome]),
               timestamp: formatShortTimestamp(props.createdAt, props.timestampFormat),
             },
           })}
@@ -439,6 +468,8 @@ function SubagentTimelineLink(props: {
   );
   const remote = props.remote ?? agent?.remoteChild;
   const remoteEnvironment = useEnvironment(remote?.environmentId ?? null);
+  const gt = useGT();
+  const m = useMessages();
   const navigate = useNavigate();
   const threadId = props.threadId;
   const openAgentMenu = useAgentContextMenu(props.parentRef);
@@ -456,7 +487,7 @@ function SubagentTimelineLink(props: {
         : null;
   const liveStatus = agent?.status ?? props.status;
   const status = props.event ? props.event.status : liveStatus;
-  const statusLabel = props.event?.label ?? subagentStatusVisual(liveStatus).label;
+  const statusLabel = props.event?.label ?? m(subagentStatusVisual(liveStatus).label);
   const result = (agent?.result ?? props.result)?.trim();
   const progress = (agent?.progress ?? props.progress)?.trim();
   const settled = SETTLED_SUBAGENT_STATUSES.has(status ?? liveStatus);
@@ -484,7 +515,9 @@ function SubagentTimelineLink(props: {
           </span>
           {handle === null ? null : <AgentHandle handle={handle} className="self-center" />}
           {remote !== undefined ? (
-            <span className="shrink-0 text-xs text-muted-foreground">on {remote.label}</span>
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {gt("on {environment}", { environment: remote.label })}
+            </span>
           ) : null}
         </span>
         <span
@@ -527,7 +560,7 @@ function SubagentTimelineLink(props: {
       <div className="min-w-0 flex-1">
         <ContextPreviewHover
           kind="subagent"
-          accessibleLabel={`Agent, ${props.title}`}
+          accessibleLabel={gt("Agent, {title}", { title: props.title })}
           preview={{
             record: {
               environmentId: props.parentRef.environmentId,
@@ -559,7 +592,7 @@ function SubagentTimelineLink(props: {
               <button
                 type="button"
                 data-v2-item-type="subagent"
-                aria-label={`Open ${props.title}`}
+                aria-label={gt("Open {title}", { title: props.title })}
                 aria-description={statusLabel}
                 onClick={open}
                 onContextMenu={(event) =>
@@ -605,6 +638,7 @@ function SubagentPanelControls(props: {
   readonly childThreadId: ThreadId | null;
   readonly subagentId: NodeId;
 }) {
+  const gt = useGT();
   return (
     <span className="flex shrink-0 items-center opacity-0 transition-opacity focus-within:opacity-100 group-any-hover/subagent-row:opacity-100">
       <Tooltip>
@@ -614,7 +648,7 @@ function SubagentPanelControls(props: {
               type="button"
               size="icon-xs"
               variant="ghost-muted"
-              aria-label={`Attach ${props.title} to chat`}
+              aria-label={gt("Attach {title} to chat", { title: props.title })}
               onClick={() =>
                 void attachAgentToChat(props.parentRef, {
                   environmentId: props.parentRef.environmentId,
@@ -628,7 +662,9 @@ function SubagentPanelControls(props: {
         >
           <AtSignIcon />
         </TooltipTrigger>
-        <TooltipPopup>Attach to chat</TooltipPopup>
+        <TooltipPopup>
+          <T>Attach to chat</T>
+        </TooltipPopup>
       </Tooltip>
       <Tooltip>
         <TooltipTrigger
@@ -637,14 +673,16 @@ function SubagentPanelControls(props: {
               type="button"
               size="icon-xs"
               variant="ghost-muted"
-              aria-label={`Show ${props.title} in the Agents panel`}
+              aria-label={gt("Show {title} in the Agents panel", { title: props.title })}
               onClick={() => showAgentInPanel(props.parentRef, props.agentKey)}
             />
           }
         >
           <PanelRightOpenIcon />
         </TooltipTrigger>
-        <TooltipPopup>Show in Agents panel</TooltipPopup>
+        <TooltipPopup>
+          <T>Show in Agents panel</T>
+        </TooltipPopup>
       </Tooltip>
     </span>
   );
@@ -654,6 +692,7 @@ function ModelChangeRow(props: {
   readonly item: Extract<OrchestrationV2TurnItem, { type: "model_change" }>;
   readonly environmentId: EnvironmentId;
 }) {
+  const gt = useGT();
   const { item } = props;
   const providers = useAtomValue(providersIgnoringCheckedAtAtom(props.environmentId));
   const settings = useAtomValue(serverEnvironment.settingsValueAtom(props.environmentId));
@@ -667,7 +706,7 @@ function ModelChangeRow(props: {
   const showAccount = item.from.instanceId !== item.to.instanceId;
   return (
     <TimelineSystemDivider
-      label={item.title ?? "Model changed"}
+      label={item.title ?? gt("Model changed")}
       icon={ArrowRightLeftIcon}
       showDetailSeparator={false}
       detail={
@@ -698,6 +737,7 @@ function ForkLifecycleRow(props: {
   readonly environmentId: EnvironmentId;
   readonly onOpenThread: (threadId: ThreadId) => void;
 }) {
+  const gt = useGT();
   const providers = useAtomValue(providersIgnoringCheckedAtAtom(props.environmentId));
   // Instance ids only: the thread projection updates on every streamed event.
   const endpointKey = useAtomValue(
@@ -722,10 +762,14 @@ function ForkLifecycleRow(props: {
     <TimelineSystemDivider
       label={
         accountLabel ??
-        (props.item.source.type === "run" ? "Forked from conversation" : "Conversation fork")
+        (props.item.source.type === "run"
+          ? gt("Forked from conversation")
+          : gt("Conversation fork"))
       }
       icon={GitForkIcon}
-      actionLabel={props.item.source.type === "run" ? "Open source conversation" : "Open fork"}
+      actionLabel={
+        props.item.source.type === "run" ? gt("Open source conversation") : gt("Open fork")
+      }
       onAction={() => props.onOpenThread(relatedThreadId)}
     />
   );
@@ -746,7 +790,8 @@ function EnvironmentHandoffRow({
 
 /** Marks where `/clear` or an automation started a new provider session in this thread. */
 export function FreshSessionRow() {
-  return <TimelineSystemDivider label="New session" icon={EraserIcon} />;
+  const gt = useGT();
+  return <TimelineSystemDivider label={gt("New session")} icon={EraserIcon} />;
 }
 
 /** A same-harness model or effort change. Shows only what changed. */
@@ -780,6 +825,7 @@ export function HandoffRow(props: {
   readonly pending?: boolean;
   readonly failed?: boolean;
 }) {
+  const gt = useGT();
   const { from: fromEndpoints, to } = props.endpoints;
   const showAccount = handoffInstancesDiffer(
     fromEndpoints.map((endpoint) => endpoint.instanceId),
@@ -790,7 +836,7 @@ export function HandoffRow(props: {
   const entries = settings ? applyProviderInstanceSettings(derived, settings, null) : derived;
   return (
     <TimelineSystemDivider
-      label={props.pending ? "Context handoff pending" : "Context handoff"}
+      label={props.pending ? gt("Context handoff pending") : gt("Context handoff")}
       icon={ArrowRightLeftIcon}
       showDetailSeparator={false}
       tone={props.failed ? "danger" : "neutral"}

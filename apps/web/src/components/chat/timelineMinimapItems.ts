@@ -1,5 +1,9 @@
 import { markdownPlainText } from "~/lib/markdownPlainText";
-import { isAttachmentOnlyBootstrapPrompt } from "@t3tools/shared/composerContextReferences";
+import { assistantCitationsToPlainText } from "@t3tools/shared/assistantCitations";
+import {
+  isAttachmentOnlyBootstrapPrompt,
+  replaceComposerContextReferences,
+} from "@t3tools/shared/composerContextReferences";
 
 import type { MessagesTimelineRow } from "./MessagesTimeline.logic";
 
@@ -50,8 +54,10 @@ function resolveFinalAssistantTextForTurn(
   return finalAssistantText;
 }
 
-function compactMinimapPreview(text: string | null | undefined) {
-  const compact = text?.replace(/\s+/g, " ").trim() ?? "";
+// The tooltip shows a few lines; bound parsing work for long messages and streaming responses.
+function markdownMinimapPreview(markdown: string | null) {
+  if (markdown === null) return null;
+  const compact = markdownPlainText(markdown.slice(0, 1_500)).replace(/\s+/g, " ").trim();
   return compact.length > 0 ? compact : null;
 }
 
@@ -62,12 +68,14 @@ export function resolveTimelineMinimapPreview(
     ? null
     : {
         ...item,
-        userText: compactMinimapPreview(item.userText),
-        // The tooltip shows three lines; bound parsing work while long responses stream.
-        assistantText: compactMinimapPreview(
-          item.assistantText === null
+        // Before markdown parsing, which would reduce a citation link to "Assistant quote".
+        userText: markdownMinimapPreview(
+          item.userText === null
             ? null
-            : markdownPlainText(item.assistantText.slice(0, 1_500)),
+            : assistantCitationsToPlainText(
+                replaceComposerContextReferences(item.userText, (reference) => reference.label),
+              ),
         ),
+        assistantText: markdownMinimapPreview(item.assistantText),
       };
 }

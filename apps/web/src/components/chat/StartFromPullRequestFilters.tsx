@@ -5,6 +5,7 @@ import type {
   PullRequestListFilters,
   PullRequestListState,
 } from "@t3tools/contracts";
+import { T, useMessages } from "gt-react";
 import { ArrowDownUpIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -25,6 +26,7 @@ import {
   PullRequestAppliedFilters,
   PullRequestFiltersMenu,
 } from "../pullRequest/PullRequestListFilters";
+import { resolveFilterOptions } from "../pullRequest/pullRequestListOptions";
 import type { PullRequestListSort } from "../pullRequest/pullRequestListPreferences";
 import { Button } from "../ui/button";
 import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "../ui/menu";
@@ -87,12 +89,9 @@ const FACET_LIMIT = 50;
 const NO_TARGETS: never[] = [];
 
 /**
- * The start-from picker's pull request filters and sort, the pull requests page's in small. The
- * applied filters show as removable pills on their own row below.
- *
  * Each menu's choices and counts come from the loaded rows under the *other* applied filters, so
- * no menu narrows itself. The list's own read is already narrowed by every filter, so while the
- * menu is open one broad page — the same project and search, no filters — is read beside it.
+ * no menu narrows itself. While a menu is open, one broad page (same project and search, no
+ * filters) is read beside the already-filtered list.
  */
 export function PullRequestPickerFilterBar(props: {
   environmentId: EnvironmentId;
@@ -104,6 +103,7 @@ export function PullRequestPickerFilterBar(props: {
   view: PullRequestPickerView;
   onChange: (view: PullRequestPickerView) => void;
 }) {
+  const resolve = useMessages();
   const { environmentId, projectId, query, view } = props;
   const [menuOpen, setMenuOpen] = useState(false);
   const broadTargets = menuOpen
@@ -133,10 +133,10 @@ export function PullRequestPickerFilterBar(props: {
     open: menuOpen,
     onOpenChange: setMenuOpen,
     state: view.state,
-    stateOptions: PULL_REQUEST_STATE_OPTIONS,
+    stateOptions: resolveFilterOptions(PULL_REQUEST_STATE_OPTIONS, resolve),
     onState: (state: PullRequestListState) => props.onChange({ ...view, state }),
     involvement: view.involvement,
-    involvementOptions: PULL_REQUEST_INVOLVEMENT_OPTIONS,
+    involvementOptions: resolveFilterOptions(PULL_REQUEST_INVOLVEMENT_OPTIONS, resolve),
     onInvolvement: (involvement: PullRequestInvolvement) =>
       props.onChange({ ...view, involvement }),
     filters: view.filters,
@@ -179,7 +179,7 @@ export function PullRequestPickerFilterBar(props: {
             variant="ghost-muted"
             onClick={() => props.onChange(DEFAULT_PULL_REQUEST_PICKER_VIEW)}
           >
-            Reset
+            <T context="verb, button">Reset</T>
           </Button>
         )}
         <Menu>

@@ -19,6 +19,7 @@ import type * as Electron from "electron";
 import * as DesktopAppearance from "../../appearance/DesktopAppearance.ts";
 import * as DesktopConfig from "../../app/DesktopConfig.ts";
 import * as DesktopEnvironment from "../../app/DesktopEnvironment.ts";
+import * as ElectronApp from "../../electron/ElectronApp.ts";
 import * as ElectronTheme from "../../electron/ElectronTheme.ts";
 import * as ElectronWindow from "../../electron/ElectronWindow.ts";
 import * as DesktopQuickMessage from "../../quickMessage/DesktopQuickMessage.ts";
@@ -165,6 +166,9 @@ function runtime(input: {
           input.configured.push(next);
         }),
     } as DesktopSnapShot.DesktopSnapShot["Service"]),
+    Layer.succeed(ElectronApp.ElectronApp, {
+      preferredSystemLanguages: Effect.succeed<ReadonlyArray<string>>(["en-US"]),
+    } as ElectronApp.ElectronApp["Service"]),
     Layer.succeed(
       ElectronTheme.ElectronTheme,
       ElectronTheme.ElectronTheme.of({
@@ -194,6 +198,7 @@ const withRuntime = <A, E, R>(
     | DesktopAppearance.DesktopAppearance
     | DesktopClientSettings.DesktopClientSettings
     | DesktopEnvironment.DesktopEnvironment
+    | ElectronApp.ElectronApp
   >,
 ) =>
   Effect.gen(function* () {

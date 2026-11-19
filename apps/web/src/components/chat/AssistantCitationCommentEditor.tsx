@@ -9,6 +9,8 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
+import type { MessageResolver } from "~/i18n/messages";
 import { ChevronDownIcon } from "lucide-react";
 import { use, useEffect, useState, type MouseEvent, type ReactNode, type RefObject } from "react";
 
@@ -34,21 +36,33 @@ const SubmitChoiceSchema = Schema.Literals(["send", "save"]);
 type SubmitChoice = typeof SubmitChoiceSchema.Type;
 const SUBMIT_CHOICE_STORAGE_KEY = "t3code:citation-comment-submit:v1";
 
-const SUBMIT_CHOICES = {
-  send: { label: "Send", description: "Send this quote now, apart from the composer" },
-  save: { label: "Save", description: "Keep writing in the composer" },
-} as const satisfies Record<SubmitChoice, { label: string; description: string }>;
+function submitChoices(resolve: MessageResolver): SubmitChoices {
+  return {
+    send: {
+      label: resolve(msg("Send", { $context: "verb, sends the quote" })),
+      description: resolve(msg("Send this quote now, apart from the composer")),
+    },
+    save: {
+      label: resolve(msg("Save", { $context: "verb, saves the comment" })),
+      description: resolve(msg("Keep writing in the composer")),
+    },
+  };
+}
 
-const SAVE_DRAFT_CHOICE = {
-  label: "Save as draft",
-  description: "Keep the message in this thread to send later",
-} as const;
+function saveDraftChoice(resolve: MessageResolver): DraftChoice {
+  return {
+    label: resolve(msg("Save as draft")),
+    description: resolve(msg("Keep the message in this thread to send later")),
+  };
+}
 
 // While a turn runs, sending follows the composer's follow-up setting, which may queue.
-const QUEUE_SUBMIT_CHOICE = {
-  label: "Add to queue",
-  description: "Queue this quote for after this turn, apart from the composer",
-} as const;
+function queueSubmitChoice(resolve: MessageResolver) {
+  return {
+    label: resolve(msg("Add to queue")),
+    description: resolve(msg("Queue this quote for after this turn, apart from the composer")),
+  };
+}
 
 type SubmitChoices = Record<
   SubmitChoice,
@@ -96,15 +110,20 @@ export interface AssistantCitationDestinations {
 function elsewhereChoices(
   destination: Exclude<CitationDestination, { kind: "here" }>,
   queues: boolean,
+  resolve: MessageResolver,
 ): { choices: SubmitChoices; draft: DraftChoice | null } {
+  const save = resolve(msg("Save", { $context: "verb, saves the comment" }));
   if (destination.kind === "new-thread") {
     return {
       choices: {
-        send: { label: "Start thread", description: "Start a new thread with this quote" },
+        send: {
+          label: resolve(msg("Start thread")),
+          description: resolve(msg("Start a new thread with this quote")),
+        },
         save: {
-          label: "Save",
-          description: "Open a new thread with this quote in its composer",
-          contextMenuLabel: "Save to a new thread",
+          label: save,
+          description: resolve(msg("Open a new thread with this quote in its composer")),
+          contextMenuLabel: resolve(msg("Save to a new thread")),
         },
       },
       draft: null,
@@ -113,29 +132,41 @@ function elsewhereChoices(
   if (destination.kind === "new-tab") {
     return {
       choices: {
-        send: { label: "Start tab", description: `Start a new tab in ${destination.title}` },
+        send: {
+          label: resolve(msg("Start tab")),
+          description: resolve(msg("Start a new tab in {title}", { title: destination.title })),
+        },
         save: {
-          label: "Save",
-          description: "Open a new tab with this quote in its composer",
-          contextMenuLabel: "Save to a new tab",
+          label: save,
+          description: resolve(msg("Open a new tab with this quote in its composer")),
+          contextMenuLabel: resolve(msg("Save to a new tab")),
         },
       },
       draft: null,
     };
   }
-  const title = destination.title || "that thread";
+  const title = destination.title || resolve(msg("that thread"));
   return {
     choices: {
       send: queues
-        ? { label: "Add to queue", description: `Send to ${title} after its current turn` }
-        : { label: "Send", description: `Send this quote to ${title} now` },
+        ? {
+            label: resolve(msg("Add to queue")),
+            description: resolve(msg("Send to {title} after its current turn", { title })),
+          }
+        : {
+            label: resolve(msg("Send", { $context: "verb, sends the quote" })),
+            description: resolve(msg("Send this quote to {title} now", { title })),
+          },
       save: {
-        label: "Save",
-        description: `Add it to ${title}'s composer to keep writing there`,
-        contextMenuLabel: "Save to its composer",
+        label: save,
+        description: resolve(msg("Add it to {title}''s composer to keep writing there", { title })),
+        contextMenuLabel: resolve(msg("Save to its composer")),
       },
     },
-    draft: { label: "Save as draft", description: `Keep the message in ${title} to send later` },
+    draft: {
+      label: resolve(msg("Save as draft")),
+      description: resolve(msg("Keep the message in {title} to send later", { title })),
+    },
   };
 }
 
@@ -165,6 +196,8 @@ export function AssistantCitationCommentEditor({
   onVoiceSetupOpenChange?: (open: boolean) => void;
   destinations?: AssistantCitationDestinations | undefined;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const [comment, setComment] = useState(citation.comment ?? "");
   const [choice, setChoice] = useLocalStorage(
     SUBMIT_CHOICE_STORAGE_KEY,
@@ -181,7 +214,7 @@ export function AssistantCitationCommentEditor({
   );
   const elsewhereQueues =
     destinations?.followUpBehavior === "queue" && threadRuntimeIsActive(targetThread?.runtime);
-  const elsewhereMenu = elsewhere ? elsewhereChoices(elsewhere, elsewhereQueues) : null;
+  const elsewhereMenu = elsewhere ? elsewhereChoices(elsewhere, elsewhereQueues, m) : null;
   // Without a send path the button only saves, so Enter must too.
   const enterChoice: SubmitChoice = onSubmitAndSend || elsewhere ? choice : "save";
   const { environmentId, projectId } = use(ComposerContextActionsContext);
@@ -293,18 +326,26 @@ export function AssistantCitationCommentEditor({
           return true;
         },
         inputRef,
-        ariaLabel: "Comment on selected text",
+        ariaLabel: gt("Comment on selected text"),
         ariaDescription:
           enterChoice === "send"
-            ? `Enter to save and ${sendVerb}; Command/Ctrl+Enter to save the citation comment; Shift+Enter for a new line.`
-            : `Enter to save the citation comment; Command/Ctrl+Enter to save and ${sendVerb}; Shift+Enter for a new line.`,
+            ? gt(
+                "Enter to save and {action}; Command/Ctrl+Enter to save the citation comment; Shift+Enter for a new line.",
+                { action: sendVerb },
+              )
+            : gt(
+                "Enter to save the citation comment; Command/Ctrl+Enter to save and {action}; Shift+Enter for a new line.",
+                { action: sendVerb },
+              ),
         invalid: commentTooLong,
-        placeholder: "Add an optional comment...",
+        placeholder: gt("Add an optional comment..."),
       })}
       {commentTooLong ? (
         <p role="status" className="pt-1 text-xs text-destructive">
-          Comments can contain up to {ASSISTANT_CITATION_MAX_COMMENT_LENGTH.toLocaleString()}{" "}
-          characters.
+          <T>
+            Comments can contain up to{" "}
+            <Var>{ASSISTANT_CITATION_MAX_COMMENT_LENGTH.toLocaleString()}</Var> characters.
+          </T>
         </p>
       ) : null}
       <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
@@ -325,7 +366,7 @@ export function AssistantCitationCommentEditor({
           onPointerDown={(event) => event.preventDefault()}
           onClick={onCancel}
         >
-          Cancel
+          <T>Cancel</T>
         </Button>
         {onSubmitAndSend || elsewhereMenu ? (
           <SubmitChoiceButton
@@ -333,10 +374,10 @@ export function AssistantCitationCommentEditor({
             choices={
               elsewhereMenu?.choices ??
               (submitAndSendQueues
-                ? { ...SUBMIT_CHOICES, send: QUEUE_SUBMIT_CHOICE }
-                : SUBMIT_CHOICES)
+                ? { ...submitChoices(m), send: queueSubmitChoice(m) }
+                : submitChoices(m))
             }
-            draftChoice={elsewhereMenu ? elsewhereMenu.draft : SAVE_DRAFT_CHOICE}
+            draftChoice={elsewhereMenu ? elsewhereMenu.draft : saveDraftChoice(m)}
             choice={choice}
             onRun={(next) => {
               setChoice(next);
@@ -351,7 +392,9 @@ export function AssistantCitationCommentEditor({
             onPointerDown={(event) => event.preventDefault()}
             onClick={submit}
           >
-            {commentTooLong ? "Shorten comment" : "Save"}
+            {commentTooLong
+              ? gt("Shorten comment")
+              : gt("Save", { $context: "verb, saves the comment" })}
           </Button>
         )}
       </div>
@@ -372,6 +415,8 @@ function SubmitChoiceButton(props: {
   /** A one-off: saving as a draft is never remembered as the button's default. */
   onSaveDraft?: () => void;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const { choices } = props;
   const draftChoice = props.onSaveDraft ? props.draftChoice : null;
   const openContextMenu = async (event: MouseEvent) => {
@@ -383,9 +428,13 @@ function SubmitChoiceButton(props: {
         {
           id: "send",
           label: choices.send.label,
-          icon: choices.send.label === QUEUE_SUBMIT_CHOICE.label ? "list-plus" : "arrow-up",
+          icon: choices.send.label === queueSubmitChoice(m).label ? "list-plus" : "arrow-up",
         },
-        { id: "save", label: choices.save.contextMenuLabel ?? "Save to composer", icon: "check" },
+        {
+          id: "save",
+          label: choices.save.contextMenuLabel ?? gt("Save to composer"),
+          icon: "check",
+        },
         ...(draftChoice ? [{ id: "draft", label: draftChoice.label, icon: "file-text" }] : []),
       ],
       { x: event.clientX, y: event.clientY },
@@ -401,13 +450,13 @@ function SubmitChoiceButton(props: {
         onPointerDown={(event) => event.preventDefault()}
         onClick={() => props.onRun(props.choice)}
       >
-        {props.disabled ? "Shorten comment" : choices[props.choice].label}
+        {props.disabled ? gt("Shorten comment") : choices[props.choice].label}
       </Button>
       <GroupSeparator />
       <Menu>
         <MenuTrigger
           disabled={props.disabled}
-          render={<Button size="icon-xs" aria-label="More ways to finish the comment" />}
+          render={<Button size="icon-xs" aria-label={gt("More ways to finish the comment")} />}
         >
           <ChevronDownIcon aria-hidden="true" />
         </MenuTrigger>

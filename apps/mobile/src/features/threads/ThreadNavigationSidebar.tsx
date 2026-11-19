@@ -1,3 +1,4 @@
+import { useGT, useMessages } from "gt-react-native";
 import { useActiveNewTask } from "../../state/active-new-task";
 import { ThreadUndoNotice } from "../home/ThreadUndoNotice";
 import { useAndroidControlSizing } from "../../components/ui/useAndroidControlSizing";
@@ -123,6 +124,8 @@ export function ThreadNavigationSidebar(props: ThreadNavigationSidebarProps) {
 }
 
 function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
+  const gt = useGT();
+  const messages = useMessages();
   const floatingTabsEnabled = useAndroidFloatingTabs();
   const { themeVariables: materialTheme } = useAppearancePreferences();
   const drawerColor = materialTheme["--color-drawer"];
@@ -198,12 +201,15 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
         : [];
   const projectScopes = useMemo(
     () =>
-      buildHomeProjectScopes({
-        projects,
-        environmentId: options.selectedEnvironmentId,
-        projectGroupingMode: options.projectGroupingMode,
-      }),
-    [projects, options.selectedEnvironmentId, options.projectGroupingMode],
+      buildHomeProjectScopes(
+        {
+          projects,
+          environmentId: options.selectedEnvironmentId,
+          projectGroupingMode: options.projectGroupingMode,
+        },
+        messages,
+      ),
+    [projects, options.selectedEnvironmentId, options.projectGroupingMode, messages],
   );
   const projectTitleByProjectKey = useMemo(
     () =>
@@ -589,13 +595,34 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
           />
         );
       case "v2-snoozed-shelf":
-        return <ThreadListV2SectionDivider label="Snoozed" pane="sidebar" tone="snoozed" />;
+        return (
+          <ThreadListV2SectionDivider
+            label={gt("Snoozed", { $context: "thread list page" })}
+            pane="sidebar"
+            tone="snoozed"
+          />
+        );
       case "v2-automations-section":
-        return <ThreadListV2SectionDivider label="Automations" pane="sidebar" />;
+        return (
+          <ThreadListV2SectionDivider
+            label={gt("Automations", { $context: "thread list page" })}
+            pane="sidebar"
+          />
+        );
       case "v2-hidden-section":
-        return <ThreadListV2SectionDivider label="Hidden" pane="sidebar" />;
+        return (
+          <ThreadListV2SectionDivider
+            label={gt("Hidden", { $context: "thread list page" })}
+            pane="sidebar"
+          />
+        );
       case "v2-settled-shelf":
-        return <ThreadListV2SectionDivider label="Settled" pane="sidebar" />;
+        return (
+          <ThreadListV2SectionDivider
+            label={gt("Settled", { $context: "thread list page" })}
+            pane="sidebar"
+          />
+        );
       case "v2-show-more":
         return (
           <ThreadListV2ShowMoreRow
@@ -612,14 +639,14 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
   };
   const header = (
     <WorkspaceListHeader
-      accessibilityLabel="T3 Code, Threads"
+      accessibilityLabel={gt("{appName}, Threads", { appName: "T3 Code" })}
       onOpenEnvironments={props.onOpenEnvironmentSettings}
       onOpenSettings={props.onOpenSettings}
       search={{
         value: props.searchQuery,
         onChangeText: props.onSearchQueryChange,
-        placeholder: "Search",
-        accessibilityLabel: "Search threads",
+        placeholder: gt("Search", { $context: "search field placeholder" }),
+        accessibilityLabel: gt("Search threads"),
       }}
       filter={{
         customized:
@@ -627,24 +654,27 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
           selectedProjectKey !== null ||
           organisationKeys.length > 0 ||
           !isDefaultThreadListPages(pages),
-        items: buildHomeListFilterMenuItems({
-          environments: filterEnvironments,
-          projects: filterFacets.projects,
-          selectedEnvironmentId: options.selectedEnvironmentId,
-          selectedProjectKey,
-          onEnvironmentChange: setSelectedEnvironmentId,
-          onProjectChange: setSelectedProjectKey,
-          pages,
-          availablePages,
-          onTogglePage: togglePage,
-          pageCounts: filterFacets.pageCounts,
-          groups,
-          onCreateGroup: groupsSupported ? createThreadGroup : undefined,
-          organisations: filterFacets.organisations,
-          organisationKeys,
-          onToggleOrganisation: toggleOrganisation,
-          onClearOrganisations: clearOrganisations,
-        }),
+        items: buildHomeListFilterMenuItems(
+          {
+            environments: filterEnvironments,
+            projects: filterFacets.projects,
+            selectedEnvironmentId: options.selectedEnvironmentId,
+            selectedProjectKey,
+            onEnvironmentChange: setSelectedEnvironmentId,
+            onProjectChange: setSelectedProjectKey,
+            pages,
+            availablePages,
+            onTogglePage: togglePage,
+            pageCounts: filterFacets.pageCounts,
+            groups,
+            onCreateGroup: groupsSupported ? createThreadGroup : undefined,
+            organisations: filterFacets.organisations,
+            organisationKeys,
+            onToggleOrganisation: toggleOrganisation,
+            onClearOrganisations: clearOrganisations,
+          },
+          messages,
+        ),
       }}
       sidebar={{
         width: props.width,
@@ -667,18 +697,20 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
         }
       >
         {catalogState.isLoadingConnections
-          ? "Loading threads…"
+          ? gt("Loading threads…")
           : showAddEnvironment
-            ? "No environments connected"
+            ? gt("No environments connected")
             : props.searchQuery.trim().length > 0
               ? threadSearch.isPending
-                ? "Searching thread messages…"
-                : "No matching threads"
+                ? gt("Searching thread messages…")
+                : threadSearch.failed
+                  ? gt("Couldn't search thread messages")
+                  : gt("No matching threads")
               : !isDefaultThreadListPages(pages)
-                ? "Nothing to show in the picked pages"
+                ? gt("Nothing to show in the picked pages")
                 : selectedProjectScope !== null
-                  ? `No threads in ${selectedProjectScope.title}`
-                  : "No threads yet"}
+                  ? gt("No threads in {project}", { project: selectedProjectScope.title })
+                  : gt("No threads yet")}
       </Text>
       {showAddEnvironment ? (
         <View className={Platform.OS === "android" ? "self-center" : "px-2"}>
@@ -686,7 +718,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
             tone="primary"
             size="compact"
             icon="plus"
-            label="Add environment"
+            label={gt("Add environment")}
             onPress={props.onOpenEnvironmentSettings}
           />
         </View>

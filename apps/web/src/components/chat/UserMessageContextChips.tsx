@@ -1,3 +1,5 @@
+import { msg, useMessages } from "gt-react";
+import type { MessageResolver } from "~/i18n/messages";
 import { useNativeFileDrag } from "../../useNativeFileDrag";
 import { resolvePathLinkTarget } from "@t3tools/shared/fileLinks";
 import { EnvironmentContextChip } from "../EnvironmentContextChip";
@@ -73,6 +75,7 @@ export interface UserMessageContextRenderContext {
   onOpenFile: (file: ChatFileAttachment) => void;
   onOpenLink: (event: ReactMouseEvent<HTMLElement>, url: string) => void;
   checkoutActions?: { onOpen?: () => void; onLink?: () => void };
+  m: MessageResolver;
 }
 
 function UnavailableUserMessageContextChip(props: UserMessageContextRenderContext) {
@@ -80,7 +83,7 @@ function UnavailableUserMessageContextChip(props: UserMessageContextRenderContex
     <UnresolvedChip
       label={props.reference.label}
       copyMarkdown={props.copyMarkdown}
-      tooltip="This context is no longer available."
+      tooltip={props.m(msg("This context is no longer available."))}
     />
   );
 }
@@ -148,7 +151,7 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
           <ContextChip
             kind="mention"
             render={<button type="button" />}
-            aria-label={`Preview ${record.path}`}
+            aria-label={context.m(msg("Preview {name}", { name: record.path }))}
             data-markdown-copy={context.copyMarkdown}
             onClick={() => {
               if (row.threadRef) useRightPanelStore.getState().openFile(row.threadRef, record.path);
@@ -173,20 +176,23 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
     }),
     previewChip("skill", (record, context) =>
       record.kind === "skill"
-        ? messageSkillChip({
-            name: record.name,
-            label: record.label,
-            skill: messageSkillByName(context.row.skills, record.name),
-            copyMarkdown: context.copyMarkdown,
-            threadRef: context.row.threadRef,
-          })
+        ? messageSkillChip(
+            {
+              name: record.name,
+              label: record.label,
+              skill: messageSkillByName(context.row.skills, record.name),
+              copyMarkdown: context.copyMarkdown,
+              threadRef: context.row.threadRef,
+            },
+            context.m,
+          )
         : null,
     ),
     previewChip("thread", (record, context) =>
       record.kind === "thread"
         ? {
             trigger: <ThreadChipTrigger record={record} copyMarkdown={context.copyMarkdown} />,
-            accessibleLabel: `Thread, ${record.title}`,
+            accessibleLabel: context.m(msg("Thread, {title}", { title: record.title })),
             preview: { record },
           }
         : null,
@@ -226,12 +232,12 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
           <ImageChipButton
             name={record.name}
             previewUrl={attachment.previewUrl}
-            size={formatAttachmentSize(record.sizeBytes)}
+            size={formatAttachmentSize(record.sizeBytes, context.m)}
             data-markdown-copy={context.copyMarkdown}
             onClick={() => context.onExpandImage(attachment)}
           />
         ),
-        accessibleLabel: `Image attachment, ${record.name}`,
+        accessibleLabel: context.m(msg("Image attachment, {name}", { name: record.name })),
         preview: {
           name: record.name,
           sizeBytes: record.sizeBytes,
@@ -243,8 +249,8 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
       const attachment = context.attachment;
       if (record.kind !== "file" || attachment === null || attachment.type !== "file") return null;
       const isVideo = isVideoAttachment(attachment);
-      const size = formatAttachmentSize(record.sizeBytes);
-      const label = userMessageFileLabel(attachment);
+      const size = formatAttachmentSize(record.sizeBytes, context.m);
+      const label = userMessageFileLabel(attachment, context.m);
       return {
         trigger: (
           <FileChip
@@ -260,7 +266,11 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
             disabled={
               attachment.downloadable === false && (!isVideo || attachment.previewUrl === undefined)
             }
-            accessibleLabel={`${isVideo ? "Video" : "File"} attachment, ${record.name}, ${size}`}
+            accessibleLabel={
+              isVideo
+                ? context.m(msg("Video attachment, {label}, {size}", { label: record.name, size }))
+                : context.m(msg("File attachment, {label}, {size}", { label: record.name, size }))
+            }
             copyMarkdown={context.copyMarkdown}
             onOpen={() =>
               isVideo ? context.onExpandVideo(attachment) : context.onOpenFile(attachment)
@@ -268,7 +278,7 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
             tooltip={`${label}\n${size}`}
           />
         ),
-        accessibleLabel: `File attachment, ${record.name}`,
+        accessibleLabel: context.m(msg("File attachment, {name}", { name: record.name })),
         preview: { name: record.name, sizeBytes: record.sizeBytes, mimeType: record.mimeType },
       };
     }),
@@ -280,7 +290,7 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
           <span data-markdown-copy={context.copyMarkdown}>
             <ContextPreviewHover
               kind="terminal"
-              accessibleLabel={`Terminal excerpt, ${record.label}`}
+              accessibleLabel={context.m(msg("Terminal excerpt, {label}", { label: record.label }))}
               preview={{
                 label: record.label,
                 terminalLabel: record.terminalLabel,
@@ -309,7 +319,7 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
             kind: "element",
             icon: <MousePointerClickIcon />,
             label: record.label,
-            kindLabel: "Browser element",
+            kindLabel: context.m(msg("Browser element")),
             copyMarkdown: context.copyMarkdown,
             preview: { record },
           })
@@ -323,7 +333,7 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
         kind: "preview-annotation",
         icon: <MousePointerClickIcon />,
         label: record.label,
-        kindLabel: "Preview annotation",
+        kindLabel: context.m(msg("Preview annotation")),
         copyMarkdown: context.copyMarkdown,
         preview: {
           record,
@@ -342,8 +352,10 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
       if (record.kind !== "review-comment") return null;
       const { row } = context;
       const isPullRequest = isPullRequestSummaryContext(record);
-      const label = reviewCommentContextLabel(record);
-      const kindLabel = isPullRequest ? pullRequestContextKindLabel(record) : "Review comment";
+      const label = reviewCommentContextLabel(record, context.m);
+      const kindLabel = isPullRequest
+        ? pullRequestContextKindLabel(record, context.m)
+        : context.m(msg("Review comment"));
       const kind = isPullRequest
         ? PULL_REQUEST_CHIP_KINDS[pullRequestContextDisplayState(record) ?? "unknown"]
         : "review-comment";
@@ -354,7 +366,15 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
         markdownCwd: row.markdownCwd,
         threadRef: row.threadRef ?? undefined,
       };
-      const accessibleLabel = `${kindLabel}, ${label}${record.pullRequest ? `, ${record.pullRequest.title}` : ""}`;
+      const accessibleLabel = record.pullRequest
+        ? context.m(
+            msg("{kind}, {label}, {title}", {
+              kind: kindLabel,
+              label,
+              title: record.pullRequest.title,
+            }),
+          )
+        : context.m(msg("{kind}, {label}", { kind: kindLabel, label }));
       if (isPullRequest && record.pullRequest !== undefined) {
         return {
           trigger: (
@@ -377,7 +397,7 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
             kind={kind}
             icon={isPullRequest ? <PullRequestGlyph.pullRequest /> : <MessageCircleIcon />}
             label={label}
-            aria-label={`${accessibleLabel}. Show details`}
+            aria-label={context.m(msg("{label}. Show details", { label: accessibleLabel }))}
             copyMarkdown={context.copyMarkdown}
           />
         ),
@@ -402,6 +422,7 @@ export function UserMessageContextReferenceChip(props: {
   onOpenFile: (file: ChatFileAttachment) => void;
 }) {
   const row = use(TimelineRowCtx);
+  const m = useMessages();
   const onOpenLink = useLinkClickHandler(row.threadRef);
   const checkoutActions = useCheckoutContextActions(props.record, row.threadRef);
   const copyMarkdown = formatComposerContextReference({
@@ -426,6 +447,7 @@ export function UserMessageContextReferenceChip(props: {
     onOpenFile: props.onOpenFile,
     onOpenLink,
     ...(checkoutActions === undefined ? {} : { checkoutActions }),
+    m,
   });
   return mentionPath === null ? (
     chip

@@ -2,11 +2,13 @@ import type { UsageFooterDisplay } from "@t3tools/contracts";
 import {
   collectLimitPools,
   displayLimitWindows,
-  formatDuration,
   type LimitAccount,
   type LimitPool,
   type LimitPoolWindow,
 } from "@t3tools/shared/usageLimits";
+import { formatDuration } from "@t3tools/shared/usageLimitsCopy";
+
+import { m, type MessageResolver } from "../../i18n/messages";
 
 export type UsageSeverity = "ok" | "warn" | "high" | "critical";
 
@@ -33,9 +35,13 @@ export function busiestPoolWindow(pool: LimitPool): LimitPoolWindow | null {
 }
 
 /** Time until the next account in the pool gets quota back, e.g. "1d 22h". */
-export function nextResetLabel(window: LimitPoolWindow, now: number): string | null {
+export function nextResetLabel(
+  window: LimitPoolWindow,
+  now: number,
+  resolve: MessageResolver = m,
+): string | null {
   const next = window.resets.find((reset) => reset.at > now);
-  return next ? formatDuration(next.at - now) : null;
+  return next ? formatDuration(next.at - now, resolve) : null;
 }
 
 export function formatSpend(spend: {

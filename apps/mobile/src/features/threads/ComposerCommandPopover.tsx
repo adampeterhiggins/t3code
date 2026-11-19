@@ -20,6 +20,7 @@ import type {
 } from "@t3tools/contracts";
 import type { ComposerTriggerKind } from "@t3tools/shared/composerTrigger";
 import { deriveSubagentElapsedMs, formatDuration } from "@t3tools/shared/orchestrationTiming";
+import { msg, useGT, useMessages } from "gt-react-native";
 import { memo, useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View, type ViewStyle } from "react-native";
 
@@ -30,6 +31,7 @@ import { GlassSurface } from "../../components/ui/GlassSurface";
 import { PierreEntryIcon } from "../../components/PierreEntryIcon";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
+import type { MessageResolver } from "../../i18n/messages";
 import { cn } from "../../lib/cn";
 import { SUBAGENT_TONE_TEXT_CLASS, SubagentStatusDot } from "./SubagentStatusDot";
 import { subagentStatusLabel, subagentStatusTone } from "./threadAgentsPresentation";
@@ -129,9 +131,9 @@ interface ComposerCommandPopoverProps {
 }
 
 const PATH_TAB_OPTIONS = [
-  { value: "files", label: "Files" },
-  { value: "chats", label: "Chats" },
-  { value: "agents", label: "Agents" },
+  { value: "files", label: msg("Files", { $context: "composer @ menu tab" }) },
+  { value: "chats", label: msg("Chats", { $context: "composer @ menu tab" }) },
+  { value: "agents", label: msg("Agents", { $context: "composer @ menu tab" }) },
 ] as const satisfies ReadonlyArray<{ value: ComposerPathTab; label: string }>;
 const PATH_TAB_OPTIONS_WITHOUT_AGENTS = PATH_TAB_OPTIONS.filter(
   (option) => option.value !== "agents",
@@ -190,16 +192,19 @@ function itemIcon(item: ComposerCommandItem): AppSymbolName | null {
 function groupLabel(
   triggerKind: ComposerTriggerKind | null,
   items: ReadonlyArray<ComposerCommandItem>,
+  resolve: MessageResolver,
 ): string | null {
   switch (triggerKind) {
     case "pull-request":
-      return "References";
+      return resolve(msg("References", { $context: "composer # menu heading" }));
     case "slash-command":
-      return "Commands";
+      return resolve(msg("Commands"));
     case "skill":
-      return "Skills";
+      return resolve(msg("Skills"));
     case "path":
-      return items.every((item) => item.type === "path") ? "Files" : "Mentions";
+      return items.every((item) => item.type === "path")
+        ? resolve(msg("Files"))
+        : resolve(msg("Mentions"));
     default:
       return null;
   }
@@ -209,23 +214,24 @@ function emptyText(
   triggerKind: ComposerTriggerKind | null,
   isLoading: boolean,
   pathTab: ComposerPathTab | null,
+  resolve: MessageResolver,
 ): string {
-  if (pathTab === "agents") return "No matching agents.";
-  if (pathTab === "chats") return "No matching chats.";
+  if (pathTab === "agents") return resolve(msg("No matching agents."));
+  if (pathTab === "chats") return resolve(msg("No matching chats."));
   if (isLoading) {
-    return triggerKind === "path" ? "Searching files…" : "Loading…";
+    return triggerKind === "path" ? resolve(msg("Searching files…")) : resolve(msg("Loading…"));
   }
   switch (triggerKind) {
     case "pull-request":
-      return "No matching pull requests.";
+      return resolve(msg("No matching pull requests."));
     case "path":
-      return "No matching mentions.";
+      return resolve(msg("No matching mentions."));
     case "skill":
-      return "No skills found.";
+      return resolve(msg("No skills found."));
     case "slash-command":
-      return "No matching commands.";
+      return resolve(msg("No matching commands."));
     default:
-      return "No results.";
+      return resolve(msg("No results."));
   }
 }
 
@@ -250,19 +256,24 @@ const AgentCommandRow = memo(function AgentCommandRow(props: {
 }) {
   const { entry, provider } = props;
   const { agent } = entry;
+  const gt = useGT();
+  const m = useMessages();
   const tone = subagentStatusTone(agent.status);
+  const statusLabel = subagentStatusLabel(agent.status, m);
   const nowMs = useAgentClock(isActiveSubagentStatus(agent.status));
   const elapsedMs = deriveSubagentElapsedMs(agent, nowMs);
   const details = [
     provider ? resolveProviderInstanceDisplayName(provider) : null,
     formatSubagentModelLabel(agent.model, agent.effort),
     elapsedMs ? formatDuration(elapsedMs) : null,
-    agent.usage ? `${formatSubagentTokenCount(agent.usage.totalTokens)} tokens` : null,
+    agent.usage
+      ? gt("{count} tokens", { count: formatSubagentTokenCount(agent.usage.totalTokens) })
+      : null,
   ].filter((part) => part !== null);
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`@${entry.handle}, ${entry.title}, ${subagentStatusLabel(agent.status)}`}
+      accessibilityLabel={`@${entry.handle}, ${entry.title}, ${statusLabel}`}
       onPress={props.onPress}
       className="flex-row gap-2.5 border-border px-3.5 py-2.5 active:opacity-60"
       style={{ borderBottomWidth: props.isLast ? 0 : StyleSheet.hairlineWidth }}
@@ -276,7 +287,7 @@ const AgentCommandRow = memo(function AgentCommandRow(props: {
             @{entry.handle}
           </Text>
           <Text className={cn("shrink-0 text-xs font-t3-medium", SUBAGENT_TONE_TEXT_CLASS[tone])}>
-            {subagentStatusLabel(agent.status)}
+            {statusLabel}
           </Text>
         </View>
         <Text className="text-xs text-foreground" numberOfLines={1}>
@@ -362,7 +373,8 @@ const CommandRow = memo(function CommandRow(props: {
 export const ComposerCommandPopover = memo(function ComposerCommandPopover(
   props: ComposerCommandPopoverProps,
 ) {
-  const label = groupLabel(props.triggerKind, props.items);
+  const m = useMessages();
+  const label = groupLabel(props.triggerKind, props.items, m);
   const pathTab = props.triggerKind === "path" ? (props.pathTab ?? null) : null;
 
   return (
@@ -372,7 +384,9 @@ export const ComposerCommandPopover = memo(function ComposerCommandPopover(
           <SegmentedControl
             size="compact"
             role="tab"
-            options={pathTab.showAgents ? PATH_TAB_OPTIONS : PATH_TAB_OPTIONS_WITHOUT_AGENTS}
+            options={(pathTab.showAgents ? PATH_TAB_OPTIONS : PATH_TAB_OPTIONS_WITHOUT_AGENTS).map(
+              (option) => ({ ...option, label: m(option.label) }),
+            )}
             selected={pathTab.active}
             onSelect={pathTab.onChange}
           />
@@ -413,7 +427,8 @@ export const ComposerCommandPopover = memo(function ComposerCommandPopover(
       ) : (
         <View className="px-3.5 py-2.5">
           <Text className="text-xs text-foreground-tertiary">
-            {props.error ?? emptyText(props.triggerKind, props.isLoading, pathTab?.active ?? null)}
+            {props.error ??
+              emptyText(props.triggerKind, props.isLoading, pathTab?.active ?? null, m)}
           </Text>
         </View>
       )}

@@ -3,10 +3,12 @@ import * as Arr from "effect/Array";
 import * as Order from "effect/Order";
 
 import type { ThreadGroups } from "@t3tools/contracts/settings";
+import { msg } from "gt-react-native";
 
 import { threadListPageLabel, type ThreadListPage } from "../threads/threadListV2";
 import type { ThreadListOrganisation } from "./thread-list-organisations";
 import type { AppBarMenuItem } from "../../components/ui/AppBar.types";
+import { m, type MessageResolver } from "../../i18n/messages";
 import type { WorkspaceEnvironment } from "../../state/workspaceModel";
 
 export interface HomeListFilterMenuEnvironment {
@@ -41,39 +43,42 @@ export function filterChoiceTitle(label: string, count: number | undefined): str
   return count === undefined ? label : `${label} (${count})`;
 }
 
-export function buildHomeListFilterMenuItems(props: {
-  readonly environments: ReadonlyArray<HomeListFilterMenuEnvironment>;
-  readonly projects: ReadonlyArray<HomeListFilterMenuProject>;
-  readonly selectedEnvironmentId: EnvironmentId | null;
-  readonly selectedProjectKey: string | null;
-  readonly onEnvironmentChange: (environmentId: EnvironmentId | null) => void;
-  readonly onProjectChange: (projectKey: string | null) => void;
-  readonly pages: ReadonlyArray<ThreadListPage>;
-  /** Pages offered in the Show submenu, from availableThreadListPages. */
-  readonly availablePages: ReadonlyArray<ThreadListPage>;
-  readonly onTogglePage: (page: ThreadListPage) => void;
-  /** Threads each page would show under the other filters. */
-  readonly pageCounts?: ReadonlyMap<ThreadListPage, number>;
-  /** Registered groups, for the emoji prefix on group pages. */
-  readonly groups?: ThreadGroups;
-  /** Adds "New group…" to Show; omitted when no environment supports groups. */
-  readonly onCreateGroup?: () => void;
-  /** Repository owners of the checkouts; multi-select, none picked means all. */
-  readonly organisations: ReadonlyArray<ThreadListOrganisation>;
-  readonly organisationKeys: ReadonlyArray<string>;
-  readonly onToggleOrganisation: (key: string) => void;
-  readonly onClearOrganisations: () => void;
-}): AppBarMenuItem[] {
+export function buildHomeListFilterMenuItems(
+  props: {
+    readonly environments: ReadonlyArray<HomeListFilterMenuEnvironment>;
+    readonly projects: ReadonlyArray<HomeListFilterMenuProject>;
+    readonly selectedEnvironmentId: EnvironmentId | null;
+    readonly selectedProjectKey: string | null;
+    readonly onEnvironmentChange: (environmentId: EnvironmentId | null) => void;
+    readonly onProjectChange: (projectKey: string | null) => void;
+    readonly pages: ReadonlyArray<ThreadListPage>;
+    /** Pages offered in the Show submenu, from availableThreadListPages. */
+    readonly availablePages: ReadonlyArray<ThreadListPage>;
+    readonly onTogglePage: (page: ThreadListPage) => void;
+    /** Threads each page would show under the other filters. */
+    readonly pageCounts?: ReadonlyMap<ThreadListPage, number>;
+    /** Registered groups, for the emoji prefix on group pages. */
+    readonly groups?: ThreadGroups;
+    /** Adds "New group…" to Show; omitted when no environment supports groups. */
+    readonly onCreateGroup?: () => void;
+    /** Repository owners of the checkouts; multi-select, none picked means all. */
+    readonly organisations: ReadonlyArray<ThreadListOrganisation>;
+    readonly organisationKeys: ReadonlyArray<string>;
+    readonly onToggleOrganisation: (key: string) => void;
+    readonly onClearOrganisations: () => void;
+  },
+  resolve: MessageResolver = m,
+): AppBarMenuItem[] {
   const items: AppBarMenuItem[] = [];
 
   items.push({
     id: "environment",
-    title: "Environment",
+    title: resolve(msg("Environment", { $context: "filter menu heading" })),
     items: [
       {
         id: "environment:all",
-        title: "All environments",
-        subtitle: "Show threads from every environment",
+        title: resolve(msg("All environments")),
+        subtitle: resolve(msg("Show threads from every environment")),
         selected: props.selectedEnvironmentId === null,
         onPress: () => props.onEnvironmentChange(null),
       },
@@ -89,12 +94,12 @@ export function buildHomeListFilterMenuItems(props: {
   if (props.organisations.length > 0) {
     items.push({
       id: "organisations",
-      title: "Organisations",
+      title: resolve(msg("Organisations", { $context: "filter menu heading" })),
       items: [
         {
           id: "organisation:all",
-          title: "All organisations",
-          subtitle: "Show threads from every organisation",
+          title: resolve(msg("All organisations")),
+          subtitle: resolve(msg("Show threads from every organisation")),
           selected: props.organisationKeys.length === 0,
           onPress: props.onClearOrganisations,
         },
@@ -111,12 +116,12 @@ export function buildHomeListFilterMenuItems(props: {
   if (props.projects.length > 0) {
     items.push({
       id: "project",
-      title: "Project",
+      title: resolve(msg("Project", { $context: "filter menu heading" })),
       items: [
         {
           id: "project:all",
-          title: "All projects",
-          subtitle: "Show threads from every project",
+          title: resolve(msg("All projects")),
+          subtitle: resolve(msg("Show threads from every project")),
           selected: props.selectedProjectKey === null,
           onPress: () => props.onProjectChange(null),
         },
@@ -133,19 +138,19 @@ export function buildHomeListFilterMenuItems(props: {
   // Multi-select: each page toggles; the last selected page stays on.
   items.push({
     id: "show",
-    title: "Show",
+    title: resolve(msg("Show", { $context: "filter menu for which thread pages are listed" })),
     items: [
       ...props.availablePages.map((page) => ({
         id: `page:${page}`,
         title: filterChoiceTitle(
-          threadListPageLabel(page, props.groups),
+          threadListPageLabel(page, props.groups, resolve),
           props.pageCounts?.get(page),
         ),
         selected: props.pages.includes(page),
         onPress: () => props.onTogglePage(page),
       })),
       ...(props.onCreateGroup
-        ? [{ id: "new-group", title: "New group…", onPress: props.onCreateGroup }]
+        ? [{ id: "new-group", title: resolve(msg("New group…")), onPress: props.onCreateGroup }]
         : []),
     ],
   });
