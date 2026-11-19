@@ -142,11 +142,11 @@ On web and desktop, select text within one assistant response and choose
 around it.
 
 To quote more of the conversation, drag the selection from one message to another. The
-citation includes everything in between: your messages and the agent's tool calls as well as
-its responses. Tool calls can't be selected as text, so shift-click one to add it. Shift-clicking
-a tool call on its own cites just that call, and with text selected it extends the quote to the
-call. Keep shift-clicking tool calls or messages to move where the quote ends, then choose
-**Cite** at the bottom of the conversation. Press Escape or click elsewhere to start over.
+citation includes everything in between: your messages and the agent's tool calls and thoughts
+as well as its responses. Tool calls and thoughts can't be selected as text, so shift-click one to
+add it. Shift-clicking a tool call or thought on its own cites just that item, and with text
+selected it extends the quote to the item. Keep shift-clicking tool calls, thoughts, or messages
+to move where the quote ends, then choose **Cite** at the bottom of the conversation. Press Escape or click elsewhere to start over.
 
 Select the quote in a draft or sent message to return to its source. If the source
 is unavailable or has changed, the saved quote remains readable.

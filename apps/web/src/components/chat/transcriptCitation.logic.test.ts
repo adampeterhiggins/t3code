@@ -68,7 +68,7 @@ const entries: TimelineEntry[] = [
 ];
 
 describe("buildTranscriptCitation", () => {
-  it("quotes messages and tool calls in timeline order, leaving out reasoning", () => {
+  it("quotes messages, tool calls, and reasoning in timeline order", () => {
     const citation = buildTranscriptCitation({
       threadRef,
       entries,
@@ -79,6 +79,7 @@ describe("buildTranscriptCitation", () => {
 
     expect(citation?.segments).toStrictEqual([
       { kind: "user", id: "user-1" },
+      { kind: "tool", id: "thought" },
       { kind: "tool", id: "test-run" },
       { kind: "assistant", id: "assistant-1" },
       { kind: "tool", id: "read" },
@@ -87,6 +88,7 @@ describe("buildTranscriptCitation", () => {
     expect(citation?.text).toBe(
       [
         "User:\nWhy does earlier answer fail?",
+        "Thinking:\nConsidering",
         "Tool call · Command · failed: vp test run foo.test.ts\n1 failed",
         "Assistant:\nThe **fixture** is stale.\n\nRegenerate it.",
         "Tool call · Web search: Searched for fixture docs",
@@ -95,6 +97,7 @@ describe("buildTranscriptCitation", () => {
     expect(citation?.markdown).toContain(
       "**Tool call · Command · failed:** `vp test run foo.test.ts`\n\n```text\n1 failed\n```",
     );
+    expect(citation?.markdown).toContain("**Thinking**\n\n```text\nConsidering\n```");
     expect(citation?.markdown).toContain("> Assistant quote:\n> earlier answer");
     expect(citation?.end).toBe(citation?.text.length);
   });

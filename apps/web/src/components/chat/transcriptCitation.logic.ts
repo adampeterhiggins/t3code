@@ -28,10 +28,6 @@ export function transcriptItemId(entry: TimelineEntry): string {
   return entry.id;
 }
 
-function isCitableTool(entry: WorkLogEntry): boolean {
-  return workLogEntryIsToolLike(entry) && entry.tone !== "thinking";
-}
-
 function fence(text: string): string {
   const longestRun = Math.max(0, ...Array.from(text.matchAll(/`+/g), (match) => match[0].length));
   const marker = "`".repeat(Math.max(3, longestRun + 1));
@@ -64,6 +60,12 @@ function toolStatus(entry: WorkLogEntry): string | null {
   }
 }
 
+function renderThought(entry: WorkLogEntry) {
+  const thought = truncate(entry.detail?.trim() || entry.label, TOOL_DETAIL_MAX_LENGTH);
+  // oxlint-disable-next-line t3code/no-untranslated-copy -- citation text sent to the agent
+  return { text: `Thinking:\n${thought}`, markdown: `**Thinking**\n\n${fence(thought)}` };
+}
+
 function renderTool(entry: WorkLogEntry, workspaceRoot: string | undefined) {
   const label = workEntryDisplayLabel(entry, workspaceRoot).trim() || entry.label;
   const name = entry.toolTitle?.trim();
@@ -81,9 +83,9 @@ function renderTool(entry: WorkLogEntry, workspaceRoot: string | undefined) {
 }
 
 /**
- * Quotes every message and tool call from one endpoint to the other, in timeline order, so
- * entries hidden by collapsed tool groups or folded turns are included as well. Reasoning
- * and other activity are left out.
+ * Quotes every message, tool call, and thought from one endpoint to the other, in timeline
+ * order, so entries hidden by collapsed tool groups or folded turns are included as well.
+ * Other activity is left out.
  */
 export function buildTranscriptCitation({
   threadRef,
@@ -113,8 +115,11 @@ export function buildTranscriptCitation({
   for (let index = startIndex; index <= endIndex; index += 1) {
     const entry = entries[index]!;
     if (entry.kind === "work") {
-      if (!isCitableTool(entry.entry)) continue;
-      const rendered = renderTool(entry.entry, workspaceRoot);
+      if (!workLogEntryIsToolLike(entry.entry)) continue;
+      const rendered =
+        entry.entry.tone === "thinking"
+          ? renderThought(entry.entry)
+          : renderTool(entry.entry, workspaceRoot);
       segments.push({ kind: "tool", id: entry.entry.id });
       texts.push(rendered.text);
       markdowns.push(rendered.markdown);
