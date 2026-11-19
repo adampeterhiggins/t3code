@@ -466,6 +466,12 @@ export const DiffColorScheme = Schema.Literals(["red-green", "blue-orange"]);
 export const ChatWidth = Schema.Literals(["comfortable", "wide", "full"]);
 export type ChatWidth = typeof ChatWidth.Type;
 
+/** A width dragged in the chat view, in pixels. Overrides `chatWidth` while set. */
+export const MIN_CHAT_CUSTOM_WIDTH = 480;
+export const ChatCustomWidth = Schema.Int.check(
+  Schema.isGreaterThanOrEqualTo(MIN_CHAT_CUSTOM_WIDTH),
+);
+
 /** How the composer shows reasoning effort: the level's name, or rising bars. */
 export const EffortDisplay = Schema.Literals(["label", "bars"]);
 export type EffortDisplay = typeof EffortDisplay.Type;
@@ -585,6 +591,9 @@ export const ClientSettingsSchema = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed("red-green" as const)),
   ),
   chatWidth: ChatWidth.pipe(Schema.withDecodingDefault(Effect.succeed("comfortable" as const))),
+  chatCustomWidth: Schema.NullOr(ChatCustomWidth).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
   effortDisplay: EffortDisplay.pipe(Schema.withDecodingDefault(Effect.succeed("label" as const))),
   usageFooterEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   usageFooterDisplay: UsageFooterDisplay.pipe(
@@ -2660,6 +2669,7 @@ export const ClientSettingsPatch = Schema.Struct({
   mutedNotificationProjects: Schema.optionalKey(Schema.Array(TrimmedNonEmptyString)),
   diffColorScheme: Schema.optionalKey(DiffColorScheme),
   chatWidth: Schema.optionalKey(ChatWidth),
+  chatCustomWidth: Schema.optionalKey(Schema.NullOr(ChatCustomWidth)),
   effortDisplay: Schema.optionalKey(EffortDisplay),
   usageFooterEnabled: Schema.optionalKey(Schema.Boolean),
   usageFooterDisplay: Schema.optionalKey(UsageFooterDisplay),

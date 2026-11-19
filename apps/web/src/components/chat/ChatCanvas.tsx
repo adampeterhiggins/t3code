@@ -5,6 +5,7 @@ import type { ChatCanvasPreview } from "./chatCanvasLayout";
 import { resolveChatCanvasModel, type ChatCanvasStore } from "./canvasStore";
 import { selectThreadPanelOpen, useRightPanelStore } from "../../rightPanelStore";
 import { observeResize } from "../../lib/observeResize";
+import { ChatWidthResizeHandles } from "./ChatWidthResizeHandles";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 
 function panelWidthTransitions(element: HTMLElement) {
@@ -180,6 +181,7 @@ export function ChatCanvas({
           className="pointer-events-none invisible absolute h-0 w-(--chat-content-max-width) min-w-[40rem] box-content ps-3 sm:ps-12"
         />
         {children}
+        <ChatWidthResizeHandles timelineElement={timelineElement} />
       </div>
     </ChatCanvasContext>
   );

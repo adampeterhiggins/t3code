@@ -70,6 +70,7 @@ import { installCommandPaletteCommands } from "./shortcuts/commandPaletteCommand
 import { registerOpenFavoriteEditorCommand } from "./components/chat/OpenInPickerShortcut";
 import { environmentThreadShells, threadEnvironment } from "./state/threads";
 import { resolveActiveThreadRouteRef, resolveThreadRouteTarget } from "./threadRoutes";
+import { applyChatCustomWidth } from "./components/chat/ChatWidthResizeHandles.logic";
 
 /** Writes appearance settings onto the document, touching only the groups that changed. */
 function startClientAppearance(): void {
@@ -92,6 +93,9 @@ function startClientAppearance(): void {
     }
     if (previous?.chatWidth !== settings.chatWidth) {
       root.dataset.chatWidth = settings.chatWidth;
+    }
+    if (previous?.chatCustomWidth !== settings.chatCustomWidth) {
+      applyChatCustomWidth(root, settings.chatCustomWidth);
     }
     // The legacy panel gets its contrast from useTheme. The floating chat uses
     // the same client settings as the main window, on its own partition.

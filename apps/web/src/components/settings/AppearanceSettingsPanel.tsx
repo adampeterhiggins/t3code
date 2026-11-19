@@ -280,26 +280,36 @@ export function AppearanceSettingsPanel() {
 
         <SettingsRow
           {...searchableSetting("chat-width")}
-          description="Set how wide messages and the composer can grow on large screens."
+          description="Set how wide messages and the composer can grow on large screens. You can also drag either edge of the chat to resize it, and double-click an edge to reset."
           resetAction={
-            settings.chatWidth !== DEFAULT_UNIFIED_SETTINGS.chatWidth ? (
+            settings.chatWidth !== DEFAULT_UNIFIED_SETTINGS.chatWidth ||
+            settings.chatCustomWidth !== DEFAULT_UNIFIED_SETTINGS.chatCustomWidth ? (
               <SettingResetButton
                 label="chat width"
-                onClick={() => updateSettings({ chatWidth: DEFAULT_UNIFIED_SETTINGS.chatWidth })}
+                onClick={() =>
+                  updateSettings({
+                    chatWidth: DEFAULT_UNIFIED_SETTINGS.chatWidth,
+                    chatCustomWidth: DEFAULT_UNIFIED_SETTINGS.chatCustomWidth,
+                  })
+                }
               />
             ) : null
           }
           control={
             <div className="w-full sm:w-40">
               <Select
-                value={settings.chatWidth}
+                value={settings.chatCustomWidth === null ? settings.chatWidth : "custom"}
                 onValueChange={(value) => {
                   if (value === "comfortable" || value === "wide" || value === "full")
-                    updateSettings({ chatWidth: value });
+                    updateSettings({ chatWidth: value, chatCustomWidth: null });
                 }}
               >
                 <SelectTrigger size="sm" className="w-full min-w-0" aria-label="Chat width">
-                  <SelectValue>{CHAT_WIDTH_LABELS[settings.chatWidth]}</SelectValue>
+                  <SelectValue>
+                    {settings.chatCustomWidth === null
+                      ? CHAT_WIDTH_LABELS[settings.chatWidth]
+                      : `Custom (${settings.chatCustomWidth}px)`}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectPopup align="end" alignItemWithTrigger={false}>
                   <SelectItem value="comfortable">Comfortable (default)</SelectItem>

@@ -465,8 +465,10 @@ derives it from thread shells, so nothing is stored. Agents panel rows, the agen
 conversation agent rows, agent hover cards (Lineage's included) and the **Subagent of** divider on
 an agent's own thread show it.
 
-- **Composer.** When the thread has agents, the `@` menu adds an **Agents** tab next to **Files**
-  and **Chats**. A query that starts an agent's handle opens on Agents. Rows show status, provider, title, handle,
+- **Composer.** When the thread has agents, or a query matches another thread's, the `@` menu adds an **Agents** tab next to **Files**
+  and **Chats**. Once a query is typed, it also lists the newest matching agents other threads
+  started (`deriveOtherThreadAgents`, web and desktop only), each marked with the thread it came
+  from. A query that starts an agent's handle opens on Agents. Rows show status, provider, title, handle,
   model, tokens, elapsed time and a working agent's latest tool call, and hover to preview the
   agent like an Agents panel row.
 - **Chip.** Picking an agent inserts a `subagent` context chip (`SubagentContextRecord`) that shows
@@ -788,6 +790,16 @@ Code: `prepareInBackground` in `apps/server/src/orchestration-v2/ThreadLaunchSer
 `formatGeneratedBranchName` in `packages/shared/src/git.ts`, and `foldLegacyWorktreeBranchPrefix`
 in `apps/server/src/serverSettings.ts`. User guide:
 [project-settings.md](./user/project-settings.md#defaults-and-inheritance).
+
+## Drag to resize the chat
+
+On web and desktop, dragging either edge of the chat column resizes it around its centre, so it
+grows and shrinks on both sides. Double-clicking an edge goes back to the **Settings → Appearance
+→ Chat width** preset, which then reads "Custom" while a dragged width is set; picking a preset or
+resetting the setting also clears it. Upstream offers only the presets. The dragged width is a
+client setting, `chatCustomWidth`, saved once on release.
+
+Code: `apps/web/src/components/chat/ChatWidthResizeHandles.tsx`.
 
 ## Sidebar resource pill
 
