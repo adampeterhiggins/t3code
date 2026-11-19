@@ -160,3 +160,5 @@ export const SET_MAIN_DESTINATION_RECEIVER_READY_CHANNEL =
 export const COMPLETE_MAIN_DESTINATION_CHANNEL = "desktop:complete-main-destination";
 
 export const RESTART_AUDIO_SERVICE_CHANNEL = "desktop:restart-audio-service";
+
+export const START_FILE_DRAG_CHANNEL = "desktop:start-file-drag";

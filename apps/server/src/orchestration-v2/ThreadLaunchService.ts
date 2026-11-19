@@ -613,8 +613,7 @@ const make = Effect.gen(function* () {
     if (project === undefined) return;
     const cwd = project.workspaceRoot;
     const { baseRef, branch } = strategy;
-    const checksBranch = branch !== undefined && !isTemporaryWorktreeBranch(branch);
-    // Errors keep their order below: missing repository, then base ref, then branch conflict.
+    // Errors keep their order below: missing repository, then base ref, then branch exists or conflicts.
     const [repositoryRoot, hasBaseCommit, localBranches] = yield* Effect.all(
       [
         git.repositoryRoot(cwd).pipe(Effect.orElseSucceed(() => undefined)),
@@ -625,7 +624,7 @@ const make = Effect.gen(function* () {
             git
               .hasCommit({ cwd, refName: baseRef === "-" ? "@{-1}" : baseRef })
               .pipe(Effect.orElseSucceed(() => true)),
-        checksBranch
+        branch !== undefined
           ? git
               .listLocalBranchNames(cwd)
               .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []))
@@ -639,29 +638,6 @@ const make = Effect.gen(function* () {
         projectTitle: project.title,
         workspaceRoot: cwd,
       });
-    // `git worktree add -b` refuses a branch that exists. Checking it out
-    // instead would quietly ignore baseRef and startFromOrigin, so the caller
-    // picks another name or a strategy that binds the existing branch.
-    if (branch !== undefined) {
-      const existing = yield* Effect.gen(function* () {
-        if (!(yield* git.hasCommit({ cwd, refName: `refs/heads/${branch}` }))) return undefined;
-        const refs = yield* git.listRefs({ cwd, query: branch, refKind: "local" }).pipe(
-          Effect.map((result) => result.refs),
-          Effect.orElseSucceed(() => []),
-        );
-        return {
-          worktreePath:
-            refs.find((ref) => ref.isRemote !== true && ref.name === branch)?.worktreePath ?? null,
-        };
-      }).pipe(Effect.orElseSucceed(() => undefined));
-      if (existing !== undefined)
-        return yield* new ThreadLaunchBranchExistsError({
-          projectId: project.id,
-          projectTitle: project.title,
-          branch,
-          worktreePath: existing.worktreePath,
-        });
-    }
     const baseResolves =
       hasBaseCommit ||
       (yield* Effect.gen(function* () {
@@ -685,8 +661,25 @@ const make = Effect.gen(function* () {
         workspaceRoot: project.workspaceRoot,
         baseRef,
       });
+    if (branch === undefined) return;
+    // `git worktree add -b` refuses a branch that exists. Checking it out
+    // instead would quietly ignore baseRef and startFromOrigin, so the caller
+    // picks another name or a strategy that binds the existing branch.
+    if (localBranches.includes(branch)) {
+      const refs = yield* git.listRefs({ cwd, query: branch, refKind: "local" }).pipe(
+        Effect.map((result) => result.refs),
+        Effect.orElseSucceed(() => []),
+      );
+      return yield* new ThreadLaunchBranchExistsError({
+        projectId: project.id,
+        projectTitle: project.title,
+        branch,
+        worktreePath:
+          refs.find((ref) => ref.isRemote !== true && ref.name === branch)?.worktreePath ?? null,
+      });
+    }
     // Provisioning flattens temporary names that collide, so only explicit names are refused.
-    if (!checksBranch) return;
+    if (isTemporaryWorktreeBranch(branch)) return;
     const conflictingBranch = localBranches.find(
       (existing) => existing.startsWith(`${branch}/`) || branch.startsWith(`${existing}/`),
     );
@@ -1659,7 +1652,10 @@ const make = Effect.gen(function* () {
         const threadId =
           claimed.storedEvents.find((stored) => stored.event.type.startsWith("thread."))?.event
             .threadId ?? candidateThreadId;
-        if (project.id !== input.projectId) {
+        const committedThread = yield* threads
+          .getThreadShell(threadId)
+          .pipe(Effect.mapError(mapError(input, "resolve-project", threadId)));
+        if (committedThread?.projectId !== input.projectId) {
           return yield* mapError(input, "resolve-project", threadId)("Project identity changed.");
         }
         let runId: RunId | null = null;
@@ -1735,7 +1731,8 @@ const make = Effect.gen(function* () {
             // retry's own strategy, whose defaults may resolve differently.
             const accepted = current?.runs.find((run) => run.id === runId)?.workspacePreparation;
             const preparationStrategy: ThreadLaunchWorkspaceStrategy =
-              Option.isSome(launchReceipt) && accepted?.type === "worktree"
+              Option.isSome(launchReceipt) &&
+              (accepted?.type === "worktree" || accepted?.type === "existing_worktree")
                 ? accepted
                 : Option.isSome(launchReceipt) &&
                     workspaceStrategy.type === "root" &&

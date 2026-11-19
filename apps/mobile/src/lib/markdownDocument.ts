@@ -14,7 +14,11 @@ import {
   linearIssueReferenceUrl,
 } from "@t3tools/shared/linearIssueReferences";
 import { remarkKeepWindowsProsePaths } from "@t3tools/shared/markdownWindowsPaths";
-import { absoluteFilePathMatches, parseMarkdownFileLink } from "@t3tools/shared/markdownLinks";
+import {
+  absoluteFilePathMatches,
+  inlineCodeFilePathCandidate,
+  parseMarkdownFileLink,
+} from "@t3tools/shared/markdownLinks";
 import { isWindowsAbsolutePath } from "@t3tools/shared/path";
 
 const parser = unified().use(remarkParse).use(remarkGfm).use(remarkKeepWindowsProsePaths);
@@ -511,6 +515,11 @@ export function withReferenceDefinitions(
 // Start only at the beginning of a backtick run to avoid retrying every suffix.
 const INLINE_CODE_SPAN = /(?<!`)`+([^`\r\n]+)`+/g;
 
+// The native regex stops at whitespace; the shared classifier decides paths with spaces.
+function isInlineCodeFileLink(code: string, fileLink: RegExp): boolean {
+  return fileLink.test(code) || (/\s/.test(code) && inlineCodeFilePathCandidate(code) !== null);
+}
+
 export function markdownWithInlineFileLinks(
   markdown: string,
   fileLink: RegExp | undefined,
@@ -527,7 +536,7 @@ function transformNativeMarkdown(
   let linkFiles = false;
   if (fileLink) {
     for (const [, code] of markdown.matchAll(INLINE_CODE_SPAN)) {
-      if (fileLink.test(code!.trim())) {
+      if (isInlineCodeFileLink(code!.trim(), fileLink)) {
         linkFiles = true;
         break;
       }
@@ -546,7 +555,8 @@ function transformNativeMarkdown(
       if (
         start !== undefined &&
         end !== undefined &&
-        fileLink?.test(node.value) &&
+        fileLink !== undefined &&
+        isInlineCodeFileLink(node.value, fileLink) &&
         parseMarkdownFileLink(node.value) !== null &&
         !/[<>]/.test(node.value)
       ) {

@@ -562,7 +562,7 @@ function ReviewThreadEntry({
   );
 }
 
-function MetaRow({
+export function PullRequestMetaRow({
   icon,
   label,
   children,
@@ -582,7 +582,7 @@ function MetaRow({
   );
 }
 
-function Section({
+export function PullRequestSection({
   title,
   defaultOpen = true,
   keepMounted = false,
@@ -1140,7 +1140,7 @@ export function PullRequestSummaryTab({
     >
       <section className="px-4 pt-2.5 pb-1">
         <div className="space-y-2">
-          <MetaRow icon={<UsersIcon className="size-3.5" />} label="Reviewers">
+          <PullRequestMetaRow icon={<UsersIcon className="size-3.5" />} label="Reviewers">
             <span className="flex min-w-0 flex-wrap items-center gap-1.5">
               {reviewerEntries.length === 0 ? (
                 <span className="text-muted-foreground">None</span>
@@ -1213,9 +1213,9 @@ export function PullRequestSummaryTab({
                 />
               ) : null}
             </span>
-          </MetaRow>
+          </PullRequestMetaRow>
           {detail.labels.length > 0 || detail.capabilities.labels === true ? (
-            <MetaRow icon={<TagIcon className="size-3.5" />} label="Labels">
+            <PullRequestMetaRow icon={<TagIcon className="size-3.5" />} label="Labels">
               <span className="flex min-w-0 flex-wrap items-center gap-1">
                 {detail.labels.length === 0 ? (
                   <span className="text-muted-foreground">None</span>
@@ -1238,12 +1238,12 @@ export function PullRequestSummaryTab({
                   />
                 ) : null}
               </span>
-            </MetaRow>
+            </PullRequestMetaRow>
           ) : null}
         </div>
       </section>
 
-      <Section
+      <PullRequestSection
         key={`description:${detail.url}`}
         title="Description"
         keepMounted
@@ -1299,9 +1299,9 @@ export function PullRequestSummaryTab({
             </div>
           )}
         </div>
-      </Section>
+      </PullRequestSection>
 
-      <Section
+      <PullRequestSection
         key={`checks:${detail.url}`}
         title="Checks"
         defaultOpen={false}
@@ -1365,9 +1365,9 @@ export function PullRequestSummaryTab({
             );
           })
         )}
-      </Section>
+      </PullRequestSection>
 
-      <Section
+      <PullRequestSection
         title={`Comments (${detail.commentCount})`}
         actions={
           <div className="flex shrink-0 items-center gap-1">
@@ -1461,7 +1461,7 @@ export function PullRequestSummaryTab({
             )}
           </>
         )}
-      </Section>
+      </PullRequestSection>
     </div>
   );
 }

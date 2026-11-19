@@ -1,5 +1,9 @@
 import { useAtomValue } from "@effect/atom-react";
-import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
+import {
+  settleAsyncResult,
+  settlePromise,
+  squashAtomCommandFailure,
+} from "@t3tools/client-runtime/state/runtime";
 import type {
   ChatAttachment,
   EnvironmentId,
@@ -12,6 +16,8 @@ import type {
   UploadChatAttachment,
 } from "@t3tools/contracts";
 import type * as Cause from "effect/Cause";
+import * as Effect from "effect/Effect";
+import { uploadComposerAttachmentShared } from "../../state/composer-attachment-uploads";
 import { AsyncResult } from "effect/reactivity";
 import { useRef, useState } from "react";
 
@@ -101,13 +107,17 @@ export function useThreadMessageDrafts(input: {
       readonly context: OrchestrationMessageContext | undefined;
     };
   }): Promise<boolean> => {
-    const prepared = await settlePromise(() =>
-      prepareTurnAttachments({
-        environmentId,
-        attachments: content.attachments,
-        supportsImageUploads:
-          input.serverConfig?.environment.capabilities.attachmentUploads === true,
-      }),
+    const prepared = await settleAsyncResult(() =>
+      Effect.runPromiseExit(
+        prepareTurnAttachments({
+          environmentId,
+          attachments: content.attachments,
+          uploadAttachment: (attachment) =>
+            uploadComposerAttachmentShared(environmentId, attachment),
+          supportsImageUploads:
+            input.serverConfig?.environment.capabilities.attachmentUploads === true,
+        }),
+      ),
     );
     if (AsyncResult.isFailure(prepared)) {
       Dialog.alert("Could not save draft", failureText(prepared));

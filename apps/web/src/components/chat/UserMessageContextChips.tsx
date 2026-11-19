@@ -1,3 +1,5 @@
+import { useNativeFileDrag } from "../../useNativeFileDrag";
+import { resolvePathLinkTarget } from "@t3tools/shared/fileLinks";
 import { EnvironmentContextChip } from "../EnvironmentContextChip";
 import { isSvgAttachment } from "@t3tools/shared/image";
 
@@ -407,7 +409,12 @@ export function UserMessageContextReferenceChip(props: {
     contextId: props.reference.contextId as ComposerContextId,
     label: props.reference.label,
   });
-  return userMessageContextPresentationRegistry.render(props.reference.kind, props.record, {
+  const mentionPath = props.record?.kind === "mention" ? props.record.path : null;
+  const nativeDrag = useNativeFileDrag(
+    mentionPath === null ? null : row.activeThreadEnvironmentId,
+    () => resolvePathLinkTarget(mentionPath ?? "", row.workspaceRoot ?? ""),
+  );
+  const chip = userMessageContextPresentationRegistry.render(props.reference.kind, props.record, {
     environmentId: row.activeThreadEnvironmentId,
     reference: props.reference,
     annotationImage: props.annotationImage,
@@ -420,4 +427,11 @@ export function UserMessageContextReferenceChip(props: {
     onOpenLink,
     ...(checkoutActions === undefined ? {} : { checkoutActions }),
   });
+  return mentionPath === null ? (
+    chip
+  ) : (
+    <span className="contents" {...nativeDrag}>
+      {chip}
+    </span>
+  );
 }

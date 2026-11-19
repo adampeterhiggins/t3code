@@ -1,4 +1,3 @@
-import { resolveListedAncestorThreadRef } from "@t3tools/client-runtime/state/threads";
 import { attachSidebarTree } from "../lib/sidebarTree";
 import { resolveProjectExpanded, useUiStateStore } from "../uiStateStore";
 import {
@@ -30,6 +29,7 @@ import {
   type ScopedProjectRef,
   type EnvironmentId,
   AuthOrchestrationOperateScope,
+  type ContextMenuSource,
   ProjectId,
   type ScopedThreadRef,
   type ThreadId,
@@ -90,7 +90,10 @@ import {
   scopeThreadRef,
   scopedThreadKey,
 } from "@t3tools/client-runtime/environment";
-import type { OlderSettledScope } from "@t3tools/client-runtime/state/threads";
+import {
+  resolveListedAncestorThreadRef,
+  type OlderSettledScope,
+} from "@t3tools/client-runtime/state/threads";
 
 import { ChevronDownIcon, PlusIcon } from "lucide-react";
 import {
@@ -2276,7 +2279,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
 
   const removeFromSelection = useThreadSelectionStore((s) => s.removeFromSelection);
   const handleMultiSelectContextMenu = useStableCallback(
-    async (position: { x: number; y: number }) => {
+    async (position: { x: number; y: number }, source: ContextMenuSource) => {
       const api = readLocalApi();
       if (!api) return;
       const selectedThreadKeys = [...useThreadSelectionStore.getState().selectedThreadKeys];
@@ -2377,6 +2380,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
             },
           ],
           position,
+          source,
         ),
       );
       if (clicked._tag === "Failure" || clicked.value === null) return;
@@ -2530,13 +2534,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     },
   );
   const handleDraftContextMenu = useStableCallback(
-    (
-      draftId: DraftId,
-      position: {
-        x: number;
-        y: number;
-      },
-    ) => {
+    (draftId: DraftId, position: { x: number; y: number }, source: ContextMenuSource) => {
       void (async () => {
         const api = readLocalApi();
         const session = useComposerDraftStore.getState().getDraftSession(draftId);
@@ -2558,6 +2556,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               hasProject: projectGroup != null,
             }),
             position,
+            source,
           ),
         );
         if (clicked._tag === "Failure") return;
@@ -2586,20 +2585,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     },
   );
   const handleThreadContextMenu = useStableCallback(
-    (
-      threadRef: ScopedThreadRef,
-      position: {
-        x: number;
-        y: number;
-      },
-    ) => {
+    (threadRef: ScopedThreadRef, position: { x: number; y: number }, source: ContextMenuSource) => {
       void (async () => {
         const api = readLocalApi();
         if (!api) return;
         const threadKey = scopedThreadKey(threadRef);
         const selectionState = useThreadSelectionStore.getState();
         if (selectionState.hasSelection() && selectionState.selectedThreadKeys.has(threadKey)) {
-          await handleMultiSelectContextMenu(position);
+          await handleMultiSelectContextMenu(position, source);
           return;
         }
         const thread = readThreadShell(threadRef);
@@ -2723,6 +2716,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               }),
             ],
             position,
+            source,
           ),
         );
         if (clicked._tag === "Failure" || clicked.value === null) return;
