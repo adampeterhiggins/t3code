@@ -35,6 +35,7 @@ import { ImageAttachmentPreview } from "./contextChipParts";
 import { AttachmentQuickLookPreview } from "./files/AttachmentQuickLook";
 import { ReadOnlySourcePreview } from "./files/AttachmentFilePreview";
 import { ReviewCommentCard } from "./ReviewCommentCard";
+import { PopoverClose } from "./ui/popover";
 
 /*
  * Hover bodies for context kinds that have no better home. Every surface reaches these through
@@ -145,9 +146,9 @@ export function SkillPreview(props: SkillPreviewProps) {
       <div className="flex items-baseline justify-between gap-3">
         <p className="min-w-0 truncate font-medium">{props.label}</p>
         {props.onOpenInstructions ? (
-          <PreviewCornerAction onClick={props.onOpenInstructions}>
+          <PopoverClose render={<PreviewCornerAction />} onClick={props.onOpenInstructions}>
             <T>View instructions</T>
-          </PreviewCornerAction>
+          </PopoverClose>
         ) : null}
       </div>
       {props.description ? (
