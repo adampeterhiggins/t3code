@@ -5,6 +5,7 @@ import { MessagesSquareIcon } from "lucide-react";
 import type { ComponentProps } from "react";
 import { useGT } from "gt-react";
 
+import { useSideChatThreadLinkClick } from "~/lib/sideChatPane";
 import { useProject, useThreadShell } from "~/state/entities";
 import { orchestrationEnvironment } from "~/state/orchestration";
 import { useEnvironmentQuery } from "~/state/query";
@@ -38,6 +39,7 @@ export function ThreadChipTrigger({
   const metadata = lookup.data?.[threadId];
   const projectId = shell?.projectId ?? linkedProjectId ?? metadata?.projectId;
   const project = useProject(projectId ? scopeProjectRef(environmentId, projectId) : null);
+  const onLinkClick = useSideChatThreadLinkClick({ environmentId, threadId }, shell);
   const title = shell?.title?.trim() || metadata?.title.trim() || record.title;
   return (
     <ContextChip
@@ -47,6 +49,7 @@ export function ThreadChipTrigger({
         <Link
           to="/$environmentId/$threadId"
           params={{ environmentId, threadId }}
+          onClick={onLinkClick}
           draggable={false}
         />
       }

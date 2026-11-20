@@ -15,6 +15,7 @@ import { unknownThreadLinkLabel } from "@t3tools/shared/threadLinksCopy";
 
 import { useProject, useThreadRefs, useThreadShell } from "../../state/entities";
 import { configuredHostedAppUrl } from "../../hostedPairing";
+import { useSideChatThreadLinkClick } from "../../lib/sideChatPane";
 import { ProjectFavicon } from "../ProjectFavicon";
 
 import { useEnvironmentIdentities } from "../../state/environments";
@@ -66,6 +67,7 @@ export function MarkdownThreadLink(props: {
   const resolved = target ?? (remoteRef && remote ? { ref: remoteRef, metadata: remote } : null);
   const environmentId = resolved?.ref.environmentId ?? writtenRef.environmentId;
   const threadId = resolved?.ref.threadId ?? writtenRef.threadId;
+  const onLinkClick = useSideChatThreadLinkClick({ environmentId, threadId }, written ?? remote);
   const project = useProject(
     resolved?.metadata.projectId
       ? scopeProjectRef(environmentId, resolved.metadata.projectId)
@@ -86,6 +88,7 @@ export function MarkdownThreadLink(props: {
           aria-label={gt("Thread, {title}", { title })}
           to="/$environmentId/$threadId"
           params={{ environmentId, threadId }}
+          onClick={onLinkClick}
           data-markdown-copy={formatHostedThreadLink(
             { environmentId, threadId },
             title,

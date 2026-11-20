@@ -37,7 +37,7 @@ export function assertWebSearchOutput(
   const webSearchItems = projection.turnItems.filter((item) => item.type === "web_search");
   assert.lengthOf(webSearchItems, 1);
   assert.equal(webSearchItems[0]?.status, "completed");
-  assert.include(webSearchItems[0]?.patterns ?? [], WEB_SEARCH_QUERY);
+  assert.deepEqual(webSearchItems[0]?.patterns, [WEB_SEARCH_QUERY]);
   assert.equal(webSearchItems[0]?.action, "search");
   assert.isTrue(
     webSearchItems[0]?.results?.some(

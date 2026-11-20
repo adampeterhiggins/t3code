@@ -612,10 +612,11 @@ editable. Names are stored by the [ThreadTabs service](../apps/server/src/thread
   draft (`onContinueFromTab` in
   [`useChatViewTabForks.ts`](../apps/web/src/components/chat/useChatViewTabForks.ts), `continueFrom` in
   `apps/mobile/src/features/threads/ThreadTabs.tsx`).
-  The **Chats** tab also lists other unarchived threads in the environment, newest first and
-  matched by title
-  (`apps/web/src/components/chat/composerThreadReferences.ts`), and works in a new draft thread
-  too. On web and desktop, **Attach → Thread** and **Attach thread** in the command palette open
+  The **Chats** tab shows recent threads before you type and ranks title matches as you search.
+  Results include eligible threads on linked environments and used side chats belonging to the
+  current thread. Regular results show the project, branch, and machine where available
+  ([`composerThreadItems.ts`](../packages/client-runtime/src/composerThreadItems.ts)). This also
+  works in a new draft thread. On web and desktop, **Attach → Thread** and **Attach thread** in the command palette open
   a searchable picker of those threads. A thread's tabs sit together behind a side rule, and
   searching a thread title finds its tabs too. Rows show the project, provider, status, and
   last activity as the sidebar does. It has project and provider filters, each choice counting

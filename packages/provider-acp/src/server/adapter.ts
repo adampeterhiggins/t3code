@@ -378,9 +378,6 @@ export interface AcpAdapterV2Flavor {
     readonly attachments: ReadonlyArray<ChatAttachment>;
     readonly resolveAttachmentPath: (attachment: ChatAttachment) => string | null;
     readonly promptCapabilities: EffectAcpSchema.AgentCapabilities["promptCapabilities"];
-    readonly agentVersion: string | undefined;
-    /** The session's model after selection, with its display name when the agent lists it. */
-    readonly currentModel: { readonly id: string; readonly name: string | undefined } | undefined;
   }) => Effect.Effect<ReadonlyArray<EffectAcpSchema.ContentBlock>, EffectAcpErrors.AcpError>;
   /** Maps a provider-reported prompt aggregate, independently of context occupancy. */
   readonly turnTokenUsage?: (
@@ -390,6 +387,8 @@ export interface AcpAdapterV2Flavor {
   ) => OrchestrationV2ProviderTurn["turnTokenUsage"];
   /** Interprets provider-specific prompt errors before they cross into orchestration. */
   readonly promptFailure?: (cause: unknown) => OrchestrationV2ProviderFailure;
+  /** The flavor's runtime refuses a version the policy rates broken when it starts. */
+  readonly checksVersionAtHandshake?: boolean;
   /**
    * Runs before `session/prompt`. The returned check sees a prompt the agent ended
    * without an error or cancel, and reports a failure its stop reason hid. A reported
@@ -498,7 +497,7 @@ export interface AcpAdapterV2Flavor {
   ) => ReadonlyArray<{ readonly id: string; readonly value: string }>;
   /**
    * The runtime mode a native session mode grants, for flavors whose modes are permission levels.
-   * Under a policy ceiling, a mode the user picks that this does not place under it is not applied.
+   * A picked mode this does not place within the thread's runtime mode is not applied.
    */
   readonly runtimeModeForSessionMode?: (modeId: string) => RuntimeMode | undefined;
   /**
@@ -2029,6 +2028,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
   return ProviderAdapter.ProviderAdapterV2.of({
     instanceId: options.instanceId,
     driver,
+    checksVersionAtHandshake: flavor.checksVersionAtHandshake === true,
     getCapabilities: Effect.fn("AcpAdapter.getCapabilities")(function* () {
       return yield* readCapabilities;
     }),
@@ -8117,9 +8117,15 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             });
           }
           const configOptions = yield* runtime.getConfigOptions;
-          // Under a policy ceiling, a mode the user picks applies only when the flavor can place
-          // it under the ceiling; an unknown mode could be the agent's own skip-approval mode.
-          const ceiling = runtimePolicy.maxRuntimeMode;
+          // A picked mode applies only when the flavor places it within the bound; an unknown mode
+          // could be the agent's own skip-approval mode. Modes known to be permission levels are
+          // also bounded by the thread's runtime mode, so model options cannot widen it.
+          const ceiling =
+            flavor.runtimeModeForSessionMode === undefined ||
+            (runtimePolicy.maxRuntimeMode !== undefined &&
+              isRuntimeModeAbove(runtimePolicy.runtimeMode, runtimePolicy.maxRuntimeMode))
+              ? runtimePolicy.maxRuntimeMode
+              : runtimePolicy.runtimeMode;
           const isModeChoice = (id: string) =>
             id === ACP_SESSION_MODE_OPTION_ID ||
             configOptions.some(
@@ -8275,7 +8281,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             const nativeBuild = nativeBuildConfigurationBySessionId.get(startResult.sessionId);
             if (nativeBuild !== undefined) {
               if (
-                !modeLocked &&
+                policyMode === undefined &&
                 nativeBuild.modeId !== undefined &&
                 effectiveModeState?.currentModeId !== nativeBuild.modeId &&
                 effectiveModeState?.availableModes.some(
@@ -8291,7 +8297,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                 if (
                   option === undefined ||
                   option.type !== "select" ||
-                  (modeLocked && option.category === "mode")
+                  (policyMode !== undefined && option.category === "mode")
                 )
                   continue;
                 const choices = option.options.flatMap((entry) =>
@@ -8870,24 +8876,12 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           }
           if (!flavor.buildAttachmentPrompt) return yield* imageAttachmentBlocks(attachments);
           const setup = yield* Ref.get(activeSessionSetup);
-          const modelOption = findModelConfigOption(yield* runtime.getConfigOptions);
-          const currentModelId = modelOption?.currentValue;
           return yield* flavor
             .buildAttachmentPrompt({
               text: messageText,
               attachments,
               resolveAttachmentPath: host.resolveAttachmentPath,
               promptCapabilities: setup?.initializeResult.agentCapabilities?.promptCapabilities,
-              agentVersion: setup?.initializeResult.agentInfo?.version,
-              currentModel:
-                typeof currentModelId !== "string" || modelOption === undefined
-                  ? undefined
-                  : {
-                      id: currentModelId,
-                      name: flattenSelectChoices(modelOption.options).find(
-                        (choice) => choice.value === currentModelId,
-                      )?.name,
-                    },
             })
             .pipe(
               Effect.mapError(
