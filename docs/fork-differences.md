@@ -1791,17 +1791,19 @@ shown by [AssistantCitationChip.tsx](../apps/web/src/components/chat/AssistantCi
 Upstream citations quote text inside one assistant response. The fork also quotes a stretch of
 the transcript: dragging a selection from one message to another cites everything between,
 including user messages and the tool calls and thoughts the drag passes over, with only the
-selected part of the first and last response. Shift-clicking a tool call or thought picks it
-instead of expanding it, and grows a text selection to it. While picking, shift-clicking more
-items moves the end of the excerpt, scrolling keeps the pick, and a **Cite** button at the foot of the timeline
-inserts it. Picked items are tinted because tool rows cannot hold a text selection.
+selected part of the first and last response. Text selected inside an expanded thought is quoted
+the same way, alone or as either end of a longer selection. Shift-clicking a tool call or thought
+picks it instead of expanding it, and grows a text selection to it. While picking,
+shift-clicking more items moves the end of the excerpt, scrolling keeps the pick, and a **Cite**
+button at the foot of the timeline inserts it. Picked items are tinted because tool rows cannot
+hold a text selection.
 
 The chip reads what the excerpt spans, such as "2 messages, 3 tool calls". Agents get the
 excerpt as a short transcript, with each tool call's name, label, status and a trimmed detail,
-and each thought's trimmed text, plus its segments naming each item's id. Thoughts are `tool`
-segments, so clients that predate them still read the citation, and the chip counts them as tool
-calls. Going to the source scrolls to the first cited item and tints the rest. Entries hidden by
-a collapsed tool group or a folded turn are still quoted. See
+and each thought's text under a "Thinking" heading, plus its segments naming each item's id.
+Thoughts are `tool` segments, so clients that predate them still read the citation, and the chip
+counts them as tool calls. Going to the source scrolls to the first cited item and tints the
+rest. Entries hidden by a collapsed tool group or a folded turn are still quoted. See
 [Quote an assistant response](user/composer.md#quote-an-assistant-response).
 
 Code: `segments` on `AssistantCitation` in

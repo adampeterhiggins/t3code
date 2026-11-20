@@ -122,6 +122,8 @@ export function AssistantSelectionToolbar({
     position: SelectionActionPoint;
     sourceAnchor?: AssistantCitationSourceAnchor;
     range: Range;
+    /** Items the selection quotes only part of, so their rows are not tinted whole. */
+    partialItemIds?: ReadonlyArray<string>;
   } | null>(null);
   const [rowSelection, setRowSelection] = useState<RowSelection | null>(null);
   const toolbarRef = useRef<HTMLButtonElement>(null);
@@ -164,6 +166,10 @@ export function AssistantSelectionToolbar({
         workspaceRoot,
       }),
   );
+  const isThought = useEffectEvent((itemId: string) => {
+    const entry = entries[itemIndex(itemId)];
+    return entry?.kind === "work" && entry.entry.tone === "thinking";
+  });
   /** A shift-click that starts row selection grows the current text selection toward it. */
   const anchorFromTextSelection = useEffectEvent(
     (clickedId: string): RowSelection["anchor"] | null => {
@@ -278,6 +284,7 @@ export function AssistantSelectionToolbar({
         citation: AssistantCitation,
         range: Range,
         sourceAnchor?: AssistantCitationSourceAnchor,
+        partialItemIds?: ReadonlyArray<string>,
       ) => {
         const rects = range.getClientRects();
         const pointerOnText =
@@ -293,6 +300,7 @@ export function AssistantSelectionToolbar({
           citation,
           range,
           ...(sourceAnchor ? { sourceAnchor } : {}),
+          ...(partialItemIds ? { partialItemIds } : {}),
           position: resolveSelectionActionPosition({
             bounds: viewport.getBoundingClientRect(),
             selectionRect: rects.item(rects.length - 1) ?? range.getBoundingClientRect(),
@@ -303,16 +311,31 @@ export function AssistantSelectionToolbar({
       };
       const edges = captureTranscriptSelectionEdges(viewport, nativeSelection, {
         part: "selected",
+        allowSingleItem: true,
       });
-      if (edges) {
+      // Text inside one thought is quoted like a transcript excerpt, so agents read it as a thought.
+      if (
+        edges &&
+        (edges.first.itemId !== edges.last.itemId ||
+          (edges.first.quote !== undefined && isThought(edges.first.itemId)))
+      ) {
         const citation = transcriptCitationFor(edges);
-        if (citation && isRangeVisible(edges.range, viewport)) show(citation, edges.range);
-        else clear();
+        const partialItemIds = [edges.first, edges.last]
+          .filter((edge) => edge.quote !== undefined)
+          .map((edge) => edge.itemId);
+        if (citation && isRangeVisible(edges.range, viewport)) {
+          show(citation, edges.range, undefined, partialItemIds);
+        } else clear();
         return;
       }
       const captured = captureAssistantTextSelection(viewport, nativeSelection);
       const messageId = captured?.source.dataset.assistantCitationSource;
-      if (!captured || !messageId || !isRangeVisible(captured.range, viewport)) {
+      if (
+        !captured ||
+        !messageId ||
+        captured.source.closest(TRANSCRIPT_TOOL_SELECTOR) !== null ||
+        !isRangeVisible(captured.range, viewport)
+      ) {
         clear();
         return;
       }
@@ -376,7 +399,9 @@ export function AssistantSelectionToolbar({
   const highlightedItemIds = rowSelection
     ? wholeItemIds(rowCitation, rowQuote ? rowSelection.anchor.itemId : undefined)
     : wholeItemIds(selection?.citation ?? null).filter(
-        (id) => selection?.citation.segments?.find((segment) => segment.id === id)?.kind === "tool",
+        (id) =>
+          !selection?.partialItemIds?.includes(id) &&
+          selection?.citation.segments?.find((segment) => segment.id === id)?.kind === "tool",
       );
   const highlightStyle = <TranscriptSelectionStyle itemIds={highlightedItemIds} />;
   if (!selection) {

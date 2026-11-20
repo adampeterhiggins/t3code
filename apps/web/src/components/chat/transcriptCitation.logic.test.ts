@@ -97,7 +97,7 @@ describe("buildTranscriptCitation", () => {
     expect(citation?.markdown).toContain(
       "**Tool call · Command · failed:** `vp test run foo.test.ts`\n\n```text\n1 failed\n```",
     );
-    expect(citation?.markdown).toContain("**Thinking**\n\n```text\nConsidering\n```");
+    expect(citation?.markdown).toContain("**Thinking**\n\nConsidering");
     expect(citation?.markdown).toContain("> Assistant quote:\n> earlier answer");
     expect(citation?.end).toBe(citation?.text.length);
   });
@@ -119,6 +119,17 @@ describe("buildTranscriptCitation", () => {
       "assistant-1",
     ]);
     expect(citation?.text.endsWith("Assistant:\nRegenerate it.")).toBe(true);
+
+    const thought = buildTranscriptCitation({
+      threadRef,
+      entries,
+      from: { itemId: "thought", quote: { text: "Consider", markdown: "**Consider**" } },
+      to: { itemId: "thought", quote: { text: "Consider", markdown: "**Consider**" } },
+      workspaceRoot: undefined,
+    });
+    expect(thought?.segments).toStrictEqual([{ kind: "tool", id: "thought" }]);
+    expect(thought?.text).toBe("Thinking:\nConsider");
+    expect(thought?.markdown).toBe("**Thinking**\n\n**Consider**");
   });
 
   it("drops a message end whose selected part is blank, and rejects unknown items", () => {

@@ -40,11 +40,24 @@ function tool(id: string, label: string): TimelineEntry {
   };
 }
 
-const entries = [
+const entries: TimelineEntry[] = [
   assistant("first", "First answer here."),
   tool("search-1", "Searched once"),
   tool("search-2", "Searched twice"),
   assistant("second", "Second answer here."),
+  {
+    kind: "work",
+    id: "thought",
+    createdAt: at,
+    entry: {
+      id: "thought",
+      createdAt: at,
+      label: "Thought",
+      tone: "thinking",
+      itemType: "reasoning",
+      detail: "The fixture looks stale.",
+    },
+  },
 ];
 
 /** The timeline's row markup, reduced to what citation capture reads. */
@@ -86,6 +99,13 @@ function Timeline({
         {toolRow("search-2", "Searched twice")}
       </div>
       {message("second", "Second answer here.")}
+      <div data-timeline-row-id="row-thought" data-timeline-row-kind="work">
+        <div data-work-entry-id="thought" role="button" tabIndex={0}>
+          <div data-assistant-citation-source="thought">
+            <p>The fixture looks stale.</p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -114,6 +134,24 @@ describe("AssistantSelectionToolbar transcript excerpts", () => {
     ]);
     expect(citation.text).toMatch(/^Assistant:\nanswer here\.\n\n/);
     expect(citation.text).toMatch(/\n\nAssistant:\nSecond$/);
+  });
+
+  it("cites the selected part of a thought as a thought", async () => {
+    const onCite = vi.fn(() => true);
+    await using _screen = await render(<Timeline onCite={onCite} onToolClick={vi.fn()} />);
+
+    // Drag-select inside the thought, whose whole row is a toggle button.
+    const thought = textNode("The fixture looks stale.");
+    thought.parentElement!.dispatchEvent(
+      new PointerEvent("pointerdown", { bubbles: true, isPrimary: true, button: 0 }),
+    );
+    window.getSelection()!.setBaseAndExtent(thought, 4, thought, 18);
+    window.dispatchEvent(new MouseEvent("mouseup", { button: 0 }));
+    await userEvent.click(page.getByRole("button", { name: "Cite selection in composer" }));
+
+    const [citation] = onCite.mock.calls[0] as unknown as [AssistantCitation];
+    expect(citation.segments).toStrictEqual([{ kind: "tool", id: "thought" }]);
+    expect(citation.text).toBe("Thinking:\nfixture looks");
   });
 
   it("shift-click picks tool calls instead of toggling them, and grows a text selection", async () => {

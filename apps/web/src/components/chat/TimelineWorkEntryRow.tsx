@@ -315,12 +315,14 @@ export function ReasoningTraceContent({ entries }: { entries: ReadonlyArray<Time
   return (
     <WorkLogDetails followLive={entries.some(isStreaming)}>
       {entries.map((entry) => (
-        <ThoughtMarkdown
-          key={entry.id}
-          entry={entry}
-          streaming={isStreaming(entry)}
-          className="text-foreground"
-        />
+        // Selecting text here quotes part of the thought, as in an assistant response.
+        <div key={entry.id} data-assistant-citation-source={entry.id}>
+          <ThoughtMarkdown
+            entry={entry}
+            streaming={isStreaming(entry)}
+            className="text-foreground"
+          />
+        </div>
       ))}
     </WorkLogDetails>
   );

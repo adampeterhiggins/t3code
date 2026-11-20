@@ -15,7 +15,7 @@ import { workEntryDisplayLabel, type MessagesTimelineRow } from "./MessagesTimel
 
 const TOOL_DETAIL_MAX_LENGTH = 400;
 
-/** Where an excerpt starts or ends. A quote keeps only the selected part of a message. */
+/** Where an excerpt starts or ends. A quote keeps only the selected part of a message or thought. */
 export interface TranscriptEndpoint {
   readonly itemId: string;
   readonly quote?: { readonly text: string; readonly markdown?: string };
@@ -60,10 +60,12 @@ function toolStatus(entry: WorkLogEntry): string | null {
   }
 }
 
-function renderThought(entry: WorkLogEntry) {
-  const thought = truncate(entry.detail?.trim() || entry.label, TOOL_DETAIL_MAX_LENGTH);
+function renderThought(entry: WorkLogEntry, quote: TranscriptEndpoint["quote"]) {
+  const text = (quote ? quote.text : (entry.detail ?? "")).trim();
+  if (text.length === 0) return null;
+  const markdown = (quote ? (quote.markdown ?? quote.text) : (entry.detail ?? "")).trim();
   // oxlint-disable-next-line t3code/no-untranslated-copy -- citation text sent to the agent
-  return { text: `Thinking:\n${thought}`, markdown: `**Thinking**\n\n${fence(thought)}` };
+  return { text: `Thinking:\n${text}`, markdown: `**Thinking**\n\n${markdown}` };
 }
 
 function renderTool(entry: WorkLogEntry, workspaceRoot: string | undefined) {
@@ -114,12 +116,14 @@ export function buildTranscriptCitation({
   const markdowns: string[] = [];
   for (let index = startIndex; index <= endIndex; index += 1) {
     const entry = entries[index]!;
+    const quote = index === startIndex ? first.quote : index === endIndex ? last.quote : undefined;
     if (entry.kind === "work") {
       if (!workLogEntryIsToolLike(entry.entry)) continue;
       const rendered =
         entry.entry.tone === "thinking"
-          ? renderThought(entry.entry)
+          ? renderThought(entry.entry, quote)
           : renderTool(entry.entry, workspaceRoot);
+      if (!rendered) continue;
       segments.push({ kind: "tool", id: entry.entry.id });
       texts.push(rendered.text);
       markdowns.push(rendered.markdown);
@@ -127,7 +131,6 @@ export function buildTranscriptCitation({
     }
     if (entry.kind !== "message" || entry.message.role === "system") continue;
     const { role } = entry.message;
-    const quote = index === startIndex ? first.quote : index === endIndex ? last.quote : undefined;
     const text = quote
       ? quote.text
       : role === "user"
