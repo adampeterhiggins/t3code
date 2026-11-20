@@ -6,6 +6,7 @@ import {
 import type {
   DevinReviewContext,
   DevinReviewFinding,
+  DevinReviewProgressStream,
   DevinReviewRun,
   DevinReviewSummary,
   DevinReviewWalkthroughSection,
@@ -56,6 +57,8 @@ import {
   devinFindingFixPrompt,
   devinFindingLocation,
   devinFindingStateLabel,
+  devinProgressStepLabel,
+  devinProgressStreamLabel,
   devinReviewErrorCopy,
   devinReviewFindingCountLabel,
   devinReviewRunLabel,
@@ -334,6 +337,9 @@ export function DevinReviewContent(props: {
           </p>
         ) : null}
       </section>
+      {inFlight && active ? (
+        <DevinReviewProgress environmentId={environmentId} url={props.url} onEnded={pollStatus} />
+      ) : null}
       {data === null ? (
         <p
           className={
@@ -355,6 +361,115 @@ export function DevinReviewContent(props: {
           {...(onFixFinding ? { onFix: (prompt) => onFixFinding(data, prompt) } : {})}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * What Devin's reviewer is doing, one line per tool call, pushed by the server every couple of
+ * seconds while the review runs. Pinned to the newest line, as Devin's own page is.
+ */
+function DevinReviewProgress(props: {
+  environmentId: EnvironmentId;
+  url: string;
+  /** Called once Devin reports the review ended, so the status reads it without waiting. */
+  onEnded: () => void;
+}) {
+  const gt = useGT();
+  const progress = useEnvironmentQuery(
+    devinReviewEnvironment.progress({
+      environmentId: props.environmentId,
+      input: { url: props.url },
+    }),
+  ).data;
+  const ended =
+    progress != null && progress.status !== "not_started" && progress.status !== "running";
+  const onEnded = props.onEnded;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads Devin's status as soon as the review on screen ends
+  useEffect(() => {
+    if (ended) onEnded();
+  }, [ended, onEnded]);
+  if (progress == null) return null;
+  const parallel = progress.streams.length > 1 || progress.streams[0]?.kind !== "review";
+  return (
+    <Section title={gt("Progress", { $context: "Devin review progress" })}>
+      {progress.status === "not_started" ? (
+        <p className="text-xs text-muted-foreground">
+          <T>Waiting for Devin to start the review…</T>
+        </p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {progress.streams.map((stream) => (
+            <DevinReviewProgressStreamView key={stream.kind} stream={stream} showTitle={parallel} />
+          ))}
+        </div>
+      )}
+    </Section>
+  );
+}
+
+function DevinReviewProgressStreamView(props: {
+  stream: DevinReviewProgressStream;
+  showTitle: boolean;
+}) {
+  const { stream } = props;
+  const gt = useGT();
+  const messages = useMessages();
+  const running = stream.status === "running";
+  const label = devinProgressStreamLabel(stream, messages);
+  // Steps only append, so a step's number in the whole run identifies it.
+  const steps = stream.steps.map((step, index) => ({ step, number: stream.omittedSteps + index }));
+  const lastNumber = stream.omittedSteps + stream.steps.length - 1;
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      {props.showTitle ? (
+        <p className="flex items-center gap-2 text-xs">
+          <span className="font-medium text-foreground">{label.title}</span>
+          <span
+            className={
+              stream.status === "errored"
+                ? "ml-auto text-destructive"
+                : "ml-auto text-muted-foreground"
+            }
+          >
+            {label.status}
+          </span>
+        </p>
+      ) : null}
+      {/* column-reverse keeps the scroll pinned to the newest line without script. */}
+      <div className="flex max-h-40 flex-col-reverse overflow-y-auto">
+        <ol className="flex flex-col gap-0.5 text-xs text-muted-foreground">
+          {stream.omittedSteps > 0 ? (
+            <li>
+              {gt("{count, plural, one {{count} earlier step} other {{count} earlier steps}}", {
+                count: stream.omittedSteps,
+              })}
+            </li>
+          ) : null}
+          {stream.steps.length === 0 && running ? (
+            <li>
+              <T>Starting the reviewer…</T>
+            </li>
+          ) : null}
+          {steps.map(({ step, number }) => (
+            <li
+              key={number}
+              className={
+                running && number === lastNumber && !stream.awaitingModel
+                  ? "truncate text-foreground"
+                  : "truncate"
+              }
+            >
+              {devinProgressStepLabel(step, messages)}
+            </li>
+          ))}
+          {running && stream.awaitingModel ? (
+            <li className="text-foreground">
+              <T>Thinking…</T>
+            </li>
+          ) : null}
+        </ol>
+      </div>
     </div>
   );
 }

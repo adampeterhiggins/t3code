@@ -85,6 +85,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.devinReviewList]: "devin-review",
   [WS_METHODS.devinReviewSummaries]: "devin-review",
   [WS_METHODS.devinReviewStatus]: "devin-review",
+  [WS_METHODS.devinReviewSubscribeProgress]: "devin-review",
   [WS_METHODS.devinReviewGet]: "devin-review",
   [WS_METHODS.devinReviewTrigger]: "devin-review",
   [WS_METHODS.discordSubscribeState]: "discord",

@@ -1,5 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import * as Layer from "effect/Layer";
 import * as HttpClient from "effect/http/HttpClient";
@@ -269,5 +271,55 @@ describe("DevinReviews.summaries", () => {
         [9, 7],
       );
     }).pipe(Effect.provide(reviews({ http: devinApi([]), execute })));
+  });
+});
+
+describe("DevinReviews.progress", () => {
+  it.effect("follows the running review until it ends, then lets status re-read Devin", () => {
+    const seen: Array<string> = [];
+    const runningJobs = {
+      jobs: [{ ...jobs.jobs[0], job_id: "job-2", status: "running", versions: [] }],
+    };
+    let polls = 0;
+    const app = (path: string): readonly [number, unknown] => {
+      if (path.endsWith("/jobs")) return [200, runningJobs];
+      polls += 1;
+      return polls === 1
+        ? [200, { status: "running", iterations: [{ tool_calls: [{ name: "clone" }] }] }]
+        : [200, { status: "completed", iterations: [{ tool_calls: [{ name: "clone" }] }] }];
+    };
+    return Effect.gen(function* () {
+      const service = yield* DevinReviews.DevinReviews;
+      yield* service.status({ url: PR_URL });
+      const fiber = yield* service
+        .progress({ url: PR_URL })
+        .pipe(Stream.take(2), Stream.runCollect, Effect.forkChild);
+      yield* TestClock.adjust("2 seconds");
+      const emitted = yield* Fiber.join(fiber);
+      assert.deepStrictEqual(
+        emitted.map((progress) => [progress?.jobId, progress?.status]),
+        [
+          ["job-2", "running"],
+          ["job-2", "completed"],
+        ],
+      );
+      assert.deepStrictEqual(
+        seen.filter((path) => path.endsWith("/lifeguard-progress/job-2")).length,
+        2,
+      );
+      yield* service.status({ url: PR_URL });
+      assert.strictEqual(seen.filter((path) => path.startsWith("/v3/")).length, 2);
+    }).pipe(Effect.provide(reviews({ http: devinApi(seen, app, "running") })));
+  });
+
+  it.effect("reports no progress with a service key, without calling Devin", () => {
+    const seen: Array<string> = [];
+    return Effect.gen(function* () {
+      const emitted = yield* DevinReviews.DevinReviews.use((service) =>
+        Stream.runCollect(service.progress({ url: PR_URL })),
+      );
+      assert.deepStrictEqual(emitted, [null]);
+      assert.deepStrictEqual(seen, []);
+    }).pipe(Effect.provide(reviews({ method: "service-key", http: devinApi(seen) })));
   });
 });

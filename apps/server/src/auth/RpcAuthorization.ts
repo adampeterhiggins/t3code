@@ -243,6 +243,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.devinReviewList]: AuthOrchestrationReadScope,
   [WS_METHODS.devinReviewSummaries]: AuthOrchestrationReadScope,
   [WS_METHODS.devinReviewStatus]: AuthOrchestrationReadScope,
+  [WS_METHODS.devinReviewSubscribeProgress]: AuthOrchestrationReadScope,
   [WS_METHODS.devinReviewGet]: AuthOrchestrationReadScope,
   [WS_METHODS.threadLinkWatchesSubscribe]: AuthOrchestrationReadScope,
   [WS_METHODS.threadLinkWatchSet]: AuthOrchestrationOperateScope,

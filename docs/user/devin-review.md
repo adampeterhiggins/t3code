@@ -55,6 +55,8 @@ When you are signed in to Devin, the tab also shows:
 - **Fix with agent** on findings where Devin suggests a fix. It puts Devin's fix instructions, with
   a line pointing at the finding, in the thread's composer for you to read over and send. On the
   Devin Reviews page it opens a new thread instead.
+- **Progress** while a review runs: what Devin's reviewer is doing, such as the files it reads and
+  the searches it runs, updated every couple of seconds.
 - **Review runs**: each time Devin reviewed the pull request, full or incremental, and on which
   commit.
 

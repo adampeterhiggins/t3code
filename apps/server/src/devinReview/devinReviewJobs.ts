@@ -1,6 +1,9 @@
 import {
   DevinReviewError,
   type DevinReviewFinding,
+  type DevinReviewProgress,
+  type DevinReviewProgressStep,
+  type DevinReviewProgressStream,
   type DevinReviewPullRequestRef,
   type DevinReviewRun,
   type DevinReviewWalkthroughSection,
@@ -20,6 +23,8 @@ const MAX_INCREMENTAL_RESULTS = 5;
 const MAX_RUNS = 50;
 const MAX_SECTIONS = 30;
 const MAX_SECTION_CHARS = 8_000;
+const MAX_PROGRESS_STEPS = 40;
+const MAX_STEP_DETAIL_CHARS = 200;
 
 const Text = Schema.optional(Schema.NullOr(Schema.String));
 const Flag = Schema.optional(Schema.NullOr(Schema.Boolean));
@@ -271,5 +276,131 @@ export const fetchJobResult = (
   ).pipe(
     Effect.flatMap(decodeJobResult),
     Effect.map(stripJobResult),
+    Effect.mapError((error) => (error._tag === "DevinReviewError" ? error : shapeError())),
+  );
+
+const ToolCall = Schema.Struct({
+  name: Schema.String,
+  args: Schema.optional(Schema.NullOr(Schema.Record(Schema.String, Schema.Unknown))),
+});
+const Iteration = Schema.Struct({
+  tool_calls: Schema.optional(Schema.NullOr(Schema.Array(ToolCall))),
+});
+const ProgressStream = Schema.Struct({
+  status: Schema.optional(Schema.NullOr(Schema.String)),
+  awaiting_model: Flag,
+  iterations: Schema.optional(Schema.NullOr(Schema.Array(Iteration))),
+});
+const LifeguardProgress = Schema.Struct({
+  ...ProgressStream.fields,
+  streams: Schema.optional(
+    Schema.NullOr(
+      Schema.Struct({
+        bug_check: Schema.optional(Schema.NullOr(ProgressStream)),
+        security: Schema.optional(Schema.NullOr(ProgressStream)),
+        code_quality: Schema.optional(Schema.NullOr(ProgressStream)),
+      }),
+    ),
+  ),
+});
+type LifeguardProgress = typeof LifeguardProgress.Type;
+const decodeProgress = Schema.decodeUnknownEffect(LifeguardProgress);
+
+/** The reviewer works in a clone under `/home/ubuntu/repos/<repo>/`; show paths inside it. */
+const REPO_PREFIX = /^\/home\/ubuntu\/repos\/[^/]+\//u;
+const CD_PREFIX = /^cd\s+(?:\/tmp\/|\/home\/ubuntu\/repos\/)\S+\s+&&\s+/u;
+
+const stringArg = (args: Readonly<Record<string, unknown>>, ...keys: ReadonlyArray<string>) => {
+  for (const key of keys) {
+    const value = args[key];
+    if (typeof value === "string" && value.trim() !== "") return value.trim();
+  }
+  return null;
+};
+const shortDetail = (text: string | null) =>
+  text === null
+    ? null
+    : capText(text.replace(REPO_PREFIX, "").split("\n")[0]!.trim(), MAX_STEP_DETAIL_CHARS);
+
+function progressStep(call: typeof ToolCall.Type): DevinReviewProgressStep {
+  const args = call.args ?? {};
+  switch (call.name) {
+    case "Read":
+      return { tool: call.name, detail: shortDetail(stringArg(args, "file_path", "path")) };
+    case "bash": {
+      const command = stringArg(args, "command");
+      return { tool: call.name, detail: shortDetail(command?.replace(CD_PREFIX, "") ?? null) };
+    }
+    case "grep":
+    case "glob":
+      return { tool: call.name, detail: shortDetail(stringArg(args, "pattern")) };
+    case "special_files":
+      return {
+        tool: call.name,
+        detail: null,
+        count: Array.isArray(args.files) ? args.files.length : 0,
+      };
+    default:
+      return { tool: call.name, detail: null };
+  }
+}
+
+function progressStream(
+  kind: DevinReviewProgressStream["kind"],
+  stream: typeof ProgressStream.Type,
+  keep: (call: typeof ToolCall.Type) => boolean = () => true,
+): DevinReviewProgressStream {
+  const steps = (stream.iterations ?? []).flatMap((iteration): DevinReviewProgressStep[] => {
+    const calls = iteration.tool_calls ?? [];
+    if (calls.length === 0) return [{ tool: "finalizing", detail: null }];
+    return calls.filter(keep).map(progressStep);
+  });
+  const omittedSteps = Math.max(0, steps.length - MAX_PROGRESS_STEPS);
+  return {
+    kind,
+    status: stream.status ?? "running",
+    awaitingModel: stream.awaiting_model === true,
+    steps: steps.slice(omittedSteps),
+    omittedSteps,
+  };
+}
+
+/**
+ * Devin's progress keeps every tool call's full arguments, including the findings it reports;
+ * keep one short line per call. In parallel mode the top level only clones and reads rules files,
+ * as Devin's own page shows it.
+ */
+export function stripProgress(jobId: string, progress: LifeguardProgress): DevinReviewProgress {
+  const parallel = progress.streams ?? {};
+  const streams = [
+    ["bug_check", parallel.bug_check],
+    ["security", parallel.security],
+    ["code_quality", parallel.code_quality],
+  ] as const;
+  const running = streams.flatMap(([kind, stream]) =>
+    stream == null ? [] : [progressStream(kind, stream)],
+  );
+  const setup = progressStream(
+    "review",
+    progress,
+    running.length === 0
+      ? undefined
+      : (call) => call.name === "clone" || call.name === "special_files",
+  );
+  return {
+    jobId,
+    status: progress.status ?? "running",
+    streams: running.length === 0 || setup.steps.length > 0 ? [setup, ...running] : running,
+  };
+}
+
+/** The newest review Devin has queued or is running. */
+export const runningJob = (jobs: ReadonlyArray<DevinReviewJob>) =>
+  newestFirst(jobs).find((job) => job.status === "pending" || job.status === "running") ?? null;
+
+export const fetchJobProgress = (token: string, ref: DevinReviewPullRequestRef, jobId: string) =>
+  getJson(token, `/pr-review/lifeguard-progress/${encodeURIComponent(jobId)}`, ref).pipe(
+    Effect.flatMap(decodeProgress),
+    Effect.map((progress) => stripProgress(jobId, progress)),
     Effect.mapError((error) => (error._tag === "DevinReviewError" ? error : shapeError())),
   );

@@ -5,8 +5,10 @@ import {
   type DevinReviewJob,
   mergeFindingDetails,
   reviewRuns,
+  runningJob,
   selectJobResults,
   stripJobResult,
+  stripProgress,
 } from "./devinReviewJobs.ts";
 
 const job = (
@@ -45,6 +47,8 @@ describe("selectJobResults", () => {
       ],
     });
     assert.deepStrictEqual(selectJobResults([]), { full: null, incremental: [] });
+    assert.strictEqual(runningJob(jobs)?.job_id, "running");
+    assert.strictEqual(runningJob(jobs.slice(0, -1)), null);
   });
 
   it("lists runs newest first, naming Devin's job types", () => {
@@ -150,5 +154,77 @@ describe("stripJobResult and mergeFindingDetails", () => {
         [undefined, undefined, undefined, undefined],
       ],
     );
+  });
+});
+
+describe("stripProgress", () => {
+  const repo = "/home/ubuntu/repos/cin-fd-surveys";
+
+  it("keeps one short line per tool call, relative to the repository", () => {
+    const progress = stripProgress("job-1", {
+      status: "running",
+      awaiting_model: true,
+      iterations: [
+        { tool_calls: [{ name: "clone", args: { repo: "acme/web" } }] },
+        { tool_calls: [{ name: "special_files", args: { files: ["REVIEW.md", "AGENTS.md"] } }] },
+        {
+          tool_calls: [
+            { name: "Read", args: { file_path: `${repo}/src/app.ts` } },
+            { name: "bash", args: { command: `cd ${repo} && git diff --stat\nls -a` } },
+            { name: "grep", args: { pattern: "process.env", path: repo } },
+            { name: "report_bugs", args: { bugs: [{ id: "BUG-0001", title: "Secret" }] } },
+          ],
+        },
+        { tool_calls: [] },
+      ],
+    });
+    assert.deepStrictEqual(progress, {
+      jobId: "job-1",
+      status: "running",
+      streams: [
+        {
+          kind: "review",
+          status: "running",
+          awaitingModel: true,
+          omittedSteps: 0,
+          steps: [
+            { tool: "clone", detail: null },
+            { tool: "special_files", detail: null, count: 2 },
+            { tool: "Read", detail: "src/app.ts" },
+            { tool: "bash", detail: "git diff --stat" },
+            { tool: "grep", detail: "process.env" },
+            { tool: "report_bugs", detail: null },
+            { tool: "finalizing", detail: null },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("shows parallel agents after the setup steps, and only the latest steps of each", () => {
+    const reads = Array.from({ length: 45 }, (_, index) => ({
+      tool_calls: [{ name: "Read", args: { path: `${repo}/f${index}.ts` } }],
+    }));
+    const progress = stripProgress("job-2", {
+      status: "running",
+      iterations: [
+        { tool_calls: [{ name: "clone", args: {} }] },
+        { tool_calls: [{ name: "bash", args: { command: "ls" } }] },
+      ],
+      streams: {
+        bug_check: { status: "running", iterations: reads },
+        security: { status: "completed", awaiting_model: false, iterations: [] },
+      },
+    });
+    assert.deepStrictEqual(
+      progress.streams.map((stream) => [stream.kind, stream.status, stream.steps.length]),
+      [
+        ["review", "running", 1],
+        ["bug_check", "running", 40],
+        ["security", "completed", 0],
+      ],
+    );
+    assert.strictEqual(progress.streams[1]?.omittedSteps, 5);
+    assert.deepStrictEqual(progress.streams[1]?.steps[0], { tool: "Read", detail: "f5.ts" });
   });
 });

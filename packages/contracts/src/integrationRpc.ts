@@ -115,6 +115,7 @@ import {
   DevinReviewGetInput,
   DevinReviewListInput,
   DevinReviewListResult,
+  DevinReviewProgress,
   DevinReviewStatusSnapshot,
   DevinReviewSummariesInput,
   DevinReviewSummariesResult,
@@ -220,6 +221,7 @@ export const INTEGRATION_WS_METHODS = {
   devinReviewList: "devinReview.list",
   devinReviewSummaries: "devinReview.summaries",
   devinReviewStatus: "devinReview.status",
+  devinReviewSubscribeProgress: "devinReview.subscribeProgress",
   devinReviewGet: "devinReview.get",
   devinReviewTrigger: "devinReview.trigger",
   threadLinkWatchesSubscribe: "threadLinkWatches.subscribe",
@@ -770,6 +772,20 @@ const WsDevinReviewStatusRpc = Rpc.make(INTEGRATION_WS_METHODS.devinReviewStatus
   success: DevinReviewStatusSnapshot,
   error: DevinReviewRpcError,
 });
+/**
+ * What Devin's reviewer is doing while the pull request's review is queued or running, polled
+ * from Devin every few seconds while subscribed. Null when no review is running or when the
+ * connection is a service key, which cannot read it.
+ */
+const WsDevinReviewSubscribeProgressRpc = Rpc.make(
+  INTEGRATION_WS_METHODS.devinReviewSubscribeProgress,
+  {
+    payload: DevinReviewGetInput,
+    success: Schema.NullOr(DevinReviewProgress),
+    error: DevinReviewRpcError,
+    stream: true,
+  },
+);
 /** Status and counts for up to 20 pull requests, read in one batch. */
 const WsDevinReviewSummariesRpc = Rpc.make(INTEGRATION_WS_METHODS.devinReviewSummaries, {
   payload: DevinReviewSummariesInput,
@@ -868,6 +884,7 @@ export const IntegrationRpcGroup = RpcGroup.make(
   WsDevinReviewListRpc,
   WsDevinReviewSummariesRpc,
   WsDevinReviewStatusRpc,
+  WsDevinReviewSubscribeProgressRpc,
   WsDevinReviewGetRpc,
   WsDevinReviewTriggerRpc,
   WsThreadLinkWatchesSubscribeRpc,

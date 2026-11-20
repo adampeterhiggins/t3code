@@ -134,6 +134,7 @@ export const makeIntegrationRpcHandlers = Effect.fn("IntegrationRpc.handlers")(f
     [INTEGRATION_WS_METHODS.devinReviewList]: (input) => devinReviews.list(input),
     [INTEGRATION_WS_METHODS.devinReviewSummaries]: (input) => devinReviews.summaries(input),
     [INTEGRATION_WS_METHODS.devinReviewStatus]: (input) => devinReviews.status(input),
+    [INTEGRATION_WS_METHODS.devinReviewSubscribeProgress]: (input) => devinReviews.progress(input),
     [INTEGRATION_WS_METHODS.devinReviewGet]: (input) => devinReviews.get(input),
     [INTEGRATION_WS_METHODS.devinReviewTrigger]: (input) => devinReviews.trigger(input),
     [INTEGRATION_WS_METHODS.threadLinkWatchesSubscribe]: (_input) => threadLinkWatches.watches,

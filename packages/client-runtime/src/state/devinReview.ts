@@ -66,6 +66,13 @@ export function createDevinReviewEnvironmentAtoms<R, E>(
       tag: WS_METHODS.devinReviewStatus,
       staleTimeMs: 5_000,
     }),
+    // What Devin's reviewer is doing, pushed while subscribed to a queued or running review.
+    progress: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:devin-review:progress",
+      tag: WS_METHODS.devinReviewSubscribeProgress,
+      // The server polls Devin every 2 seconds for each subscription, so drop it soon after.
+      idleTtlMs: 10_000,
+    }),
     trigger: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:devin-review:trigger",
       tag: WS_METHODS.devinReviewTrigger,

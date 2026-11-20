@@ -162,6 +162,48 @@ export const DevinReviewStatusSnapshot = Schema.Struct({
 });
 export type DevinReviewStatusSnapshot = typeof DevinReviewStatusSnapshot.Type;
 
+/** One tool call Devin's reviewer made, such as reading a file or running a command. */
+export const DevinReviewProgressStep = Schema.Struct({
+  /**
+   * Devin's tool name, such as `clone`, `Read`, `bash`, `grep` or `report_bugs`, or
+   * `finalizing` for a turn with no tool call.
+   */
+  tool: Schema.String,
+  /** The file read, command run, or pattern searched, relative to the repository. */
+  detail: Schema.NullOr(Schema.String),
+  /** How many files a `special_files` step found, such as `REVIEW.md` and `AGENTS.md`. */
+  count: Schema.optional(Schema.Int),
+});
+export type DevinReviewProgressStep = typeof DevinReviewProgressStep.Type;
+
+/**
+ * One line of work in a running review. A review runs as one `review` agent, or, in parallel
+ * mode, as a short `review` setup followed by bug, security and code quality agents.
+ */
+export const DevinReviewProgressStream = Schema.Struct({
+  kind: Schema.Literals(["review", "bug_check", "security", "code_quality"]),
+  status: Schema.String,
+  /** The agent is waiting on its model between tool calls. */
+  awaitingModel: Schema.Boolean,
+  /** The latest steps, oldest first. */
+  steps: Schema.Array(DevinReviewProgressStep),
+  /** Steps left out before `steps`. */
+  omittedSteps: Schema.Int,
+});
+export type DevinReviewProgressStream = typeof DevinReviewProgressStream.Type;
+
+/**
+ * What Devin's reviewer is doing in a review that is queued or running, read from Devin's own
+ * (undocumented) review API with a Devin login.
+ */
+export const DevinReviewProgress = Schema.Struct({
+  jobId: Schema.String,
+  /** `not_started` while queued, then `running`, `completed` or `errored`. */
+  status: Schema.String,
+  streams: Schema.Array(DevinReviewProgressStream),
+});
+export type DevinReviewProgress = typeof DevinReviewProgress.Type;
+
 /** Status and finding counts for several pull requests at once, such as a thread's linked ones. */
 export const DevinReviewSummariesInput = Schema.Struct({
   urls: Schema.Array(TrimmedNonEmptyString.check(Schema.isMaxLength(2048))).check(

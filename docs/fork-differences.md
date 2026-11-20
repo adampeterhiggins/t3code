@@ -2449,6 +2449,11 @@ and `/job-result/{job}/{version}`, the same token) for the walkthrough, review r
 finding's impact, suggested fix prompt and Devin-side state, merged into the GitHub findings by
 comment id. Finished results are immutable, so the stripped result is cached per job version. Any
 failure leaves those fields null and never fails the read; service keys skip it.
+While a review is queued or running, a visible Devin Review tab subscribes to
+`devinReview.subscribeProgress`. The server polls `/pr-review/lifeguard-progress/{job}` every 2 s,
+as Devin's own page does, for that subscription only, strips each tool call to one short line (the
+raw response carries full arguments, including the findings), and pushes it when it changes. When
+Devin reports the review ended, it drops the cached status and jobs so the tab's next read sees it.
 
 A GitHub pull request's detail panel has a **Devin Review** tab, which attaches the review or a
 finding (as its review thread) to the thread beside it. With a Devin login, the tab also shows

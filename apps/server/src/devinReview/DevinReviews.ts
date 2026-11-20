@@ -5,6 +5,7 @@ import {
   type DevinReviewGetInput,
   type DevinReviewListInput,
   type DevinReviewListResult,
+  type DevinReviewProgress,
   type DevinReviewPullRequestRef,
   type DevinReviewStatus,
   type DevinReviewSummariesInput,
@@ -23,6 +24,7 @@ import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
 import * as HttpClient from "effect/http/HttpClient";
 
 import { GitHubCli, type GitHubCliError } from "../sourceControl/GitHubCli.ts";
@@ -30,10 +32,12 @@ import { DevinReviewAuth } from "./DevinReviewAuth.ts";
 import { type PrReviewResponse, devinPrReviewRequest } from "./devinReviewApi.ts";
 import {
   type JobVersionRef,
+  fetchJobProgress,
   fetchJobResult,
   fetchReviewJobs,
   mergeFindingDetails,
   reviewRuns,
+  runningJob,
   selectJobResults,
 } from "./devinReviewJobs.ts";
 import {
@@ -53,6 +57,8 @@ const JOB_RESULT_CONCURRENCY = 3;
 /** A finished job result never changes, so only the count of cached ones is bounded. */
 const JOB_RESULT_CAPACITY = 100;
 const APP_API_TIMEOUT = Duration.seconds(15);
+/** As often as Devin's own review page polls a running review's progress. */
+const PROGRESS_POLL_INTERVAL = Duration.seconds(2);
 
 const THREADS_FIELDS = `reviewThreads(first: 100) {
   nodes { isResolved isOutdated comments(first: 1) { nodes { author { login } COMMENT_FIELDS } } }
@@ -257,6 +263,13 @@ export class DevinReviews extends Context.Service<
     readonly trigger: (
       input: DevinReviewGetInput,
     ) => Effect.Effect<DevinReviewSummary, DevinReviewError>;
+    /**
+     * What Devin's reviewer is doing in the pull request's queued or running review, polled
+     * while subscribed and emitted when it changes; null while none is running.
+     */
+    readonly progress: (
+      input: DevinReviewGetInput,
+    ) => Stream.Stream<DevinReviewProgress | null, DevinReviewError>;
   }
 >()("t3/devinReview/DevinReviews") {}
 
@@ -626,7 +639,48 @@ export const make = Effect.gen(function* () {
     return yield* readStatus(ref);
   });
 
-  return DevinReviews.of({ get, list, summaries, status, trigger });
+  const progress = (input: DevinReviewGetInput) =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const ref = yield* parseRef(input.url);
+        // A service key cannot read Devin's review jobs.
+        if ((yield* appToken) === null) return Stream.succeed<DevinReviewProgress | null>(null);
+        let jobId: string | null = null;
+        const poll = Effect.gen(function* () {
+          const token = yield* requireAppToken;
+          if (jobId === null) {
+            jobId = runningJob(yield* fetchReviewJobs(token, ref))?.job_id ?? null;
+            if (jobId === null) return null;
+          }
+          const current = yield* fetchJobProgress(token, ref, jobId);
+          if (current.status !== "not_started" && current.status !== "running") {
+            // The review finished: look for the next one, and let status and findings reads see it.
+            jobId = null;
+            yield* Cache.invalidate(statusCache, refKey(ref));
+            yield* Cache.invalidate(jobsCache, refKey(ref));
+          }
+          return current;
+        }).pipe(
+          Effect.provide(services),
+          Effect.timeout(APP_API_TIMEOUT),
+          Effect.asSome,
+          // One failed poll keeps the last progress on screen; the next poll tries again.
+          Effect.catch((error) =>
+            Effect.logDebug("Could not read Devin Review progress", { detail: error.message }).pipe(
+              Effect.as(Option.none<DevinReviewProgress | null>()),
+            ),
+          ),
+        );
+        return Stream.tick(PROGRESS_POLL_INTERVAL).pipe(
+          Stream.mapEffect(() => poll),
+          Stream.filter(Option.isSome),
+          Stream.map((value) => value.value),
+          Stream.changesWith((a, b) => JSON.stringify(a) === JSON.stringify(b)),
+        );
+      }),
+    );
+
+  return DevinReviews.of({ get, list, summaries, status, trigger, progress });
 });
 
 export const layer = Layer.effect(DevinReviews, make);

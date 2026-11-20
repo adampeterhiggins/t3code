@@ -1,6 +1,8 @@
 import {
   parseDevinReviewUrl,
   type DevinReviewFinding,
+  type DevinReviewProgressStep,
+  type DevinReviewProgressStream,
   type DevinReviewSeverity,
   type DevinReviewStatus,
   type DevinReviewSummary,
@@ -59,6 +61,72 @@ export function devinReviewFindingCountLabel(
   return resolve(msg("{count, plural, one {{count} open finding} other {{count} open findings}}"), {
     count: open,
   });
+}
+
+const PROGRESS_STEP_LABELS: Record<string, string> = {
+  clone: msg("Fetched the pull request"),
+  report_bugs: msg("Reported bugs"),
+  dedup_bugs: msg("Consolidated findings"),
+  report_duplicates_and_resolved: msg("Consolidated findings"),
+  find_clean_code: msg("Checked code patterns"),
+  find_flags: msg("Checked for flags"),
+  report_analyses: msg("Reported flags"),
+  find_security: msg("Checked for security issues"),
+  report_security_findings: msg("Reported security issues"),
+  run_reviewers: msg("Ran custom reviewers"),
+  merge_manager: msg("Checked merge readiness"),
+  no_review_needed: msg("Decided no review was needed"),
+  finalizing: msg("Finalizing", { $context: "Devin review progress step" }),
+};
+
+/** One line of Devin's progress, as Devin's own review page words it. */
+export function devinProgressStepLabel(
+  step: DevinReviewProgressStep,
+  resolve: MessageResolver = m,
+): string {
+  const detail = step.detail ?? "";
+  switch (step.tool) {
+    case "Read":
+      return detail ? resolve(msg("Read {path}"), { path: detail }) : resolve(msg("Read a file"));
+    case "bash":
+      return resolve(msg("Ran {command}"), { command: detail });
+    case "grep":
+      return resolve(msg("Searched for “{pattern}”"), { pattern: detail });
+    case "glob":
+      return resolve(msg("Found files matching {pattern}"), { pattern: detail });
+    case "special_files":
+      return step.count
+        ? resolve(
+            msg("{count, plural, one {Read {count} rules file} other {Read {count} rules files}}"),
+            { count: step.count },
+          )
+        : resolve(msg("Found no rules files"));
+  }
+  const label = PROGRESS_STEP_LABELS[step.tool];
+  // A tool Devin added since; its own name is the best label there is.
+  return label === undefined ? step.tool : resolve(label);
+}
+
+const PROGRESS_STREAM_LABELS: Record<DevinReviewProgressStream["kind"], string> = {
+  review: msg("Setup", { $context: "Devin review progress stream" }),
+  bug_check: msg("Bug detection"),
+  security: msg("Security review"),
+  code_quality: msg("Code quality"),
+};
+
+export function devinProgressStreamLabel(
+  stream: Pick<DevinReviewProgressStream, "kind" | "status">,
+  resolve: MessageResolver = m,
+): { readonly title: string; readonly status: string } {
+  return {
+    title: resolve(PROGRESS_STREAM_LABELS[stream.kind]),
+    status:
+      stream.status === "running"
+        ? resolve(msg("Running", { $context: "Devin review progress stream" }))
+        : stream.status === "completed"
+          ? resolve(msg("Done", { $context: "Devin review progress stream" }))
+          : resolve(msg("Failed", { $context: "Devin review progress stream" })),
+  };
 }
 
 /** `src/a.ts:12–14`, `src/a.ts:12`, `src/a.ts`, or null for a comment on the whole change. */

@@ -96,6 +96,7 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof WS_METHODS.discordSubscribeState
   | typeof WS_METHODS.discordSubscribeThreadLinks
   | typeof WS_METHODS.devinReviewSubscribeState
+  | typeof WS_METHODS.devinReviewSubscribeProgress
   | typeof WS_METHODS.githubIssuesSubscribeThreadLinks
   | typeof WS_METHODS.threadLinkWatchesSubscribe
   | typeof WS_METHODS.messageDraftsSubscribe
