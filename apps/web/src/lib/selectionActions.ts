@@ -119,7 +119,9 @@ export function observeSelectionActions({
   const onSelectionStart = (event: PointerEvent) => {
     if (!event.isPrimary) return;
     const target = event.target as Element | null;
-    if (target?.closest("button, [role=button]")) return;
+    // Quotable text inside a clickable row, such as an expanded thought, still starts a selection.
+    const control = target?.closest("button, [role=button], [data-assistant-citation-source]");
+    if (control && !control.hasAttribute("data-assistant-citation-source")) return;
     gestureActive = event.button === 0 && !event.defaultPrevented;
     dismissed = !gestureActive;
   };

@@ -15,7 +15,7 @@ import { workEntryDisplayLabel, type MessagesTimelineRow } from "./MessagesTimel
 
 const TOOL_DETAIL_MAX_LENGTH = 400;
 
-/** Where an excerpt starts or ends. A quote keeps only the selected part of a message. */
+/** Where an excerpt starts or ends. A quote keeps only the selected part of a message or thought. */
 export interface TranscriptEndpoint {
   readonly itemId: string;
   readonly quote?: { readonly text: string; readonly markdown?: string };
@@ -26,10 +26,6 @@ export function transcriptItemId(entry: TimelineEntry): string {
   if (entry.kind === "message") return entry.message.id;
   if (entry.kind === "work") return entry.entry.id;
   return entry.id;
-}
-
-function isCitableTool(entry: WorkLogEntry): boolean {
-  return workLogEntryIsToolLike(entry) && entry.tone !== "thinking";
 }
 
 function fence(text: string): string {
@@ -64,6 +60,14 @@ function toolStatus(entry: WorkLogEntry): string | null {
   }
 }
 
+function renderThought(entry: WorkLogEntry, quote: TranscriptEndpoint["quote"]) {
+  const text = (quote ? quote.text : (entry.detail ?? "")).trim();
+  if (text.length === 0) return null;
+  const markdown = (quote ? (quote.markdown ?? quote.text) : (entry.detail ?? "")).trim();
+  // oxlint-disable-next-line t3code/no-untranslated-copy -- citation text sent to the agent
+  return { text: `Thinking:\n${text}`, markdown: `**Thinking**\n\n${markdown}` };
+}
+
 function renderTool(entry: WorkLogEntry, workspaceRoot: string | undefined) {
   const label = workEntryDisplayLabel(entry, workspaceRoot).trim() || entry.label;
   const name = entry.toolTitle?.trim();
@@ -81,9 +85,9 @@ function renderTool(entry: WorkLogEntry, workspaceRoot: string | undefined) {
 }
 
 /**
- * Quotes every message and tool call from one endpoint to the other, in timeline order, so
- * entries hidden by collapsed tool groups or folded turns are included as well. Reasoning
- * and other activity are left out.
+ * Quotes every message, tool call, and thought from one endpoint to the other, in timeline
+ * order, so entries hidden by collapsed tool groups or folded turns are included as well.
+ * Other activity is left out.
  */
 export function buildTranscriptCitation({
   threadRef,
@@ -112,9 +116,14 @@ export function buildTranscriptCitation({
   const markdowns: string[] = [];
   for (let index = startIndex; index <= endIndex; index += 1) {
     const entry = entries[index]!;
+    const quote = index === startIndex ? first.quote : index === endIndex ? last.quote : undefined;
     if (entry.kind === "work") {
-      if (!isCitableTool(entry.entry)) continue;
-      const rendered = renderTool(entry.entry, workspaceRoot);
+      if (!workLogEntryIsToolLike(entry.entry)) continue;
+      const rendered =
+        entry.entry.tone === "thinking"
+          ? renderThought(entry.entry, quote)
+          : renderTool(entry.entry, workspaceRoot);
+      if (!rendered) continue;
       segments.push({ kind: "tool", id: entry.entry.id });
       texts.push(rendered.text);
       markdowns.push(rendered.markdown);
@@ -122,7 +131,6 @@ export function buildTranscriptCitation({
     }
     if (entry.kind !== "message" || entry.message.role === "system") continue;
     const { role } = entry.message;
-    const quote = index === startIndex ? first.quote : index === endIndex ? last.quote : undefined;
     const text = quote
       ? quote.text
       : role === "user"
