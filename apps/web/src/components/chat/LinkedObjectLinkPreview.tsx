@@ -7,6 +7,7 @@ import {
   gitHubRefContextRecord,
 } from "@t3tools/client-runtime/state/github-issues";
 import { granolaNoteContextRecord } from "@t3tools/client-runtime/state/granola";
+import { devinReviewContextRecord } from "@t3tools/client-runtime/state/devinReview";
 import { notionPageContextRecord } from "@t3tools/client-runtime/state/notion";
 import { googleFileContextRecord } from "@t3tools/client-runtime/state/google";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
@@ -30,6 +31,7 @@ import { useEnvironmentSettings } from "~/hooks/useSettings";
 import { discordEnvironment } from "~/state/discord";
 import { githubIssueEnvironment } from "~/state/githubIssues";
 import { granolaEnvironment } from "~/state/granola";
+import { devinReviewEnvironment } from "~/state/devinReview";
 import { linearEnvironment } from "~/state/linear";
 import { notionEnvironment } from "~/state/notion";
 import { googleEnvironment } from "~/state/google";
@@ -103,6 +105,11 @@ export function useLinkedObjectRecord(
   const granola = useEnvironmentQuery(
     open && granolaEnabled && link.kind === "granola-note"
       ? granolaEnvironment.note({ environmentId, input: { id: link.noteId } })
+      : null,
+  );
+  const devinReview = useEnvironmentQuery(
+    open && link.kind === "devin-review"
+      ? devinReviewEnvironment.review({ environmentId, input: { url: link.url } })
       : null,
   );
   const slack = useEnvironmentQuery(
@@ -184,6 +191,12 @@ export function useLinkedObjectRecord(
           available: granolaEnabled,
           record: granola.data && granolaNoteContextRecord(granola.data),
           failed: granola.error !== null,
+        };
+      case "devin-review":
+        return {
+          available: true,
+          record: devinReview.data && devinReviewContextRecord(devinReview.data),
+          failed: devinReview.error !== null,
         };
       case "slack-message":
       case "slack-channel":

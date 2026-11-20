@@ -64,9 +64,11 @@ import { DocumentText } from "./DocumentText.ts";
 import { EnvironmentThemeService } from "../environmentTheme.ts";
 import { ProviderRegistry } from "./ProviderRegistry.ts";
 import budget from "./agentContextBudget.json" with { type: "json" };
+import { DevinReviews } from "../devinReview/DevinReviews.ts";
 
 // Registration only stores tool definitions, so the handlers' services are never called.
 const toolHandlerServices = Layer.mergeAll(
+  Layer.mock(DevinReviews)({}),
   Layer.mock(ThreadLinkWatches)({}),
   Layer.mock(SlackThreadLinks)({}),
   Layer.mock(SlackApi)({}),

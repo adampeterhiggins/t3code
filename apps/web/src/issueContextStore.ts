@@ -7,6 +7,7 @@ import type {
   NotionPageContextRecord,
   GoogleFileContextRecord,
   GranolaNoteContextRecord,
+  DevinReviewContextRecord,
   PromptLinkContextRecord,
   GitHubIssueContextRecord,
   GitHubRefContextRecord,
@@ -36,6 +37,7 @@ export type IssueContextRecord =
   | NotionPageContextRecord
   | GoogleFileContextRecord
   | GranolaNoteContextRecord
+  | DevinReviewContextRecord
   | SubagentContextRecord
   | PromptLinkContextRecord
   | GitHubRefContextRecord

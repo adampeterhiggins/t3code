@@ -97,6 +97,8 @@ import * as DiscordAuth from "./discord/DiscordAuth.ts";
 import * as DiscordMentionTrigger from "./discord/DiscordMentionTrigger.ts";
 import * as DiscordThreadLinks from "./discord/DiscordThreadLinks.ts";
 import * as GitHubIssues from "./githubIssues/GitHubIssues.ts";
+import * as DevinReviewAuth from "./devinReview/DevinReviewAuth.ts";
+import * as DevinReviews from "./devinReview/DevinReviews.ts";
 import * as GitHubIssueThreadLinks from "./githubIssues/GitHubIssueThreadLinks.ts";
 import * as MessageDrafts from "./messageDrafts/MessageDrafts.ts";
 import * as EventNdjsonLogger from "./provider/EventNdjsonLogger.ts";
@@ -885,9 +887,15 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
       ),
     ),
     Layer.provideMerge(
-      GitHubIssueThreadLinks.layer.pipe(
-        Layer.provideMerge(GitHubIssues.layer),
-        Layer.provide(GitHubCli.layer),
+      Layer.mergeAll(
+        GitHubIssueThreadLinks.layer.pipe(
+          Layer.provideMerge(GitHubIssues.layer),
+          Layer.provide(GitHubCli.layer),
+        ),
+        DevinReviews.layer.pipe(
+          Layer.provideMerge(DevinReviewAuth.layer),
+          Layer.provide(GitHubCli.layer),
+        ),
       ),
     ),
     Layer.provideMerge(MessageDrafts.layer),

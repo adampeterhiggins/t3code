@@ -123,6 +123,7 @@ import { GranolaSettingsSection } from "./GranolaSettings";
 import { LinearSettingsSection } from "./LinearSettings";
 import { SlackSettingsSection } from "./SlackSettings";
 import { DiscordSettingsSection } from "./DiscordSettings";
+import { DevinReviewSettingsSection } from "./DevinReviewSettings";
 import { AdvancedSettings } from "./AdvancedSettings";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { BrowserImportWizard, type WizardTarget } from "./BrowserImportWizard";
@@ -1753,6 +1754,7 @@ export function IntegrationsSettingsPanel() {
       <GranolaSettingsSection />
       <SlackSettingsSection />
       <DiscordSettingsSection />
+      <DevinReviewSettingsSection />
     </SettingsPageContainer>
   );
 }

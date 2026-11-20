@@ -105,6 +105,12 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.googleUnlinkThread]: AuthOrchestrationOperateScope,
   [WS_METHODS.granolaLinkThread]: AuthOrchestrationOperateScope,
   [WS_METHODS.granolaUnlinkThread]: AuthOrchestrationOperateScope,
+  [WS_METHODS.devinReviewConnect]: AuthOrchestrationOperateScope,
+  [WS_METHODS.devinReviewSignIn]: AuthOrchestrationOperateScope,
+  [WS_METHODS.devinReviewCancelSignIn]: AuthOrchestrationOperateScope,
+  [WS_METHODS.devinReviewDisconnect]: AuthOrchestrationOperateScope,
+  // Starting a review spends the Devin organization's ACUs.
+  [WS_METHODS.devinReviewTrigger]: AuthOrchestrationOperateScope,
   [WS_METHODS.threadLinkWatchSet]: AuthOrchestrationOperateScope,
   [ORCHESTRATION_V2_WS_METHODS.stopWorkflow]: AuthOrchestrationOperateScope,
   // Force stop kills agent processes, as Stop on a terminal does.

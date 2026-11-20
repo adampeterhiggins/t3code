@@ -44,6 +44,14 @@ export function formatIntegrationContextPayload(record: IntegrationContextRecord
       return [`granola meeting note: ${record.title}`, `url: ${record.url}`, record.markdown].join(
         "\n",
       );
+    case "devin-review":
+      return [
+        `devin review: ${record.repository}#${record.number}`,
+        `url: ${record.url}`,
+        `pull request: ${record.pullRequestUrl}`,
+        `status: ${record.status}`,
+        record.markdown,
+      ].join("\n");
     case "linear-issue":
       return [
         `linear issue: ${record.identifier}`,

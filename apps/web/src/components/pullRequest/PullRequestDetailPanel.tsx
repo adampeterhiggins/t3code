@@ -16,7 +16,10 @@ import {
 import {
   AuthOrchestrationOperateScope,
   AuthSourceControlWriteScope,
+  type DevinReviewContext,
+  type DevinReviewFinding,
   type EnvironmentId,
+  parseDevinReviewUrl,
   type PullRequestAction,
   type PullRequestDetail,
   type PullRequestMergeMethod,
@@ -91,6 +94,9 @@ import { useUiStateStore } from "~/uiStateStore";
 
 import { Button } from "../ui/button";
 import { toastManager } from "../ui/toast";
+import { DevinReviewContent, DevinReviewToolbar } from "../devinReview/DevinReviewBody";
+import { devinReviewContextRecord } from "@t3tools/client-runtime/state/devinReview";
+import { useIssueContextStore } from "~/issueContextStore";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { MiddleTruncate } from "../ui/middle-truncate";
 import {
@@ -273,6 +279,7 @@ const TABS: ReadonlyArray<{ value: PullRequestDetailTab; label: string }> = [
   { value: "guide", label: msg("Guide", { $context: "pull request tab" }) },
   { value: "timeline", label: msg("Timeline", { $context: "pull request tab" }) },
   { value: "code", label: msg("Code", { $context: "pull request tab" }) },
+  { value: "devin", label: msg("Devin", { $context: "pull request tab" }) },
 ];
 
 // Defer the diff viewer's worker pool until Code is approached.
@@ -481,6 +488,12 @@ export function PullRequestDetailPanel({
   const [selectedTab, setTab] = useState<PullRequestDetailTab>(
     () => linkedTab(revealAnchor) ?? initialTab,
   );
+  // A surface opened again on another tab, such as from the right panel's + menu, switches to it.
+  const [seenInitialTab, setSeenInitialTab] = useState(initialTab);
+  if (initialTab !== seenInitialTab) {
+    setSeenInitialTab(initialTab);
+    setTab(initialTab);
+  }
   const reviewGuidesEnabled = useEnvironmentSettings(
     environmentId,
     (settings) => settings.reviewGuidesEnabled,
@@ -490,9 +503,15 @@ export function PullRequestDetailPanel({
     tabOnPage && state.pageDetailTab?.key === guideKey ? state.pageDetailTab.tab : null,
   );
   const requestedTab = tabOnPage ? (pageTab ?? initialTab) : selectedTab;
+  // Devin Review only reviews GitHub pull requests.
+  const devinReviewUrl =
+    detail !== null && parseDevinReviewUrl(detail.url, { acceptGitHub: true }) !== null
+      ? detail.url
+      : null;
   const isTabAvailable = (value: PullRequestDetailTab) =>
     (value !== "code" || detail === null || detail.capabilities.diff) &&
-    (value !== "guide" || reviewGuidesEnabled);
+    (value !== "guide" || reviewGuidesEnabled) &&
+    (value !== "devin" || devinReviewUrl !== null);
   // An unavailable tab falls back without overwriting the saved selection.
   const tab = isTabAvailable(requestedTab) ? requestedTab : "summary";
   const selectTab = (next: PullRequestDetailTab) => {
@@ -1324,6 +1343,35 @@ export function PullRequestDetailPanel({
    * A citation lands at the caret of the composer beside the panel, as one from a response does.
    * With no composer there, it opens a thread holding it.
    */
+  const attachDevinReview = (context: DevinReviewContext) => {
+    if (typeof attachTarget !== "object" || attachTarget === null) return;
+    const record = devinReviewContextRecord(context);
+    useIssueContextStore.getState().upsert(attachTarget.threadId, record);
+    useComposerDraftStore.getState().insertContextReference(attachTarget, {
+      kind: record.kind,
+      contextId: record.contextId,
+      label: record.label,
+    });
+  };
+  // Devin's suggested fix goes to the composer beside the panel, or a new thread, unsent.
+  const fixDevinFinding = (_context: DevinReviewContext, prompt: string) => {
+    void startAsk("devin-fix", { prompt });
+  };
+  // Devin's findings are review threads it started, so they attach like any other thread.
+  const addDevinFindingToChat = (_context: DevinReviewContext, finding: DevinReviewFinding) => {
+    const thread = detail?.reviewThreads.find(
+      (candidate) => candidate.comments[0]?.url === finding.url,
+    );
+    if (thread === undefined) {
+      toastManager.add({
+        type: "info",
+        title: gt("Finding not loaded"),
+        description: gt("Refresh the pull request to load Devin's latest comments."),
+      });
+      return;
+    }
+    addCommentToChat({ kind: "thread", thread });
+  };
   const addCommentToChat = (subject: PullRequestChatSubject) => {
     if (!detail || attachTarget === null) return;
     const thread =
@@ -2025,6 +2073,14 @@ export function PullRequestDetailPanel({
                   label={checksSummary}
                 />
               )
+            ) : tab === "devin" && devinReviewUrl !== null ? (
+              <DevinReviewToolbar
+                environmentId={environmentId}
+                url={devinReviewUrl}
+                {...(typeof attachTarget === "object" && attachTarget !== null
+                  ? { onAttach: attachDevinReview }
+                  : {})}
+              />
             ) : tab === "timeline" ? (
               <div className="ml-auto flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
                 <PullRequestMetaLine
@@ -2233,6 +2289,24 @@ export function PullRequestDetailPanel({
                   }
                   onOpenFile={openFileInCode}
                   onTourShown={onGuideShown}
+                />
+              </div>
+            ) : null}
+            {mountedTabs.has("devin") && devinReviewUrl !== null ? (
+              <div
+                data-pull-request-summary-scroll
+                className={cn(
+                  "absolute inset-0 overflow-y-auto pb-10",
+                  tab !== "devin" && "invisible",
+                )}
+              >
+                <DevinReviewContent
+                  environmentId={environmentId}
+                  url={devinReviewUrl}
+                  active={tab === "devin"}
+                  addFindingLabel={gt("Add to chat")}
+                  {...(attachTarget === null ? {} : { onAddFinding: addDevinFindingToChat })}
+                  {...(canFixFindings ? { onFixFinding: fixDevinFinding } : {})}
                 />
               </div>
             ) : null}

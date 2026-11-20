@@ -24,6 +24,8 @@ import { notionEnvironment } from "~/state/notion";
 import { googleEnvironment } from "~/state/google";
 import { granolaNoteContextRecord } from "@t3tools/client-runtime/state/granola";
 import { granolaEnvironment } from "~/state/granola";
+import { devinReviewContextRecord } from "@t3tools/client-runtime/state/devinReview";
+import { devinReviewEnvironment } from "~/state/devinReview";
 import {
   discordThreadContextRecord,
   slackResourceContextRecord,
@@ -143,6 +145,17 @@ function reportUnreadableGranolaLink(failure: unknown) {
     description: unavailable
       ? m(msg("The agent gets the link instead. Connect Granola in Settings → Integrations."))
       : failure instanceof Error
+        ? m(msg("The agent gets the link instead. {error}"), { error: failure.message })
+        : m(msg("The agent gets the link instead.")),
+  });
+}
+
+function reportUnreadableDevinReviewLink(failure: unknown) {
+  toastManager.add({
+    type: "info",
+    title: m(msg("Could not attach that Devin Review")),
+    description:
+      failure instanceof Error
         ? m(msg("The agent gets the link instead. {error}"), { error: failure.message })
         : m(msg("The agent gets the link instead.")),
   });
@@ -321,6 +334,9 @@ export function useResolveComposerObjectLink(input: {
   });
   const getDiscordThread = useAtomCommand(discordEnvironment.getThread, { reportFailure: false });
   const getGranolaNote = useAtomCommand(granolaEnvironment.getNote, { reportFailure: false });
+  const getDevinReview = useAtomCommand(devinReviewEnvironment.getReview, {
+    reportFailure: false,
+  });
   const getPullRequest = useAtomQueryRunner(pullRequestEnvironment.detail, {
     reportFailure: false,
   });
@@ -383,6 +399,20 @@ export function useResolveComposerObjectLink(input: {
           return "unreadable";
         }
         const record = granolaNoteContextRecord(result.value);
+        return {
+          reference: { kind: record.kind, contextId: record.contextId, label: record.label },
+          commit: () => useIssueContextStore.getState().upsert(threadRef.threadId, record),
+        };
+      }
+      case "devin-review": {
+        // Findings are read from GitHub, so this needs no Devin connection.
+        const result = await getDevinReview({ environmentId, input: { url: link.url } });
+        if (result._tag === "Failure") {
+          if (!isAtomCommandInterrupted(result))
+            reportUnreadableDevinReviewLink(squashAtomCommandFailure(result));
+          return "unreadable";
+        }
+        const record = devinReviewContextRecord(result.value);
         return {
           reference: { kind: record.kind, contextId: record.contextId, label: record.label },
           commit: () => useIssueContextStore.getState().upsert(threadRef.threadId, record),

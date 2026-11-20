@@ -741,6 +741,41 @@ export function ComposerContextSheet(props: {
                 </Text>
               </View>
             ) : null}
+            {record.kind === "devin-review" ? (
+              <View className="gap-3">
+                <View className="gap-1">
+                  <Text selectable className="text-lg font-t3-semibold text-foreground">
+                    {record.title}
+                  </Text>
+                  <Text className="text-sm text-foreground-muted">
+                    {`${record.repository}#${record.number} · ${record.openFindingCount} open ${record.openFindingCount === 1 ? "finding" : "findings"}`}
+                  </Text>
+                </View>
+                {/^https?:\/\//i.test(record.url) ? (
+                  <Pressable
+                    accessibilityRole="link"
+                    onPress={() => {
+                      void tryOpenExternalUrl(record.url, "markdown-link").then((opened) => {
+                        if (!opened)
+                          Dialog.alert(
+                            gt("Could not open {product}", { product: "Devin" }),
+                            gt("Try again later."),
+                          );
+                      });
+                    }}
+                    className="rounded-xl bg-subtle p-4"
+                  >
+                    <Text className="text-foreground">
+                      {gt("Open in {product}", { product: "Devin" })}
+                    </Text>
+                  </Pressable>
+                ) : null}
+                {/* Plain text like the other captured context here: exactly what the agent received. */}
+                <Text selectable className="text-sm text-foreground">
+                  {record.markdown}
+                </Text>
+              </View>
+            ) : null}
             {record.kind === "prompt-link" ? (
               <View className="gap-3">
                 <View className="gap-1">

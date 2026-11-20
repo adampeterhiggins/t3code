@@ -75,7 +75,7 @@ import { resolveShortcutCommand, type ShortcutMatchContext } from "~/keybindings
 import { readLocalApi } from "~/localApi";
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { Button } from "~/components/ui/button";
-import { AndroidIcon, AppleIcon } from "~/components/Icons";
+import { AndroidIcon, AppleIcon, DevinIcon } from "~/components/Icons";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { Kbd } from "~/components/ui/kbd";
 import {
@@ -154,6 +154,12 @@ export interface RightPanelTabsProps {
   onAddDevice: () => void;
   /** Absent where side chats are not offered. */
   onAddSideChat?: (() => void) | undefined;
+  /** Opens the thread's pull request on its Devin Review tab; absent where not offered. */
+  onAddDevinReview?: (() => void) | undefined;
+  devinReviewAvailable?: boolean;
+  /** With more than one, Devin Review asks which pull request to open. */
+  devinReviewPullRequests?: ReadonlyArray<DevinReviewPickerPullRequest> | undefined;
+  onAddDevinReviewFor?: ((key: string) => void) | undefined;
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
@@ -169,6 +175,29 @@ export interface RightPanelTabsProps {
   /** Fork: working subagents; badges the Agents row in the empty state. */
   liveAgentCount: number;
   children: ReactNode;
+}
+
+interface DevinReviewPickerPullRequest {
+  readonly key: string;
+  /** `owner/repo#12`. */
+  readonly label: string;
+  readonly title: string | null;
+}
+
+function DevinReviewPickerItems(props: {
+  pullRequests: ReadonlyArray<DevinReviewPickerPullRequest>;
+  onPick: (key: string) => void;
+}) {
+  return props.pullRequests.map((pullRequest) => (
+    <MenuItem key={pullRequest.key} onClick={() => props.onPick(pullRequest.key)}>
+      <span className="min-w-0 truncate">
+        <span className="font-mono">{pullRequest.label}</span>
+        {pullRequest.title ? (
+          <span className="text-muted-foreground"> {pullRequest.title}</span>
+        ) : null}
+      </span>
+    </MenuItem>
+  ));
 }
 
 export interface PullRequestTabStatus {
@@ -331,6 +360,16 @@ function SurfaceMenuItem(props: {
   return <DisabledReasonTooltip reason={props.disabledReason} trigger={item} />;
 }
 
+function devinReviewPicker(props: {
+  devinReviewPullRequests?: ReadonlyArray<DevinReviewPickerPullRequest> | undefined;
+  onAddDevinReviewFor?: ((key: string) => void) | undefined;
+}) {
+  const pullRequests = props.devinReviewPullRequests;
+  const onPick = props.onAddDevinReviewFor;
+  if (pullRequests === undefined || pullRequests.length < 2 || onPick === undefined) return null;
+  return { pullRequests, onPick };
+}
+
 function RightPanelEmptyState(props: {
   onAddBrowser: () => void;
   onAddBrowserInProfile: (profileId: string) => void;
@@ -344,6 +383,12 @@ function RightPanelEmptyState(props: {
   onAddDevice: () => void;
   /** Absent where side chats are not offered. */
   onAddSideChat?: (() => void) | undefined;
+  /** Opens the thread's pull request on its Devin Review tab; absent where not offered. */
+  onAddDevinReview?: (() => void) | undefined;
+  devinReviewAvailable?: boolean;
+  /** With more than one, Devin Review asks which pull request to open. */
+  devinReviewPullRequests?: ReadonlyArray<DevinReviewPickerPullRequest> | undefined;
+  onAddDevinReviewFor?: ((key: string) => void) | undefined;
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
@@ -359,6 +404,7 @@ function RightPanelEmptyState(props: {
   const gt = useGT();
   const messages = useMessages();
   const [highlight, setHighlight] = useState(-1);
+  const devinPicker = devinReviewPicker(props);
 
   const actions = [
     {
@@ -409,6 +455,18 @@ function RightPanelEmptyState(props: {
       disabledReason: messages(SURFACE_UNAVAILABLE_HINTS.pullRequests),
       onClick: props.onAddPullRequests,
     },
+    ...(props.onAddDevinReview === undefined
+      ? []
+      : [
+          {
+            label: msg("Devin Review"),
+            icon: DevinIcon,
+            shortcut: "R",
+            available: props.devinReviewAvailable === true,
+            disabledReason: messages(SURFACE_UNAVAILABLE_HINTS.pullRequest),
+            onClick: props.onAddDevinReview,
+          },
+        ]),
     {
       label: msg("Agents"),
       icon: Bot,
@@ -555,7 +613,9 @@ function RightPanelEmptyState(props: {
                   <span
                     className={cn(
                       "min-w-0 flex-1 truncate",
-                      action.label === "Browser" && props.browserProfiles.length > 1 && "pr-7",
+                      ((action.label === "Browser" && props.browserProfiles.length > 1) ||
+                        (action.label === "Devin Review" && devinPicker !== null)) &&
+                        "pr-7",
                     )}
                   >
                     {messages(action.label)}
@@ -585,6 +645,28 @@ function RightPanelEmptyState(props: {
                           <span className="min-w-0 truncate">{profile.name}</span>
                         </MenuItem>
                       ))}
+                    </MenuPopup>
+                  </Menu>
+                ) : null}
+                {action.label === "Devin Review" && devinPicker !== null ? (
+                  <Menu>
+                    <MenuTrigger
+                      render={
+                        <Button
+                          aria-label={gt("Choose a pull request for Devin Review")}
+                          className="absolute top-1/2 right-8 -translate-y-1/2"
+                          size="icon-xs"
+                          variant="ghost-muted"
+                        />
+                      }
+                    >
+                      <ChevronDown className="size-3.5" />
+                    </MenuTrigger>
+                    <MenuPopup align="end" side="bottom" sideOffset={6} className="max-w-72">
+                      <DevinReviewPickerItems
+                        pullRequests={devinPicker.pullRequests}
+                        onPick={devinPicker.onPick}
+                      />
                     </MenuPopup>
                   </Menu>
                 ) : null}
@@ -1146,6 +1228,8 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
   const addSurfaceTriggerRef = useRef<HTMLButtonElement>(null);
   const [renamingDevice, setRenamingDevice] = useState<string | null>(null);
   const [addSurfaceMenuOpen, setAddSurfaceMenuOpen] = useState(false);
+  const [devinPickerOpen, setDevinPickerOpen] = useState(false);
+  const devinPicker = devinReviewPicker(props);
   const [tabScrollState, setTabScrollState] = useState({
     hasOverflow: false,
     canScrollLeft: false,
@@ -1153,6 +1237,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
   });
 
   if (props.open === false && addSurfaceMenuOpen) setAddSurfaceMenuOpen(false);
+  if (!addSurfaceMenuOpen && devinPickerOpen) setDevinPickerOpen(false);
 
   const onNewSurfaceKeyDown = useEffectEvent((event: KeyboardEvent) => {
     if (event.defaultPrevented || event.isComposing) return;
@@ -1254,6 +1339,18 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       disabledReason: messages(SURFACE_DISABLED_REASONS.pullRequests),
       onClick: props.onAddPullRequests,
     },
+    ...(props.onAddDevinReview === undefined
+      ? []
+      : [
+          {
+            label: msg("Devin Review"),
+            icon: DevinIcon,
+            shortcut: "R",
+            available: props.devinReviewAvailable === true,
+            disabledReason: messages(SURFACE_DISABLED_REASONS.pullRequest),
+            onClick: props.onAddDevinReview,
+          },
+        ]),
     {
       label: msg("Agents"),
       icon: Bot,
@@ -1290,6 +1387,10 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
     if (!action) return;
     event.preventDefault();
     event.stopPropagation();
+    if (action.label === "Devin Review" && devinPicker !== null) {
+      setDevinPickerOpen(true);
+      return;
+    }
     setAddSurfaceMenuOpen(false);
     action.onClick();
   };
@@ -1563,6 +1664,30 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                 >
                   {addSurfaceActions.map((action) => {
                     const Icon = action.icon;
+                    if (action.label === "Devin Review" && action.available && devinPicker) {
+                      return (
+                        <MenuSub
+                          key={action.label}
+                          open={devinPickerOpen}
+                          onOpenChange={setDevinPickerOpen}
+                        >
+                          <MenuSubTrigger
+                            className="[&>svg:last-child]:ms-0"
+                            aria-keyshortcuts={action.shortcut}
+                          >
+                            <Icon />
+                            {action.label}
+                            <MenuShortcut>{action.shortcut}</MenuShortcut>
+                          </MenuSubTrigger>
+                          <MenuSubPopup className="max-w-72">
+                            <DevinReviewPickerItems
+                              pullRequests={devinPicker.pullRequests}
+                              onPick={devinPicker.onPick}
+                            />
+                          </MenuSubPopup>
+                        </MenuSub>
+                      );
+                    }
                     if (action.label === "Browser" && action.available) {
                       return (
                         <MenuSub key={action.label}>
@@ -1689,6 +1814,10 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             onAddAgents={props.onAddAgents}
             onAddDevice={props.onAddDevice}
             onAddSideChat={props.onAddSideChat}
+            onAddDevinReview={props.onAddDevinReview}
+            devinReviewAvailable={props.devinReviewAvailable === true}
+            devinReviewPullRequests={props.devinReviewPullRequests}
+            onAddDevinReviewFor={props.onAddDevinReviewFor}
             browserAvailable={props.browserAvailable}
             terminalAvailable={props.terminalAvailable}
             diffAvailable={props.diffAvailable}

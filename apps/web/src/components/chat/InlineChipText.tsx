@@ -27,6 +27,7 @@ import { ContextChip, ContextChipLabel, type ContextChipKind } from "../ContextC
 import {
   GitHubIcon,
   DiscordIcon,
+  DevinIcon,
   GranolaIcon,
   LinearIcon,
   NotionIcon,
@@ -59,6 +60,7 @@ const CHIP_ICONS: Partial<Record<ContextChipKind, ReactNode>> = {
   "notion-page": <NotionIcon />,
   "google-file": <GoogleIcon />,
   "granola-note": <GranolaIcon />,
+  "devin-review": <DevinIcon />,
   repository: <FolderGit2Icon />,
   checkout: <FolderIcon />,
   citation: <QuoteIcon />,

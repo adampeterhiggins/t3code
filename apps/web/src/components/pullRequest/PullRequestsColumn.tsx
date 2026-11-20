@@ -5,7 +5,11 @@ import { useEffect, useRef, useState, type ReactNode, type RefObject } from "rea
 
 import { isElectron } from "~/env";
 import { cn } from "~/lib/utils";
+import { useNavigate } from "@tanstack/react-router";
+
 import { Button } from "../ui/button";
+import { DevinIcon } from "../Icons";
+import { readDevinReviewInvolvement } from "../devinReview/devinReview.logic";
 import { RefreshIcon } from "../ui/refresh-icon";
 import {
   WorkspaceBreadcrumb,
@@ -265,6 +269,7 @@ export function PullRequestsColumn({
                 options={hostMenuOptions}
                 onChange={(next) => onHost(next === "" ? undefined : next)}
               />
+              <DevinReviewsLink />
               {!condensed ? (
                 <PullRequestRefreshControl refreshing={refreshing} onRefresh={onRefresh} />
               ) : null}
@@ -278,6 +283,24 @@ export function PullRequestsColumn({
       </div>
       <UsageFooter />
     </div>
+  );
+}
+
+function DevinReviewsLink() {
+  const navigate = useNavigate();
+  return (
+    <Button
+      variant="outline"
+      onClick={() =>
+        void navigate({
+          to: "/devin-reviews",
+          search: { involvement: readDevinReviewInvolvement() },
+        })
+      }
+    >
+      <DevinIcon aria-hidden />
+      <T>Devin Reviews</T>
+    </Button>
   );
 }
 

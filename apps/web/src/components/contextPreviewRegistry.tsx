@@ -68,6 +68,7 @@ export interface ContextPreviewPropsByKind {
   "notion-page": LinkedObjectPreviewProps;
   "google-file": LinkedObjectPreviewProps;
   "granola-note": LinkedObjectPreviewProps;
+  "devin-review": LinkedObjectPreviewProps;
   thread: ThreadPreviewProps;
   environment: Record<string, never>;
   subagent: SubagentPreviewProps;
@@ -205,6 +206,7 @@ export const CONTEXT_PRESENTATION_DEFINITIONS: ContextPresentationDefinitions = 
   "notion-page": { capabilities: COMPACT, preview: linkedObjectPreview },
   "google-file": { capabilities: COMPACT, preview: linkedObjectPreview },
   "granola-note": { capabilities: COMPACT, preview: linkedObjectPreview },
+  "devin-review": { capabilities: COMPACT, preview: linkedObjectPreview },
   subagent: { capabilities: COMPACT, preview: { details: "card", Body: SubagentPreview } },
   "prompt-link": { capabilities: COMPACT, preview: linkedObjectPreview },
   "github-ref": { capabilities: COMPACT, preview: linkedObjectPreview },

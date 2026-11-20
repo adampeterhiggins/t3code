@@ -14,6 +14,7 @@ export const INTEGRATION_CONTEXT_KINDS = [
   "notion-page",
   "google-file",
   "granola-note",
+  "devin-review",
   "subagent",
   "prompt-link",
   "github-ref",

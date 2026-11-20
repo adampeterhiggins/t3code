@@ -1,5 +1,7 @@
 import type {
   ComposerContextId,
+  DevinReviewContext,
+  DevinReviewContextRecord,
   DiscordThreadContext,
   DiscordThreadContextRecord,
   GitHubIssueContext,
@@ -234,6 +236,27 @@ export function granolaNoteContextRecord(note: GranolaNoteContext): GranolaNoteC
     meetingAt: note.meetingAt?.slice(0, 2048) ?? null,
     participants: note.participants.join(", ").slice(0, 2048),
     markdown: note.markdown,
+  };
+}
+
+export function devinReviewContextRecord(review: DevinReviewContext): DevinReviewContextRecord {
+  const repository = review.repository.toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
+  return {
+    version: 1,
+    kind: "devin-review",
+    contextId: `devin-review_${repository}_${review.number}`.slice(0, 128) as ComposerContextId,
+    label: sanitizeComposerContextLabel(
+      `Devin Review · ${review.repository}#${review.number}`,
+      "devin-review",
+    ),
+    repository: review.repository,
+    number: review.number,
+    title: review.title.slice(0, 2_048),
+    url: review.reviewUrl.slice(0, 2_048),
+    pullRequestUrl: review.pullRequestUrl.slice(0, 2_048),
+    status: review.status,
+    openFindingCount: review.openFindingCount,
+    markdown: review.markdown,
   };
 }
 

@@ -60,6 +60,7 @@ vi.mock("~/state/githubIssues", () => ({ githubIssueEnvironment: { getIssue: "gi
 vi.mock("~/state/google", () => ({ googleEnvironment: { getFile: "google" } }));
 vi.mock("~/state/notion", () => ({ notionEnvironment: { getPage: "notion" } }));
 vi.mock("~/state/granola", () => ({ granolaEnvironment: { getNote: "granola" } }));
+vi.mock("~/state/devinReview", () => ({ devinReviewEnvironment: { getReview: "devinReview" } }));
 vi.mock("~/state/pullRequests", () => ({
   pullRequestEnvironment: { detail: "detail", activity: "activity" },
 }));

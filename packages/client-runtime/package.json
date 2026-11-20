@@ -295,6 +295,10 @@
       "types": "./src/state/discord.ts",
       "default": "./src/state/discord.ts"
     },
+    "./state/devinReview": {
+      "types": "./src/state/devinReview.ts",
+      "default": "./src/state/devinReview.ts"
+    },
     "./state/threadLinkWatches": {
       "types": "./src/state/threadLinkWatches.ts",
       "default": "./src/state/threadLinkWatches.ts"

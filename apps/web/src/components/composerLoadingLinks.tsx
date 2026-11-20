@@ -17,6 +17,7 @@ import { m } from "~/i18n/messages";
 import { ContextChip, type ContextChipKind, ContextChipLabel } from "./ContextChip";
 import { GitHubRefIcon, gitHubRefTypeFromLink } from "./gitHubRefPresentation";
 import {
+  DevinIcon,
   DiscordIcon,
   GitHubIcon,
   GoogleSourceIcon,
@@ -58,6 +59,8 @@ function loadingLinkIcon(link: ComposerObjectLink) {
       return <GoogleSourceIcon url={link.url} />;
     case "granola-note":
       return <GranolaIcon />;
+    case "devin-review":
+      return <DevinIcon />;
     case "prompt-link":
       return <MessageSquareTextIcon />;
     case "slack-message":

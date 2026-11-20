@@ -22,6 +22,7 @@ import { GITHUB_REF_MARKDOWN_MAX_CHARS, GitHubRefType } from "./githubRefs.ts";
 import { LINEAR_ISSUE_MARKDOWN_MAX_CHARS, LinearObjectType } from "./linear.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import { GRANOLA_NOTE_MARKDOWN_MAX_CHARS } from "./granola.ts";
+import { DEVIN_REVIEW_MARKDOWN_MAX_CHARS, DevinReviewStatus } from "./devinReview.ts";
 import { NOTION_PAGE_MARKDOWN_MAX_CHARS, NotionLinkedBlock } from "./notion.ts";
 import { GOOGLE_FILE_MARKDOWN_MAX_CHARS } from "./google.ts";
 import {
@@ -550,6 +551,26 @@ export const GranolaNoteContextRecord = Schema.Struct({
 });
 export type GranolaNoteContextRecord = typeof GranolaNoteContextRecord.Type;
 
+/**
+ * Fork: a pull request's Devin Review, with its findings (Devin's inline comments on GitHub) as
+ * read when the chip was inserted.
+ */
+export const DevinReviewContextRecord = Schema.Struct({
+  ...recordBase,
+  kind: Schema.Literal("devin-review"),
+  /** `owner/repo`. */
+  repository: TrimmedNonEmptyString.check(Schema.isMaxLength(255)),
+  number: PositiveInt,
+  title: ShortString,
+  /** Devin's review page. */
+  url: ShortString,
+  pullRequestUrl: ShortString,
+  status: DevinReviewStatus,
+  openFindingCount: Schema.Int,
+  markdown: BoundedString(DEVIN_REVIEW_MARKDOWN_MAX_CHARS),
+});
+export type DevinReviewContextRecord = typeof DevinReviewContextRecord.Type;
+
 /** Must match `PROMPT_LINK_MAX_PROMPT_LENGTH` in `@t3tools/shared/promptLinks`. */
 const PROMPT_LINK_PROMPT_MAX_CHARS = 8_000;
 
@@ -662,6 +683,7 @@ const KnownComposerContextRecordGroupB = Schema.Union([
   UnreadLinkContextRecord,
   ModelContextRecord,
   LinearObjectContextRecord,
+  DevinReviewContextRecord,
 ]);
 export const KnownComposerContextRecord = Schema.Union([
   KnownComposerContextRecordGroupA,

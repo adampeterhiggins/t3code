@@ -22,6 +22,7 @@ import {
   slackLinkSnapshotInput,
 } from "@t3tools/source-control-definitions/composerObjectLinks";
 import {
+  devinReviewContextRecord,
   discordThreadContextRecord,
   gitHubIssueContextRecord,
   gitHubRefContextRecord,
@@ -40,6 +41,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 
+import * as DevinReviews from "../devinReview/DevinReviews.ts";
 import * as DiscordApi from "../discord/DiscordApi.ts";
 import * as GitHubIssues from "../githubIssues/GitHubIssues.ts";
 import * as GranolaApi from "../granola/GranolaApi.ts";
@@ -93,7 +95,7 @@ const unreadable = (verb: Verb, url: string) => (error: { readonly message: stri
   invalid(`Could not ${verb} ${url}: ${error.message}`);
 
 const UNRECOGNIZED_LINK =
-  "Use a Slack message, channel, canvas, list, file, or profile, a Discord message, Notion page, Google Drive file, folder, Calendar event or Gmail conversation, Granola note, Linear issue, project, document, or initiative, GitHub issue, GitHub repository, GitHub release, tag, branch, or commit, or T3 Code prompt link.";
+  "Use a Slack message, channel, canvas, list, file, or profile, a Discord message, Notion page, Google Drive file, folder, Calendar event or Gmail conversation, Granola note, Devin Review, Linear issue, project, document, or initiative, GitHub issue, GitHub repository, GitHub release, tag, branch, or commit, or T3 Code prompt link.";
 
 const make = Effect.gen(function* () {
   const linear = yield* LinearApi.LinearApi;
@@ -103,6 +105,7 @@ const make = Effect.gen(function* () {
   const slack = yield* SlackApi.SlackApi;
   const discord = yield* DiscordApi.DiscordApi;
   const gitHubIssues = yield* GitHubIssues.GitHubIssues;
+  const devinReviews = yield* DevinReviews.DevinReviews;
   const settings = yield* ServerSettings.ServerSettingsService;
 
   const integrationEnabled = (
@@ -214,6 +217,10 @@ const make = Effect.gen(function* () {
           const note = yield* granola.getNote(input).pipe(Effect.mapError(unreadable(verb, url)));
           return granolaNoteContextRecord(note);
         });
+      case "devin-review":
+        return devinReviews
+          .get({ url })
+          .pipe(Effect.mapError(unreadable(verb, url)), Effect.map(devinReviewContextRecord));
       case "slack-message":
       case "slack-channel":
         return Effect.gen(function* () {
@@ -333,5 +340,6 @@ export const layer: Layer.Layer<
   | SlackApi.SlackApi
   | DiscordApi.DiscordApi
   | GitHubIssues.GitHubIssues
+  | DevinReviews.DevinReviews
   | ServerSettings.ServerSettingsService
 > = Layer.effect(McpContextLinks, make);
