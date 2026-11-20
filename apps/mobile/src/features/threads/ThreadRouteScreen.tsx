@@ -1354,6 +1354,7 @@ function ThreadRouteContent(
           onResumeQueue={composer.canResume ? handleResumeQueue : null}
           onSendMessage={sendWithTabContext}
           offersSideChat={composer.sideChatUnavailableReason === null}
+          onSendCommand={composer.onSendCommand}
           onReconnectEnvironment={handleReconnectEnvironment}
           onStopBackgroundWork={handleStopBackgroundWork}
           canSwitchThreadProvider={composer.canSwitchThreadProvider}

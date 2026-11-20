@@ -1,6 +1,6 @@
 import { msg, T, useGT, useMessages, Var } from "gt-react-native";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
-import { useAtomSet, useAtomValue } from "@effect/atom-react";
+import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -11,7 +11,8 @@ import {
   DEFAULT_STEER_WHILE_AWAITING_SUBAGENTS,
   type FollowUpBehavior,
 } from "../../lib/followUpBehavior";
-import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
+import { mobilePreferencesAtom, saveMobilePreferences } from "../../state/preferences";
+import { useAtomCommand } from "../../state/use-atom-command";
 import { ListChoiceRow as SettingsChoiceRow } from "../../components/ui/ListChoiceRow";
 import { SettingsSection } from "./components/SettingsSection";
 import { SettingsSwitchRow } from "./components/SettingsSwitchRow";
@@ -39,7 +40,7 @@ export function SettingsFollowUpRouteScreen() {
   const m = useMessages();
   const insets = useSafeAreaInsets();
   const preferencesResult = useAtomValue(mobilePreferencesAtom);
-  const savePreferences = useAtomSet(updateMobilePreferencesAtom);
+  const savePreferences = useAtomCommand(saveMobilePreferences);
   const preferencesReady = AsyncResult.isSuccess(preferencesResult) && !preferencesResult.waiting;
   const selectedBehavior = AsyncResult.isSuccess(preferencesResult)
     ? (preferencesResult.value.followUpBehavior ?? DEFAULT_FOLLOW_UP_BEHAVIOR)
@@ -66,7 +67,9 @@ export function SettingsFollowUpRouteScreen() {
             selected={selectedBehavior === option.behavior}
             separated={index > 0}
             disabled={!preferencesReady}
-            onPress={() => savePreferences({ followUpBehavior: option.behavior })}
+            onPress={() => {
+              void savePreferences({ followUpBehavior: option.behavior });
+            }}
           />
         ))}
       </SettingsSection>
@@ -79,7 +82,9 @@ export function SettingsFollowUpRouteScreen() {
             )}
             disabled={!preferencesReady}
             value={steerWhileAwaitingSubagents}
-            onValueChange={(value) => savePreferences({ steerWhileAwaitingSubagents: value })}
+            onValueChange={(value) => {
+              void savePreferences({ steerWhileAwaitingSubagents: value });
+            }}
           />
         </SettingsSection>
       ) : null}

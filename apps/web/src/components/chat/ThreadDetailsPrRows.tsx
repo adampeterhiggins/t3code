@@ -1,4 +1,4 @@
-import { ThreadDetailsControl } from "./ThreadDetailsControl";
+import { ThreadDetailsMoreButton } from "./ThreadDetailsControl";
 import type {
   EnvironmentId,
   ScopedThreadRef,
@@ -10,8 +10,7 @@ import {
   pullRequestListLines,
   threadPullRequestKeyOf,
 } from "@t3tools/client-runtime/thread-pull-requests";
-import { T, useMessages, Var } from "gt-react";
-import { ChevronDownIcon, ChevronUpIcon } from "lucide-react";
+import { useMessages } from "gt-react";
 import { useState, type ComponentProps, type MouseEvent as ReactMouseEvent } from "react";
 
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
@@ -133,28 +132,11 @@ function ThreadDetailsPrRows({
           ))}
         </div>
       ) : null}
-      <ThreadDetailsControl
-        variant="ghost"
-        size="sm"
-        onClick={() => setExpanded(!expanded)}
-        part="row"
-        tone="muted"
-        className="w-full active:scale-100"
-      >
-        {/* Chevrons, not plus and minus: the plus already means "add" in this card. */}
-        {expanded ? (
-          <ChevronUpIcon aria-hidden className="size-4 shrink-0" />
-        ) : (
-          <ChevronDownIcon aria-hidden className="size-4 shrink-0" />
-        )}
-        {expanded ? (
-          <T>Show less</T>
-        ) : (
-          <T>
-            Show <Var>{rest.length}</Var> more
-          </T>
-        )}
-      </ThreadDetailsControl>
+      <ThreadDetailsMoreButton
+        expanded={expanded}
+        remaining={rest.length}
+        onToggle={() => setExpanded(!expanded)}
+      />
     </>
   );
 }
