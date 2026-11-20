@@ -1,5 +1,10 @@
 import { canStartThreadPullRequestWatch } from "@t3tools/client-runtime/thread-pull-request-compatibility";
-import type { ProjectId, ScopedThreadRef, ThreadPullRequestLink } from "@t3tools/contracts";
+import type {
+  DevinReviewSummary,
+  ProjectId,
+  ScopedThreadRef,
+  ThreadPullRequestLink,
+} from "@t3tools/contracts";
 import {
   sourceControlClients,
   UNKNOWN_SOURCE_CONTROL_CLIENT,
@@ -40,6 +45,18 @@ import { usePullRequestIntentPrefetch } from "./usePullRequestIntentPrefetch";
 import { cn } from "~/lib/utils";
 import { useShortcutModifierState } from "~/shortcutModifierState";
 import { useProjects, useServerConfigs, useThreadShell } from "~/state/entities";
+import { openPullRequestDevinReview } from "~/rightPanelStore";
+import { devinReviewEnvironment } from "~/state/devinReview";
+import { useEnvironmentQuery } from "~/state/query";
+import { DevinIcon } from "../Icons";
+import { Badge } from "../ui/badge";
+import {
+  devinReviewFindingCountLabel,
+  devinReviewStatusPresentation,
+  devinReviewSummaryHasNews,
+  devinReviewSummaryKey,
+  devinReviewablePullRequests,
+} from "../devinReview/devinReview.logic";
 import { PullRequestChangeBreakdownStat } from "./PullRequestChangeBreakdownStat";
 import { PullRequestsUnavailableState } from "./PullRequestsUnavailableState";
 import { threadEnvironment } from "~/state/threads";
@@ -101,6 +118,45 @@ function ChecksGlyph({
 
 type WatchAction = "watch" | "pause" | "resume" | "stop";
 
+/** Devin's status and open findings for one row; opens the pull request on its Devin Review tab. */
+function DevinReviewRowBadge(props: { summary: DevinReviewSummary; onOpen: () => void }) {
+  const { summary } = props;
+  const gt = useGT();
+  const resolve = useMessages();
+  const status = devinReviewStatusPresentation(summary, resolve);
+  const findings = devinReviewFindingCountLabel(
+    summary.openFindingCount,
+    summary.findingCount,
+    resolve,
+  );
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Badge
+            size="sm"
+            variant={status.variant}
+            render={<button type="button" />}
+            aria-label={gt("Devin Review: {status}, {findings}", {
+              status: status.label,
+              findings,
+            })}
+            onClick={props.onOpen}
+          />
+        }
+      >
+        <DevinIcon aria-hidden />
+        {summary.openFindingCount > 0 ? (
+          <span className="tabular-nums">{summary.openFindingCount}</span>
+        ) : null}
+      </TooltipTrigger>
+      <TooltipPopup>
+        {gt("Devin Review: {status} · {findings}", { status: status.label, findings })}
+      </TooltipPopup>
+    </Tooltip>
+  );
+}
+
 /** Fork: what an open pull request's watch is waiting on, with the follow-ups it has spent. */
 function WatchStatusLine({ line: { link, depth } }: { line: PullRequestListLine }) {
   const gt = useGT();
@@ -139,6 +195,7 @@ function LinkRowImpl({
   onIntent,
   canPause,
   canStartWatch,
+  devinSummary,
 }: {
   line: PullRequestListLine;
   threadRef: ScopedThreadRef;
@@ -151,6 +208,8 @@ function LinkRowImpl({
   canPause: boolean;
   onIntent: (link: ThreadPullRequestLink | null) => void;
   canStartWatch: boolean;
+  /** Shown only when Devin has something to say about the pull request. */
+  devinSummary: DevinReviewSummary | null;
 }) {
   const gt = useGT();
   const resolve = useMessages();
@@ -351,6 +410,20 @@ function LinkRowImpl({
           updatedAt={snapshot?.updatedAt}
         />
       </a>
+      {devinSummary !== null && projectId !== null ? (
+        <DevinReviewRowBadge
+          summary={devinSummary}
+          onOpen={() =>
+            openPullRequestDevinReview(threadRef, {
+              projectId,
+              host: link.host,
+              repository: link.repository,
+              number: link.number,
+              url: link.url,
+            })
+          }
+        />
+      ) : null}
       {actionEntry !== null ? (
         <PullRequestSpeedActions
           entry={actionEntry}
@@ -528,6 +601,23 @@ function EnabledThreadPullRequestsPanel({ threadRef }: { threadRef: ScopedThread
   const supportsWatchPause = capabilities?.threadPullRequestWatchPause === true;
   const lines = (() => pullRequestListLines(links))();
   const canStartWatch = thread !== null && canStartThreadPullRequestWatch(thread);
+  // One read for every GitHub row; the server takes at most 20 links.
+  const devinUrls = devinReviewablePullRequests(links)
+    .slice(0, 20)
+    .map((link) => link.url);
+  const devinSummaries = useEnvironmentQuery(
+    devinUrls.length === 0
+      ? null
+      : devinReviewEnvironment.summaries({
+          environmentId: threadRef.environmentId,
+          input: { urls: devinUrls },
+        }),
+  ).data;
+  const devinSummaryByKey = new Map(
+    (devinSummaries?.reviews ?? [])
+      .filter(devinReviewSummaryHasNews)
+      .map((summary) => [devinReviewSummaryKey(summary.repository, summary.number), summary]),
+  );
   const handleUnlink = (link: ThreadPullRequestLink) => {
     void unlink({
       environmentId: threadRef.environmentId,
@@ -564,6 +654,7 @@ function EnabledThreadPullRequestsPanel({ threadRef }: { threadRef: ScopedThread
     opensInApp,
     primaryEnvironmentId,
     thread,
+    devinSummaryByKey,
   }))();
 
   if (linkCount === 0 && issues.length === 0) {
@@ -636,6 +727,11 @@ function EnabledThreadPullRequestsPanel({ threadRef }: { threadRef: ScopedThread
                 onIntent={intendLink}
                 canPause={supportsWatchPause}
                 canStartWatch={canStartWatch}
+                devinSummary={
+                  devinSummaryByKey.get(
+                    devinReviewSummaryKey(line.link.repository, line.link.number),
+                  ) ?? null
+                }
               />
               {supportsWatchPause ? <WatchStatusLine line={line} /> : null}
             </>

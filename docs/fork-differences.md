@@ -2426,6 +2426,52 @@ Code: [GranolaAuth](../apps/server/src/granola/GranolaAuth.ts),
 [GranolaNotePickerSheet](../apps/mobile/src/components/GranolaNotePickerSheet.tsx). User guide:
 [Granola](./user/granola.md).
 
+## Devin Review
+
+Devin's public API can only start a review and report its status for a pull request URL, so
+findings come from GitHub: Devin Review posts them as review comments from
+`devin-ai-integration[bot]`, each starting with a `<!-- devin-review-comment {…} -->` marker
+(file, lines, kind) and a severity emoji. The server reads them through the `gh` session with one
+GraphQL call per pull request, or one search for the list, so they work without a Devin key.
+**Settings > Integrations > Devin Review** signs in with the environment's `devin` CLI login: Devin
+has no OAuth client registration for third parties, but its v3 API accepts the CLI's
+`credentials.toml` token, and `/v3/self` names the user's organization. The server records only
+the organization and rereads the token on each call, running Devin's ACP `devin-browser` sign-in
+when there is none. A pasted `cog_…` service key and org ID is the fallback. Either is used for
+status (`GET /v3/organizations/{org}/pr-reviews`, cached for a minute) and **Run review** (`POST`,
+orchestration-operate); Devin's reply to **Run review** becomes the cached status at once. Devin has
+no push API, so a Devin Review tab polls, only while it is the visible tab of a visible window, `devinReview.status` (Devin's status only, no GitHub
+read; cached 10 s while a review is in flight, 60 s otherwise) every 15 s while a review runs and
+every 60 s otherwise, and re-reads the findings when Devin's answer changes. Devin answers a bad
+token with 403 `Unauthorized`, which is treated like a 401.
+With the CLI login, `get` also reads Devin's undocumented web-app API (`api.devin.ai/pr-review/jobs`
+and `/job-result/{job}/{version}`, the same token) for the walkthrough, review runs, and each
+finding's impact, suggested fix prompt and Devin-side state, merged into the GitHub findings by
+comment id. Finished results are immutable, so the stripped result is cached per job version. Any
+failure leaves those fields null and never fails the read; service keys skip it.
+
+A GitHub pull request's detail panel has a **Devin Review** tab, which attaches the review or a
+finding (as its review thread) to the thread beside it. With a Devin login, the tab also shows
+Devin's walkthrough, each finding's impact and Devin's own dismissed/resolved state, review runs,
+and **Fix with agent**, which puts Devin's suggested fix prompt in the composer unsent. That data
+comes from Devin's undocumented review API, and the tab falls back to GitHub-only findings without
+it. **Devin Review** in the right panel's **+** menu opens the thread's pull request on that tab,
+or offers a submenu of the linked GitHub pull requests when there are several, and the **Linked
+pull requests** list badges each GitHub row with Devin's status and open findings from one
+`devinReview.summaries` read. The web and desktop **Pull requests** page
+links to a **Devin Reviews** subpage listing open
+pull requests the GitHub account authored or was asked to review, with findings and actions. A
+pasted `app.devin.ai/review/…` link becomes a `devin-review` chip on web and desktop; mobile shows
+the chip but has no page or picker. Agents get `list_devin_reviews`, `get_devin_review`, and
+`trigger_devin_review` (the `pull-requests` capability; trigger is gated like the other write
+tools) and can pass the links as `contextLinks` or to `read_context_link`.
+
+Code: [`apps/server/src/devinReview/`](../apps/server/src/devinReview/),
+[`devinReview.ts`](../packages/contracts/src/devinReview.ts),
+[`DevinReviewsPage.tsx`](../apps/web/src/components/devinReview/DevinReviewsPage.tsx), and
+[`DevinReviewSettings.tsx`](../apps/web/src/components/settings/DevinReviewSettings.tsx). User
+guide: [devin-review.md](./user/devin-review.md).
+
 ## Shared custom themes
 
 A custom theme's card in **Settings → Appearance** has a **Share** button that publishes the

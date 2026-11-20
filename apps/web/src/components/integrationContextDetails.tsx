@@ -1,6 +1,7 @@
 /* oxlint-disable react/no-array-index-key -- Read-only preview rows can repeat identical text and have no local state. */
 import type {
   CheckoutContextRecord,
+  DevinReviewContextRecord,
   DiscordThreadContextRecord,
   GitHubIssueContextRecord,
   GitHubRefContextRecord,
@@ -37,6 +38,7 @@ import { ChatThreadDetails } from "./ChatThreadDetails";
 import { PreviewCornerAction } from "./chat/PreviewCornerAction";
 import { ContextChipButton } from "./contextChipParts";
 import { gitHubRefTypeLabel } from "./gitHubRefPresentation";
+import { devinReviewChipSummary } from "./devinReview/devinReview.logic";
 import { DiscordIcon, SlackIcon } from "./Icons";
 import { Button } from "./ui/button";
 
@@ -624,6 +626,32 @@ export function GranolaNoteDetails({
         summary={granolaMeetingDate(record.meetingAt, messages)}
         url={record.url}
         linkLabel={gt("Open in Granola")}
+        onOpenLink={onOpenLink}
+      />
+      <IssueMarkdownBody text={record.markdown} />
+    </div>
+  );
+}
+
+/** An attached Devin Review: its status and findings as read when attached. */
+export function DevinReviewDetails({
+  record,
+  onOpenLink,
+}: {
+  record: Pick<
+    DevinReviewContextRecord,
+    "repository" | "number" | "status" | "openFindingCount" | "url" | "markdown"
+  >;
+  onOpenLink: (event: MouseEvent<HTMLElement>, url: string) => void;
+}) {
+  const gt = useGT();
+  const messages = useMessages();
+  return (
+    <div className="flex flex-col gap-2">
+      <IssueDetailsHeader
+        summary={devinReviewChipSummary(record, messages)}
+        url={record.url}
+        linkLabel={gt("Open in {product}", { product: "Devin" })}
         onOpenLink={onOpenLink}
       />
       <IssueMarkdownBody text={record.markdown} />

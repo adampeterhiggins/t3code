@@ -50,6 +50,7 @@ const contextChipVariants = cva(
         "google-file":
           "[--context-chip-accent:oklch(0.62_0.15_255)] has-[[data-google-sheet]]:[--context-chip-accent:oklch(0.62_0.13_152)]",
         "granola-note": "[--context-chip-accent:oklch(0.62_0.14_125)]",
+        "devin-review": "[--context-chip-accent:oklch(0.62_0.12_165)]",
         "slack-thread": "[--context-chip-accent:oklch(0.62_0.16_345)]",
         "slack-resource": "[--context-chip-accent:oklch(0.62_0.16_345)]",
         "discord-thread": "[--context-chip-accent:oklch(0.58_0.2_275)]",
@@ -80,6 +81,7 @@ const contextChipVariants = cva(
           "notion-page",
           "google-file",
           "granola-note",
+          "devin-review",
           "slack-thread",
           "slack-resource",
           "discord-thread",

@@ -2,6 +2,7 @@ import {
   type GitHubRefLink,
   type LinearObjectType,
   type SlackResourceType,
+  parseDevinReviewUrl,
   parseGranolaNoteId,
   parseNotionPageId,
   parseGoogleFileLink,
@@ -23,12 +24,19 @@ import {
  * A link in composer text to something the composer can attach as a chip instead: a Linear
  * issue, project, document, or initiative, a GitHub issue, a pull request, a GitHub repository
  * root, a GitHub release, tag, branch, commit, file, or Actions run or job, a Slack channel or message, a Discord message, a Notion page, a
- * Granola note, or a T3 Code prompt link.
+ * Granola note, a Devin Review, or a T3 Code prompt link.
  */
 export type ComposerObjectLink =
   | { readonly kind: "notion-page"; readonly url: string; readonly pageId: string }
   | { readonly kind: "google-file"; readonly url: string; readonly fileId: string }
   | { readonly kind: "granola-note"; readonly url: string; readonly noteId: string }
+  | {
+      readonly kind: "devin-review";
+      readonly url: string;
+      /** `owner/repo`. */
+      readonly repository: string;
+      readonly number: number;
+    }
   | { readonly kind: "linear-issue"; readonly url: string; readonly identifier: string }
   | {
       readonly kind: "linear-object";
@@ -287,6 +295,8 @@ export function parseComposerObjectLink(url: string): ComposerObjectLink | null 
   if (notionPageId !== null) return { kind: "notion-page", url, pageId: notionPageId };
   const granolaNoteId = parseGranolaNoteId(url);
   if (granolaNoteId !== null) return { kind: "granola-note", url, noteId: granolaNoteId };
+  const devinReview = parseDevinReviewUrl(url);
+  if (devinReview !== null) return { kind: "devin-review", url, ...devinReview };
   const segments = parsed.pathname.split("/").filter(Boolean);
 
   // https://linear.app/<workspace>/issue/<ENG-123>/<slug>, or
@@ -364,6 +374,8 @@ export function objectLinkLabel(url: string): string | null {
         : "Google document";
     case "granola-note":
       return "Granola note";
+    case "devin-review":
+      return `Devin Review · ${link.repository}#${link.number}`;
     case "linear-issue":
       return link.identifier;
     case "linear-object":
@@ -425,6 +437,7 @@ const OBJECT_LINK_NOUNS: Record<ComposerObjectLink["kind"], string> = {
   "notion-page": "Notion page",
   "google-file": "Google file, event or email",
   "granola-note": "Granola note",
+  "devin-review": "Devin Review",
   "linear-issue": "Linear issue",
   "linear-object": "Linear project, document, or initiative",
   "slack-message": "Slack message",

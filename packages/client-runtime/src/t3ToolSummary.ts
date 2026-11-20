@@ -1796,6 +1796,46 @@ export function summarizeT3ToolCalls(
       }
       break;
     }
+    case "read-devin-review": {
+      const count = selected.length;
+      if (count === 1) {
+        label = done
+          ? resolve(msg("Checked Devin Reviews"))
+          : resolve(msg("Tried to check Devin Reviews"));
+      } else {
+        label = done
+          ? resolve(
+              msg(
+                "{count, plural, one {Checked Devin Reviews {count} time} other {Checked Devin Reviews {count} times}}",
+                { count },
+              ),
+            )
+          : resolve(
+              msg(
+                "{count, plural, one {Tried to check Devin Reviews {count} time} other {Tried to check Devin Reviews {count} times}}",
+                { count },
+              ),
+            );
+      }
+      break;
+    }
+    case "start-devin-review": {
+      const count = selected.length;
+      label = done
+        ? resolve(
+            msg(
+              "{count, plural, one {Started {count} Devin Review} other {Started {count} Devin Reviews}}",
+              { count },
+            ),
+          )
+        : resolve(
+            msg(
+              "{count, plural, one {Tried to start {count} Devin Review} other {Tried to start {count} Devin Reviews}}",
+              { count },
+            ),
+          );
+      break;
+    }
     case "search-pages": {
       const count = selected.length;
       if (count === 1) {

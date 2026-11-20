@@ -739,6 +739,7 @@ const SPLIT_WS_RPC_PREFIXES = [
   "issueTrackers",
   "provider",
   "orchestration",
+  "devinReview",
 ] as const;
 type SplitWsRpc = Extract<
   ServerWsRpc,

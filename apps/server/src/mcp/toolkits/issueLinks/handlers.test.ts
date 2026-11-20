@@ -17,6 +17,7 @@ import * as Stream from "effect/Stream";
 import type { Tool } from "effect/ai";
 
 import * as DiscordThreadLinks from "../../../discord/DiscordThreadLinks.ts";
+import * as DevinReviews from "../../../devinReview/DevinReviews.ts";
 import * as GitHubIssueThreadLinks from "../../../githubIssues/GitHubIssueThreadLinks.ts";
 import * as GranolaThreadLinks from "../../../granola/GranolaThreadLinks.ts";
 import * as LinearApi from "../../../linear/LinearApi.ts";
@@ -74,6 +75,7 @@ const makeHarness = (settings: Parameters<typeof ServerSettings.layerTest>[0] = 
   const watches = new Map<string, ThreadLinkWatch>();
   const watchKey = (threadId: ThreadId, kind: ThreadLinkKind) => `${threadId} ${kind}`;
   const layerDependencies = Layer.mergeAll(
+    Layer.mock(DevinReviews.DevinReviews)({}),
     Layer.mock(ThreadLinkWatches.ThreadLinkWatches)({
       watch: (threadId, kind) =>
         Effect.sync(() => {

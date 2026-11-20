@@ -84,6 +84,8 @@ export type T3McpToolSummaryAction =
   | "search-issues"
   | "search-messages"
   | "search-pages"
+  | "read-devin-review"
+  | "start-devin-review"
   | "write-pr-guides"
   | "read-pr-guide"
   | "list-issues"
@@ -196,6 +198,21 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
     "search-pages",
   ),
   search_notion_pages: tool(["Search", "Searching", "Searched", "Notion pages"], "search-pages"),
+  get_devin_review: tool(
+    ["Read", "Reading", "Read", "a Devin Review"],
+    "read-devin-review",
+    "pull-request",
+  ),
+  list_devin_reviews: tool(
+    ["List", "Listing", "Listed", "Devin Reviews"],
+    "read-devin-review",
+    "pull-request",
+  ),
+  trigger_devin_review: tool(
+    ["Start", "Starting", "Started", "a Devin Review"],
+    "start-devin-review",
+    "pull-request",
+  ),
   list_linear_filter_options: tool(
     ["Check", "Checking", "Checked", "Linear filter options"],
     "search-issues",

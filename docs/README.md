@@ -14,6 +14,7 @@ This is a fork of upstream T3 Code. See [Fork differences](./fork-differences.md
 - [Slack](./user/slack.md)
 - [Discord](./user/discord.md)
 - [Granola](./user/granola.md)
+- [Devin Review](./user/devin-review.md)
 - [Project settings](./user/project-settings.md)
 - [Appearance and themes](./user/appearance.md)
 - [Keyboard shortcuts](./user/keybindings.md)

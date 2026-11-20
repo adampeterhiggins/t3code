@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import { formatComposerContextProviderPayload } from "@t3tools/shared/composerContextReferences";
 import { parseComposerObjectLink } from "@t3tools/source-control-definitions/composerObjectLinks";
 
+import * as DevinReviews from "../../../devinReview/DevinReviews.ts";
 import * as DiscordThreadLinks from "../../../discord/DiscordThreadLinks.ts";
 import * as GitHubIssueThreadLinks from "../../../githubIssues/GitHubIssueThreadLinks.ts";
 import * as GranolaThreadLinks from "../../../granola/GranolaThreadLinks.ts";
@@ -56,6 +57,7 @@ const make = Effect.gen(function* () {
   const googleApi = yield* GoogleApi.GoogleApi;
   const settings = yield* ServerSettings.ServerSettingsService;
   const watches = yield* ThreadLinkWatches.ThreadLinkWatches;
+  const devinReviews = yield* DevinReviews.DevinReviews;
 
   /** The search tools honour the same off switch as the composer and contextLinks. */
   const requireIntegrationOn = (
@@ -375,6 +377,18 @@ const make = Effect.gen(function* () {
         Effect.andThen(requireIntegrationOn("enableGoogleIntegration", "Google")),
         Effect.andThen(googleApi.searchPeople({ query: input.query.trim() })),
       ),
+    ),
+    get_devin_review: McpToolAccess.reads((input) =>
+      requireIntegrationRead.pipe(
+        Effect.andThen(devinReviews.get({ url: input.url })),
+        Effect.map(({ findings: _findings, ...review }) => review),
+      ),
+    ),
+    list_devin_reviews: McpToolAccess.reads((input) =>
+      requireIntegrationRead.pipe(Effect.andThen(devinReviews.list(input))),
+    ),
+    trigger_devin_review: McpToolAccess.writesWithCapability((input) =>
+      requireIntegrationRead.pipe(Effect.andThen(devinReviews.trigger({ url: input.url }))),
     ),
   } satisfies McpToolAccess.Handlers<typeof IssueLinksToolkit.tools>;
 });

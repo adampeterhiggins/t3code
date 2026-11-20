@@ -618,6 +618,9 @@ it.effect("guards integration thread links with the orchestration grant", () =>
         WS_METHODS.googleUnlinkThread,
         WS_METHODS.granolaLinkThread,
         WS_METHODS.granolaUnlinkThread,
+        WS_METHODS.devinReviewConnect,
+        WS_METHODS.devinReviewDisconnect,
+        WS_METHODS.devinReviewTrigger,
         WS_METHODS.threadLinkWatchSet,
       ];
       registry.set(sessions(env), AsyncResult.success(grant(false)));

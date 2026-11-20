@@ -200,7 +200,7 @@ function registerWorkspaceFocusCommands(router: AnyRouter): () => void {
   };
 }
 
-// Escape leaves the pull requests page when no scope (a selection, a dialog,
+// Escape leaves the pull requests and Devin Reviews pages when no scope (a selection, a dialog,
 // a drag) claimed it, so it observes after every other scope.
 function registerPullRequestsEscapeCommand(router: AnyRouter): () => void {
   return registerCommands(
@@ -208,7 +208,8 @@ function registerPullRequestsEscapeCommand(router: AnyRouter): () => void {
     {
       observe: (event, consumed) => {
         if (consumed || event.repeat || event.isComposing || event.key !== "Escape") return;
-        if (router.state.location.pathname !== "/pull-requests") return;
+        const { pathname } = router.state.location;
+        if (pathname !== "/pull-requests" && pathname !== "/devin-reviews") return;
         event.preventDefault();
         const activeElement = document.activeElement;
         if (activeElement instanceof HTMLElement) activeElement.blur();

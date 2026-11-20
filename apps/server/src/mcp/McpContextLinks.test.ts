@@ -13,6 +13,7 @@ import {
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
+import * as DevinReviews from "../devinReview/DevinReviews.ts";
 import * as DiscordApi from "../discord/DiscordApi.ts";
 import * as GitHubIssues from "../githubIssues/GitHubIssues.ts";
 import * as LinearApi from "../linear/LinearApi.ts";
@@ -56,6 +57,9 @@ const GRANOLA_ID = "abd3f11c-e46a-4467-bfff-9a06519ef066";
 const GRANOLA_URL = `https://notes.granola.ai/d/${GRANOLA_ID}`;
 
 let slackRequests: Array<SlackGetThreadInput> = [];
+
+const DEVIN_REVIEW_URL = "https://app.devin.ai/review/acme/app/pull/7";
+let devinReviewRequests: Array<string> = [];
 
 const DISCORD_URL =
   "https://discord.com/channels/100000000000000001/100000000000000002/100000000000000003";
@@ -145,6 +149,25 @@ const layer = (settings: Parameters<typeof ServerSettings.layerTest>[0] = {}) =>
             }),
         }),
         Layer.mock(GitHubIssues.GitHubIssues, {}),
+        Layer.mock(DevinReviews.DevinReviews, {
+          get: (input) => {
+            devinReviewRequests.push(input.url);
+            return Effect.succeed({
+              repository: "acme/app",
+              number: 7,
+              title: "Retry uploads",
+              pullRequestUrl: "https://github.com/acme/app/pull/7",
+              reviewUrl: DEVIN_REVIEW_URL,
+              status: "completed",
+              commitSha: "abc123",
+              statusAt: "2026-11-01T00:00:00Z",
+              openFindingCount: 1,
+              findingCount: 2,
+              findings: [],
+              markdown: "# Devin Review · acme/app#7: Retry uploads",
+            });
+          },
+        }),
         ServerSettings.layerTest(settings),
       ),
     ),
@@ -285,6 +308,7 @@ it.effect("passes on why an integration could not read a link", () =>
             Layer.mock(GoogleApi.GoogleApi, {}),
             Layer.mock(GranolaApi.GranolaApi, {}),
             Layer.mock(GitHubIssues.GitHubIssues, {}),
+            Layer.mock(DevinReviews.DevinReviews, {}),
             ServerSettings.layerTest(),
           ),
         ),
@@ -316,6 +340,19 @@ it.effect("reads a link into its chip record without a message", () =>
     );
     const notion = yield* Effect.flip(read(NOTION_URL));
     assert.match(notion.message, /^Could not read /u);
+  }).pipe(Effect.provide(layer())),
+);
+
+it.effect("reads a Devin Review link into its chip record", () =>
+  Effect.gen(function* () {
+    devinReviewRequests = [];
+    const record = yield* read(DEVIN_REVIEW_URL);
+    assert.deepStrictEqual(devinReviewRequests, [DEVIN_REVIEW_URL]);
+    assert.strictEqual(record.kind, "devin-review");
+    if (record.kind === "devin-review") {
+      assert.strictEqual(record.label, "Devin Review · acme/app#7");
+      assert.strictEqual(record.openFindingCount, 1);
+    }
   }).pipe(Effect.provide(layer())),
 );
 

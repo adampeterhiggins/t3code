@@ -20,6 +20,8 @@ import * as ThreadLinkWatches from "../threadLinkWatch/ThreadLinkWatches.ts";
 import * as NotionThreadLinks from "../notion/NotionThreadLinks.ts";
 import * as GoogleThreadLinks from "../google/GoogleThreadLinks.ts";
 import * as GitHubIssues from "../githubIssues/GitHubIssues.ts";
+import * as DevinReviewAuth from "../devinReview/DevinReviewAuth.ts";
+import * as DevinReviews from "../devinReview/DevinReviews.ts";
 import * as GitHubIssueThreadLinks from "../githubIssues/GitHubIssueThreadLinks.ts";
 
 export const makeIntegrationRpcHandlers = Effect.fn("IntegrationRpc.handlers")(function* () {
@@ -43,6 +45,8 @@ export const makeIntegrationRpcHandlers = Effect.fn("IntegrationRpc.handlers")(f
   const discordThreadLinks = yield* DiscordThreadLinks.DiscordThreadLinks;
   const threadLinkWatches = yield* ThreadLinkWatches.ThreadLinkWatches;
   const githubIssues = yield* GitHubIssues.GitHubIssues;
+  const devinReviewAuth = yield* DevinReviewAuth.DevinReviewAuth;
+  const devinReviews = yield* DevinReviews.DevinReviews;
   const githubIssueThreadLinks = yield* GitHubIssueThreadLinks.GitHubIssueThreadLinks;
   return IntegrationRpcGroup.of({
     [INTEGRATION_WS_METHODS.linearSubscribeState]: (_input) => linearAuth.state,
@@ -122,6 +126,16 @@ export const makeIntegrationRpcHandlers = Effect.fn("IntegrationRpc.handlers")(f
     [INTEGRATION_WS_METHODS.discordLinkThread]: (input) => discordThreadLinks.link(input),
     [INTEGRATION_WS_METHODS.discordUnlinkThread]: (input) =>
       discordThreadLinks.unlink(input).pipe(Effect.as({})),
+    [INTEGRATION_WS_METHODS.devinReviewSubscribeState]: (_input) => devinReviewAuth.state,
+    [INTEGRATION_WS_METHODS.devinReviewConnect]: (input) => devinReviewAuth.connect(input),
+    [INTEGRATION_WS_METHODS.devinReviewSignIn]: (_input) => devinReviewAuth.signIn,
+    [INTEGRATION_WS_METHODS.devinReviewCancelSignIn]: (_input) => devinReviewAuth.cancelSignIn,
+    [INTEGRATION_WS_METHODS.devinReviewDisconnect]: (_input) => devinReviewAuth.disconnect,
+    [INTEGRATION_WS_METHODS.devinReviewList]: (input) => devinReviews.list(input),
+    [INTEGRATION_WS_METHODS.devinReviewSummaries]: (input) => devinReviews.summaries(input),
+    [INTEGRATION_WS_METHODS.devinReviewStatus]: (input) => devinReviews.status(input),
+    [INTEGRATION_WS_METHODS.devinReviewGet]: (input) => devinReviews.get(input),
+    [INTEGRATION_WS_METHODS.devinReviewTrigger]: (input) => devinReviews.trigger(input),
     [INTEGRATION_WS_METHODS.threadLinkWatchesSubscribe]: (_input) => threadLinkWatches.watches,
     [INTEGRATION_WS_METHODS.threadLinkWatchSet]: (input) => threadLinkWatches.set(input),
     [INTEGRATION_WS_METHODS.githubIssuesList]: (input) => githubIssues.listIssues(input),

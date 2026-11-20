@@ -101,6 +101,10 @@ const DEFINITIONS = [
     capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
   },
   {
+    kind: "devin-review",
+    capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
+  },
+  {
     kind: "subagent",
     capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
   },

@@ -20,6 +20,7 @@ import { useDiffPanelStore } from "../../diffPanelStore";
 import { type ThreadPanelPresentation } from "../../rightPanelLayout";
 import {
   selectThreadPanelOpen,
+  openPullRequestDevinReview,
   type RightPanelSurface,
   useRightPanelStore,
 } from "../../rightPanelStore";
@@ -317,6 +318,12 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     useRightPanelStore.getState().openPullRequest(activeThreadRef, pullRequestPanelTarget);
   };
   const addPullRequestSurfaceStable = useStableCallback(addPullRequestSurface);
+  const addDevinReviewSurface = () => {
+    if (!supportsPullRequests || activeThreadRef === null || pullRequestPanelTarget === null)
+      return;
+    openPullRequestDevinReview(activeThreadRef, pullRequestPanelTarget);
+  };
+  const addDevinReviewSurfaceStable = useStableCallback(addDevinReviewSurface);
   const onOpenTurnDiff = (runId: RunId, filePath?: string) => {
     if (!isServerThread || !activeThreadRef) return;
     if (isDetachedChatWindow) return;
@@ -363,6 +370,7 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     addDiffSurfaceStable,
     addFilesSurfaceStable,
     addPullRequestSurfaceStable,
+    addDevinReviewSurfaceStable,
     addPullRequestsSurfaceStable,
     closePreviewPanelStable,
     copyRightPanelFilePathStable,

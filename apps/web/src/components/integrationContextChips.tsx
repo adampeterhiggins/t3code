@@ -59,6 +59,8 @@ export function issueDraftContextRecord(record: IssueContextRecord): Integration
       return { kind: "google-file", record };
     case "granola-note":
       return { kind: "granola-note", record };
+    case "devin-review":
+      return { kind: "devin-review", record };
     case "linear-issue":
       return { kind: "linear-issue", record };
     case "linear-object":
@@ -157,6 +159,7 @@ export const integrationComposerContextHandlers: {
   "notion-page": linkedObjectHandler("notion-page"),
   "google-file": linkedObjectHandler("google-file"),
   "granola-note": linkedObjectHandler("granola-note"),
+  "devin-review": linkedObjectHandler("devin-review"),
   subagent: {
     chip: (entry, { resolve }) =>
       entry.kind === "subagent"
@@ -264,6 +267,7 @@ export const integrationUserMessageChips: {
   "notion-page": linkedObjectUserMessageChip("notion-page"),
   "google-file": linkedObjectUserMessageChip("google-file"),
   "granola-note": linkedObjectUserMessageChip("granola-note"),
+  "devin-review": linkedObjectUserMessageChip("devin-review"),
   subagent: (record, context) =>
     record.kind === "subagent"
       ? {

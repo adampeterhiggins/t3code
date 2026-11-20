@@ -41,6 +41,7 @@ export * from "./linear.ts";
 export * from "./notion.ts";
 export * from "./google.ts";
 export * from "./granola.ts";
+export * from "./devinReview.ts";
 export * from "./chatThread.ts";
 export * from "./slack.ts";
 export * from "./discord.ts";

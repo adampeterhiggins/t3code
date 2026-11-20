@@ -315,9 +315,11 @@ import {
 } from "@t3tools/client-runtime/state/project-grouping";
 import { buildSidebarProjectPickerEntries } from "../sidebarProjectGrouping";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
+import { DevinIcon } from "./Icons";
 import { readPullRequestListPreferences } from "~/components/pullRequest/pullRequestListPreferences";
 import { readIssueListPreferences } from "~/components/issue/issueListPreferences";
 import { IssueGlyph } from "~/components/issue/issuePresentation";
+import { readDevinReviewInvolvement } from "~/components/devinReview/devinReview.logic";
 import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
 import { threadRecentUse } from "@t3tools/shared/paletteSearch";
 
@@ -2080,6 +2082,19 @@ function OpenCommandPaletteDialog(props: {
       icon: <PullRequestGlyph.pullRequest className={ITEM_ICON_CLASS} />,
       run: async () => {
         await navigate({ to: "/pull-requests", search: readPullRequestListPreferences() });
+      },
+    });
+    actionItems.push({
+      kind: "action",
+      value: "action:devin-reviews",
+      searchTerms: ["devin", "cognition", "review", "findings", "bugs", "pull requests"],
+      title: gt("Open Devin Reviews"),
+      icon: <DevinIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        await navigate({
+          to: "/devin-reviews",
+          search: { involvement: readDevinReviewInvolvement() },
+        });
       },
     });
   }

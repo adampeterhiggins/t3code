@@ -452,6 +452,7 @@ export function useComposerContextImport(input: {
         case "notion-page":
         case "google-file":
         case "granola-note":
+        case "devin-review":
         case "subagent":
         case "prompt-link":
         case "github-ref":

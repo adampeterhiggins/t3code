@@ -30,7 +30,7 @@ const RIGHT_PANEL_KINDS = [
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
-export type PullRequestDetailTab = "summary" | "guide" | "timeline" | "code";
+export type PullRequestDetailTab = "summary" | "guide" | "timeline" | "code" | "devin";
 
 export interface DeviceTabTarget {
   hostId: string;
@@ -1451,4 +1451,14 @@ export function selectSelectedRightPanelSurface(
 ): RightPanelSurface | null {
   const state = selectThreadRightPanelState(byThreadKey, ref);
   return state.surfaces.find((surface) => surface.id === state.activeSurfaceId) ?? null;
+}
+
+/** Opens a pull request's panel on its Devin Review tab, switching an open panel to that tab. */
+export function openPullRequestDevinReview(
+  ref: ScopedThreadRef,
+  target: Omit<Parameters<RightPanelStoreState["openPullRequest"]>[1], "detailTab">,
+): void {
+  const store = useRightPanelStore.getState();
+  store.openPullRequest(ref, { ...target, detailTab: "devin" });
+  store.setPullRequestDetailTab(ref, pullRequestSurfaceId(target), "devin");
 }

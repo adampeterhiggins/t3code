@@ -1,5 +1,10 @@
 import {
   ComposerContextKind,
+  DevinReviewError,
+  DevinReviewGetInput,
+  DevinReviewListInput,
+  DevinReviewListResult,
+  DevinReviewSummary,
   DiscordError,
   DiscordThreadLink,
   GitHubIssueError,
@@ -40,6 +45,7 @@ import * as Struct from "effect/Struct";
 import * as Tool from "effect/ai/Tool";
 import * as Toolkit from "effect/ai/Toolkit";
 
+import * as DevinReviews from "../../../devinReview/DevinReviews.ts";
 import * as McpContextLinks from "../../McpContextLinks.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
@@ -75,6 +81,7 @@ const dependencies = [
   ServerSettings.ServerSettingsService,
   McpContextLinks.McpContextLinks,
   ThreadLinkWatches.ThreadLinkWatches,
+  DevinReviews.DevinReviews,
 ];
 
 // Agents often have no Linear MCP server of their own, or one that is not authorised.
@@ -131,6 +138,7 @@ export const IssueLinkToolError = Schema.Union([
   GoogleError,
   DiscordError,
   GranolaError,
+  DevinReviewError,
   ThreadLinkWatchError,
 ]);
 export type IssueLinkToolError = typeof IssueLinkToolError.Type;
@@ -342,7 +350,7 @@ const UnwatchThreadLinkTool = Tool.make("unwatch_thread_link", {
   .annotate(Tool.OpenWorld, false);
 
 const ReadContextLinkTool = Tool.make("read_context_link", {
-  description: `Read a Slack message (with its thread), channel (its newest messages), canvas, list, file, or profile, a Discord message (with its thread), Notion page, Google Drive file, folder, Calendar event or Gmail conversation, Granola note, Linear issue, project, document, or initiative, GitHub issue, or GitHub release, tag, branch, or commit link through T3 Code's own connections, and return the same text a user attaching it to a message would send. Works without a separate MCP server for that service. Fails when the integration is disconnected or turned off, or cannot see the object. To give the link to another thread, use contextLinks on t3_thread_send instead.`,
+  description: `Read a Slack message (with its thread), channel (its newest messages), canvas, list, file, or profile, a Discord message (with its thread), Notion page, Google Drive file, folder, Calendar event or Gmail conversation, Granola note, Devin Review, Linear issue, project, document, or initiative, GitHub issue, or GitHub release, tag, branch, or commit link through T3 Code's own connections, and return the same text a user attaching it to a message would send. Works without a separate MCP server for that service. Fails when the integration is disconnected or turned off, or cannot see the object. To give the link to another thread, use contextLinks on t3_thread_send instead.`,
   parameters: Schema.Struct({
     url: TrimmedNonEmptyString.check(Schema.isMaxLength(4_096)).annotate({
       description: "The object's web link, as a user would paste it.",
@@ -520,6 +528,63 @@ const SearchGooglePeopleTool = Tool.make("search_google_people", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, true);
 
+export const GetDevinReviewResult = Schema.Struct({
+  ...DevinReviewSummary.fields,
+  markdown: Schema.String,
+});
+export type GetDevinReviewResult = typeof GetDevinReviewResult.Type;
+
+const DEVIN_STATUS =
+  "Devin's status for the head commit needs Devin Review connected in Settings > Integrations and reads unknown otherwise.";
+
+const GetDevinReviewTool = Tool.make("get_devin_review", {
+  description: `Read a pull request's Devin Review: Devin's status and the findings it left as review comments, as markdown grouped by file with severity and line range, open findings first. Findings are read from GitHub with gh. ${DEVIN_STATUS}`,
+  parameters: Schema.Struct({
+    url: DevinReviewGetInput.fields.url.annotate({
+      description: "A GitHub pull request URL or an app.devin.ai/review link.",
+    }),
+  }),
+  success: GetDevinReviewResult,
+  failure: IssueLinkToolError,
+  dependencies,
+})
+  .annotate(Tool.Title, "Read Devin Review")
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, true);
+
+const ListDevinReviewsTool = Tool.make("list_devin_reviews", {
+  description: `List open pull requests the gh account authored or was asked to review, newest first (up to 30), with each one's Devin Review status and open and total finding counts. ${DEVIN_STATUS} Use get_devin_review for the findings.`,
+  parameters: DevinReviewListInput,
+  success: DevinReviewListResult,
+  failure: IssueLinkToolError,
+  dependencies,
+})
+  .annotate(Tool.Title, "List Devin Reviews")
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, true);
+
+const TriggerDevinReviewTool = Tool.make("trigger_devin_review", {
+  description:
+    "Ask Devin to review a pull request's head commit now. Needs Devin Review connected in Settings > Integrations with a key that has UseReviewManual. Devin posts its findings on the pull request when the review completes; read them with get_devin_review.",
+  parameters: Schema.Struct({
+    url: DevinReviewGetInput.fields.url.annotate({
+      description: "A GitHub pull request URL or an app.devin.ai/review link.",
+    }),
+  }),
+  success: DevinReviewSummary,
+  failure: IssueLinkToolError,
+  dependencies,
+})
+  .annotate(Tool.Title, "Trigger Devin Review")
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, true);
+
 export const IssueLinksToolkit = Toolkit.make(
   LinkLinearIssueTool,
   UnlinkLinearIssueTool,
@@ -539,4 +604,7 @@ export const IssueLinksToolkit = Toolkit.make(
   SearchGoogleFilesTool,
   ListGoogleCalendarsTool,
   SearchGooglePeopleTool,
+  GetDevinReviewTool,
+  ListDevinReviewsTool,
+  TriggerDevinReviewTool,
 );

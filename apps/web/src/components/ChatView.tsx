@@ -82,6 +82,7 @@ import {
   type ResponseContextRecord,
   type ChatFileAttachment,
   isProviderNativeSubagentThread,
+  parseDevinReviewUrl,
   type EnvironmentId,
   type MessageId,
   type ModelSelection,
@@ -279,6 +280,7 @@ import {
   selectActiveRightPanelSurface,
   selectThreadPanelOpen,
   selectThreadRightPanelState,
+  openPullRequestDevinReview,
   useRightPanelStore,
 } from "../rightPanelStore";
 import { isPreviewSupportedInRuntime, useThreadPreviewState } from "../previewStateStore";
@@ -296,6 +298,7 @@ import {
   usePreviewMiniPlayerStore,
 } from "../previewMiniPlayerStore";
 import { threadPullRequestPanelTarget } from "./pullRequest/pullRequestDetail.logic";
+import { devinReviewablePullRequests } from "./devinReview/devinReview.logic";
 import { LinkPullRequestDialogHost } from "./pullRequest/LinkPullRequestDialog";
 import { GuestPendingMessages } from "./chat/GuestShareControls";
 import { useDeviceState } from "~/state/device";
@@ -2666,12 +2669,36 @@ export default function ChatView(props: ChatViewProps) {
           draftBranchPullRequest,
       })
     : null;
+  // Devin Review reads GitHub pull requests; with several linked, the + menu asks which.
+  const devinReviewLinks = devinReviewablePullRequests(visiblePullRequests);
+  const devinReviewPickerPullRequests =
+    devinReviewLinks.length > 1
+      ? devinReviewLinks.map((link) => ({
+          key: `${link.host}/${link.repository}#${link.number}`,
+          label: `${link.repository}#${link.number}`,
+          title: link.snapshot?.title ?? null,
+        }))
+      : undefined;
+  const openDevinReviewForStable = useStableCallback((key: string) => {
+    const link = devinReviewLinks.find(
+      (candidate) => `${candidate.host}/${candidate.repository}#${candidate.number}` === key,
+    );
+    if (link === undefined || activeThreadRef === null || !activeThread) return;
+    openPullRequestDevinReview(activeThreadRef, {
+      projectId: activeThread.projectId,
+      host: link.host,
+      repository: link.repository,
+      number: link.number,
+      url: link.url,
+    });
+  });
   const {
     activateRightPanelSurfaceStable,
     addDeviceSurfaceStable,
     addDiffSurfaceStable,
     addFilesSurfaceStable,
     addPullRequestSurfaceStable,
+    addDevinReviewSurfaceStable,
     addPullRequestsSurfaceStable,
     closePreviewPanelStable,
     copyRightPanelFilePathStable,
@@ -4626,6 +4653,14 @@ export default function ChatView(props: ChatViewProps) {
           onAddAgents={addAgentsSurface}
           onAddDevice={addDeviceSurfaceStable}
           onAddSideChat={sideChatsOffered ? openSideChatStable : undefined}
+          onAddDevinReview={addDevinReviewSurfaceStable}
+          devinReviewPullRequests={devinReviewPickerPullRequests}
+          onAddDevinReviewFor={openDevinReviewForStable}
+          devinReviewAvailable={
+            pullRequestSurfaceAvailable &&
+            pullRequestPanelTarget?.url !== undefined &&
+            parseDevinReviewUrl(pullRequestPanelTarget.url, { acceptGitHub: true }) !== null
+          }
           browserAvailable={canOperatePreview && browserAvailable}
           terminalAvailable={activeProject !== null && canOperateTerminal}
           diffAvailable={isServerThread && isGitRepo}

@@ -1396,6 +1396,18 @@ export const SETTINGS_SEARCH_ITEMS = [
     scope: "environment-defaults",
   },
   {
+    id: "devin-review",
+    title: msg("Devin Review"),
+    to: "/settings/integrations",
+    searchTerms: [
+      msg(
+        "devin review cognition pull request code review findings bugs sign in login service user key api key organization id run review connect",
+      ),
+    ],
+    environmentOnly: true,
+    scope: "environment-defaults",
+  },
+  {
     id: "device-sources",
     title: msg("Device sources"),
     to: "/settings/devices",

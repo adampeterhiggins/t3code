@@ -108,6 +108,19 @@ import {
   DiscordUnlinkThreadInput,
 } from "./discord.ts";
 import {
+  DevinReviewConnectInput,
+  DevinReviewConnectionState,
+  DevinReviewContext,
+  DevinReviewError,
+  DevinReviewGetInput,
+  DevinReviewListInput,
+  DevinReviewListResult,
+  DevinReviewStatusSnapshot,
+  DevinReviewSummariesInput,
+  DevinReviewSummariesResult,
+  DevinReviewSummary,
+} from "./devinReview.ts";
+import {
   GitHubGetIssueInput,
   GitHubIssueContext,
   GitHubIssueError,
@@ -199,6 +212,16 @@ export const INTEGRATION_WS_METHODS = {
   discordSubscribeThreadLinks: "discord.subscribeThreadLinks",
   discordLinkThread: "discord.linkThread",
   discordUnlinkThread: "discord.unlinkThread",
+  devinReviewSubscribeState: "devinReview.subscribeState",
+  devinReviewConnect: "devinReview.connect",
+  devinReviewSignIn: "devinReview.signIn",
+  devinReviewCancelSignIn: "devinReview.cancelSignIn",
+  devinReviewDisconnect: "devinReview.disconnect",
+  devinReviewList: "devinReview.list",
+  devinReviewSummaries: "devinReview.summaries",
+  devinReviewStatus: "devinReview.status",
+  devinReviewGet: "devinReview.get",
+  devinReviewTrigger: "devinReview.trigger",
   threadLinkWatchesSubscribe: "threadLinkWatches.subscribe",
   threadLinkWatchSet: "threadLinkWatches.set",
 
@@ -705,6 +728,67 @@ const WsGitHubIssuesUnlinkThreadRpc = Rpc.make(INTEGRATION_WS_METHODS.githubIssu
   error: GitHubIssueRpcError,
 });
 
+const DevinReviewRpcError = Schema.Union([DevinReviewError, EnvironmentAuthorizationError]);
+const WsDevinReviewSubscribeStateRpc = Rpc.make(INTEGRATION_WS_METHODS.devinReviewSubscribeState, {
+  payload: Schema.Struct({}),
+  success: DevinReviewConnectionState,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+const WsDevinReviewConnectRpc = Rpc.make(INTEGRATION_WS_METHODS.devinReviewConnect, {
+  payload: DevinReviewConnectInput,
+  success: DevinReviewConnectionState,
+  error: DevinReviewRpcError,
+});
+/**
+ * Uses the `devin` CLI's login on this environment, running Devin's browser sign-in first when
+ * there is none. Returns at once; the state stream reports the sign-in URL and the outcome.
+ */
+const WsDevinReviewSignInRpc = Rpc.make(INTEGRATION_WS_METHODS.devinReviewSignIn, {
+  payload: Schema.Struct({}),
+  success: DevinReviewConnectionState,
+  error: DevinReviewRpcError,
+});
+const WsDevinReviewCancelSignInRpc = Rpc.make(INTEGRATION_WS_METHODS.devinReviewCancelSignIn, {
+  payload: Schema.Struct({}),
+  success: DevinReviewConnectionState,
+  error: DevinReviewRpcError,
+});
+const WsDevinReviewDisconnectRpc = Rpc.make(INTEGRATION_WS_METHODS.devinReviewDisconnect, {
+  payload: Schema.Struct({}),
+  success: DevinReviewConnectionState,
+  error: DevinReviewRpcError,
+});
+const WsDevinReviewListRpc = Rpc.make(INTEGRATION_WS_METHODS.devinReviewList, {
+  payload: DevinReviewListInput,
+  success: DevinReviewListResult,
+  error: DevinReviewRpcError,
+});
+/** Asks Devin for one pull request's review status; cheap enough to poll while viewing. */
+const WsDevinReviewStatusRpc = Rpc.make(INTEGRATION_WS_METHODS.devinReviewStatus, {
+  payload: DevinReviewGetInput,
+  success: DevinReviewStatusSnapshot,
+  error: DevinReviewRpcError,
+});
+/** Status and counts for up to 20 pull requests, read in one batch. */
+const WsDevinReviewSummariesRpc = Rpc.make(INTEGRATION_WS_METHODS.devinReviewSummaries, {
+  payload: DevinReviewSummariesInput,
+  success: DevinReviewSummariesResult,
+  error: DevinReviewRpcError,
+});
+/** A pull request's Devin Review status and findings, rendered as a chip snapshot. */
+const WsDevinReviewGetRpc = Rpc.make(INTEGRATION_WS_METHODS.devinReviewGet, {
+  payload: DevinReviewGetInput,
+  success: DevinReviewContext,
+  error: DevinReviewRpcError,
+});
+/** Asks Devin to review the pull request's head commit. */
+const WsDevinReviewTriggerRpc = Rpc.make(INTEGRATION_WS_METHODS.devinReviewTrigger, {
+  payload: DevinReviewGetInput,
+  success: DevinReviewSummary,
+  error: DevinReviewRpcError,
+});
+
 export const IntegrationRpcGroup = RpcGroup.make(
   WsLinearSubscribeStateRpc,
   WsLinearStartLoginRpc,
@@ -776,6 +860,16 @@ export const IntegrationRpcGroup = RpcGroup.make(
   WsDiscordSubscribeThreadLinksRpc,
   WsDiscordLinkThreadRpc,
   WsDiscordUnlinkThreadRpc,
+  WsDevinReviewSubscribeStateRpc,
+  WsDevinReviewConnectRpc,
+  WsDevinReviewSignInRpc,
+  WsDevinReviewCancelSignInRpc,
+  WsDevinReviewDisconnectRpc,
+  WsDevinReviewListRpc,
+  WsDevinReviewSummariesRpc,
+  WsDevinReviewStatusRpc,
+  WsDevinReviewGetRpc,
+  WsDevinReviewTriggerRpc,
   WsThreadLinkWatchesSubscribeRpc,
   WsThreadLinkWatchSetRpc,
   WsGitHubIssuesListRpc,

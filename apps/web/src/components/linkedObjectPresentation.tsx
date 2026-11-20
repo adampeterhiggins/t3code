@@ -1,6 +1,7 @@
 import { GoogleSourceIcon } from "./Icons";
 import { GoogleFileDetails } from "./GoogleFileDetails";
 import type {
+  DevinReviewContextRecord,
   DiscordThreadContextRecord,
   GitHubIssueContextRecord,
   GitHubRefContextRecord,
@@ -21,6 +22,7 @@ import type { MouseEvent } from "react";
 import { useLinearLinkClickHandler } from "~/browser/useLinearLinkClickHandler";
 import { m, type MessageResolver } from "~/i18n/messages";
 import {
+  DevinReviewDetails,
   DiscordThreadDetails,
   GitHubIssueDetails,
   GitHubRefDetails,
@@ -35,7 +37,15 @@ import {
   SlackThreadDetails,
 } from "./integrationContextDetails";
 import { GitHubRefIcon, gitHubRefKindLabel } from "./gitHubRefPresentation";
-import { DiscordIcon, GitHubIcon, GranolaIcon, LinearIcon, NotionIcon, SlackIcon } from "./Icons";
+import {
+  DevinIcon,
+  DiscordIcon,
+  GitHubIcon,
+  GranolaIcon,
+  LinearIcon,
+  NotionIcon,
+  SlackIcon,
+} from "./Icons";
 
 /**
  * Something outside the conversation that a link names, as a context record. A composer chip,
@@ -51,6 +61,7 @@ export type LinkedObjectContextRecord =
   | NotionPageContextRecord
   | GoogleFileContextRecord
   | GranolaNoteContextRecord
+  | DevinReviewContextRecord
   | PromptLinkContextRecord
   | SlackThreadContextRecord
   | SlackResourceContextRecord
@@ -67,6 +78,7 @@ const LINKED_OBJECT_CONTEXT_KINDS = [
   "notion-page",
   "google-file",
   "granola-note",
+  "devin-review",
   "prompt-link",
   "slack-thread",
   "slack-resource",
@@ -102,6 +114,8 @@ export function linkedObjectIcon(record: LinkedObjectContextRecord) {
       return <GoogleSourceIcon fileType={record.fileType} />;
     case "granola-note":
       return <GranolaIcon />;
+    case "devin-review":
+      return <DevinIcon />;
     case "prompt-link":
       return <MessageSquareTextIcon />;
     case "slack-thread":
@@ -151,6 +165,8 @@ export function linkedObjectKindLabel(
       return resolve(GOOGLE_FILE_KIND_LABELS[record.fileType]);
     case "granola-note":
       return resolve(msg("Granola note"));
+    case "devin-review":
+      return resolve(msg("Devin Review"));
     case "prompt-link":
       return resolve(msg("T3 Code prompt link"));
     case "slack-thread":
@@ -200,6 +216,8 @@ export function LinkedObjectDetails(props: {
       return <GoogleFileDetails record={record} onOpenLink={onOpenLink} />;
     case "granola-note":
       return <GranolaNoteDetails record={record} onOpenLink={onOpenLink} />;
+    case "devin-review":
+      return <DevinReviewDetails record={record} onOpenLink={onOpenLink} />;
     case "prompt-link":
       return <PromptLinkDetails record={record} onOpenLink={onOpenLink} />;
     case "slack-thread":
