@@ -1812,11 +1812,8 @@ export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props
   onSelect: () => void;
   onContextMenu: (
     threadRef: ScopedThreadRef,
-    position: {
-      x: number;
-      y: number;
-    },
-    source: "mouse" | "keyboard",
+    position: { x: number; y: number },
+    source: ContextMenuSource,
   ) => void;
   onFileDropThreads: (threadRef: ScopedThreadRef, files: File[]) => void;
 }) {

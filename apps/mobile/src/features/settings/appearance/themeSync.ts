@@ -23,7 +23,7 @@ import {
 } from "../../../lib/mobileTheme";
 import type { Preferences } from "../../../persistence/mobile-preferences";
 import { appAtomRegistry } from "../../../state/atom-registry";
-import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../../state/preferences";
+import { mobilePreferencesAtom, saveMobilePreferences } from "../../../state/preferences";
 import {
   environmentServerConfigsAtom,
   publishedEnvironmentThemesAtom,
@@ -119,19 +119,19 @@ function evaluate(): void {
   const seen = { themeSyncSeenSetAts: rememberThemeSyncSetAt(seenSetAts, action.theme.setAt) };
   if (action.type === "push") {
     baseline = local;
-    appAtomRegistry.set(updateMobilePreferencesAtom, seen);
+    void runAtomCommand(appAtomRegistry, saveMobilePreferences, seen);
     void push(environmentIds, action.theme);
     return;
   }
   const patch = { ...adoptPatch(preferences, action.theme), ...seen };
   baseline = localPair({ ...preferences, ...patch });
-  appAtomRegistry.set(updateMobilePreferencesAtom, patch);
+  void runAtomCommand(appAtomRegistry, saveMobilePreferences, patch);
 }
 
 /** Turning sync on adopts the environments' synced theme, or starts it from this device. */
 export function setThemeSyncEnabled(enabled: boolean): void {
   baseline = null;
-  appAtomRegistry.set(updateMobilePreferencesAtom, {
+  void runAtomCommand(appAtomRegistry, saveMobilePreferences, {
     themeSyncEnabled: enabled,
     themeSyncSeenSetAts: [],
   });

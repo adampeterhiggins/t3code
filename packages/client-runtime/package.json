@@ -71,6 +71,10 @@
       "types": "./src/themeSync.ts",
       "default": "./src/themeSync.ts"
     },
+    "./diff-file-order": {
+      "types": "./src/diffFileOrder.ts",
+      "default": "./src/diffFileOrder.ts"
+    },
     "./handoff": {
       "types": "./src/handoff.ts",
       "default": "./src/handoff.ts"
@@ -134,6 +138,10 @@
     "./scheduled-task-time-zone": {
       "types": "./src/scheduledTaskTimeZone.ts",
       "default": "./src/scheduledTaskTimeZone.ts"
+    },
+    "./scheduled-task-worktree": {
+      "types": "./src/scheduledTaskWorktree.ts",
+      "default": "./src/scheduledTaskWorktree.ts"
     },
     "./connection": {
       "types": "./src/connection/index.ts",
