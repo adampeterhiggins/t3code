@@ -1,8 +1,11 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { OrchestrationV2ThreadShell, ScopedThreadRef } from "@t3tools/contracts";
+import { useNavigate } from "@tanstack/react-router";
+import type { MouseEvent } from "react";
 
 import type { ToolCallDiffTarget } from "../diffPanelStore";
 import { useRightPanelStore } from "../rightPanelStore";
+import { buildThreadRouteParams } from "../threadRoutes";
 
 /** Whether an event started in the side chat pane (`data-side-chat-pane`), which the main chat ignores. */
 export function isInSideChatPane(target: EventTarget | null): boolean {
@@ -32,4 +35,21 @@ export function resolveThreadOpenRoute(
   const parentRef = scopeThreadRef(threadRef.environmentId, parentThreadId);
   useRightPanelStore.getState().openSideChat(parentRef, threadRef.threadId);
   return parentRef;
+}
+
+export function useSideChatThreadLinkClick(
+  threadRef: ScopedThreadRef,
+  thread: Pick<OrchestrationV2ThreadShell, "lineage"> | null,
+) {
+  const navigate = useNavigate();
+  if (thread?.lineage.sideChat !== true) return undefined;
+  return (event: MouseEvent<HTMLAnchorElement>) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+      return;
+    event.preventDefault();
+    void navigate({
+      to: "/$environmentId/$threadId",
+      params: buildThreadRouteParams(resolveThreadOpenRoute(threadRef, thread)),
+    });
+  };
 }

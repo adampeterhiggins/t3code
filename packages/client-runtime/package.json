@@ -127,6 +127,10 @@
       "types": "./src/scheduledTaskPicker.ts",
       "default": "./src/scheduledTaskPicker.ts"
     },
+    "./link-batch": {
+      "types": "./src/linkBatch.ts",
+      "default": "./src/linkBatch.ts"
+    },
     "./link-request": {
       "types": "./src/linkRequest.ts",
       "default": "./src/linkRequest.ts"

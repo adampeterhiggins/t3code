@@ -57,6 +57,11 @@ function setup() {
     id: ThreadId.make("older-thread"),
     title: "Remote thread",
     projectId: ProjectId.make("essay-project"),
+    lineage: {
+      rootThreadId: ThreadId.make("older-thread"),
+      parentThreadId: null,
+      relationshipToParent: null,
+    },
   };
   return { reply, registry: AtomRegistry.make() };
 }

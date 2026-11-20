@@ -57,6 +57,7 @@ import {
   shouldRefocusComposerOnWindowFocus,
   isCompactCommandMessage,
   type LocalThreadErrorEntry,
+  threadErrorIsServerRuntime,
   makeThreadErrorSetter,
   deriveTimelineWorking,
   hasCompactableConversation,
@@ -1105,7 +1106,17 @@ export default function ChatView(props: ChatViewProps) {
   const threadError = isServerThread
     ? (localServerError ?? serverRuntime?.lastError ?? null)
     : localDraftError;
-  const threadErrorBannerKey = getThreadErrorBannerKey(routeThreadKey, threadError);
+  const threadErrorBannerKey = getThreadErrorBannerKey(
+    routeThreadKey,
+    threadError,
+    threadErrorIsServerRuntime({
+      isServerThread,
+      localServerError,
+      runtimeError: serverRuntime?.lastError ?? null,
+    })
+      ? (serverRuntime?.lastErrorSource ?? null)
+      : null,
+  );
   const visibleThreadError = shouldShowThreadErrorBanner(
     routeThreadKey,
     threadError,
