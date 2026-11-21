@@ -50,26 +50,83 @@ type RecoveryProps = {
   snoozedUntil: string | null;
   recovery: OrchestrationV2LimitRecovery | null;
   timestampFormat: TimestampFormat;
+  resetPassed?: boolean;
+  displayPassed?: boolean;
   onChange: (recovery: OrchestrationV2LimitRecoveryUpdate) => Promise<void>;
   /** Absent when the server cannot resume before the reset. */
   onResumeNow: (() => Promise<void>) | null;
   continueElsewhere: UsageLimitContinueElsewhere | null;
 };
 
+function parseEpochMs(isoDate: string | null): number | null {
+  if (isoDate === null) return null;
+  const parsed = Date.parse(isoDate);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function limitRecoveryScheduleState(
+  props: Pick<
+    RecoveryProps,
+    "runId" | "resetAt" | "stoppedAt" | "settled" | "requestPending" | "recovery" | "snoozedUntil"
+  >,
+) {
+  // The server refuses recovery changes while a request is pending.
+  const canSchedule =
+    !props.settled &&
+    !props.requestPending &&
+    props.resetAt !== null &&
+    Date.parse(props.resetAt) > Date.parse(props.stoppedAt);
+  const resumes =
+    canSchedule &&
+    props.recovery?.runId === props.runId &&
+    props.recovery.resetAt === props.resetAt &&
+    props.recovery.autoResume;
+  const displayAt =
+    resumes &&
+    props.resetAt &&
+    props.snoozedUntil &&
+    Date.parse(props.snoozedUntil) > Date.parse(props.resetAt)
+      ? props.snoozedUntil
+      : props.resetAt;
+  return { canSchedule, resumes, displayAt };
+}
+
+export function useUsageLimitRecoveryBannerItem(
+  props: RecoveryProps | null,
+  resolve: MessageResolver = m,
+): ComposerBannerStackItem | null {
+  const displayAt = props === null ? null : limitRecoveryScheduleState(props).displayAt;
+  const resetPassed = useDeadlinePassed(props === null ? null : parseEpochMs(props.resetAt));
+  const displayPassed = useDeadlinePassed(parseEpochMs(displayAt));
+  if (props === null) return null;
+  return usageLimitRecoveryBannerItem({ ...props, resetPassed, displayPassed }, resolve);
+}
+
 export function usageLimitRecoveryBannerItem(
   props: RecoveryProps,
   resolve: MessageResolver = m,
 ): ComposerBannerStackItem {
-  const { runId, resetAt, stoppedAt, recovery, timestampFormat } = props;
-  const canSchedule =
-    !props.settled &&
-    !props.requestPending &&
-    resetAt !== null &&
-    Date.parse(resetAt) > Date.parse(stoppedAt);
-  const scheduled =
-    recovery?.runId === runId && recovery.resetAt === resetAt && recovery.autoResume;
-  const workspaceLimit = props.errorCode === CHATGPT_WORKSPACE_USAGE_LIMIT_CODE;
-  const chatGptLimit = workspaceLimit || props.errorCode === CHATGPT_USAGE_LIMIT_CODE;
+  const { runId, errorCode, resetAt, timestampFormat } = props;
+  const { canSchedule, resumes, displayAt } = limitRecoveryScheduleState(props);
+  const resetAtMs = parseEpochMs(resetAt);
+  const displayAtMs = parseEpochMs(displayAt);
+  const resetPassed = props.resetPassed ?? (resetAtMs !== null && resetAtMs <= Date.now());
+  const displayPassed = props.displayPassed ?? (displayAtMs !== null && displayAtMs <= Date.now());
+  const workspaceLimit = errorCode === CHATGPT_WORKSPACE_USAGE_LIMIT_CODE;
+  const chatGptLimit = workspaceLimit || errorCode === CHATGPT_USAGE_LIMIT_CODE;
+  const resumesUpcoming = resumes && !displayPassed;
+  const shownAt = resumesUpcoming ? displayAt : resetAt;
+  const formattedTime = shownAt
+    ? formatUpcomingTimestamp(shownAt, timestampFormat, undefined, undefined, resolve)
+    : null;
+  const resetDescription =
+    formattedTime !== null
+      ? resumesUpcoming
+        ? resolve(msg("Resumes {time}", { time: formattedTime }))
+        : resetPassed
+          ? resolve(msg("Reset {time}", { time: formattedTime }))
+          : resolve(msg("Resets {time}", { time: formattedTime }))
+      : resolve(msg("Reset time unavailable; retry manually"));
   return {
     id: `usage-limit-recovery:${runId}`,
     variant: "warning",
@@ -84,31 +141,7 @@ export function usageLimitRecoveryBannerItem(
       ? resolve(
           msg("You've reached your workspace's limit for using your ChatGPT plan in other apps."),
         )
-      : resetAt
-        ? scheduled
-          ? resolve(
-              msg("Resumes automatically about a minute after {time}", {
-                time: formatUpcomingTimestamp(
-                  resetAt,
-                  timestampFormat,
-                  undefined,
-                  undefined,
-                  resolve,
-                ),
-              }),
-            )
-          : resolve(
-              msg("Resets {time}", {
-                time: formatUpcomingTimestamp(
-                  resetAt,
-                  timestampFormat,
-                  undefined,
-                  undefined,
-                  resolve,
-                ),
-              }),
-            )
-        : resolve(msg("Reset time unavailable; retry manually")),
+      : resetDescription,
     actions: (
       <>
         {canSchedule || props.onResumeNow || props.continueElsewhere ? (
@@ -210,13 +243,15 @@ function RecoveryActions({
           <T>Resume now</T>
         </Button>
       ) : null}
-      {canSchedule ? (
+      {canSchedule && (!resetPassed || onResumeNow === null || scheduled) ? (
         <Button size="xs" variant="ghost" disabled={pending} onClick={() => toggle("resume")}>
           {pendingAction === "resume"
             ? gt("Saving...")
             : scheduled
               ? gt("Cancel auto-resume")
-              : gt("Resume at reset")}
+              : resetPassed && !onResumeNow
+                ? gt("Resume now")
+                : gt("Resume at reset")}
         </Button>
       ) : null}
       {canSchedule ? (

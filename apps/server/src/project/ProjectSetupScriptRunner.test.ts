@@ -70,6 +70,7 @@ const makeTerminalManagerLayer = (overrides: TerminalOverrides) =>
     close: () => Effect.void,
     closeIdle: () => Effect.void,
     closeOnSettle: () => Effect.void,
+    hasActiveSubprocess: () => Effect.succeed(false),
     subscribe: () => Effect.succeed(() => undefined),
     subscribeMetadata: () => Effect.succeed(() => undefined),
     ...overrides,

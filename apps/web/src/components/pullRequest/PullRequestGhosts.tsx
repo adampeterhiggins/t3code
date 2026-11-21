@@ -94,7 +94,7 @@ export function PullRequestDetailGhost({
   onBack,
   onClose,
   onCheckoutError,
-  threadRef,
+  threadRef = null,
 }: {
   seed?: PullRequestListEntry | null;
   summary?: PullRequestSummary | null;
@@ -106,8 +106,7 @@ export function PullRequestDetailGhost({
   onBack?: (() => void) | undefined;
   onClose?: (() => void) | undefined;
   onCheckoutError?: ((error: Error) => void) | undefined;
-  /** Thread the host link can open beside, as on the detail this stands in for. */
-  threadRef?: ScopedThreadRef | null;
+  threadRef?: ScopedThreadRef | null | undefined;
 }) {
   const onLinkClick = usePullRequestLinkClick(threadRef);
   const gt = useGT();
@@ -171,6 +170,9 @@ export function PullRequestDetailGhost({
                 <span className="min-w-0 truncate font-medium">{seed.repository}</span>
                 <InlineButton
                   onClick={(event) => onLinkClick(event, seed.url)}
+                  onAuxClick={(event) => {
+                    if (event.button === 1) onLinkClick(event, seed.url);
+                  }}
                   aria-label={gt(
                     "Open {term, select, mr {merge request} cr {change request} other {pull request}} #{number} on host",
                     {
@@ -356,7 +358,11 @@ export function PullRequestDetailGhost({
         </PullRequestDetailTabBar>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-hidden">
+      <div
+        tabIndex={-1}
+        data-workspace-focus-default
+        className="min-h-0 flex-1 overflow-hidden outline-none"
+      >
         <section className="px-4 pt-2.5 pb-1">
           <div className="space-y-2">
             <div className="grid min-h-7 min-w-0 grid-cols-[6rem_minmax(0,1fr)] items-center gap-2 text-xs sm:min-h-6">

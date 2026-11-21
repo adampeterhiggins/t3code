@@ -2,6 +2,7 @@ import * as Path from "effect/Path";
 import {
   CommandId,
   type GitCommandError,
+  type TaskFolderError,
   MessageId,
   type ProjectId,
   WorktreeMcpFailure,
@@ -29,6 +30,7 @@ import * as ProjectService from "../project/ProjectService.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as VcsStatusBroadcaster from "../vcs/VcsStatusBroadcaster.ts";
+import * as TaskFolders from "../workspace/TaskFolders.ts";
 import type { McpInvocationScope, McpThreadInvocationScope } from "./McpInvocationContext.ts";
 
 export class WorktreeMcpService extends Context.Service<
@@ -77,6 +79,7 @@ const make = Effect.gen(function* () {
   const gitWorkflow = yield* GitWorkflowService.GitWorkflowService;
   const setupScriptRunner = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
   const vcsStatusBroadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
+  const taskFolders = yield* TaskFolders.TaskFolders;
 
   // Serialize handoffs per thread to avoid creating two worktrees and orphaning one.
   const handoffThreadsInFlight = new Set<string>();
@@ -162,8 +165,9 @@ const make = Effect.gen(function* () {
     projectCwd: string,
     projectBranch: string | null,
     projectId: ProjectId,
+    projectIsRepository: boolean,
   ) {
-    const baseRef = input.baseRef ?? projectBranch;
+    const baseRef = input.baseRef ?? (projectIsRepository ? projectBranch : "HEAD");
     if (baseRef === null) {
       return yield* failure(
         "invalid_request",
@@ -171,16 +175,19 @@ const make = Effect.gen(function* () {
       );
     }
     const startFromOrigin = input.startFromOrigin ?? (yield* readDefaultStartFromOrigin(projectId));
-    if (!startFromOrigin) return { baseRef, startFromOrigin, startRef: baseRef };
-    const resolvedRemoteBase = yield* gitWorkflow
-      .fetchWorktreeBaseCommit({ cwd: projectCwd, refName: baseRef })
-      .pipe(asOperationFailed(`Unable to fetch the remote base of '${baseRef}'`));
+    const resolvedRemoteBase =
+      startFromOrigin && projectIsRepository
+        ? yield* gitWorkflow
+            .fetchWorktreeBaseCommit({ cwd: projectCwd, refName: baseRef })
+            .pipe(asOperationFailed(`Unable to fetch the remote base of '${baseRef}'`))
+        : null;
     return resolvedRemoteBase === null
-      ? { baseRef, startFromOrigin: false, startRef: baseRef }
+      ? { baseRef, startRef: baseRef, startFromOrigin, projectStartedFromOrigin: false }
       : {
           baseRef: `refs/remotes/${resolvedRemoteBase.remoteRefName}`,
-          startFromOrigin: true,
           startRef: resolvedRemoteBase.commitSha,
+          startFromOrigin,
+          projectStartedFromOrigin: true,
         };
   });
 
@@ -202,10 +209,16 @@ const make = Effect.gen(function* () {
     const project = yield* loadProject(scope, projection.thread.projectId);
     const projectCwd = project.workspaceRoot;
 
+    // A project that tracks repositories moves into a task folder: its own folder, which need
+    // not be a repository, and a worktree of each tracked one.
+    const taskPlan = yield* taskFolders
+      .plan({ projectId: project.id })
+      .pipe(asOperationFailed("Unable to read the project's repositories"));
+    const projectIsRepository = taskPlan === null || taskPlan.projectIsRepository;
     const localStatus = yield* gitWorkflow
       .localStatus({ cwd: projectCwd })
       .pipe(asOperationFailed("Unable to read git status"));
-    if (!localStatus.isRepo) {
+    if (projectIsRepository && !localStatus.isRepo) {
       return yield* failure(
         "invalid_request",
         `Project workspace '${projectCwd}' is not a git repository.`,
@@ -218,9 +231,11 @@ const make = Effect.gen(function* () {
     // Check the complete local branch list for an exact match; substring search
     // only locates a checkout the caller can select with `path`.
     let existingWorktreePath: string | null = null;
-    const localBranchNames = yield* gitWorkflow
-      .listLocalBranchNames(projectCwd)
-      .pipe(asOperationFailed("Unable to list branches"));
+    const localBranchNames = projectIsRepository
+      ? yield* gitWorkflow
+          .listLocalBranchNames(projectCwd)
+          .pipe(asOperationFailed("Unable to list branches"))
+      : [];
     if (localBranchNames.includes(input.branch)) {
       const existingRef = yield* gitWorkflow
         .listRefs({ cwd: projectCwd, query: input.branch, refKind: "local" })
@@ -263,7 +278,13 @@ const make = Effect.gen(function* () {
       existingWorktreePath === null
         ? {
             created: true as const,
-            base: yield* resolveNewWorktreeBase(input, projectCwd, localStatus.refName, project.id),
+            base: yield* resolveNewWorktreeBase(
+              input,
+              projectCwd,
+              localStatus.refName,
+              project.id,
+              projectIsRepository,
+            ),
           }
         : { created: false as const, path: existingWorktreePath };
 
@@ -274,20 +295,64 @@ const make = Effect.gen(function* () {
       Effect.gen(function* () {
         const { created } = target;
         const worktree = target.created
-          ? (yield* restore(
-              gitWorkflow
-                .createWorktree({
-                  cwd: projectCwd,
-                  refName: target.base.startRef,
-                  newRefName: input.branch,
-                  baseRefName: target.base.baseRef,
-                  // `path` only names an existing worktree to move into; new
-                  // worktrees always go in the server-managed folder.
-                  path: null,
-                })
-                .pipe(asOperationFailed("Unable to create the worktree")),
-            )).worktree
-          : { path: target.path, refName: input.branch };
+          ? yield* restore(
+              Effect.suspend(
+                (): Effect.Effect<
+                  {
+                    readonly path: string;
+                    readonly refName: string;
+                    readonly taskFolder: string | null;
+                    readonly startedFromOrigin: boolean;
+                  },
+                  GitCommandError | TaskFolderError
+                > =>
+                  taskPlan === null
+                    ? gitWorkflow
+                        .createWorktree({
+                          cwd: projectCwd,
+                          refName: target.base.startRef,
+                          newRefName: input.branch,
+                          baseRefName: target.base.baseRef,
+                          path: null,
+                        })
+                        .pipe(
+                          Effect.map(({ worktree }) => ({
+                            ...worktree,
+                            taskFolder: null,
+                            startedFromOrigin: target.base.projectStartedFromOrigin,
+                          })),
+                        )
+                    : taskFolders
+                        .create({
+                          plan: taskPlan,
+                          branch: input.branch,
+                          projectStart: {
+                            refName: target.base.startRef,
+                            baseRefName: target.base.baseRef,
+                          },
+                          baseBranch: input.baseRef,
+                          startFromOrigin: target.base.startFromOrigin,
+                        })
+                        .pipe(
+                          Effect.map((created) => ({
+                            path: created.taskFolder.projectPath,
+                            refName: created.branch,
+                            taskFolder: created.taskFolder.root,
+                            // A layout command is handed the branch name, not the fetched commit.
+                            startedFromOrigin:
+                              !created.laidOutByProject &&
+                              (target.base.projectStartedFromOrigin ||
+                                created.repositoriesStartedFromOrigin),
+                          })),
+                        ),
+              ).pipe(asOperationFailed("Unable to create the worktree")),
+            )
+          : {
+              path: target.path,
+              refName: input.branch,
+              taskFolder: null,
+              startedFromOrigin: false,
+            };
         const worktreePath = worktree.path;
 
         const reportFailed = (logMessage: string) =>
@@ -300,18 +365,28 @@ const make = Effect.gen(function* () {
             }).pipe(Effect.as({ status: "failed", detail } as const));
           });
 
-        const removeCreatedWorktree = Effect.suspend(() =>
-          gitWorkflow.removeWorktree({ cwd: projectCwd, path: worktreePath, force: true }).pipe(
-            Effect.andThen(
-              Effect.suspend(() =>
-                gitWorkflow.deleteLocalBranch({
-                  cwd: projectCwd,
-                  refName: worktree.refName,
+        const removeCreatedWorktree = Effect.suspend(
+          (): Effect.Effect<unknown, GitCommandError | TaskFolderError> =>
+            worktree.taskFolder === null
+              ? gitWorkflow
+                  .removeWorktree({ cwd: projectCwd, path: worktreePath, force: true })
+                  .pipe(
+                    Effect.andThen(
+                      Effect.suspend(() =>
+                        gitWorkflow.deleteLocalBranch({
+                          cwd: projectCwd,
+                          refName: worktree.refName,
+                          force: true,
+                        }),
+                      ),
+                    ),
+                  )
+              : taskFolders.remove({
+                  root: worktree.taskFolder,
                   force: true,
+                  forget: true,
+                  deleteBranch: worktree.refName,
                 }),
-              ),
-            ),
-          ),
         ).pipe(Effect.ignoreCause({ log: true }));
 
         const recheckAndBind = Effect.gen(function* () {
@@ -418,7 +493,7 @@ const make = Effect.gen(function* () {
           branch: worktree.refName,
           created,
           baseRef: target.created ? target.base.baseRef : null,
-          startedFromOrigin: target.created && target.base.startFromOrigin,
+          startedFromOrigin: worktree.startedFromOrigin,
           setupScript,
           continuation,
           note:
@@ -506,4 +581,5 @@ export const layer: Layer.Layer<
   | GitWorkflowService.GitWorkflowService
   | ProjectSetupScriptRunner.ProjectSetupScriptRunner
   | VcsStatusBroadcaster.VcsStatusBroadcaster
+  | TaskFolders.TaskFolders
 > = Layer.effect(WorktreeMcpService, make);

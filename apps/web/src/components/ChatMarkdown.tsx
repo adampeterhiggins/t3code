@@ -1533,7 +1533,12 @@ const CHAT_MARKDOWN_COMPONENTS = {
       const written = hastPlainTextDeep(node);
       const label = written && parseThreadLinkHref(written) === null ? written : null;
       return environmentId ? (
-        <MarkdownThreadLink environmentId={environmentId} link={threadLink} label={label} />
+        <MarkdownThreadLink
+          environmentId={environmentId}
+          threadRef={threadRef}
+          link={threadLink}
+          label={label}
+        />
       ) : (
         <span>{label ?? gt("Thread")}</span>
       );

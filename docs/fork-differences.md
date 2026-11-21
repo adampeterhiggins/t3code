@@ -712,12 +712,11 @@ Code: `usePreferredOpenPrLink` in
 
 ## Pull request host links follow Open links in
 
-Upstream's pull request panel always sends its links to the system browser. In the fork, those
-links follow **Settings → Browser → Open links in** when the panel is next to a
-thread. That covers "Open on GitHub", the PR number, the repository name, author profiles, comment
-timestamps, activity links, attachments, and the "Open on GitHub" button on the load-error
-screen. Cmd/Ctrl-click still opens the system browser. The pull requests page has no thread, so
-its links still open in the system browser.
+The pull request panel follows **Settings → Browser → Open links in** for the header's pull request
+and repository links. The fork extends the same behavior to links in the panel's content, including
+author profiles, comment timestamps, activity links, and attachments, as well as the **Open on
+GitHub** button on the load-error screen. Cmd/Ctrl-click opens the system browser. Links from the
+standalone pull requests page open in the system browser.
 
 Code: `useLinkClickHandler` in `apps/web/src/browser/useOpenLink.ts` and
 `apps/web/src/components/pullRequest/PullRequestMarkdownContext.ts`.
@@ -2338,14 +2337,16 @@ User guide: [Stop at subscription limits](./user/usage.md#stop-at-subscription-l
 
 ## Usage-limit recovery
 
-Upstream shows a recovery banner when Codex or Claude ends a turn on a usage limit, with **Resume at
-reset**, **Cancel auto-resume**, and **Snooze until reset**. The fork adds:
+When Codex or Claude ends a turn on a usage limit, the recovery banner offers **Resume at reset**,
+**Cancel auto-resume**, and **Snooze until reset**. After the reset, an unarmed thread can also use
+the banner's continuation action. The fork adds:
 
 - **Resume now**, on web, desktop, and mobile, which sends the same "Continue where you left off."
   continuation at once, on the composer's model, so picking another provider first continues there
   instead of into the same limit. It is the `thread.usage-limit.resume-now` command, so
   the server owns the continuation. Servers advertise it
-  with the `usageLimitResumeNow` capability; clients hide the button without it.
+  with the `usageLimitResumeNow` capability. Clients use the server command when available and
+  keep the post-reset continuation action for older servers.
 - Agents see the stopped state as `usageLimit` (stopped run and reset time) in `t3_thread_read` and
   `t3_thread_wait`, and send the same command with `t3_thread_usage_limit_resume`, under the usual
   rules for writing to another thread. It continues on the thread's current model, so an agent

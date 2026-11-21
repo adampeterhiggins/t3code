@@ -70,8 +70,8 @@ export function PullRequestActionsMenu({
   reference,
   pullRequestKey,
   detail,
-  threadRef,
   terminology,
+  threadRef,
   linkThreadRef,
   onThreadPickerOpenChange,
   refreshing,
@@ -123,8 +123,8 @@ export function PullRequestActionsMenu({
     | "maintainerCanModify"
     | "observedAt"
   >;
-  threadRef: ScopedThreadRef | null;
   terminology: ChangeRequestTerminology;
+  threadRef: ScopedThreadRef | null;
   linkThreadRef: ScopedThreadRef | null;
   onThreadPickerOpenChange: (open: boolean) => void;
   refreshing: boolean;

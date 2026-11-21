@@ -6,7 +6,6 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 
 import { useLinkClickHandler, useOpenLink } from "~/browser/useOpenLink";
 import { cn } from "~/lib/utils";
-import { readLocalApi } from "~/localApi";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { openOnHostLabel, showPullRequestLinkContextMenu } from "./pullRequestLinkContextMenu";
@@ -89,7 +88,7 @@ function NumberLink({
             {...(focusable ? {} : { tabIndex: -1 })}
             onClick={(event) => onLinkClick(event, detail.url)}
             onAuxClick={(event) => {
-              if (event.button === 1) void readLocalApi()?.shell.openExternal(detail.url);
+              if (event.button === 1) onLinkClick(event, detail.url);
             }}
             onContextMenu={(event) => openNumberContextMenu(event, detail, openLink)}
             className={cn(
@@ -122,20 +121,20 @@ function NumberLink({
  */
 export function PullRequestDetailCrumbs({
   detail,
+  threadRef,
   toneClassName,
   condensed,
   repositoryUrl,
   openOnHostText,
   onBack,
-  threadRef,
 }: {
   detail: CrumbsPullRequest | null;
+  threadRef: ScopedThreadRef | null;
   toneClassName: string | null;
   condensed: boolean;
   repositoryUrl: string | null;
   openOnHostText: string;
   onBack: (() => void) | undefined;
-  threadRef: ScopedThreadRef | null;
 }) {
   const gt = useGT();
   const onLinkClick = useLinkClickHandler(threadRef);
@@ -146,6 +145,7 @@ export function PullRequestDetailCrumbs({
       <div
         aria-hidden={condensed}
         inert={condensed}
+        data-workspace-scroll-swap
         className={cn(
           ROW_CLASS_NAME,
           condensed
@@ -162,7 +162,13 @@ export function PullRequestDetailCrumbs({
                   repositoryUrl ? (
                     <button
                       type="button"
-                      onClick={(event) => onLinkClick(event, repositoryUrl)}
+                      onClick={(event) =>
+                        void openLink(repositoryUrl, { event }).catch(console.error)
+                      }
+                      onAuxClick={(event) => {
+                        if (event.button === 1)
+                          void openLink(repositoryUrl, { event }).catch(console.error);
+                      }}
                       className="min-w-0 cursor-pointer truncate text-left font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                     >
                       {detail.repository}
@@ -194,6 +200,7 @@ export function PullRequestDetailCrumbs({
       <div
         aria-hidden={!condensed}
         inert={!condensed}
+        data-workspace-scroll-swap
         className={cn(
           ROW_CLASS_NAME,
           condensed
