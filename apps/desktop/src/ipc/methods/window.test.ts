@@ -4,6 +4,7 @@ import type { ManagedPolicyLimits } from "@t3tools/contracts";
 import { EDITORS, REMOTE_CAPABLE_EDITOR_IDS } from "@t3tools/contracts";
 import { resolveEditorCommand } from "@t3tools/shared/editor";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { makePathDirectoryListings, PathDirectoryListings } from "@t3tools/shared/shell";
 import { ManagedPolicyFileError } from "@t3tools/shared/managedPolicyFile";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -11,7 +12,8 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
-import { beforeEach, vi } from "vite-plus/test";
+import * as TestClock from "effect/testing/TestClock";
+import { vi } from "vite-plus/test";
 import type * as Electron from "electron";
 
 const { focusedWebContents, ownerWindow, webContentsFromId } = vi.hoisted(() => ({
@@ -382,15 +384,16 @@ describe("pasteAsText", () => {
       focusedMainOrFirst: Effect.die("paste must not fall back to another window"),
     });
 
-  beforeEach(() => {
+  function setup() {
     webContentsFromId.mockReset();
     ownerWindow.mockReset();
     focusedWebContents.mockReset();
-  });
+  }
 
   it.effect(
     "pastes into the focused guest only after the main renderer acknowledges the menu action",
     () => {
+      setup();
       const main = appWindow(42);
       const focused: AppContents = {
         id: 77,
@@ -436,6 +439,7 @@ describe("pasteAsText", () => {
   );
 
   it.effect("pastes for a quick-message window only into that same window", () => {
+    setup();
     const main = appWindow(1);
     const quick = appWindow(2);
     const stranger = appWindow(8);
@@ -670,10 +674,10 @@ describe("saveTextFile", () => {
 });
 
 describe("native interaction ownership", () => {
-  beforeEach(() => {
+  function setup() {
     webContentsFromId.mockReset();
     ownerWindow.mockReset();
-  });
+  }
 
   interface AppContents {
     readonly id: number;
@@ -723,6 +727,7 @@ describe("native interaction ownership", () => {
   const menuItem = { id: "copy", label: "Copy" };
 
   it.effect("targets the quick-message window that sent the menu", () => {
+    setup();
     const quick = appWindow(2);
     ElectronWindow.markAuxiliaryWindow(quick.window);
     present(quick);
@@ -754,6 +759,7 @@ describe("native interaction ownership", () => {
   });
 
   it.effect("targets the registered main window that sent the menu", () => {
+    setup();
     const main = appWindow(1);
     const quick = appWindow(2);
     ElectronWindow.markAuxiliaryWindow(quick.window);
@@ -781,6 +787,7 @@ describe("native interaction ownership", () => {
   });
 
   it.effect("keeps the main-window selector when no sender is attached", () => {
+    setup();
     const fallback = appWindow(3);
     const showContextMenuMock = vi.fn((_input: { readonly window: Electron.BrowserWindow }) =>
       Effect.succeedSome("copy"),
@@ -801,6 +808,7 @@ describe("native interaction ownership", () => {
   });
 
   it.effect("does not trust a preview webview or an unregistered window", () => {
+    setup();
     const quick = appWindow(2);
     const stranger = appWindow(8);
     const fallback = appWindow(4);
@@ -837,6 +845,7 @@ describe("native interaction ownership", () => {
   });
 
   it.effect("falls back when the sender window is already destroyed", () => {
+    setup();
     const quick = appWindow(2, true);
     const main = appWindow(1, true);
     const fallback = appWindow(4);
@@ -867,6 +876,7 @@ describe("native interaction ownership", () => {
   });
 
   it.effect("owns folder, file, and save dialogs to the quick-message sender", () => {
+    setup();
     const quick = appWindow(2);
     ElectronWindow.markAuxiliaryWindow(quick.window);
     present(quick);
@@ -1085,6 +1095,7 @@ it.effect.skipIf(HostProcess.Platform.defaultValue() === "win32")(
 );
 
 describe("probeRemoteEditors PATH scan", () => {
+  const FIXTURE_MTIME = 1_767_225_600;
   const platform = HostProcess.Platform.defaultValue();
   const launcherName = (command: string) => (platform === "win32" ? `${command}.cmd` : command);
 
@@ -1105,6 +1116,9 @@ describe("probeRemoteEditors PATH scan", () => {
       yield* fs.writeFileString(file, "#!/bin/sh\n");
       if (platform !== "win32") yield* fs.chmod(file, 0o755);
     }
+    // A listing of a directory changed moments ago is not kept, so age them past that window.
+    for (const dir of dirs) yield* fs.utimes(dir, FIXTURE_MTIME, FIXTURE_MTIME);
+    yield* TestClock.setTime((FIXTURE_MTIME + 60) * 1000);
     return {
       root,
       env: {
@@ -1116,19 +1130,15 @@ describe("probeRemoteEditors PATH scan", () => {
     };
   });
 
-  const countingFileSystem = (counter: { stat: number; reads: Map<string, number> }) =>
+  const countingFileSystem = (reads: Map<string, number>) =>
     Layer.effect(
       FileSystem.FileSystem,
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         return FileSystem.FileSystem.of({
           ...fs,
-          stat: (target) => {
-            counter.stat += 1;
-            return fs.stat(target);
-          },
           readDirectory: (target, options) => {
-            counter.reads.set(target, (counter.reads.get(target) ?? 0) + 1);
+            reads.set(target, (reads.get(target) ?? 0) + 1);
             return fs.readDirectory(target, options);
           },
         });
@@ -1147,44 +1157,38 @@ describe("probeRemoteEditors PATH scan", () => {
       return available;
     });
 
-  it.effect("reads each PATH directory once instead of stat-ing every candidate per editor", () =>
+  it.effect("finds the editors a serial scan finds, listing each PATH directory at most once", () =>
     Effect.gen(function* () {
       const { env: baseEnv } = yield* makeFakePath();
       const delimiter = platform === "win32" ? ";" : ":";
-      const uncachedCounter = { stat: 0, reads: new Map<string, number>() };
-      const cachedCounter = { stat: 0, reads: new Map<string, number>() };
-      const uncachedEnv = { ...baseEnv, PATH: `${baseEnv.PATH}${delimiter}${baseEnv.HOME}x1` };
-      const cachedEnv = { ...baseEnv, PATH: `${baseEnv.PATH}${delimiter}${baseEnv.HOME}x2` };
-      const uncached = yield* serialReference(uncachedEnv).pipe(
-        Effect.provide(countingFileSystem(uncachedCounter)),
+      const reads = new Map<string, number>();
+      // Distinct PATH values keep one scan from answering the other out of the resolution cache.
+      const serialEnv = { ...baseEnv, PATH: `${baseEnv.PATH}${delimiter}${baseEnv.HOME}x1` };
+      const probeEnv = { ...baseEnv, PATH: `${baseEnv.PATH}${delimiter}${baseEnv.HOME}x2` };
+      const serial = yield* serialReference(serialEnv).pipe(
+        Effect.provideServiceEffect(PathDirectoryListings, makePathDirectoryListings),
       );
-      const cached = yield* probeRemoteEditors
+      const probed = yield* probeRemoteEditors
         .handler(undefined)
         .pipe(
-          Effect.provideService(HostProcess.Environment, cachedEnv),
+          Effect.provideService(HostProcess.Environment, probeEnv),
           Effect.provideService(HostProcess.Platform, platform),
-          Effect.provide(countingFileSystem(cachedCounter)),
+          Effect.provide(countingFileSystem(reads)),
+          Effect.provideServiceEffect(PathDirectoryListings, makePathDirectoryListings),
         );
       // The host can add editors from app folders the fixture can't redirect (e.g. /Applications).
       const fixtureEditors = ["cursor", "vscode", "zed", "webstorm"];
       assert.deepStrictEqual(
-        uncached.filter((id) => fixtureEditors.includes(id)),
+        serial.filter((id) => fixtureEditors.includes(id)),
         fixtureEditors,
       );
-      assert.deepStrictEqual(cached, uncached);
-      assert.isAbove(uncachedCounter.stat, 0);
-      // On every platform the probe lists each PATH directory at most once. Only PATH entries count:
-      // resolveEditorCommand also reads app folders such as /Applications on macOS.
-      const pathReads = cachedEnv.PATH.split(delimiter)
+      assert.deepStrictEqual(probed, serial);
+      // Only PATH entries count: resolveEditorCommand also reads app folders such as /Applications
+      // on macOS. PATH directories are listed on Windows only, once even for concurrent probes.
+      const pathReads = probeEnv.PATH.split(delimiter)
         .filter((entry) => entry.length > 0)
-        .map((entry) => cachedCounter.reads.get(entry) ?? 0);
-      assert.isAbove(Math.max(...pathReads), 0);
-      assert.isAtMost(Math.max(...pathReads), 1);
-      // Without the listings, Windows stats every PATH entry x PATHEXT candidate for each editor;
-      // elsewhere there is no PATHEXT, so the stat count is about the same either way.
-      if (platform === "win32") {
-        assert.isBelow(cachedCounter.stat, uncachedCounter.stat / 2);
-      }
+        .map((entry) => reads.get(entry) ?? 0);
+      assert.strictEqual(Math.max(...pathReads), platform === "win32" ? 1 : 0);
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 });

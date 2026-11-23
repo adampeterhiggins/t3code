@@ -1,15 +1,15 @@
 import * as Schema from "effect/Schema";
 
-import { TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { GitRefName, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 /** Handoff to a new or existing worktree detaches the provider; the conversation resumes there next run. */
 export const WorktreeMcpHandoffInput = Schema.Struct({
-  branch: TrimmedNonEmptyString.annotate({
+  branch: GitRefName.annotate({
     description:
       "Branch name to create for the worktree (e.g. 'feature/my-change'). To move into an existing worktree instead, give the branch checked out there and its path.",
   }),
   baseRef: Schema.optional(
-    TrimmedNonEmptyString.annotate({
+    GitRefName.annotate({
       description: "Default: checked-out branch.",
     }),
   ),
@@ -75,12 +75,12 @@ export type WorktreeMcpContinuationStatus = typeof WorktreeMcpContinuationStatus
 
 export const WorktreeMcpHandoffResult = Schema.Struct({
   worktreePath: TrimmedNonEmptyString,
-  branch: TrimmedNonEmptyString,
+  branch: GitRefName,
   created: Schema.Boolean.annotate({
     description:
       "True when the handoff created the worktree; false when it moved into an existing one.",
   }),
-  baseRef: Schema.NullOr(TrimmedNonEmptyString).annotate({
+  baseRef: Schema.NullOr(GitRefName).annotate({
     description: "Ref a new worktree's branch started from; null for an existing worktree.",
   }),
   startedFromOrigin: Schema.Boolean,
@@ -96,7 +96,7 @@ export const WorktreeMcpStatusResult = Schema.Struct({
       "True when this thread is attached to a git worktree. A handoff can still move it to another one.",
   }),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
-  branch: Schema.NullOr(TrimmedNonEmptyString),
+  branch: Schema.NullOr(GitRefName),
   projectWorkspaceRoot: TrimmedNonEmptyString,
   defaultStartFromOrigin: Schema.Boolean.annotate({
     description: "`startFromOrigin` default for `t3_worktree_handoff`.",

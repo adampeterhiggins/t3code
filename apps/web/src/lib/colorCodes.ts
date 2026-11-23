@@ -1,5 +1,3 @@
-import { findAndReplaceText, type MarkdownNode } from "~/vendor/mdast-find-and-replace";
-
 /**
  * A hex colour such as `#F2EDE5`, `#fff` or `#333333`. URL fragments, entities and anchors like
  * `#abc-def` are left alone.
@@ -13,39 +11,10 @@ export function mayBeIssueReference(code: string): boolean {
 
 const WHOLE_COLOR_CODE = new RegExp(`^${COLOR_CODE.source}$`, "iu");
 
-/** Cheap check, so text without a colour skips the rewrite. */
-export function mayHaveColorCode(text: string): boolean {
-  return /#[\da-f]{3}/iu.test(text);
-}
-
 /** `text` when it is exactly one colour code, ignoring surrounding whitespace. */
 export function wholeColorCode(text: string): string | null {
   const trimmed = text.trim();
   return WHOLE_COLOR_CODE.test(trimmed) && !mayBeIssueReference(trimmed) ? trimmed : null;
-}
-
-const IGNORED_TYPES = new Set(["link", "linkReference"]);
-
-/**
- * Fork: wraps colour codes in prose so the renderer can draw them as swatch chips. All-digit
- * codes stay text: `#403` is far more often a pull request, from any repository, than a colour.
- */
-export function remarkColorCodes() {
-  return (tree: MarkdownNode) => {
-    findAndReplaceText(
-      tree,
-      COLOR_CODE,
-      (code) =>
-        mayBeIssueReference(code)
-          ? false
-          : {
-              type: "text",
-              value: code,
-              data: { hName: "span", hProperties: { dataColorCode: code } },
-            },
-      IGNORED_TYPES,
-    );
-  };
 }
 
 export interface ColorFacts {

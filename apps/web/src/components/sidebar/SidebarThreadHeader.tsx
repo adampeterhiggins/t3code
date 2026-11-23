@@ -3,7 +3,7 @@
  * thread filters, new project and new thread.
  */
 import { useGT } from "gt-react";
-import { FolderPlusIcon, SearchIcon, SquarePenIcon, XIcon } from "lucide-react";
+import { SearchIcon, SquarePenIcon, XIcon } from "lucide-react";
 import {
   type ComponentProps,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -22,7 +22,7 @@ export interface SidebarThreadHeaderProps {
   hasProjects: boolean;
   /** Leads the icon group; renders nothing while no thread needs the user. */
   attentionInbox: ReactNode;
-  onNewProject: () => void;
+  projectScope: ReactNode;
   onNewThread: (event: ReactMouseEvent) => void;
   newThreadDisabled: boolean;
   newThreadShortcutLabel: string | null | undefined;
@@ -46,7 +46,7 @@ export interface SidebarThreadHeaderProps {
 export function SidebarThreadHeader({
   hasProjects,
   attentionInbox,
-  onNewProject,
+  projectScope,
   onNewThread,
   newThreadDisabled,
   newThreadShortcutLabel,
@@ -117,11 +117,7 @@ export function SidebarThreadHeader({
         {attentionInbox}
         {tabsMenu}
         {filterMenu}
-        {hasProjects ? (
-          <SidebarHeaderIconButton label={gt("Add project")} onClick={onNewProject}>
-            <FolderPlusIcon />
-          </SidebarHeaderIconButton>
-        ) : null}
+        {hasProjects ? projectScope : null}
         <SidebarHeaderIconButton
           label={gt("New thread")}
           tooltip={

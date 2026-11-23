@@ -3,68 +3,6 @@ export interface PictureSource {
   readonly srcSet?: string | undefined;
 }
 
-interface PictureHastNode {
-  type?: string;
-  tagName?: string;
-  properties?: Record<string, unknown>;
-  children?: PictureHastNode[];
-}
-
-/**
- * Replaces a `<picture>` with the `<img>` for this appearance. The chat image
- * renderer is not a direct child of `<picture>`, so the browser would ignore
- * `<source>` and always paint the fallback.
- */
-export function rehypeResolvePictureSources(appearance: "light" | "dark") {
-  const visit = (node: PictureHastNode) => {
-    const children = node.children;
-    if (!children) return;
-    for (let index = 0; index < children.length; index += 1) {
-      const child = children[index]!;
-      if (child.tagName !== "picture") {
-        visit(child);
-        continue;
-      }
-      const image = resolvedPictureImage(child, appearance);
-      if (image) children[index] = image;
-      else visit(child);
-    }
-  };
-  // An attacher, same as the other rehype plugins: unified calls it, then the transformer.
-  return () => (tree: PictureHastNode) => {
-    visit(tree);
-  };
-}
-
-function resolvedPictureImage(
-  picture: PictureHastNode,
-  appearance: "light" | "dark",
-): PictureHastNode | null {
-  const sources: PictureSource[] = [];
-  let image: PictureHastNode | undefined;
-  for (const child of picture.children ?? []) {
-    if (child.tagName === "source") {
-      sources.push({
-        media: hastProperty(child.properties?.media),
-        srcSet: hastProperty(child.properties?.srcSet),
-      });
-    } else if (child.tagName === "img" && image === undefined) {
-      image = child;
-    }
-  }
-  if (!image) return null;
-  const src = pictureSourceUrl(sources, hastProperty(image.properties?.src), appearance);
-  if (!src) return null;
-  return { ...image, properties: { ...image.properties, src } };
-}
-
-function hastProperty(value: unknown): string | undefined {
-  if (typeof value === "string") return value;
-  if (!Array.isArray(value)) return undefined;
-  const text = value.filter((part) => typeof part === "string").join(" ");
-  return text.length > 0 ? text : undefined;
-}
-
 /**
  * The image a `<picture>` should show. GitHub review badges offer one
  * `<source>` per color scheme and an `<img>` fallback. A query this does not

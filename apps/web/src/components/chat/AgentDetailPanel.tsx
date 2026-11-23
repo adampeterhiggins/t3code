@@ -39,7 +39,7 @@ import type {
   ThreadId,
   TurnItemId,
 } from "@t3tools/contracts";
-import { shouldPreserveAssistantLineBreaks } from "@t3tools/shared/markdownPipeline";
+import { shouldPreserveAssistantLineBreaks } from "@t3tools/shared/assistantInsights";
 import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowDownUpIcon,

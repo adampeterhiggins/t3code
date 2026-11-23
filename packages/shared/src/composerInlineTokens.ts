@@ -1,4 +1,10 @@
-import { markdownMathRanges } from "./markdownMath.ts";
+import { composerFileLinkPath } from "./composerTrigger.ts";
+import { fileBasename } from "./path.ts";
+
+/** The formulas a Markdown parser finds in text, as source offsets. */
+export type FindMathRanges = (
+  text: string,
+) => ReadonlyArray<{ readonly start: number; readonly end: number }>;
 
 export type ComposerInlineToken =
   | {
@@ -18,6 +24,8 @@ export type ComposerInlineToken =
 
 export interface CollectComposerInlineTokensOptions {
   readonly preserveTrailingFrom?: ReadonlyArray<ComposerInlineToken>;
+  /** Formulas keep their literal tokens; without it, nothing is read as math. */
+  readonly findMath?: FindMathRanges;
 }
 
 const SKILL_MENTION_SOURCE =
@@ -50,6 +58,7 @@ function collectMentionTokens(text: string): ComposerInlineToken[] {
     try {
       path = decodeURIComponent(encodedPath);
     } catch {}
+    path = composerFileLinkPath(encodedPath, path);
     const separatorIndex = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
     const basename = separatorIndex >= 0 ? path.slice(separatorIndex + 1) : path;
     const hasExternalScheme = URI_SCHEME_REGEX.test(path) && !WINDOWS_DRIVE_PATH_REGEX.test(path);
@@ -100,6 +109,7 @@ function collectMentionTokens(text: string): ComposerInlineToken[] {
  */
 export function composerMathRanges(
   text: string,
+  findMath: FindMathRanges,
   mentions: ReadonlyArray<ComposerInlineToken> = collectMentionTokens(text),
 ) {
   let masked = text;
@@ -110,7 +120,7 @@ export function composerMathRanges(
       "x".repeat(mention.end - mention.start) +
       masked.slice(mention.end);
   }
-  return markdownMathRanges(masked).map(({ start, end }) => ({
+  return findMath(masked).map(({ start, end }) => ({
     start,
     end,
     source: text.slice(start, end),
@@ -157,7 +167,10 @@ export function collectComposerInlineTokens(
   // TeX can contain literal skill and file tokens, especially inside \text{}.
   // They remain formula source rather than becoming composer context chips.
   // Confirmed trailing file links are masked too, so a kept chip is not read as TeX.
-  const math = matches.length > 0 ? composerMathRanges(text, matches) : [];
+  const math =
+    matches.length > 0 && options.findMath
+      ? composerMathRanges(text, options.findMath, matches)
+      : [];
   return matches
     .filter(
       (match) => !math.some((formula) => match.start < formula.end && match.end > formula.start),
@@ -165,20 +178,15 @@ export function collectComposerInlineTokens(
     .sort((left, right) => left.start - right.start);
 }
 
-/** One-line previews show each file-link mention as its file name, the way the composer chip reads. */
-export function composerFileMentionsToLabels(text: string): string {
-  // Mentions only match before whitespace; the pad lets one end the text.
-  const mentions = collectMentionTokens(`${text} `).filter((token) => token.source.startsWith("["));
+/** Shows each `@`-file link by its file name, as its composer chip does, for one-line previews. */
+export function composerFileLinksToPlainText(text: string): string {
   let result = "";
   let cursor = 0;
-  // File-link matches come back in text order and never overlap.
-  for (const mention of mentions) {
-    const separatorIndex = Math.max(
-      mention.value.lastIndexOf("/"),
-      mention.value.lastIndexOf("\\"),
-    );
-    result += text.slice(cursor, mention.start) + mention.value.slice(separatorIndex + 1);
-    cursor = mention.end;
+  // The composer reads a link as a mention only before whitespace, so one may end the text.
+  for (const token of collectMentionTokens(`${text} `)) {
+    if (!token.source.startsWith("[")) continue;
+    result += text.slice(cursor, token.start) + fileBasename(token.value);
+    cursor = token.end;
   }
   return result + text.slice(cursor);
 }

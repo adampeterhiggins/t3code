@@ -1,11 +1,11 @@
 import type { EnvironmentId, RunId, ThreadId } from "@t3tools/contracts";
 import { msg } from "gt-react-native";
 import { assistantCitationsToPlainText } from "@t3tools/shared/assistantCitations";
-import { composerFileMentionsToLabels } from "@t3tools/shared/composerInlineTokens";
 import {
   isAttachmentOnlyBootstrapPrompt,
   replaceComposerContextReferences,
 } from "@t3tools/shared/composerContextReferences";
+import { composerFileLinksToPlainText } from "@t3tools/shared/composerInlineTokens";
 
 export const REMOVE_QUEUED_MESSAGE_ACCESSIBILITY_LABEL = msg("Remove queued message");
 
@@ -43,8 +43,8 @@ export function resolveThreadQueueRowControls(input: {
     // Chips read as their labels, matching the composer.
     displayText: isAttachmentOnlyBootstrapPrompt(input.text)
       ? ""
-      : composerFileMentionsToLabels(
-          assistantCitationsToPlainText(
+      : assistantCitationsToPlainText(
+          composerFileLinksToPlainText(
             replaceComposerContextReferences(input.text, (reference) => reference.label),
           ),
         ).trim(),

@@ -1,4 +1,4 @@
-import type { PluggableList } from "unified";
+import type { MarkdownExtensions } from "~/markdown/wordsHast";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { createContext, useContext } from "react";
 
@@ -10,7 +10,7 @@ import { useLinkClickHandler } from "~/browser/useOpenLink";
  * markdown renderer so presentation pieces can read it without importing chat markdown.
  */
 export const PullRequestMarkdownContext = createContext<{
-  remarkPlugins: PluggableList;
+  extensions: MarkdownExtensions;
   lineBreaks: boolean;
   threadRef: ScopedThreadRef | null;
   repository: string | null;

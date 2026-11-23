@@ -29,6 +29,8 @@ import { integrationCommand } from "./cli/integrations.ts";
 import { usageCommand } from "./cli/usage.ts";
 import { importCommand } from "./cli/importSessions.ts";
 import { worktreeCommand } from "./cli/worktree.ts";
+import { feedbackCommand } from "./cli/feedback.ts";
+import { workflowCommand } from "./cli/workflow.ts";
 import { runDefaultServerCommand, serveCommand, startCommand } from "./cli/server.ts";
 import { updateCommand } from "./cli/update.ts";
 import {
@@ -107,6 +109,8 @@ export const makeCli = ({ cloudEnabled = hasCloudPublicConfig } = {}) =>
       usageCommand,
       importCommand,
       worktreeCommand,
+      feedbackCommand,
+      workflowCommand,
       upCommand,
       statusCommand,
       serviceCommand,

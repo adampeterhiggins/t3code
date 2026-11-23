@@ -1,9 +1,9 @@
-import { markdownPlainText } from "~/lib/markdownPlainText";
 import { assistantCitationsToPlainText } from "@t3tools/shared/assistantCitations";
 import {
   isAttachmentOnlyBootstrapPrompt,
   replaceComposerContextReferences,
 } from "@t3tools/shared/composerContextReferences";
+import { markdownPlainText } from "~/lib/markdownPlainText";
 
 import type { MessagesTimelineRow } from "./MessagesTimeline.logic";
 
@@ -57,7 +57,7 @@ function resolveFinalAssistantTextForTurn(
 // The tooltip shows a few lines; bound parsing work for long messages and streaming responses.
 function markdownMinimapPreview(markdown: string | null) {
   if (markdown === null) return null;
-  const compact = markdownPlainText(markdown.slice(0, 1_500)).replace(/\s+/g, " ").trim();
+  const compact = markdownPlainText(markdown.slice(0, 1_500));
   return compact.length > 0 ? compact : null;
 }
 

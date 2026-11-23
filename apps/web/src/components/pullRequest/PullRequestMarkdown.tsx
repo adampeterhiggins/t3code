@@ -123,7 +123,7 @@ function PullRequestBodySegmentView({
         threadRef={threadRef}
         pullRequestPanelRef={threadRef ?? listPanelRef}
         environmentId={environmentId}
-        {...(context ? { extraRemarkPlugins: context.remarkPlugins } : {})}
+        {...(context ? { extensions: context.extensions } : {})}
         lineBreaks={lineBreaks}
         sourceControlMedia
         sourceControlMediaRepository={repository}

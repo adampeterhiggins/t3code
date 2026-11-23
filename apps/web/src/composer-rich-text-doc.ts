@@ -60,6 +60,7 @@ import {
 import { collectInlineContextIds } from "~/lib/composerContextReferences";
 import { readLocalApi } from "~/localApi";
 import { composerMathRanges } from "@t3tools/shared/composerInlineTokens";
+import { markdownMathRanges } from "~/markdown/wordsHast";
 
 export type SkillMeta = { label: string; description: string | null };
 
@@ -1060,7 +1061,7 @@ export function buildTiptapContent(
   const atomSources: string[] = [];
   const literal = value.slice(0, options?.literalLength ?? 0);
   const remainder = value.slice(literal.length);
-  const formulas = composerMathRanges(remainder);
+  const formulas = composerMathRanges(remainder, markdownMathRanges);
   let offset = 0;
   const chunks: Array<{ text: string } | { source: string }> = [];
   for (const formula of formulas) {

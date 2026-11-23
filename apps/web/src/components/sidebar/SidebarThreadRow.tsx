@@ -1,8 +1,5 @@
 import { ActivityShimmerOverlay } from "../chat/TimelineRowParts";
 import { observeVisibleAnimation } from "~/lib/visibleAnimation";
-import { useAtomMount } from "@effect/atom-react";
-import { useEnvironmentQuery } from "../../state/query";
-import { vcsEnvironment, vcsBranchRevalidation } from "../../state/vcs";
 import { SidebarRenameInput } from "./SidebarRenameInput";
 import { SidebarSavedDraftsIndicator, SidebarSplitIndicator } from "./SidebarRowDecorations";
 import { useSidebarRowTabs, SidebarDisclosure } from "./SidebarTabDisclosure";
@@ -15,15 +12,7 @@ import {
 } from "@t3tools/contracts";
 import { useThreadShell } from "../../state/entities";
 import { ContextPreviewHover, type ContextPreviewPlacement } from "../contextPreviewRegistry";
-import {
-  ThreadTerminalStatusButton,
-  ThreadPullRequestBadgeControl,
-  ThreadWorktreeIndicator,
-  prStatusIndicator,
-  resolveThreadPullRequestBadge,
-  useLinkedThreadPullRequest,
-  ThreadSearchPullRequestNumber,
-} from "../ThreadStatusIndicators";
+import { ThreadTerminalStatusButton } from "../ThreadStatusIndicators";
 import { asLaunchingThread } from "@t3tools/client-runtime/state/thread-inbox";
 import { discardComposerDraft } from "../../lib/discardComposerDraft";
 import { useThreadMessageDrafts } from "../../state/messageDrafts";
@@ -104,11 +93,16 @@ import {
   resolveThreadLastVisitedAt,
   shouldRecedeSidebarThread,
   resolveWorkingStartedAt,
-  useRetainedValue,
-  withoutRemovedCheckout,
   useSidebarRowSubscriptionLease,
   setFileDragActive,
 } from "../Sidebar.logic";
+import {
+  ThreadPullRequestBadgeControl,
+  prStatusIndicator,
+  resolveThreadPullRequestBadge,
+  useLinkedThreadPullRequest,
+  ThreadSearchPullRequestNumber,
+} from "../ThreadStatusIndicators";
 import { pickSnoozePreset, resolveSnoozePresets, type SnoozePreset } from "../Sidebar.snooze";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { ThreadSearchMatchExcerpt } from "../ThreadSearchMatch";
@@ -122,7 +116,6 @@ import { IssueGlyph, issueStatePresentation } from "../issue/issuePresentation";
 import { Kbd } from "../ui/kbd";
 import { Menu, MenuItem, MenuItemDetail, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { MiddleTruncate } from "../ui/middle-truncate";
 import {
   useComposerDraftActiveModelSelection,
   useThreadHasUnsentDraft,
@@ -449,7 +442,7 @@ type SidebarThreadRowProps = {
   displayThread: SidebarThreadSummary;
   tabGroupName?: string | undefined;
   // "folder" is a one-line row inside a boring sidebar project folder;
-  // "folder-multiline" adds the card's branch and PR line under it.
+  // "folder-multiline" adds the card's environment and PR line under it.
   variant: "card" | "slim" | "folder" | "folder-multiline";
   navigationParent?: string | undefined;
   // The category determines the action independently of the row layout.
@@ -478,10 +471,8 @@ type SidebarThreadRowProps = {
   // Read at click time; a prop would re-render every row on entering or leaving a thread route.
   readOpensPullRequestsInRightPanel: () => boolean;
   jumpLabel: string | null;
-  currentEnvironmentId: string | null;
   environmentLabel: string | null;
   environmentMachine: EnvironmentMachineKind;
-  scratchMachineLabel: string | null;
   project: EnvironmentProject | null;
   projectDisplayName: string | null;
   providerEntryByInstanceId: ReadonlyMap<string, ProviderEntrySummary>;
@@ -611,25 +602,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     thread.pullRequests,
     thread.branchPullRequest,
   );
-  const gitCwd = thread.worktreePath ?? props.project?.workspaceRoot ?? null;
-  const branchTarget =
-    leaseLiveStatus && (thread.branch != null || thread.worktreePath !== null) && gitCwd !== null
-      ? { environmentId: thread.environmentId, cwd: gitCwd }
-      : null;
-  const gitStatus = useEnvironmentQuery(
-    branchTarget === null
-      ? null
-      : vcsEnvironment.branch({
-          environmentId: branchTarget.environmentId,
-          input: { cwd: branchTarget.cwd },
-        }),
-  );
-  useAtomMount(vcsBranchRevalidation(branchTarget));
-  const visibleGitStatus = useRetainedValue(
-    JSON.stringify([thread.environmentId, gitCwd]),
-    gitStatus.data,
-  );
-  const checkoutThread = withoutRemovedCheckout(thread, visibleGitStatus, props.project);
   const pr = linkedPullRequestStatus?.pr ?? null;
   const supportsMultiplePullRequests = useSupportsMultiplePullRequests(thread.environmentId);
   const currentLinkedPr = supportsMultiplePullRequests
@@ -664,8 +636,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const prStatus = prStatusIndicator(pr, linkedPullRequestStatus?.sourceControlProvider, messages);
   // An unsent composer pick wins, so the icon follows the composer before the next turn.
   const draftModelSelection = useComposerDraftActiveModelSelection(threadRef);
-  const isRemote = thread.environmentId !== props.currentEnvironmentId;
-  const showsScratchMachine = !checkoutThread.branch && props.scratchMachineLabel !== null;
 
   const handleClick = (event: ReactMouseEvent) => {
     // The group header stands for every tab. A tab already open in it stays open.
@@ -1140,17 +1110,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       <BotIcon aria-hidden className="size-3 shrink-0 text-muted-foreground/65" />
     ) : null;
 
-  const remoteMachineIcon =
-    isRemote && !showsScratchMachine ? (
-      <span className="inline-flex shrink-0 items-center text-sidebar-muted-foreground/70">
-        <EnvironmentMachineIcon aria-hidden kind={props.environmentMachine} className="size-3.5" />
-      </span>
-    ) : null;
   const diff = latestRunDiff(thread);
   // Only the trailing icons would remain, so the row moves them to the title line instead.
   const metaLineEmpty =
-    !checkoutThread.branch &&
-    !showsScratchMachine &&
+    props.environmentLabel === null &&
     prBadge === null &&
     issueBadge === null &&
     diff === null &&
@@ -1158,21 +1121,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   // The two-line folder row's second line; the card keeps its own fuller version below.
   const metaLine = metaLineEmpty ? null : (
     <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-secondary-label text-xs">
-      {checkoutThread.branch ? (
-        <>
-          <ThreadWorktreeIndicator thread={checkoutThread} />
-          <span className="flex min-w-0 flex-1">
-            <MiddleTruncate value={checkoutThread.branch} showTitle={false} />
-          </span>
-        </>
-      ) : showsScratchMachine ? (
+      {props.environmentLabel !== null ? (
         <>
           <EnvironmentMachineIcon
             aria-hidden
             kind={props.environmentMachine}
-            className="size-3 shrink-0"
+            className="size-3.5 shrink-0 text-icon-muted"
           />
-          <span className="min-w-0 flex-1 truncate">{props.scratchMachineLabel}</span>
+          <span className="min-w-0 flex-1 truncate">{props.environmentLabel}</span>
         </>
       ) : (
         <span className="flex-1" />
@@ -1190,7 +1146,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         aria-hidden
         className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
       >
-        {remoteMachineIcon}
         <SidebarProviderStack
           thread={thread}
           draftModelSelection={draftModelSelection}
@@ -1201,7 +1156,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   );
   const titleLineIcons = metaLineEmpty ? (
     <span aria-hidden className="inline-flex shrink-0 items-center gap-1">
-      {remoteMachineIcon}
       <SidebarProviderStack
         thread={thread}
         draftModelSelection={draftModelSelection}
@@ -1713,17 +1667,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                   unifyTabs ? "mt-1" : "mt-0.5",
                 )}
               >
-                {/* Always the branch. The plan step used to take this slot while
-            working, but it truncated to a half-sentence and dropped the
-            branch, so the row lost its most stable identifier. */}
-                {thread.branch ? (
-                  <>
-                    <ThreadWorktreeIndicator thread={thread} />
-                    <span className="flex min-w-0 flex-1 text-muted-foreground/40">
-                      <MiddleTruncate value={thread.branch} showTitle={false} />
-                    </span>
-                  </>
-                ) : showsScratchMachine ? (
+                {props.environmentLabel !== null ? (
                   <>
                     <EnvironmentMachineIcon
                       aria-hidden
@@ -1731,7 +1675,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                       className="size-3 shrink-0 text-muted-foreground/40"
                     />
                     <span className="min-w-0 flex-1 truncate text-muted-foreground/40">
-                      {props.scratchMachineLabel}
+                      {props.environmentLabel}
                     </span>
                   </>
                 ) : (
@@ -1757,15 +1701,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                   aria-hidden
                   className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
                 >
-                  {isRemote && !showsScratchMachine ? (
-                    <span className="inline-flex shrink-0 items-center text-sidebar-muted-foreground/70">
-                      <EnvironmentMachineIcon
-                        aria-hidden
-                        kind={props.environmentMachine}
-                        className="size-3.5"
-                      />
-                    </span>
-                  ) : null}
                   {unifyTabs ? null : (
                     <SidebarProviderStack
                       thread={thread}

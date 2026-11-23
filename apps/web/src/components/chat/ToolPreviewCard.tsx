@@ -896,7 +896,9 @@ function PreviewBody(props: {
                 )}
               </div>
               {task.schedule ? (
-                <p className="truncate text-muted-foreground">{scheduleLabel(task.schedule)}</p>
+                <p className="truncate text-muted-foreground">
+                  {scheduleLabel(task.schedule, "locale")}
+                </p>
               ) : null}
             </li>
           ))}

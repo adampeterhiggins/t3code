@@ -2,7 +2,7 @@ import type {
   EnvironmentProject,
   EnvironmentThreadShell,
 } from "@t3tools/client-runtime/state/shell";
-import type { EnvironmentId } from "@t3tools/contracts";
+import { isListedThreadLineage, type EnvironmentId } from "@t3tools/contracts";
 import type { SidebarProjectGroupingMode } from "@t3tools/contracts/settings";
 import { filterFacets } from "@t3tools/shared/filterFacets";
 
@@ -80,7 +80,7 @@ export function buildThreadListFilterFacets(input: {
   const threads = input.threads.filter(
     (thread) =>
       thread.archivedAt === null &&
-      thread.lineage.relationshipToParent !== "subagent" &&
+      isListedThreadLineage(thread.lineage) &&
       threadListV2MatchesSearch(thread, query, input.matchedThreadKeys),
   );
   const facets = filterFacets(threads, {

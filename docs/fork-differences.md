@@ -778,13 +778,13 @@ Code: `apps/server/src/storageCleanup.ts` and
 
 ## Worktree branch named before setup
 
-New worktree branches use upstream's naming (**Settings → Source Control → Worktree branch
-naming**), but the name is generated while the worktree is checked out, so the setup script and
-agent start on the final branch. Upstream generates the name after setup; the fork overlaps
-naming with checkout so setup can use the final name. The placeholder remains only when naming outlasts checkout by more than a few
-seconds, and is then renamed in the background as upstream does. A static prefix the model repeats
-in its answer is not doubled. The fork's earlier **Branch prefix** setting (global and per project)
-moves into the static prefix once, the first time the server loads its settings.
+Upstream now generates branch names during worktree creation. In the fork, setup starts
+on the final branch when naming finishes in time. If generation takes longer than
+the bounded wait, setup and the agent can start on the temporary branch, and T3 Code
+renames the affected checkouts when the name arrives. Retries reuse the generated name.
+A static prefix the model repeats in its answer is not doubled. The earlier global and
+per-project **Branch prefix** setting moves into the static prefix when the server loads
+the settings.
 
 Code: `prepareInBackground` in `apps/server/src/orchestration-v2/ThreadLaunchService.ts`,
 `formatGeneratedBranchName` in `packages/shared/src/git.ts`, and `foldLegacyWorktreeBranchPrefix`

@@ -15,7 +15,7 @@ import {
   projectComposerContextForProvider,
   replaceComposerContextReferences,
 } from "./composerContextReferences.ts";
-import { composerFileMentionsToLabels } from "./composerInlineTokens.ts";
+import { composerFileLinksToPlainText } from "./composerInlineTokens.ts";
 
 const CITATION_PROTOCOL = "t3-citation:";
 const CITATION_HREF_PREFIX = `${CITATION_PROTOCOL}//v1/`;
@@ -146,7 +146,7 @@ function transcriptSummary(citation: AssistantCitation): string | null {
 
 /** A comment holds composer chips; plain-text readers see each chip as its label. */
 function commentAsPlainText(comment: string): string {
-  return composerFileMentionsToLabels(
+  return composerFileLinksToPlainText(
     replaceComposerContextReferences(comment, (occurrence) => occurrence.label),
   );
 }

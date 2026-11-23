@@ -56,24 +56,26 @@ export function useComposerAttachControls(
   const [isModelChipPickerOpen, setIsModelChipPickerOpen] = useState(false);
   const [attachMenuAnchor, setAttachMenuAnchor] = useState<HTMLSpanElement | null>(null);
   const attachCheckouts = useComposerCheckoutItems(environmentId, { enabled: true, query: "" });
-  return showComposerAttachAction ? (
+  const inputControl = showComposerAttachAction ? (
+    <input
+      ref={attachmentInputRef}
+      type="file"
+      multiple
+      className="hidden"
+      onChange={(event) => {
+        const files = Array.from(event.currentTarget.files ?? []);
+        event.currentTarget.value = "";
+        // Inserting a chip refocuses the editor after the draft renders;
+        // focusing synchronously here would report the editor's stale text
+        // over the prompt that was just written.
+        void addComposerAttachments(files).then((inserted) => {
+          if (!inserted) focusComposer();
+        });
+      }}
+    />
+  ) : null;
+  const button = showComposerAttachAction ? (
     <>
-      <input
-        ref={attachmentInputRef}
-        type="file"
-        multiple
-        className="hidden"
-        onChange={(event) => {
-          const files = Array.from(event.currentTarget.files ?? []);
-          event.currentTarget.value = "";
-          // Inserting a chip refocuses the editor after the draft renders;
-          // focusing synchronously here would report the editor's stale text
-          // over the prompt that was just written.
-          void addComposerAttachments(files).then((inserted) => {
-            if (!inserted) focusComposer();
-          });
-        }}
-      />
       <span ref={setAttachMenuAnchor} className="inline-flex">
         <ComposerAttachMenu
           environmentId={environmentId}
@@ -118,4 +120,5 @@ export function useComposerAttachControls(
       />
     </>
   ) : null;
+  return { button, input: inputControl };
 }

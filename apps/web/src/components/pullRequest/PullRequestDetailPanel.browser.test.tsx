@@ -586,6 +586,7 @@ it("restores the selected PR tab when switching threads and remounting the right
       screen.rerender(
         <RightPanelSurfaceContent
           issuesSupported={false}
+          workspaceRevision={null}
           sideChatParentPanel={{ hostRef: ref, openToolDiff: () => {}, runShellCommand: () => {} }}
           surface={selected}
           activeSurfaceId={selected?.id ?? null}

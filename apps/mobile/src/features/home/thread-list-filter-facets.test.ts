@@ -66,6 +66,14 @@ const api = project(remote, "api", "github.com/acme/api");
 const projects = [app, site, api];
 const threads = [
   thread(app, "Fix login"),
+  thread(app, "Workflow step", {
+    lineage: {
+      parentThreadId: null,
+      rootThreadId: ThreadId.make("Workflow step"),
+      relationshipToParent: null,
+      workflowStep: true,
+    },
+  }),
   thread(app, "Old work", { settledOverride: "settled" }),
   thread(site, "Landing page"),
   thread(site, "Later", { snoozedAt: now, snoozedUntil: "2026-06-03T00:00:00.000Z" }),
