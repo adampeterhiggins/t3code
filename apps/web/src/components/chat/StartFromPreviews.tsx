@@ -262,7 +262,7 @@ export function AutomationHoverPreview(props: {
         <p className="font-medium text-foreground text-sm leading-snug text-pretty">{task.title}</p>
         <div className="flex flex-col gap-0.5 text-muted-foreground">
           <span>
-            {scheduleLabel(task.schedule, props.timeZone)}
+            {scheduleLabel(task.schedule, "locale", props.timeZone)}
             {!task.enabled ? (
               gt(" · paused")
             ) : task.nextRunAt !== null ? (

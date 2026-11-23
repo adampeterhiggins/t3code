@@ -99,7 +99,7 @@ import {
   startDescriptionSave,
   type DescriptionDraft,
 } from "@t3tools/client-runtime/pull-request-editing";
-import { setMarkdownTaskChecked } from "@t3tools/shared/markdownTaskList";
+import { setMarkdownTaskChecked } from "@t3tools/shared/markdownTaskEdits";
 import { PullRequestMarkdown } from "./PullRequestMarkdown";
 import { PullRequestQuoteSource } from "./PullRequestQuoteToolbar";
 import { PullRequestCommentBody } from "./PullRequestCommentBody";

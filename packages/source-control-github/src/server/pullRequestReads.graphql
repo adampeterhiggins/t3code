@@ -59,7 +59,10 @@ fragment CheckContext on StatusCheckRollupContext {
         name
       }
       workflowRun {
+        event
+        runNumber
         workflow {
+          id
           name
         }
       }

@@ -1,3 +1,4 @@
+import { withoutRemovedCheckout } from "./Sidebar.logic";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import {
@@ -80,15 +81,15 @@ export interface ThreadPreviewProps {
  * latest messages arrive once the thread's detail loads.
  */
 export function ThreadPreview(props: ThreadPreviewProps) {
+  const gt = useGT();
   const { environmentId, threadId } = props.record;
   const shell = useThreadShell(scopeThreadRef(environmentId, threadId));
   if (props.unreadable) {
     return (
       <p className="px-1 py-2 text-xs">
-        <T>
-          On another machine, so this machine's agent can't read it. Remove it or switch back to
-          send.
-        </T>
+        {gt(
+          "On another machine, so this machine's agent can't read it. Remove it or switch back to send.",
+        )}
       </p>
     );
   }
@@ -194,7 +195,7 @@ function LiveThreadPreview(props: ThreadPreviewProps & { shell: EnvironmentThrea
   const draftModelSelection = useComposerDraftActiveModelSelection(threadRef);
   const gitCwd = thread.worktreePath ?? project?.workspaceRoot ?? null;
   const gitStatus = useEnvironmentQuery(
-    thread.branch !== null && gitCwd !== null
+    (thread.branch !== null || thread.worktreePath !== null) && gitCwd !== null
       ? vcsEnvironment.status({
           environmentId: thread.environmentId,
           input: { cwd: gitCwd, includeRemote: false },
@@ -219,10 +220,11 @@ function LiveThreadPreview(props: ThreadPreviewProps & { shell: EnvironmentThrea
   const previousProviderNames = thread.providerInstanceHistory
     .filter((instanceId) => instanceId !== modelInstanceId)
     .map((instanceId) => providerEntries.get(instanceId)?.displayName ?? instanceId);
+  const checkout = withoutRemovedCheckout(thread, gitStatus.data, project);
   const branchMismatch = resolveLocalCheckoutBranchMismatch({
-    effectiveEnvMode: thread.worktreePath === null ? "local" : "worktree",
-    activeWorktreePath: thread.worktreePath,
-    activeThreadBranch: thread.branch,
+    effectiveEnvMode: checkout.worktreePath === null ? "local" : "worktree",
+    activeWorktreePath: checkout.worktreePath,
+    activeThreadBranch: checkout.branch,
     currentGitBranch: gitStatus.data?.refName ?? null,
   });
   const items = read?.items ?? latestThreadPreviewItems(detail?.projection.messages ?? [], resolve);
@@ -259,10 +261,10 @@ function LiveThreadPreview(props: ThreadPreviewProps & { shell: EnvironmentThrea
           {environmentLabel}
         </PreviewLine>
       ) : null}
-      {thread.branch ? (
+      {checkout.branch ? (
         <div className="flex min-w-0 items-center gap-2">
           <GitBranchIcon className="size-3 shrink-0 stroke-muted-foreground" />
-          <MiddleTruncate value={thread.branch} className="flex" />
+          <MiddleTruncate value={checkout.branch} className="flex" />
         </div>
       ) : null}
       {branchMismatch ? (

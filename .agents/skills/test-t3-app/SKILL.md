@@ -54,7 +54,10 @@ for a fresh one. Keep using the same tab.
 
 ## Verify and retain
 
-Exercise the affected flow and capture the state that proves it works. Read
+Exercise the affected flow and capture the state that proves it works. Actually
+look at the rendered result and think as a user using the feature—check layout,
+visual hierarchy, alignment, and end-to-end flow—and iterate on anything that
+feels awkward or unfinished until you are satisfied before handing back. Read
 [references/screenshots.md](references/screenshots.md) before taking PR
 images, or when panel captures time out or come out blurry. Keep
 the server, state, and panel available while the user inspects or iterates.

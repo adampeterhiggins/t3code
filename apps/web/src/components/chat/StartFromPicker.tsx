@@ -732,7 +732,7 @@ function StartFromPickerDialog(props: StartFromPickerDialogProps) {
                             </Badge>
                           ) : null}
                           <span className="w-40 shrink-0 truncate text-end text-muted-foreground/70 text-xs">
-                            {blocker ?? scheduleLabel(task.schedule)}
+                            {blocker ?? scheduleLabel(task.schedule, "locale")}
                           </span>
                         </span>
                       }

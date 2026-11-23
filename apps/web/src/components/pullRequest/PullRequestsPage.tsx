@@ -35,6 +35,7 @@ import {
   mergePullRequestDiffStats,
   pullRequestDiffStatKey,
   pullRequestEntryKey,
+  pullRequestListAnsweredEmpty,
   rankPullRequestMatches,
   pullRequestStatsRefreshBatches,
   pullRequestStatsRequestBatches,
@@ -415,14 +416,7 @@ export function PullRequestsPage() {
     listQuery.observations,
   );
   if (observedHosts !== hostReads) setHostReads(observedHosts);
-  const baselineEmpty =
-    baselineQuery.data?.entries.length === 0 &&
-    baselineQuery.data.errors.length === 0 &&
-    !baselineQuery.isPending &&
-    baselineQuery.error === null;
-  // One broad page without the menus' own filters, read only while the menu is open. Each menu
-  // counts its choices under the *other* applied filters, so no menu narrows itself. Project and
-  // host stay narrowed by the host and are not counted; the search narrows every menu alike.
+  const baselineEmpty = pullRequestListAnsweredEmpty(baselineQuery);
   const facetTargets = (() => {
     if (!filtersOpen) return NO_LIST_TARGETS;
     return environmentQueries.map(({ environmentId, projectIds }) => ({

@@ -34,7 +34,7 @@ import { cn } from "~/lib/utils";
 import { formatSecondsTimestamp } from "~/timestampFormat";
 
 import { elapsedBetween } from "../AgentStatus";
-import { shouldPreserveAssistantLineBreaks } from "@t3tools/shared/markdownPipeline";
+import { shouldPreserveAssistantLineBreaks } from "@t3tools/shared/assistantInsights";
 import ChatMarkdown from "../ChatMarkdown";
 import { TOOL_KIND_ICONS } from "./agentToolKinds";
 import { agentTranscriptToolRowIndex, type AgentTranscriptRow } from "./agentTranscript";
