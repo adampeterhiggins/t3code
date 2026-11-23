@@ -157,10 +157,12 @@ describe("renderDevinReviewMarkdown", () => {
         }),
       ],
       10_000,
-      [
-        { title: "Overview", text: "Adds retries." },
-        { title: "1. Retry loop", text: "y".repeat(5_000) },
-      ],
+      {
+        walkthrough: [
+          { title: "Overview", text: "Adds retries." },
+          { title: "1. Retry loop", text: "y".repeat(5_000) },
+        ],
+      },
     );
     expect(markdown.indexOf("## Walkthrough\n\n### Overview\n\nAdds retries.")).toBeGreaterThan(0);
     expect(markdown.indexOf("### 1. Retry loop")).toBeLessThan(
@@ -182,13 +184,57 @@ describe("renderDevinReviewMarkdown", () => {
         suggestedFixPrompt: "z".repeat(200),
       }),
     );
-    const markdown = renderDevinReviewMarkdown(summary, findings, 2_000, [
-      { title: "Overview", text: "w".repeat(500) },
-    ]);
+    const markdown = renderDevinReviewMarkdown(summary, findings, 2_000, {
+      walkthrough: [{ title: "Overview", text: "w".repeat(500) }],
+    });
     expect(markdown.length).toBeLessThanOrEqual(2_000);
     expect(markdown).toContain("## Walkthrough");
     const shown = markdown.match(/#### /gu)?.length ?? 0;
     expect(shown).toBeGreaterThan(0);
     expect(markdown).toContain(`… ${20 - shown} more findings not shown.`);
+  });
+
+  it("marks security findings, and says which have no GitHub thread to resolve", () => {
+    const markdown = renderDevinReviewMarkdown(
+      summary,
+      [
+        finding({
+          title: "Credentials in output",
+          kind: "security",
+          source: "devin",
+          url: summary.reviewUrl,
+          threadId: null,
+          devinState: "open",
+        }),
+        finding({ title: "Posted", source: "github", threadId: "PRRT_1" }),
+        finding({
+          title: "Fixed by Devin",
+          kind: "security",
+          source: "devin",
+          url: summary.reviewUrl,
+          devinState: "resolved",
+        }),
+      ],
+      10_000,
+    );
+    expect(markdown).toContain("2 open findings (1 security), 1 resolved or outdated.");
+    expect(markdown).toContain("#### Medium · Security · Credentials in output");
+    expect(markdown).toContain(
+      `Devin only, not posted to GitHub, so there is no thread to resolve: ${summary.reviewUrl}`,
+    );
+    expect(markdown).toContain(
+      `GitHub thread (thread PRRT_1): https://github.com/acme/app/pull/7#discussion_r1\nDevin Review: ${summary.reviewUrl}`,
+    );
+    expect(markdown).toContain("- [resolved by Devin] Medium · Security · Fixed by Devin");
+    expect(markdown).not.toContain("may be missing");
+  });
+
+  it("warns that security findings may be missing when read from GitHub alone", () => {
+    const markdown = renderDevinReviewMarkdown(summary, [finding({})], 10_000, {
+      githubOnlyReason: "Devin Review is not connected",
+    });
+    expect(markdown).toContain(
+      "Findings were read from GitHub's review comments alone (Devin Review is not connected). Security findings Devin did not post to GitHub may be missing",
+    );
   });
 });

@@ -16,8 +16,9 @@ export const DevinReviewAccount = Schema.Struct({
 export type DevinReviewAccount = typeof DevinReviewAccount.Type;
 
 /**
- * Devin's API can only start a review and report its status. Findings are read from the pull
- * request on GitHub, so they need no connection; `connected` adds status and Run review.
+ * Devin's public API can only start a review and report its status. With a Devin login, findings
+ * are read from Devin's own review API; otherwise from the pull request on GitHub, which needs no
+ * connection but misses findings Devin did not post there, such as withheld security findings.
  */
 export const DevinReviewConnectionState = Schema.Struct({
   phase: Schema.Literals(["disconnected", "waiting", "connected", "failed"]),
@@ -54,10 +55,10 @@ export type DevinReviewStatus = typeof DevinReviewStatus.Type;
 export const DevinReviewSeverity = Schema.Literals(["high", "medium", "low", "info"]);
 export type DevinReviewSeverity = typeof DevinReviewSeverity.Type;
 
-/** One inline comment Devin Review left on the pull request. */
+/** One finding in Devin's review of the pull request. */
 export const DevinReviewFinding = Schema.Struct({
   id: Schema.String,
-  /** Devin's own category, such as `bug` or `analysis`. */
+  /** Devin's own category: `bug`, `analysis` or `security`. */
   kind: Schema.String,
   severity: DevinReviewSeverity,
   title: Schema.String,
@@ -66,12 +67,19 @@ export const DevinReviewFinding = Schema.Struct({
   path: Schema.NullOr(Schema.String),
   startLine: Schema.NullOr(Schema.Int),
   endLine: Schema.NullOr(Schema.Int),
-  /** The comment on GitHub. */
+  /** The comment on GitHub, or Devin's review page for a finding Devin did not post there. */
   url: Schema.String,
   /** The comment's review thread was resolved on GitHub. */
   resolved: Schema.Boolean,
   /** The comment no longer maps onto the pull request's current diff. */
   outdated: Schema.Boolean,
+  /**
+   * `github` when Devin posted the finding as a review thread; `devin` when it is only in Devin
+   * Review (such as a security finding the org withholds from GitHub), with no thread to resolve.
+   */
+  source: Schema.optional(Schema.Literals(["github", "devin"])),
+  /** The GitHub review thread's node id, for replying to or resolving it. */
+  threadId: Schema.optional(Schema.NullOr(Schema.String)),
   /**
    * The rest come from Devin's own review data, read with a Devin login; null without it.
    * Who the finding affects and how, in one sentence.
@@ -133,6 +141,11 @@ export const DevinReviewContext = Schema.Struct({
    */
   walkthrough: Schema.optional(Schema.NullOr(Schema.Array(DevinReviewWalkthroughSection))),
   runs: Schema.optional(Schema.NullOr(Schema.Array(DevinReviewRun))),
+  /**
+   * Where the findings came from: Devin's review API, or GitHub's review comments alone when it
+   * is unavailable, in which case findings Devin did not post to GitHub are missing.
+   */
+  findingsSource: Schema.optional(Schema.Literals(["devin", "github"])),
   markdown: Schema.String.check(Schema.isMaxLength(DEVIN_REVIEW_MARKDOWN_MAX_CHARS)),
 });
 export type DevinReviewContext = typeof DevinReviewContext.Type;

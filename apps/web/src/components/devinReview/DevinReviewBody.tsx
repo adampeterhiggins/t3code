@@ -605,6 +605,11 @@ function DevinFindingCard(props: {
         <Badge size="sm" variant={DEVIN_SEVERITY_VARIANTS[finding.severity]}>
           {messages(DEVIN_SEVERITY_LABELS[finding.severity])}
         </Badge>
+        {finding.kind === "security" ? (
+          <Badge size="sm" variant="error">
+            <T context="Devin Review finding category">Security</T>
+          </Badge>
+        ) : null}
         <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
           {finding.title}
         </span>

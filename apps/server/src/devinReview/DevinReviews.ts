@@ -2,6 +2,7 @@ import {
   DEVIN_REVIEW_MARKDOWN_MAX_CHARS,
   type DevinReviewContext,
   DevinReviewError,
+  type DevinReviewFinding,
   type DevinReviewGetInput,
   type DevinReviewListInput,
   type DevinReviewListResult,
@@ -31,11 +32,14 @@ import { GitHubCli, type GitHubCliError } from "../sourceControl/GitHubCli.ts";
 import { DevinReviewAuth } from "./DevinReviewAuth.ts";
 import { type PrReviewResponse, devinPrReviewRequest } from "./devinReviewApi.ts";
 import {
+  type GitHubReviewThread,
   type JobVersionRef,
+  combineFindings,
   fetchJobProgress,
   fetchJobResult,
   fetchReviewJobs,
-  mergeFindingDetails,
+  githubFinding,
+  latestFindings,
   reviewRuns,
   runningJob,
   selectJobResults,
@@ -54,21 +58,24 @@ const STATUS_TTL = Duration.seconds(60);
 // A review in flight is re-read sooner, so clients watching it see it finish.
 const IN_FLIGHT_STATUS_TTL = Duration.seconds(10);
 const JOB_RESULT_CONCURRENCY = 3;
-/** A finished job result never changes, so only the count of cached ones is bounded. */
-const JOB_RESULT_CAPACITY = 100;
+/**
+ * A finished job result never changes, so only the count of cached ones is bounded. Lists read
+ * up to six results for each of 30 pull requests.
+ */
+const JOB_RESULT_CAPACITY = 256;
 const APP_API_TIMEOUT = Duration.seconds(15);
 /** As often as Devin's own review page polls a running review's progress. */
 const PROGRESS_POLL_INTERVAL = Duration.seconds(2);
 
 const THREADS_FIELDS = `reviewThreads(first: 100) {
-  nodes { isResolved isOutdated comments(first: 1) { nodes { author { login } COMMENT_FIELDS } } }
+  nodes { id isResolved isOutdated comments(first: 1) { nodes { author { login } url COMMENT_FIELDS } } }
 }`;
 
 const GET_QUERY = `query($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
       number title url
-      ${THREADS_FIELDS.replace("COMMENT_FIELDS", "body url path line startLine originalLine originalStartLine")}
+      ${THREADS_FIELDS.replace("COMMENT_FIELDS", "body path line startLine originalLine originalStartLine")}
     }
   }
 }`;
@@ -122,6 +129,7 @@ const ThreadNodes = <C extends Schema.Top>(comment: C) =>
     nodes: Schema.Array(
       Schema.NullOr(
         Schema.Struct({
+          id: Schema.optional(Schema.String),
           isResolved: Schema.Boolean,
           isOutdated: Schema.Boolean,
           comments: Schema.Struct({ nodes: Schema.Array(Schema.NullOr(comment)) }),
@@ -164,7 +172,9 @@ const SearchPullRequest = Schema.Struct({
   title: Schema.optional(Schema.String),
   url: Schema.optional(Schema.String),
   updatedAt: Schema.optional(Schema.String),
-  reviewThreads: Schema.optional(ThreadNodes(Schema.Struct({ author: Author }))),
+  reviewThreads: Schema.optional(
+    ThreadNodes(Schema.Struct({ author: Author, url: Schema.optional(Schema.String) })),
+  ),
 });
 const ListResponse = Schema.Struct({
   data: Schema.Record(
@@ -184,14 +194,37 @@ const decodeSummariesResponse = Schema.decodeUnknownEffect(
   Schema.fromJsonString(SummariesResponse),
 );
 
-const devinThreadCounts = (pullRequest: typeof SearchPullRequest.Type) => {
-  const threads = (pullRequest.reviewThreads?.nodes ?? []).flatMap((thread) =>
-    thread != null && isDevinReviewAuthor(thread.comments.nodes[0]?.author?.login)
-      ? [{ resolved: thread.isResolved, outdated: thread.isOutdated }]
-      : [],
-  );
-  return { open: threads.filter(isOpenFinding).length, total: threads.length };
-};
+/** Devin's threads with their state alone, which is all a count needs. */
+const devinThreadStates = (
+  pullRequest: typeof SearchPullRequest.Type,
+): ReadonlyArray<GitHubReviewThread> =>
+  (pullRequest.reviewThreads?.nodes ?? []).flatMap((thread) => {
+    const comment = thread?.comments.nodes[0];
+    if (thread == null || comment == null || !isDevinReviewAuthor(comment.author?.login)) {
+      return [];
+    }
+    return [
+      {
+        id: thread.id ?? null,
+        finding: parseDevinReviewComment({
+          body: "",
+          url: comment.url ?? "",
+          path: null,
+          line: null,
+          startLine: null,
+          originalLine: null,
+          originalStartLine: null,
+          resolved: thread.isResolved,
+          outdated: thread.isOutdated,
+        }),
+      },
+    ];
+  });
+
+const countOf = (findings: ReadonlyArray<DevinReviewFinding>) => ({
+  open: findings.filter(isOpenFinding).length,
+  total: findings.length,
+});
 
 interface StatusSnapshot {
   readonly status: DevinReviewStatus;
@@ -378,10 +411,17 @@ export const make = Effect.gen(function* () {
   );
 
   let enrichmentWarned = false;
-  /** Devin's walkthrough, runs, and per-finding data, or null whenever any of it is unreadable. */
-  const readEnrichment = Effect.fn("devin_review.read_enrichment")(
+  /**
+   * Devin's walkthrough, runs, and findings, or why they cannot be read: without a Devin login,
+   * or whenever any of it is unreadable, findings come from GitHub alone.
+   */
+  const readDevinReview = Effect.fn("devin_review.read_devin_review")(
     function* (ref: DevinReviewPullRequestRef) {
-      if ((yield* appToken) === null) return null;
+      const credentials = yield* auth.credentials;
+      if (Option.isNone(credentials)) return { unavailable: "Devin Review is not connected" };
+      if (credentials.value.method !== "devin-login") {
+        return { unavailable: "Devin's findings need a Devin login, not a service key" };
+      }
       const jobs = yield* Cache.get(jobsCache, refKey(ref));
       const { full, incremental } = selectJobResults(jobs);
       const results = yield* Effect.forEach(
@@ -391,9 +431,10 @@ export const make = Effect.gen(function* () {
       );
       enrichmentWarned = false;
       return {
+        unavailable: null,
         walkthrough: full === null ? null : (results[0]?.walkthrough ?? null),
         runs: reviewRuns(jobs),
-        details: results.flatMap((result) => result.findings),
+        findings: latestFindings(results),
       };
     },
     Effect.timeout(APP_API_TIMEOUT),
@@ -401,11 +442,11 @@ export const make = Effect.gen(function* () {
       Effect.gen(function* () {
         if (!enrichmentWarned) {
           enrichmentWarned = true;
-          yield* Effect.logWarning("Could not read Devin's review details; showing GitHub's only", {
+          yield* Effect.logWarning("Could not read Devin's findings; showing GitHub's only", {
             detail: error.message,
           });
         }
-        return null;
+        return { unavailable: "Devin's review API could not be read" };
       }),
     ),
   );
@@ -442,27 +483,50 @@ export const make = Effect.gen(function* () {
         detail: `${devinReviewPullRequestUrl(ref)} was not found.`,
       });
     }
-    const findings = pullRequest.reviewThreads.nodes.flatMap((thread) => {
+    const threads = pullRequest.reviewThreads.nodes.flatMap((thread): GitHubReviewThread[] => {
       const comment = thread?.comments.nodes[0];
       if (thread == null || comment == null || !isDevinReviewAuthor(comment.author?.login)) {
         return [];
       }
       return [
-        parseDevinReviewComment({
-          body: comment.body,
-          url: comment.url,
-          path: comment.path ?? null,
-          line: comment.line ?? null,
-          startLine: comment.startLine ?? null,
-          originalLine: comment.originalLine ?? null,
-          originalStartLine: comment.originalStartLine ?? null,
-          resolved: thread.isResolved,
-          outdated: thread.isOutdated,
-        }),
+        {
+          id: thread.id ?? null,
+          finding: parseDevinReviewComment({
+            body: comment.body,
+            url: comment.url,
+            path: comment.path ?? null,
+            line: comment.line ?? null,
+            startLine: comment.startLine ?? null,
+            originalLine: comment.originalLine ?? null,
+            originalStartLine: comment.originalStartLine ?? null,
+            resolved: thread.isResolved,
+            outdated: thread.isOutdated,
+          }),
+        },
       ];
     });
-    return { title: pullRequest.title, url: pullRequest.url, findings };
+    return { title: pullRequest.title, url: pullRequest.url, threads };
   });
+
+  /** Devin's findings with GitHub's thread state, or GitHub's alone when Devin's are unreadable. */
+  const findingsOf = (
+    ref: DevinReviewPullRequestRef,
+    threads: ReadonlyArray<GitHubReviewThread>,
+    review: Effect.Success<ReturnType<typeof readDevinReview>>,
+  ) => {
+    if (review.unavailable !== null) {
+      return {
+        review: null,
+        githubOnlyReason: review.unavailable,
+        findings: threads.map(githubFinding),
+      };
+    }
+    return {
+      review,
+      githubOnlyReason: null,
+      findings: combineFindings(review.findings, threads, devinReviewUrl(ref)),
+    };
+  };
 
   const summaryOf = (
     ref: DevinReviewPullRequestRef,
@@ -482,32 +546,49 @@ export const make = Effect.gen(function* () {
     findingCount: counts.total,
   });
 
+  /** A list row: Devin's status, and counts of Devin's findings with GitHub's thread state. */
+  const readSummary = (
+    ref: DevinReviewPullRequestRef,
+    pullRequest: {
+      readonly title: string;
+      readonly url: string;
+      readonly threads: ReadonlyArray<GitHubReviewThread>;
+    },
+  ) =>
+    Effect.all([readStatus(ref), readDevinReview(ref)], { concurrency: 2 }).pipe(
+      Effect.map(([status, review]) =>
+        summaryOf(
+          ref,
+          pullRequest,
+          status,
+          countOf(findingsOf(ref, pullRequest.threads, review).findings),
+        ),
+      ),
+    );
+
   const get = Effect.fn("devin_review.get")(function* (input: DevinReviewGetInput) {
     const ref = yield* parseRef(input.url);
-    const [pullRequest, status, enrichment] = yield* Effect.all(
-      [readPullRequest(ref), readStatus(ref), readEnrichment(ref)],
+    const [pullRequest, status, devinReview] = yield* Effect.all(
+      [readPullRequest(ref), readStatus(ref), readDevinReview(ref)],
       { concurrency: 3 },
     );
-    const summary = summaryOf(ref, pullRequest, status, {
-      open: pullRequest.findings.filter(isOpenFinding).length,
-      total: pullRequest.findings.length,
-    });
-    const findings =
-      enrichment === null
-        ? pullRequest.findings
-        : mergeFindingDetails(pullRequest.findings, enrichment.details);
-    const walkthrough = enrichment?.walkthrough ?? null;
+    const { review, githubOnlyReason, findings } = findingsOf(
+      ref,
+      pullRequest.threads,
+      devinReview,
+    );
+    const summary = summaryOf(ref, pullRequest, status, countOf(findings));
+    const walkthrough = review?.walkthrough ?? null;
     return {
       ...summary,
       findings,
       walkthrough,
-      runs: enrichment?.runs ?? null,
-      markdown: renderDevinReviewMarkdown(
-        summary,
-        findings,
-        DEVIN_REVIEW_MARKDOWN_MAX_CHARS,
+      runs: review?.runs ?? null,
+      findingsSource: review === null ? "github" : "devin",
+      markdown: renderDevinReviewMarkdown(summary, findings, DEVIN_REVIEW_MARKDOWN_MAX_CHARS, {
         walkthrough,
-      ),
+        githubOnlyReason,
+      }),
     } satisfies DevinReviewContext;
   });
 
@@ -532,7 +613,7 @@ export const make = Effect.gen(function* () {
             title: node.title ?? "",
             url: node.url,
             updatedAt: node.updatedAt ?? "",
-            ...devinThreadCounts(node),
+            threads: devinThreadStates(node),
           },
         ];
       })
@@ -540,10 +621,7 @@ export const make = Effect.gen(function* () {
       .slice(0, LIST_LIMIT);
     const reviews = yield* Effect.forEach(
       pullRequests,
-      (pullRequest) =>
-        readStatus(pullRequest.ref).pipe(
-          Effect.map((status) => summaryOf(pullRequest.ref, pullRequest, status, pullRequest)),
-        ),
+      (pullRequest) => readSummary(pullRequest.ref, pullRequest),
       { concurrency: STATUS_CONCURRENCY },
     );
     return { reviews } satisfies DevinReviewListResult;
@@ -561,7 +639,7 @@ export const make = Effect.gen(function* () {
             : {
                 title: pullRequest.title ?? "",
                 url: pullRequest.url,
-                ...devinThreadCounts(pullRequest),
+                threads: devinThreadStates(pullRequest),
               };
         }),
       ),
@@ -611,9 +689,7 @@ export const make = Effect.gen(function* () {
         const pullRequest = pullRequests[index];
         return pullRequest == null
           ? Effect.succeed([])
-          : readStatus(ref).pipe(
-              Effect.map((status) => [summaryOf(ref, pullRequest, status, pullRequest)]),
-            );
+          : readSummary(ref, pullRequest).pipe(Effect.map((summary) => [summary]));
       },
       { concurrency: STATUS_CONCURRENCY },
     );
@@ -622,16 +698,14 @@ export const make = Effect.gen(function* () {
 
   const trigger = Effect.fn("devin_review.trigger")(function* (input: DevinReviewGetInput) {
     const ref = yield* parseRef(input.url);
-    const [review, pullRequest] = yield* Effect.all(
-      [callDevin("POST", ref), readPullRequest(ref)],
-      { concurrency: 2 },
+    const [review, pullRequest, devinReview] = yield* Effect.all(
+      [callDevin("POST", ref), readPullRequest(ref), readDevinReview(ref)],
+      { concurrency: 3 },
     );
     // Devin's reply is its status for the new review, so every client reads it at once.
     yield* Cache.set(statusCache, refKey(ref), toStatus(review));
-    return summaryOf(ref, pullRequest, toStatus(review), {
-      open: pullRequest.findings.filter(isOpenFinding).length,
-      total: pullRequest.findings.length,
-    });
+    const { findings } = findingsOf(ref, pullRequest.threads, devinReview);
+    return summaryOf(ref, pullRequest, toStatus(review), countOf(findings));
   });
 
   const status = Effect.fn("devin_review.status")(function* (input: DevinReviewGetInput) {

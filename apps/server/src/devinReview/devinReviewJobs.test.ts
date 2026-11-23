@@ -1,9 +1,9 @@
 import { assert, describe, it } from "@effect/vitest";
-import type { DevinReviewFinding } from "@t3tools/contracts";
-
 import {
   type DevinReviewJob,
-  mergeFindingDetails,
+  type GitHubReviewThread,
+  combineFindings,
+  latestFindings,
   reviewRuns,
   runningJob,
   selectJobResults,
@@ -76,82 +76,164 @@ describe("selectJobResults", () => {
   });
 });
 
-describe("stripJobResult and mergeFindingDetails", () => {
-  const finding = (id: string, commentId: string): DevinReviewFinding => ({
+describe("stripJobResult, latestFindings and combineFindings", () => {
+  const REVIEW_URL = "https://app.devin.ai/review/acme/app/pull/7";
+  const commentUrl = (commentId: string) =>
+    `https://github.com/acme/app/pull/7#discussion_r${commentId}`;
+  const thread = (
+    id: string | null,
+    findingId: string,
+    commentId: string,
+    state: { readonly resolved?: boolean; readonly outdated?: boolean } = {},
+  ): GitHubReviewThread => ({
     id,
-    kind: "bug",
-    severity: "high",
-    title: id,
-    body: "",
-    path: "src/a.ts",
-    startLine: 1,
-    endLine: 1,
-    url: `https://github.com/acme/app/pull/7#discussion_r${commentId}`,
-    resolved: false,
-    outdated: false,
+    finding: {
+      id: findingId,
+      kind: "bug",
+      severity: "high",
+      title: `GitHub's ${findingId}`,
+      body: "From GitHub.",
+      path: "src/a.ts",
+      startLine: 1,
+      endLine: 1,
+      url: commentUrl(commentId),
+      resolved: state.resolved ?? false,
+      outdated: state.outdated ?? false,
+    },
   });
 
-  it("keeps the walkthrough and per-finding data, and matches findings by id or comment", () => {
-    const stripped = stripJobResult({
-      sections: [
-        { title: "Overview", text: "Adds uploads." },
-        { title: "1. Retry", text: null },
+  const stripped = stripJobResult({
+    sections: [
+      { title: "Overview", text: "Adds uploads." },
+      { title: "1. Retry", text: null },
+    ],
+    lifeguard_result: {
+      bugs: [
+        {
+          id: "BUG_1",
+          title: "Retries never back off",
+          severity: "severe",
+          description: "`retry()` resets its delay.",
+          file_path: "src/upload.ts",
+          start_line: 68,
+          end_line: 74,
+          pr_comment_thread_id: "PRRT_1",
+          pr_comment_id: "101",
+          impact_summary: "Uploads stall.",
+          suggested_edit: { type: "prompt", prompt: "Back off between retries." },
+          // A dismissal on GitHub sets both flags.
+          dismissed_by_user: true,
+          resolved_by_devin: true,
+          resolution_reason: "Dismissed by a reviewer on the code host",
+        },
+        {
+          id: "BUG_2",
+          severity: "non-severe",
+          pr_comment_url: commentUrl("102"),
+          suggested_edit: { type: "diff" },
+          resolved_by_devin: true,
+          resolution_reason: "Fixed in abc",
+        },
       ],
-      lifeguard_result: {
-        bugs: [
-          {
-            id: "BUG_1",
-            pr_comment_id: "101",
-            impact_summary: "Uploads stall.",
-            suggested_edit: { type: "prompt", prompt: "Back off between retries." },
-            // A dismissal on GitHub sets both flags.
-            dismissed_by_user: true,
-            resolved_by_devin: true,
-            resolution_reason: "Dismissed by a reviewer on the code host",
-          },
-          {
-            id: "BUG_2",
-            pr_comment_url: "https://github.com/acme/app/pull/7#discussion_r102",
-            suggested_edit: { type: "diff" },
-            resolved_by_devin: true,
-            resolution_reason: "Fixed in abc",
-          },
-        ],
-        analyses: [{ id: "ANALYSIS_1", pr_comment_id: 103, impact_summary: null }],
-      },
-    });
+      analyses: [{ id: "ANALYSIS_1", title: "Docs drift", analysis: "Stale.", pr_comment_id: 103 }],
+      security_findings: [
+        {
+          id: "SEC_1",
+          title: "Credentials in output",
+          severity: "warning",
+          category: "Secrets Exposure",
+          confidence: "high",
+          cwe_id: "CWE-200",
+          description: "Prints the connector's password.",
+          recommendation: "Print only the status.",
+          suggested_edit: { type: "prompt", prompt: "Discard the response body." },
+          file_path: "README.md",
+          start_line: 28,
+          end_line: 28,
+        },
+      ],
+    },
+  });
+
+  it("keeps the walkthrough and every finding Devin reported, security ones included", () => {
     assert.deepStrictEqual(stripped.walkthrough, [
       { title: "Overview", text: "Adds uploads." },
       { title: "1. Retry", text: "" },
     ]);
-
-    const merged = mergeFindingDetails(
-      [
-        // GitHub's marker id differs, so the comment id has to match.
-        finding("other-id", "101"),
-        finding("BUG_2", "999"),
-        finding("ANALYSIS_1", "103"),
-        finding("UNKNOWN", "104"),
-      ],
-      stripped.findings,
-    );
     assert.deepStrictEqual(
-      merged.map((item) => [
-        item.impactSummary,
-        item.suggestedFixPrompt,
-        item.devinState,
-        item.resolutionReason,
+      stripped.findings.map((finding) => [
+        finding.id,
+        finding.kind,
+        finding.severity,
+        finding.threadId,
+        finding.commentId,
+        finding.devinState,
+        finding.suggestedFixPrompt,
       ]),
       [
-        [
-          "Uploads stall.",
-          "Back off between retries.",
-          "dismissed",
-          "Dismissed by a reviewer on the code host",
-        ],
-        [null, null, "resolved", "Fixed in abc"],
-        [null, null, "open", null],
-        [undefined, undefined, undefined, undefined],
+        ["BUG_1", "bug", "high", "PRRT_1", "101", "dismissed", "Back off between retries."],
+        ["BUG_2", "bug", "medium", null, "102", "resolved", null],
+        ["ANALYSIS_1", "analysis", "info", null, "103", "open", null],
+        ["SEC_1", "security", "medium", null, null, "open", "Discard the response body."],
+      ],
+    );
+    const security = stripped.findings[3]!;
+    assert.strictEqual(
+      security.body,
+      "**Security:** Secrets Exposure · CWE-200 · high confidence\n\nPrints the connector's password.\n\n**Recommendation:** Print only the status.",
+    );
+    assert.deepStrictEqual(
+      [security.path, security.startLine, security.endLine],
+      ["README.md", 28, 28],
+    );
+  });
+
+  it("keeps each finding once, as the latest result has it", () => {
+    const later = stripJobResult({
+      lifeguard_result: { bugs: [{ id: "BUG_2", title: "Renamed" }, { id: "BUG_3" }] },
+    });
+    assert.deepStrictEqual(
+      latestFindings([stripped, later]).map((finding) => [finding.id, finding.title]),
+      [
+        ["BUG_1", "Retries never back off"],
+        ["BUG_2", "Renamed"],
+        ["ANALYSIS_1", "Docs drift"],
+        ["SEC_1", "Credentials in output"],
+        ["BUG_3", "Devin Review finding"],
+      ],
+    );
+  });
+
+  it("takes each posted finding's thread state from GitHub, and links unposted ones to Devin", () => {
+    const findings = combineFindings(
+      stripped.findings,
+      [
+        // Devin still says open; GitHub's resolved thread wins.
+        thread("PRRT_1", "BUG_1", "101", { resolved: false }),
+        // Matched by comment id; the thread id comes from GitHub.
+        thread("PRRT_2", "BUG_2", "102", { outdated: true }),
+        // A Devin thread Devin's data does not list is kept as GitHub reads it.
+        thread("PRRT_9", "BUG_9", "109", { resolved: true }),
+      ],
+      REVIEW_URL,
+    );
+    assert.deepStrictEqual(
+      findings.map((finding) => [
+        finding.id,
+        finding.source,
+        finding.threadId,
+        finding.url,
+        finding.resolved,
+        finding.outdated,
+        finding.title,
+      ]),
+      [
+        ["BUG_1", "github", "PRRT_1", commentUrl("101"), false, false, "Retries never back off"],
+        ["BUG_2", "github", "PRRT_2", commentUrl("102"), false, true, "Devin Review finding"],
+        // Posted, but its thread was not among those GitHub returned: Devin's state stands in.
+        ["ANALYSIS_1", "github", null, REVIEW_URL, false, false, "Docs drift"],
+        ["SEC_1", "devin", null, REVIEW_URL, false, false, "Credentials in output"],
+        ["BUG_9", "github", "PRRT_9", commentUrl("109"), true, false, "GitHub's BUG_9"],
       ],
     );
   });

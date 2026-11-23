@@ -23,6 +23,7 @@ const output = (stdout: unknown) => ({
 });
 
 const thread = (id: string, commentId: number) => ({
+  id: `PRRT_${commentId}`,
   isResolved: false,
   isOutdated: false,
   comments: {
@@ -65,12 +66,25 @@ const jobResult = {
     bugs: [
       {
         id: "BUG_1",
+        title: "Retries never back off",
+        severity: "severe",
+        pr_comment_thread_id: "PRRT_101",
         pr_comment_id: "101",
         impact_summary: "Uploads stall.",
         suggested_edit: { type: "prompt", prompt: "Back off between retries." },
       },
     ],
     analyses: [],
+    // Withheld from GitHub by the org's review settings.
+    security_findings: [
+      {
+        id: "SEC_1",
+        title: "Credentials in output",
+        severity: "warning",
+        category: "Secrets Exposure",
+        description: "Prints the password.",
+      },
+    ],
   },
 };
 
@@ -119,7 +133,7 @@ const reviews = (options: {
 const get = DevinReviews.DevinReviews.use((service) => service.get({ url: PR_URL }));
 
 describe("DevinReviews.get", () => {
-  it.effect("adds Devin's walkthrough, runs, and finding details, reading a result once", () => {
+  it.effect("reads findings from Devin, security ones included, with GitHub's thread state", () => {
     const seen: Array<string> = [];
     return Effect.gen(function* () {
       const review = yield* get;
@@ -129,13 +143,26 @@ describe("DevinReviews.get", () => {
         review.runs?.map((run) => [run.id, run.kind]),
         [["job-1", "full"]],
       );
+      assert.strictEqual(review.findingsSource, "devin");
       assert.deepStrictEqual(
-        review.findings.map((finding) => [finding.id, finding.impactSummary]),
+        review.findings.map((finding) => [
+          finding.id,
+          finding.kind,
+          finding.source,
+          finding.threadId,
+          finding.url,
+          finding.impactSummary,
+        ]),
         [
-          ["BUG_1", "Uploads stall."],
-          ["BUG_2", undefined],
+          ["BUG_1", "bug", "github", "PRRT_101", `${PR_URL}#discussion_r101`, "Uploads stall."],
+          ["SEC_1", "security", "devin", null, "https://app.devin.ai/review/acme/app/pull/7", null],
+          // GitHub has a Devin thread Devin's data does not list.
+          ["BUG_2", "bug", "github", "PRRT_102", `${PR_URL}#discussion_r102`, undefined],
         ],
       );
+      assert.deepStrictEqual([review.openFindingCount, review.findingCount], [3, 3]);
+      assert.include(review.markdown, "#### Medium · Security · Credentials in output");
+      assert.notInclude(review.markdown, "may be missing");
       assert.include(review.markdown, "## Walkthrough");
       assert.include(review.markdown, "Back off between retries.");
       assert.deepStrictEqual(
@@ -167,9 +194,18 @@ describe("DevinReviews.get", () => {
       assert.isNull(review.walkthrough);
       assert.isNull(review.runs);
       assert.strictEqual(review.status, "completed");
+      assert.strictEqual(review.findingsSource, "github");
       assert.deepStrictEqual(
-        review.findings.map((finding) => finding.impactSummary),
-        [undefined, undefined],
+        review.findings.map((finding) => [finding.id, finding.source, finding.threadId]),
+        [
+          ["BUG_1", "github", "PRRT_101"],
+          ["BUG_2", "github", "PRRT_102"],
+        ],
+      );
+      assert.include(review.markdown, "(Devin's review API could not be read)");
+      assert.include(
+        review.markdown,
+        "Security findings Devin did not post to GitHub may be missing",
       );
     }).pipe(Effect.provide(reviews({ http: devinApi([], () => [500, { detail: "boom" }]) }))),
   );
@@ -179,6 +215,8 @@ describe("DevinReviews.get", () => {
     return Effect.gen(function* () {
       const review = yield* get;
       assert.isNull(review.walkthrough);
+      assert.strictEqual(review.findingsSource, "github");
+      assert.include(review.markdown, "need a Devin login, not a service key");
       assert.deepStrictEqual(seen, ["/v3/organizations/org-acme/pr-reviews"]);
     }).pipe(Effect.provide(reviews({ method: "service-key", http: devinApi(seen) })));
   });
@@ -236,7 +274,8 @@ describe("DevinReviews.summaries", () => {
         );
         assert.deepStrictEqual(
           result.reviews.map((review) => [review.number, review.status, review.findingCount]),
-          [[9, "completed", 2]],
+          // GitHub's two threads, plus Devin's unposted security finding.
+          [[9, "completed", 3]],
         );
         assert.strictEqual(calls.length, 1);
         assert.includeMembers([...calls[0]!], ["o0=acme", "n1=app", "p0=9", "p1=8"]);
@@ -272,6 +311,45 @@ describe("DevinReviews.summaries", () => {
       );
     }).pipe(Effect.provide(reviews({ http: devinApi([]), execute })));
   });
+});
+
+describe("DevinReviews.list", () => {
+  const execute: GitHubCli.GitHubCli["Service"]["execute"] = () =>
+    Effect.succeed(
+      output({
+        data: {
+          authored: {
+            nodes: [{ ...pullRequest(7), updatedAt: "2026-11-02T10:00:00Z" }],
+          },
+          reviewing: { nodes: [] },
+        },
+      }),
+    );
+  const list = DevinReviews.DevinReviews.use((service) => service.list({}));
+
+  it.effect("counts Devin's findings, security ones included", () =>
+    Effect.gen(function* () {
+      const result = yield* list;
+      assert.deepStrictEqual(
+        result.reviews.map((review) => [
+          review.number,
+          review.openFindingCount,
+          review.findingCount,
+        ]),
+        [[7, 3, 3]],
+      );
+    }).pipe(Effect.provide(reviews({ http: devinApi([]), execute }))),
+  );
+
+  it.effect("counts GitHub's threads alone with a service key", () =>
+    Effect.gen(function* () {
+      const result = yield* list;
+      assert.deepStrictEqual(
+        result.reviews.map((review) => [review.openFindingCount, review.findingCount]),
+        [[2, 2]],
+      );
+    }).pipe(Effect.provide(reviews({ method: "service-key", http: devinApi([]), execute }))),
+  );
 });
 
 describe("DevinReviews.progress", () => {

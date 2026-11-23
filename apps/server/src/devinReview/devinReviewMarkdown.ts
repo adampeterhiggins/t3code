@@ -97,8 +97,16 @@ export function parseDevinReviewComment(comment: DevinReviewThreadComment): Devi
   };
 }
 
-export const isOpenFinding = (finding: Pick<DevinReviewFinding, "resolved" | "outdated">) =>
-  !finding.resolved && !finding.outdated;
+export const isOpenFinding = (
+  finding: Pick<DevinReviewFinding, "resolved" | "outdated" | "source" | "devinState">,
+) =>
+  !finding.resolved &&
+  !finding.outdated &&
+  // A finding only in Devin Review has no thread to resolve, so Devin's own state closes it.
+  !(
+    finding.source === "devin" &&
+    (finding.devinState === "dismissed" || finding.devinState === "resolved")
+  );
 
 const SEVERITY_RANK: Record<DevinReviewSeverity, number> = { high: 0, medium: 1, low: 2, info: 3 };
 const SEVERITY_LABEL: Record<DevinReviewSeverity, string> = {
@@ -188,14 +196,37 @@ function renderFindingDetails(finding: DevinReviewFinding): string {
   return parts.join("");
 }
 
+const heading = (finding: DevinReviewFinding) =>
+  `${SEVERITY_LABEL[finding.severity]} · ${finding.kind === "security" ? "Security · " : ""}${finding.title}`;
+
+function whereToAct(finding: DevinReviewFinding, reviewUrl: string): string {
+  if (finding.source === "devin") {
+    return `\nDevin only, not posted to GitHub, so there is no thread to resolve: ${finding.url}`;
+  }
+  const thread = finding.threadId ? ` (thread ${finding.threadId})` : "";
+  return `\nGitHub thread${thread}: ${finding.url}\nDevin Review: ${reviewUrl}`;
+}
+
+function closedState(finding: DevinReviewFinding): string {
+  if (finding.resolved) return "resolved";
+  if (finding.outdated) return "outdated";
+  return finding.devinState === "dismissed" ? "dismissed by Devin" : "resolved by Devin";
+}
+
 export function renderDevinReviewMarkdown(
   summary: DevinReviewSummary,
   findings: ReadonlyArray<DevinReviewFinding>,
   maxChars: number,
-  walkthrough: ReadonlyArray<DevinReviewWalkthroughSection> | null = null,
+  options: {
+    readonly walkthrough?: ReadonlyArray<DevinReviewWalkthroughSection> | null;
+    /** Why findings were read from GitHub alone, which misses those Devin did not post there. */
+    readonly githubOnlyReason?: string | null;
+  } = {},
 ): string {
+  const walkthrough = options.walkthrough ?? null;
   const open = findings.filter(isOpenFinding);
   const closed = findings.filter((finding) => !isOpenFinding(finding));
+  const openSecurity = open.filter((finding) => finding.kind === "security").length;
   const status = [
     `Status: ${STATUS_LABEL[summary.status]}`,
     summary.commitSha === null ? null : `commit ${summary.commitSha.slice(0, 12)}`,
@@ -209,8 +240,13 @@ export function renderDevinReviewMarkdown(
     status,
     `Devin Review: ${summary.reviewUrl}`,
     `Pull request: ${summary.pullRequestUrl}`,
-    `${open.length} open ${open.length === 1 ? "finding" : "findings"}, ${closed.length} resolved or outdated.`,
-  ].join("\n");
+    `${open.length} open ${open.length === 1 ? "finding" : "findings"}${openSecurity > 0 ? ` (${openSecurity} security)` : ""}, ${closed.length} resolved or outdated.`,
+    options.githubOnlyReason == null
+      ? null
+      : `Findings were read from GitHub's review comments alone (${options.githubOnlyReason}). Security findings Devin did not post to GitHub may be missing; check Devin Review.`,
+  ]
+    .filter((line) => line !== null)
+    .join("\n");
 
   const sections: Array<{ readonly text: string; readonly findings: number }> = [];
   const walkthroughText = walkthrough === null ? "" : renderWalkthrough(walkthrough);
@@ -220,8 +256,9 @@ export function renderDevinReviewMarkdown(
     sections.push({ text: `\n\n### ${path === "" ? "(no file)" : path}`, findings: 0 });
     for (const finding of items) {
       const lines = [
-        `\n\n#### ${SEVERITY_LABEL[finding.severity]} · ${finding.title}`,
-        `\n${location(finding)} · ${finding.kind} · ${finding.url}`,
+        `\n\n#### ${heading(finding)}`,
+        `\n${location(finding)} · ${finding.kind}`,
+        whereToAct(finding, summary.reviewUrl),
         finding.body.length > 0 ? `\n\n${finding.body}` : "",
         renderFindingDetails(finding),
       ];
@@ -231,9 +268,8 @@ export function renderDevinReviewMarkdown(
   if (closed.length > 0) {
     sections.push({ text: "\n\n## Resolved or outdated", findings: 0 });
     for (const finding of closed) {
-      const state = finding.resolved ? "resolved" : "outdated";
       sections.push({
-        text: `\n- [${state}] ${SEVERITY_LABEL[finding.severity]} · ${finding.title} · ${location(finding)}`,
+        text: `\n- [${closedState(finding)}] ${heading(finding)} · ${location(finding)}`,
         findings: 1,
       });
     }

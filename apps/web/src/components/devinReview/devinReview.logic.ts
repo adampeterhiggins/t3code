@@ -192,7 +192,9 @@ export function devinFindingPrompt(
   return [
     `Devin Review finding on ${review.repository}#${review.number} (${finding.severity} severity): ${finding.title}`,
     location === null ? null : `Location: ${location}`,
-    `Comment: ${finding.url}`,
+    finding.source === "devin"
+      ? `Devin Review (not posted to GitHub): ${finding.url}`
+      : `Comment: ${finding.url}`,
     "",
     finding.body.trim(),
   ]
@@ -200,15 +202,21 @@ export function devinFindingPrompt(
     .join("\n");
 }
 
-/** The badge for a finding's state, GitHub's first, then Devin's when it differs from open. */
+/**
+ * The badge for a finding's state, GitHub's first, then Devin's when it differs from open, then
+ * that an open finding is only in Devin Review, with no GitHub thread to resolve.
+ */
 export function devinFindingStateLabel(
-  finding: Pick<DevinReviewFinding, "resolved" | "outdated" | "devinState">,
+  finding: Pick<DevinReviewFinding, "resolved" | "outdated" | "devinState" | "source">,
   resolve: MessageResolver = m,
 ): string | null {
   if (finding.resolved) return resolve(msg("Resolved", { $context: "review comment state" }));
   if (finding.outdated) return resolve(msg("Outdated", { $context: "review comment state" }));
   if (finding.devinState === "dismissed") return resolve(msg("Dismissed by Devin"));
   if (finding.devinState === "resolved") return resolve(msg("Resolved by Devin"));
+  if (finding.source === "devin") {
+    return resolve(msg("Not on GitHub", { $context: "Devin Review finding not posted to GitHub" }));
+  }
   return null;
 }
 
