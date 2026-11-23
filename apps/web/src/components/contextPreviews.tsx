@@ -115,14 +115,14 @@ export interface MentionPreviewProps {
 
 export function MentionPreview(props: MentionPreviewProps) {
   return (
-    <div className="overflow-x-auto whitespace-nowrap scrollbar-thumb-border/78 scrollbar-track-transparent [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/78 [&::-webkit-scrollbar-track]:bg-transparent">
+    <span className="min-w-0 wrap-anywhere select-text">
       <WorkspaceEntryTooltip
         path={props.path}
         {...(props.label === undefined ? {} : { label: props.label })}
         environmentId={props.environmentId}
         cwd={props.cwd}
       />
-    </div>
+    </span>
   );
 }
 

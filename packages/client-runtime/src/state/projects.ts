@@ -231,3 +231,4 @@ export function threadMoveTargets<Project extends { readonly id: string; readonl
 export * from "./projectCommands.ts";
 export * from "./projectEntities.ts";
 export * from "./projectRemoval.ts";
+export * from "./projectTrackedFolders.ts";

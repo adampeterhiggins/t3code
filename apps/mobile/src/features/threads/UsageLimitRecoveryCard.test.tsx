@@ -1,9 +1,11 @@
+import { RegistryContext } from "@effect/atom-react";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import type { EnvironmentId } from "@t3tools/contracts";
 import {
   CHATGPT_USAGE_LIMIT_CODE,
   CHATGPT_WORKSPACE_USAGE_LIMIT_CODE,
 } from "@t3tools/shared/usageLimits";
+import { Atom, AtomRegistry } from "effect/reactivity";
 import * as Clipboard from "expo-clipboard";
 import type { ReactNode } from "react";
 import { act } from "react";
@@ -42,6 +44,7 @@ vi.mock("../../state/threads", () => ({
 }));
 vi.mock("../../state/use-atom-command", () => ({ useAtomCommand: () => vi.fn() }));
 
+import { environmentServerConfigsAtom } from "../../state/server";
 import { UsageLimitRecoveryCard } from "./UsageLimitRecoveryCard";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -74,6 +77,8 @@ describe("UsageLimitRecoveryCard", () => {
       ["Manage usage", "Resume at reset", "Snooze until reset"],
     ],
   ])("shows one ChatGPT notice for %s (%s, reset %s)", (code, errorClass, resetAt, actions) => {
+    using _timers = { [Symbol.dispose]: () => vi.useRealTimers() };
+    vi.useFakeTimers({ now: 0 });
     const container = document.createElement("div");
     const root = createRoot(container);
     using _root = { [Symbol.dispose]: () => act(() => root.unmount()) };
@@ -137,18 +142,30 @@ describe("UsageLimitRecoveryCard", () => {
     expect(container.textContent).toContain("Request copied");
   });
 
-  it("disables Snooze once a reset more than 24.8 days away passes", () => {
+  it.each([
+    [false, ["Resume at reset", "Snooze until reset"]],
+    [true, ["Resume now", "Resume at reset", "Snooze until reset"]],
+  ])("disables Snooze after a long reset delay (immediate resume: %s)", (canResumeNow, actions) => {
     using _timers = { [Symbol.dispose]: () => vi.useRealTimers() };
     vi.useFakeTimers({ now: 0 });
     const container = document.createElement("div");
     const root = createRoot(container);
+    const environmentId = "env-1" as EnvironmentId;
+    const configs = new Map([
+      [environmentId, { environment: { capabilities: { usageLimitResumeNow: canResumeNow } } }],
+    ]) as unknown as Atom.Type<typeof environmentServerConfigsAtom>;
+    const registry = AtomRegistry.make({
+      initialValues: [[environmentServerConfigsAtom, configs]],
+    });
     using _root = { [Symbol.dispose]: () => act(() => root.unmount()) };
     act(() =>
       root.render(
-        <UsageLimitRecoveryCard
-          thread={failedThread(new Date(30 * DAY_MS).toISOString())}
-          environmentId={"env-1" as EnvironmentId}
-        />,
+        <RegistryContext.Provider value={registry}>
+          <UsageLimitRecoveryCard
+            thread={failedThread(new Date(30 * DAY_MS).toISOString())}
+            environmentId={environmentId}
+          />
+        </RegistryContext.Provider>,
       ),
     );
     const snooze = () =>
@@ -156,9 +173,18 @@ describe("UsageLimitRecoveryCard", () => {
         (button) => button.textContent === "Snooze until reset",
       );
     expect(snooze()?.disabled).toBe(false);
+    expect(container.textContent).toContain("Usage limit reached. Resets ");
+    expect([...container.querySelectorAll("button")].map((button) => button.textContent)).toEqual(
+      actions,
+    );
 
     act(() => vi.advanceTimersByTime(30 * DAY_MS));
 
     expect(snooze()?.disabled).toBe(true);
+    expect(container.textContent).toContain("Usage limit reached. Reset ");
+    expect([...container.querySelectorAll("button")].map((button) => button.textContent)).toEqual([
+      "Resume now",
+      "Snooze until reset",
+    ]);
   });
 });

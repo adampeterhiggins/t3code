@@ -16,6 +16,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
+import * as WorkspaceFolders from "../workspace/WorkspaceFolders.ts";
 import * as RuntimePolicy from "./RuntimePolicy.ts";
 import * as Fiber from "effect/Fiber";
 import * as Result from "effect/Result";
@@ -359,9 +360,14 @@ it.effect.each([
                   ? {
                       runtimePolicyLayer: RuntimePolicy.layerFromProjectStore.pipe(
                         Layer.provide(
-                          Layer.mock(ProviderInstanceRegistry.ProviderInstanceRegistry)({
-                            getInstance: () => Effect.undefined,
-                          }),
+                          Layer.merge(
+                            Layer.mock(ProviderInstanceRegistry.ProviderInstanceRegistry)({
+                              getInstance: () => Effect.undefined,
+                            }),
+                            Layer.mock(WorkspaceFolders.WorkspaceFolders)({
+                              forThread: () => Effect.succeed({ folders: [], extraRoots: [] }),
+                            }),
+                          ),
                         ),
                       ),
                     }

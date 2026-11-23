@@ -25,6 +25,7 @@ vi.mock(import("~/state/server"), async () => {
   const { Atom } = await import("effect/reactivity");
   return { primaryServerKeybindingsAtom: Atom.make([]) } as never;
 });
+vi.mock(import("~/browser/useOpenLink"), () => ({ useOpenLink: () => async () => {} }));
 vi.mock(import("./PullRequestThreadLinks"), () => ({ PullRequestThreadLinks: () => null }));
 vi.mock(
   import("./PullRequestDetailActions"),

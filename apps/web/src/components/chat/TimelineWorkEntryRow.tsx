@@ -27,7 +27,15 @@ import {
   toolPathTargets,
 } from "@t3tools/client-runtime/work-log/tool-paths";
 import { msg, T, useGT, useMessages, Var } from "gt-react";
-import { memo, use, useState, type KeyboardEvent, type ReactNode } from "react";
+import {
+  memo,
+  use,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type KeyboardEvent,
+} from "react";
 import {
   workEntryDisplayIndicatesToolFailure,
   workEntrySignalsSevereFailure,
@@ -37,9 +45,12 @@ import ChatMarkdown from "../ChatMarkdown";
 import { ChatMarkdownAssetImage } from "./ChatMarkdownMedia";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import { workGroupImageGallery } from "./markdownImageGallery";
+import { McpSignInAction } from "./McpSignInAction";
+import * as DateTime from "effect/DateTime";
 import { ChevronRightIcon, CircleAlertIcon, CornerDownRightIcon } from "lucide-react";
 import { InlineButton } from "../ui/button";
 import { useAssetUrls } from "../../assets/assetUrls";
+import { observeResize } from "../../lib/observeResize";
 import { useQuietThreadShell, useThreadShell } from "../../state/entities";
 import { usePreferredOpenPrLink, usePullRequestPreviewTarget } from "~/lib/openPullRequestLink";
 import { PullRequestLinkPreview } from "../pullRequest/PullRequestLinkPreview";
@@ -438,6 +449,20 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
   );
   const [previewOpen, setPreviewOpen] = useState(false);
   const previewAnchor = useCursorAnchor();
+  const noticeMessage =
+    workEntry.structuredPayload?.type === "system_notice"
+      ? workEntry.structuredPayload.message
+      : null;
+  const labelRef = useRef<HTMLSpanElement>(null);
+  const [noticeCutOff, setNoticeCutOff] = useState(false);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- only layout knows whether a notice fits its row
+  useLayoutEffect(() => {
+    const label = labelRef.current;
+    if (!label || noticeMessage === null) return;
+    const measure = () => setNoticeCutOff(label.scrollWidth > label.clientWidth);
+    measure();
+    return observeResize(label, measure);
+  }, [noticeMessage]);
   const onInitialOutputReady = () => {
     if (groupView) groupView.onContentReady?.(workEntry.id);
     else props.onContentReady?.();
@@ -561,6 +586,19 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
       ? getQuestionAnswerPreview(workEntry.questionAnswer)
       : null;
   const viewedImagePath = workEntryViewedImagePath(workEntry);
+  const payload = workEntry.structuredPayload;
+  const mcpSignIn =
+    payload?.type === "system_notice" &&
+    payload.mcpSignIn !== undefined &&
+    payload.providerThreadId !== null ? (
+      <McpSignInAction
+        environmentId={ctx.activeThreadEnvironmentId}
+        threadId={payload.threadId}
+        providerThreadId={payload.providerThreadId}
+        server={payload.mcpSignIn.server}
+        noticeAt={DateTime.toEpochMillis(payload.updatedAt)}
+      />
+    ) : null;
   const { plainOutput, plainOutputFetches } = toolCallDetailOutput(workEntry, workspaceRoot, m);
   const viewedImage =
     viewedImagePath && threadRef
@@ -598,8 +636,10 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
             m,
           )
       : null;
+  // A notice's details repeat its row, so it expands only to show text the row cuts off.
   const canExpandProjectedItem =
-    plainOutput !== undefined
+    (noticeMessage === null || noticeCutOff) &&
+    (plainOutput !== undefined
       ? Boolean(plainOutput || viewedImage || workEntry.questionAnswer || plainOutputFetches)
       : workEntry.projectedItem === undefined
         ? canExpand
@@ -609,7 +649,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
               viewedImage ||
               workEntry.questionAnswer ||
               turnItemHasDetail(workEntry.projectedItem.item),
-            );
+            ));
   const iconWrapperClass = cn(
     "flex size-4 items-center justify-center",
     showWarningIndicator
@@ -649,7 +689,6 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
         tabIndex: 0 as const,
         "aria-label": accessibleDisplayText,
         "aria-expanded": expanded,
-        onClick: toggleExpanded,
         onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => {
           if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
             e.preventDefault();
@@ -657,7 +696,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
           }
         },
       }
-    : {};
+    : undefined;
 
   const row = (
     <WorkLogRow
@@ -665,7 +704,8 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
       data-v2-item-type={workEntry.projectedItem?.item.type}
       data-v2-item-visibility={workEntry.projectedItem?.visibility}
       wrapLabel={answerPreview !== null}
-      {...rowToggleProps}
+      onClick={canExpandProjectedItem ? toggleExpanded : undefined}
+      toggle={rowToggleProps}
       icon={
         <span
           className={iconWrapperClass}
@@ -693,7 +733,13 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
           <div className="min-w-0 flex-1 overflow-hidden">
             <p className="flex min-w-0 w-full items-baseline gap-1.5 text-sm leading-relaxed">
               <span
-                ref={inPreviewCard && running ? observeVisibleAnimation : undefined}
+                ref={
+                  noticeMessage !== null
+                    ? labelRef
+                    : inPreviewCard && running
+                      ? observeVisibleAnimation
+                      : undefined
+                }
                 className={cn(
                   "min-w-0 flex-1",
                   showsPaths ? "overflow-hidden" : "truncate",
@@ -744,12 +790,27 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
                   previewText
                 )}
               </span>
+              {mcpSignIn}
             </p>
           </div>
         )
       }
       trailing={
         <>
+          {/* First, so revealing it takes label space instead of moving the controls. Notices
+              skip it, so hovering never changes what fits or moves Sign in. */}
+          {inPreviewCard ? (
+            <WorkEntryDuration
+              workEntry={workEntry}
+              running={running}
+              timestampFormat={timestampFormat}
+            />
+          ) : noticeMessage === null ? (
+            <TimelineRowTimestamp
+              createdAt={workEntry.createdAt}
+              timestampFormat={timestampFormat}
+            />
+          ) : null}
           {createdThread ? (
             <InlineButton
               aria-label={
@@ -778,18 +839,6 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
               <T>Open subagent</T>
             </InlineButton>
           ) : null}
-          {inPreviewCard ? (
-            <WorkEntryDuration
-              workEntry={workEntry}
-              running={running}
-              timestampFormat={timestampFormat}
-            />
-          ) : (
-            <TimelineRowTimestamp
-              createdAt={workEntry.createdAt}
-              timestampFormat={timestampFormat}
-            />
-          )}
           <span
             className={cn(
               "flex size-4 shrink-0 items-center justify-center",

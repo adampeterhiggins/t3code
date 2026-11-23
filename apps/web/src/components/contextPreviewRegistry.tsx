@@ -311,7 +311,7 @@ export function ContextPreviewHover<K extends KnownComposerContextKind>(
             <TooltipPopup
               {...placement}
               {...(spec.variant ? { variant: spec.variant } : {})}
-              className="whitespace-pre-wrap"
+              className={props.kind === "mention" ? "pointer-events-auto" : "whitespace-pre-wrap"}
             >
               <Body {...props.preview} />
             </TooltipPopup>
