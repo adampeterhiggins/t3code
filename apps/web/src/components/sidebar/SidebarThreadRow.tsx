@@ -853,6 +853,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   // An open tab list includes this thread as its first row, so the card is only
   // the group header. The active tab carries the highlight.
   const unifyTabs = variant === "card" && props.tabsOpen && props.tabs != null;
+  const jumpHintLabel = snoozeMenuOpen || unifyTabs ? null : props.jumpLabel;
   const rowActive = props.isActive && !unifyTabs;
   // The chat beside the routed one in a split gets a lighter version of the active surface.
   const rowSplitPartner = props.inSplit && !props.isActive && !unifyTabs;
@@ -1272,6 +1273,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                     className={cn(
                       "relative ml-auto flex h-6 min-w-8 shrink-0 items-center justify-end",
                       props.sweepAction !== null && "hidden",
+                      jumpHintLabel && JUMP_HINT_SLOT_CLASS_NAME,
                     )}
                   >
                     <span
@@ -1406,12 +1408,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                         <CheckIcon className="size-3" />
                       </button>
                     )}
+                    {jumpHintLabel ? <JumpHintBadge label={jumpHintLabel} /> : null}
                   </span>
                 )}
                 {props.sweepAction !== null ? dragDestination : null}
               </div>
               {multiline ? metaLine : null}
-              {props.jumpLabel ? <JumpHintBadge label={props.jumpLabel} /> : null}
             </div>
           }
         />
@@ -1496,7 +1498,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                       props.sweepAction !== null && "hidden",
                     )}
                   >
-                    <span className="group/sidebar-status-slot relative flex h-5 min-w-8 items-stretch justify-end">
+                    <span
+                      className={cn(
+                        "group/sidebar-status-slot relative flex h-5 min-w-8 items-stretch justify-end",
+                        jumpHintLabel && JUMP_HINT_SLOT_CLASS_NAME,
+                      )}
+                    >
                       {/* Read-only status labels yield to the hover actions. Woke is
               itself an action, so it stays pointer-enabled and visible
               while the other controls appear beside it. */}
@@ -1674,6 +1681,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                           ) : null}
                         </span>
                       ) : null}
+                      {jumpHintLabel ? <JumpHintBadge label={jumpHintLabel} /> : null}
                     </span>
                     {pinIndicator}
                   </span>
@@ -1743,7 +1751,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 </span>
               </div>
             </div>
-            {unifyTabs || !props.jumpLabel ? null : <JumpHintBadge label={props.jumpLabel} />}
           </div>
         }
       />
