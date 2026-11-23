@@ -1,4 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import { assert, describe, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -10,7 +11,7 @@ import * as Electron from "electron";
 import { vi } from "vite-plus/test";
 
 vi.mock("electron", () => ({
-  webContents: { getAllWebContents: vi.fn(() => []) },
+  webContents: { getAllWebContents: vi.fn(() => []), getFocusedWebContents: vi.fn() },
 }));
 
 import * as ElectronApp from "../electron/ElectronApp.ts";
@@ -124,24 +125,23 @@ const layerDesktopWindow = (
 
 const layerElectronMenu = (
   applicationMenuTemplate: Deferred.Deferred<readonly Electron.MenuItemConstructorOptions[]>,
-  nativeAction?: Deferred.Deferred<string>,
+  platform: NodeJS.Platform,
 ) =>
-  Layer.succeed(ElectronMenu.ElectronMenu, {
-    sendActionToFirstResponder: (action) =>
-      nativeAction
-        ? Deferred.succeed(nativeAction, action).pipe(Effect.asVoid)
-        : Effect.die("unexpected native menu action"),
-    setApplicationMenu: (template) =>
-      Deferred.succeed(applicationMenuTemplate, template).pipe(Effect.asVoid),
-    popupTemplate: () => Effect.void,
-    showContextMenu: () => Effect.succeedNone,
-  } satisfies ElectronMenu.ElectronMenu["Service"]);
+  Layer.effect(
+    ElectronMenu.ElectronMenu,
+    ElectronMenu.make.pipe(
+      Effect.map((menu) => ({
+        ...menu,
+        setApplicationMenu: (template: readonly Electron.MenuItemConstructorOptions[]) =>
+          Deferred.succeed(applicationMenuTemplate, template).pipe(Effect.asVoid),
+      })),
+    ),
+  ).pipe(Layer.provide(Layer.succeed(HostProcess.Platform, platform)));
 
 const configureMenu = (
   selectedAction: Deferred.Deferred<string>,
   applicationMenuTemplate: Deferred.Deferred<readonly Electron.MenuItemConstructorOptions[]>,
   environment: Partial<DesktopEnvironment.MakeDesktopEnvironmentInput> = {},
-  nativeAction?: Deferred.Deferred<string>,
   dispatches?: Array<{
     readonly action: string;
     readonly options: DesktopWindow.DesktopMenuDispatchOptions | undefined;
@@ -154,7 +154,12 @@ const configureMenu = (
   }).pipe(
     Effect.provide(
       DesktopApplicationMenu.layer.pipe(
-        Layer.provideMerge(layerElectronMenu(applicationMenuTemplate, nativeAction)),
+        Layer.provideMerge(
+          layerElectronMenu(
+            applicationMenuTemplate,
+            environment.platform ?? environmentInput.platform,
+          ),
+        ),
         Layer.provideMerge(layerDesktopWindow(selectedAction, dispatches)),
         Layer.provideMerge(layerDesktopUpdates(services)),
         Layer.provideMerge(layerElectronDialog(services)),
@@ -177,7 +182,6 @@ const checkForUpdatesFromMacMenu = (state: Partial<DesktopUpdateState>) =>
       yield* Deferred.make<string>(),
       applicationMenuTemplate,
       { platform: "darwin" },
-      undefined,
       undefined,
       {
         checkResult: {
@@ -217,6 +221,29 @@ const checkForUpdatesFromMacMenu = (state: Partial<DesktopUpdateState>) =>
     }
     return yield* dialog.value;
   });
+
+const pressPasteAsText = (
+  template: readonly Electron.MenuItemConstructorOptions[],
+): ((focused: object) => void) => {
+  const editMenu = template.find((item) => item.label === "Edit");
+  if (!Array.isArray(editMenu?.submenu)) {
+    throw new Error("Expected Edit menu submenu to be an array.");
+  }
+  const pasteAsTextItem = editMenu.submenu.find((item) => item.label === "Paste as Text");
+  assert.equal(pasteAsTextItem?.accelerator, "CmdOrCtrl+Shift+V");
+  const click = pasteAsTextItem?.click;
+  if (typeof click !== "function") {
+    throw new Error("Expected Paste as Text menu item to have a click handler.");
+  }
+  return (focused) => {
+    using _focused = vi
+      .spyOn(Electron.webContents, "getFocusedWebContents")
+      .mockReturnValue(focused as Electron.WebContents);
+    click({} as Electron.MenuItem, undefined, {
+      triggeredByAccelerator: true,
+    } as unknown as KeyboardEvent);
+  };
+};
 
 describe("DesktopApplicationMenu", () => {
   it.effect("keeps display branding in the macOS application menu", () =>
@@ -262,7 +289,7 @@ describe("DesktopApplicationMenu", () => {
         readonly options: DesktopWindow.DesktopMenuDispatchOptions | undefined;
       }> = [];
 
-      yield* configureMenu(selectedAction, applicationMenuTemplate, {}, undefined, dispatches);
+      yield* configureMenu(selectedAction, applicationMenuTemplate, {}, dispatches);
 
       const template = yield* Deferred.await(applicationMenuTemplate);
       const fileMenu = template.find((item) => item.label === "File");
@@ -297,7 +324,6 @@ describe("DesktopApplicationMenu", () => {
         selectedAction,
         applicationMenuTemplate,
         { platform: "darwin" },
-        undefined,
         dispatches,
       );
 
@@ -330,70 +356,46 @@ describe("DesktopApplicationMenu", () => {
     }),
   );
 
-  it.effect("uses the native macOS paste action without injecting a renderer paste", () =>
-    Effect.gen(function* () {
-      const selectedAction = yield* Deferred.make<string>();
-      const nativeAction = yield* Deferred.make<string>();
-      const applicationMenuTemplate =
-        yield* Deferred.make<readonly Electron.MenuItemConstructorOptions[]>();
-      yield* configureMenu(
-        selectedAction,
-        applicationMenuTemplate,
-        { platform: "darwin" },
-        nativeAction,
-      );
-      const template = yield* Deferred.await(applicationMenuTemplate);
-      const editMenu = template.find((item) => item.label === "Edit");
-      if (!Array.isArray(editMenu?.submenu)) {
-        throw new Error("Expected Edit menu submenu to be an array.");
-      }
-      const pasteAsTextItem = editMenu.submenu.find((item) => item.label === "Paste as Text");
-      if (typeof pasteAsTextItem?.click !== "function") {
-        throw new Error("Expected Paste as Text menu item to have a click handler.");
-      }
-      pasteAsTextItem.click(
-        {} as Electron.MenuItem,
-        {} as Electron.BrowserWindow,
-        { triggeredByAccelerator: true } as unknown as KeyboardEvent,
-      );
-      assert.equal(yield* Deferred.await(nativeAction), "pasteAndMatchStyle:");
-      assert.isFalse(yield* Deferred.isDone(selectedAction));
-    }),
+  it.effect.each(["linux", "win32"] as const)(
+    "leaves the %s accelerator to Chromium instead of injecting a paste",
+    (platform) =>
+      Effect.gen(function* () {
+        const selectedAction = yield* Deferred.make<string>();
+        const applicationMenuTemplate =
+          yield* Deferred.make<readonly Electron.MenuItemConstructorOptions[]>();
+
+        yield* configureMenu(selectedAction, applicationMenuTemplate, { platform });
+
+        const focused = { isDestroyed: () => false, pasteAndMatchStyle: vi.fn() };
+        pressPasteAsText(yield* Deferred.await(applicationMenuTemplate))(focused);
+        assert.equal(focused.pasteAndMatchStyle.mock.calls.length, 0);
+        assert.isFalse(yield* Deferred.isDone(selectedAction));
+      }),
   );
 
-  // On Windows/Linux Chromium pastes for the accelerator on its own. Dispatching
-  // the renderer action would also call pasteAsText and duplicate that paste.
-  it.effect("leaves the accelerator to Chromium instead of injecting a paste", () =>
+  it.effect("pastes natively and synchronously for the macOS accelerator", () =>
     Effect.gen(function* () {
       const selectedAction = yield* Deferred.make<string>();
       const applicationMenuTemplate =
         yield* Deferred.make<readonly Electron.MenuItemConstructorOptions[]>();
-      const dispatches: Array<{
-        readonly action: string;
-        readonly options: DesktopWindow.DesktopMenuDispatchOptions | undefined;
-      }> = [];
 
-      yield* configureMenu(selectedAction, applicationMenuTemplate, {}, undefined, dispatches);
+      yield* configureMenu(selectedAction, applicationMenuTemplate, { platform: "darwin" });
+      const press = pressPasteAsText(yield* Deferred.await(applicationMenuTemplate));
 
-      const template = yield* Deferred.await(applicationMenuTemplate);
-      const editMenu = template.find((item) => item.label === "Edit");
-      if (!Array.isArray(editMenu?.submenu)) {
-        throw new Error("Expected Edit menu submenu to be an array.");
-      }
-      const pasteAsTextItem = editMenu.submenu.find((item) => item.label === "Paste as Text");
-      if (typeof pasteAsTextItem?.click !== "function") {
-        throw new Error("Expected Paste as Text menu item to have a click handler.");
-      }
+      const host = { isDestroyed: () => false, pasteAndMatchStyle: vi.fn() };
+      press(host);
+      assert.equal(host.pasteAndMatchStyle.mock.calls.length, 1);
 
-      pasteAsTextItem.click(
-        {} as Electron.MenuItem,
-        {} as Electron.BrowserWindow,
-        {
-          triggeredByAccelerator: true,
-        } as unknown as KeyboardEvent,
-      );
+      // Electron reports a mounted preview guest as focused while the host's composer has focus.
+      const guest = {
+        isDestroyed: () => false,
+        pasteAndMatchStyle: vi.fn(),
+        hostWebContents: host,
+      };
+      press(guest);
+      assert.equal(host.pasteAndMatchStyle.mock.calls.length, 2);
+      assert.equal(guest.pasteAndMatchStyle.mock.calls.length, 0);
       assert.isFalse(yield* Deferred.isDone(selectedAction));
-      assert.deepEqual(dispatches, []);
     }),
   );
 

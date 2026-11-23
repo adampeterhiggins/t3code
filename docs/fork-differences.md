@@ -27,11 +27,10 @@ Code: [checkouts.ts](../packages/contracts/src/checkouts.ts),
 [CheckoutAttachPicker.tsx](../apps/web/src/components/chat/CheckoutAttachPicker.tsx), and
 [CheckoutInspect.ts](../apps/server/src/checkouts/CheckoutInspect.ts).
 
-## macOS Paste as Text shortcut
+## Desktop Paste as Text menu
 
-In the macOS desktop app, **⌘⇧V** pastes text into the composer instead of doing nothing.
-Both the shortcut and **Edit → Paste as Text** keep large text inline. The shortcut uses
-the native macOS editing action so it does not inject a second paste into the terminal.
+**Edit → Paste as Text** also works in Quick Message. The menu sends the paste to the focused
+trusted app window without opening or raising the main window.
 
 Code: [DesktopApplicationMenu.ts](../apps/desktop/src/window/DesktopApplicationMenu.ts).
 
