@@ -1,3 +1,4 @@
+import { contextMenuSourceOf } from "../../contextMenuSource";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { T, useGT } from "gt-react";
@@ -32,6 +33,7 @@ const openNumberContextMenu = (
     openLabel: openOnHostLabel(sourceControlClients.get(detail.provider)),
     openLink,
     position: { x: event.clientX, y: event.clientY },
+    source: contextMenuSourceOf(event),
   });
 };
 

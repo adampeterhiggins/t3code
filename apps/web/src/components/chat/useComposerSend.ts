@@ -645,6 +645,7 @@ export function useComposerSend(input: ComposerSendInput) {
     const sendCtx = composerRef.current?.getSendContext();
     if (!sendCtx) return false;
     const content = {
+      modelSelection: sendCtx.selectedModelSelection,
       prompt: promptRef.current,
       images: sendCtx.images,
       files: sendCtx.files,
@@ -1165,6 +1166,7 @@ export function useComposerSend(input: ComposerSendInput) {
       // in place instead of dispatching a new turn.
       await queuedRunEdit.saveEdit(
         {
+          modelSelection: ctxSelectedModelSelection,
           prompt: promptForSend,
           images: composerImages,
           files: composerFiles,

@@ -472,8 +472,7 @@ describe("starting a scheduled task from a composer draft", () => {
       prompt: "Summarise yesterday's errors",
       projectId: "project-a",
       workspaceMode: "root",
-      modelKey: "claude:claude-opus-5-5",
-      baseModelSelection: source.modelSelection,
+      modelSelection: source.modelSelection,
     });
   });
 

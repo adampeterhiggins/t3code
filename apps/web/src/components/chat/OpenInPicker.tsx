@@ -14,6 +14,7 @@ import { memo, use, useRef } from "react";
 import { BackgroundThreadContext } from "./backgroundThread";
 import { useAvailableEditors, usePreferredEditor } from "../../editorPreferences";
 import { shortcutLabelForCommand } from "../../keybindings";
+import type { FileManagerAction } from "./OpenInPicker.logic";
 import { OPEN_FAVORITE_EDITOR_ATTRIBUTE } from "./OpenInPickerShortcut";
 import { editorLabelForPlatform } from "../../editorLabels";
 import { m, type MessageResolver } from "../../i18n/messages";
@@ -39,8 +40,7 @@ import {
 } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { announce } from "~/lib/announce";
-import { type Icon } from "../Icons";
-import { resolveEditorIconOptions, resolveCustomEditorIcon } from "../editorIcons";
+import { editorIconOptions, resolveCustomEditorIcon, type EditorIconOption } from "../editorIcons";
 import { cn } from "~/lib/utils";
 import { shellEnvironment } from "~/state/shell";
 import { useAtomCommand } from "~/state/use-atom-command";
@@ -54,12 +54,7 @@ import {
 import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
 import { useComposerMenuState } from "./useComposerMenuState";
 
-type OpenInOption = {
-  label: string;
-  Icon: Icon;
-  value: EditorId;
-  kind: "brand" | "generic";
-};
+type OpenInOption = Omit<EditorIconOption, "value"> & { value: EditorId; label: string };
 
 export const resolveOpenInOptions = (
   platform: string,
@@ -69,9 +64,12 @@ export const resolveOpenInOptions = (
 ) => {
   const availableEditorSet = new Set(availableEditors);
   return [
-    ...resolveEditorIconOptions(platform, resolve).filter((option) =>
-      availableEditorSet.has(option.value),
-    ),
+    ...editorIconOptions(platform)
+      .filter((option) => availableEditorSet.has(option.value))
+      .map((option) => ({
+        ...option,
+        label: editorLabelForPlatform(option.value, platform, resolve),
+      })),
     ...customEditors
       .filter((editor) => availableEditorSet.has(editor.id))
       .map((editor): OpenInOption => {
@@ -109,7 +107,7 @@ export const OpenInPicker = memo(function OpenInPicker({
   compact = false,
   enableShortcut = true,
   displayMode = "toolbar",
-  revealFileManager = false,
+  fileManagerAction = "open",
 }: {
   environmentId: EnvironmentId;
   keybindings: ResolvedKeybindingsConfig;
@@ -120,7 +118,7 @@ export const OpenInPicker = memo(function OpenInPicker({
   compact?: boolean;
   enableShortcut?: boolean;
   displayMode?: "toolbar" | "panel";
-  revealFileManager?: boolean;
+  fileManagerAction?: FileManagerAction;
 }) {
   const gt = useGT();
   const messages = useMessages();
@@ -160,11 +158,13 @@ export const OpenInPicker = memo(function OpenInPicker({
   const primaryOption = options.find(({ value }) => value === preferredEditor) ?? null;
   const preferredUnavailable =
     remote.mode === "remote-unavailable" && !preferredEditor?.startsWith("custom:");
+  const isEditorUnavailable = (editor: EditorId | null) =>
+    editor === "file-manager" && fileManagerAction === "unavailable";
 
   const openInEditor = async (editorId: EditorId | null): Promise<boolean> => {
     if (!openInCwd) return false;
     const editor = editorId ?? preferredEditor;
-    if (!editor) return false;
+    if (!editor || isEditorUnavailable(editor)) return false;
     const custom = editor.startsWith("custom:");
     if (remote.mode === "remote-unavailable" && !custom) return false;
     if (remote.mode === "remote-links" && !custom) {
@@ -189,7 +189,7 @@ export const OpenInPicker = memo(function OpenInPicker({
       input: {
         cwd: openInCwd,
         editor,
-        ...(revealFileManager && editor === "file-manager" ? { reveal: true } : {}),
+        ...(fileManagerAction === "reveal" && editor === "file-manager" ? { reveal: true } : {}),
       },
     });
     setPreferredEditor(editor);
@@ -233,7 +233,11 @@ export const OpenInPicker = memo(function OpenInPicker({
         {options.map(({ label, Icon, value, kind }) => (
           <MenuItem
             density={presentation === "menu" ? "touch" : "default"}
-            disabled={!openInCwd || !canOpenEditor}
+            disabled={
+              !openInCwd ||
+              !canOpenEditor ||
+              ((presentation === "menu" || pinnedEditor !== null) && isEditorUnavailable(value))
+            }
             key={value}
             onClick={() => {
               if (presentation === "menu" || pinnedEditor !== null) {
@@ -277,8 +281,12 @@ export const OpenInPicker = memo(function OpenInPicker({
         {primaryOption && (
           <MenuItem
             density={presentation === "menu" ? "touch" : "default"}
-
-            disabled={!openInCwd || preferredUnavailable || !canOpenEditor}
+            disabled={
+              !openInCwd ||
+              !canOpenEditor ||
+              preferredUnavailable ||
+              isEditorUnavailable(preferredEditor)
+            }
             onClick={() => openInEditor(preferredEditor)}
           >
             <primaryOption.Icon className={cn("size-4", getOpenInIconClass(primaryOption.kind))} />
@@ -315,7 +323,9 @@ export const OpenInPicker = memo(function OpenInPicker({
       variant={isPanel ? "ghost" : "outline"}
       part="primary"
       panel={isPanel}
-      disabled={!preferredEditor || !openInCwd || !canOpenEditor}
+      disabled={
+        !preferredEditor || !openInCwd || !canOpenEditor || isEditorUnavailable(preferredEditor)
+      }
       {...(enableShortcut && !backgroundThread ? { [OPEN_FAVORITE_EDITOR_ATTRIBUTE]: "" } : {})}
       onClick={() => {
         if (!preferredEditor) return;

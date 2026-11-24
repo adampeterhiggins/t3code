@@ -1,4 +1,4 @@
-import type { ContextMenuItem } from "@t3tools/contracts";
+import type { ContextMenuItem, ContextMenuSource } from "@t3tools/contracts";
 import {
   type SourceControlDefinition,
   UNKNOWN_SOURCE_CONTROL_CLIENT,
@@ -36,18 +36,24 @@ export async function showPullRequestLinkContextMenu({
   openLabel,
   position,
   openLink,
+  source,
 }: {
   readonly url: string;
   readonly openLabel: string;
   readonly position: { readonly x: number; readonly y: number };
   /** Where "Open on host" goes when the caller follows "Open links in"; the system browser otherwise. */
   readonly openLink?: ((url: string) => Promise<void>) | undefined;
+  readonly source: ContextMenuSource;
 }): Promise<void> {
   const api = readLocalApi();
   if (!api) return;
   let action: PullRequestLinkContextMenuAction | null = null;
   try {
-    action = await api.contextMenu.show(pullRequestLinkContextMenuItems(openLabel), position);
+    action = await api.contextMenu.show(
+      pullRequestLinkContextMenuItems(openLabel),
+      position,
+      source,
+    );
   } catch {
     return;
   }

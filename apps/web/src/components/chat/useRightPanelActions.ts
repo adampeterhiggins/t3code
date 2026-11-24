@@ -9,7 +9,7 @@ import { type ThreadPreviewState, setActivePreviewTab } from "../../previewState
 import { formatFilePathForClipboard } from "@t3tools/client-runtime/media-actions";
 import { resolvePathLinkTarget } from "@t3tools/shared/fileLinks";
 import { useStableCallback } from "../../hooks/useStableCallback";
-import { type ScopedThreadRef, type RunId, type PreviewSessionSnapshot } from "@t3tools/contracts";
+import { type ScopedThreadRef, type PreviewSessionSnapshot, type RunId } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { sideThreadComposer, sideThreadKindOf } from "@t3tools/client-runtime/side-thread";
 import { readThreadShell } from "../../state/entities";
@@ -343,6 +343,12 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     openPullRequestDevinReview(activeThreadRef, pullRequestPanelTarget);
   };
   const addDevinReviewSurfaceStable = useStableCallback(addDevinReviewSurface);
+  const onOpenToolDiffStable = useStableCallback((target: ToolCallDiffTarget) => {
+    if (!isServerThread || !activeThreadRef || isDetachedChatWindow) return;
+    useDiffPanelStore.getState().selectToolCall(activeThreadRef, target);
+    useRightPanelStore.getState().open(activeThreadRef, "diff");
+    onDiffPanelOpen?.();
+  });
   const onOpenTurnDiff = (runId: RunId, filePath?: string) => {
     if (!isServerThread || !activeThreadRef) return;
     if (isDetachedChatWindow) return;
@@ -350,12 +356,6 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     useRightPanelStore.getState().open(activeThreadRef, "diff");
     onDiffPanelOpen?.();
   };
-  const onOpenToolDiffStable = useStableCallback((target: ToolCallDiffTarget) => {
-    if (!isServerThread || !activeThreadRef || isDetachedChatWindow) return;
-    useDiffPanelStore.getState().selectToolCall(activeThreadRef, target);
-    useRightPanelStore.getState().open(activeThreadRef, "diff");
-    onDiffPanelOpen?.();
-  });
   const onOpenTurnDiffStable = useStableCallback(onOpenTurnDiff);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers the focused pane with the preview action bus
   useEffect(() => {
