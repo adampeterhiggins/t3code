@@ -84,7 +84,7 @@ import {
   asLaunchingThread,
   createInboxReturnTracker,
 } from "@t3tools/client-runtime/state/thread-inbox";
-import { sortSettledThreads } from "@t3tools/client-runtime/state/thread-sort";
+import { activeThreadSortKey, sortSettledThreads } from "@t3tools/client-runtime/state/thread-sort";
 import {
   nextShownOrder,
   threadSearchMatchKey,
@@ -160,6 +160,7 @@ import {
   selectProjectGroupingSettings,
 } from "@t3tools/client-runtime/state/project-grouping";
 import {
+  buildSidebarProjectPickerEntries,
   projectGroupsSpanEnvironments,
   getSidebarProjectSettingsKey,
   type SidebarProjectSnapshot,
@@ -179,7 +180,7 @@ import { useRestartAgentSessionWithToast } from "../hooks/useRestartAgentSession
 import { useSidebarProjectGroups } from "../hooks/useSidebarProjectGroups";
 import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
 import { registerSettleAndAdvance } from "../settleAndAdvance";
-import { startNewThreadFromContext } from "../lib/chatThreadActions";
+import { resolveThreadActionProjectRef, startNewThreadFromContext } from "../lib/chatThreadActions";
 import {
   useClientSettings,
   updateClientSettings,
@@ -870,41 +871,64 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     const keys = sidebarFolderExpansionKeys(group);
     setProjectExpanded(keys, !resolveProjectExpanded(projectExpandedById, keys));
   };
-  const startThreadInProjectFolder = (group: SidebarProjectSnapshot) => {
+  const startThreadInProjectFolder = useStableCallback((group: SidebarProjectSnapshot) => {
     if (isMobile) setOpenMobile(false);
-    void handleNewThread(scopeProjectRef(group.environmentId, group.id));
-  };
-  const handleProjectFolderContextMenu = (
-    group: SidebarProjectSnapshot,
-    position: { x: number; y: number },
-  ) => {
-    const api = readLocalApi();
-    if (!api) return;
-    void (async () => {
-      const clicked = await settlePromise(() =>
-        api.contextMenu.show(
-          [
-            { id: "new-thread", label: gt("New thread") },
-            { id: "copy-path", label: gt("Copy path") },
-            { id: "project-settings", label: gt("Project settings"), icon: "settings" },
-          ],
-          position,
-        ),
-      );
-      if (clicked._tag === "Failure") return;
-      switch (clicked.value) {
-        case "new-thread":
-          startThreadInProjectFolder(group);
-          return;
-        case "copy-path":
-          copyPathToClipboard(group.workspaceRoot, { path: group.workspaceRoot });
-          return;
-        case "project-settings":
-          openProjectSettings(group);
-          return;
-      }
-    })();
-  };
+    const [entry] = buildSidebarProjectPickerEntries({
+      groups: [group],
+      preferredProjectRef: resolveThreadActionProjectRef({
+        ...newThreadContext,
+        activeThread: newThreadContext.activeThread ?? undefined,
+      }),
+    });
+    const target = entry?.targetProject ?? group;
+    void handleNewThread(scopeProjectRef(target.environmentId, target.id));
+  });
+  const handleProjectFolderContextMenu = useStableCallback(
+    (
+      group: SidebarProjectSnapshot,
+      position: { x: number; y: number },
+      source: ContextMenuSource,
+    ) => {
+      const api = readLocalApi();
+      if (!api) return;
+      void (async () => {
+        const clicked = await settlePromise(() =>
+          api.contextMenu.show(
+            [
+              { id: "new-thread", label: gt("New thread") },
+              { id: "copy-path", label: gt("Copy path") },
+              ...(canPinProject(group)
+                ? [
+                    group.pinned
+                      ? { id: "unpin", label: gt("Unpin project"), icon: "pin-off" }
+                      : { id: "pin", label: gt("Pin project"), icon: "pin" },
+                  ]
+                : []),
+              { id: "project-settings", label: gt("Project settings"), icon: "settings" },
+            ],
+            position,
+            source,
+          ),
+        );
+        if (clicked._tag === "Failure") return;
+        switch (clicked.value) {
+          case "new-thread":
+            startThreadInProjectFolder(group);
+            return;
+          case "copy-path":
+            copyPathToClipboard(group.workspaceRoot, { path: group.workspaceRoot });
+            return;
+          case "pin":
+          case "unpin":
+            toggleProjectGroupPin(group);
+            return;
+          case "project-settings":
+            openProjectSettings(group);
+            return;
+        }
+      })();
+    },
+  );
   const tabsByRowKey =
     tabThreadGroups.size === 0
       ? EMPTY_TABS_BY_ROW
@@ -2149,12 +2173,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         thread.pinOrderKey ?? null,
       ]),
     ),
-    activeKeysById: new Map(
-      threads.map((thread) => [
-        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
-        thread.activeOrderKey ?? null,
-      ]),
-    ),
+    activeKeysById: new Map([
+      ...threads.map(
+        (thread) => [sidebarThreadKey(thread), thread.activeOrderKey ?? null] as const,
+      ),
+      ...activeThreads.map(
+        (thread) => [sidebarThreadKey(thread), activeThreadSortKey(thread)] as const,
+      ),
+    ]),
   };
   const draggedThreadKey = dragState?.activeKey;
   const draggedFromSection = dragState?.activeSection;
@@ -2249,7 +2275,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         plan.kind === "settle" ||
         (plan.kind === "move-active" && plan.unsnooze),
       order: plan.kind === "settle" ? null : plan.order,
-      keysAtDrop: target.section === "active" ? activeKeysById : pinnedKeysById,
+      // Stored keys, not sort keys: an unpinned row gaining its implied key is not a foreign write.
+      keysAtDrop:
+        target.section === "active"
+          ? new Map([...threadByKey].map(([key, thread]) => [key, thread.activeOrderKey ?? null]))
+          : pinnedKeysById,
       assignedKeys: new Map(assignments.map(({ id, orderKey }) => [id, orderKey])),
     };
     setOptimisticDrop(drop);

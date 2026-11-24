@@ -10,7 +10,7 @@ import {
 import { Bold } from "@tiptap/extension-bold";
 import { Code } from "@tiptap/extension-code";
 import { Blockquote } from "@tiptap/extension-blockquote";
-import { Italic, starInputRegex, starPasteRegex } from "@tiptap/extension-italic";
+import { Italic, starInputRegex } from "@tiptap/extension-italic";
 import { CodeBlock } from "@tiptap/extension-code-block";
 import { Heading } from "@tiptap/extension-heading";
 import { HorizontalRule } from "@tiptap/extension-horizontal-rule";
@@ -23,7 +23,6 @@ import {
   Extension,
   Mark as TiptapMark,
   markInputRule,
-  markPasteRule,
   mergeAttributes,
 } from "@tiptap/core";
 
@@ -375,9 +374,6 @@ export function surroundSelectionWithMark(
 const ComposerItalicExtension = Italic.extend({
   addInputRules() {
     return [markInputRuleOutsideCode(starInputRegex, this.type)];
-  },
-  addPasteRules() {
-    return [markPasteRule({ find: starPasteRegex, type: this.type })];
   },
 });
 

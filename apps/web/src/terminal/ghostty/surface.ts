@@ -1269,6 +1269,15 @@ export class GhosttyTerminalSurface {
       }
       return;
     }
+    const copyChord =
+      primaryModifier &&
+      !event.altKey &&
+      (mac ? !event.shiftKey : event.shiftKey || event.key.toLowerCase() === "insert");
+    if (copyChord && isTerminalCopyShortcut(event)) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     // An allowed scrollback key with no scrollback to move falls through to here.
     if (this.options.readOnly) return;
     if (isTerminalPasteShortcut(event)) {

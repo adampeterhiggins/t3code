@@ -76,12 +76,11 @@ export interface TimelineRowSharedState {
   findActive: boolean;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   displayThreadKey?: string;
+  onOpenTurnDiff: ((runId: RunId, filePath?: string) => void) | undefined;
   onRollbackCheckpoint?:
     | ((input: { readonly checkpointId: string; readonly scopeId: string }) => void)
     | undefined;
   onOpenToolDiff: ((target: ToolCallDiffTarget) => void) | undefined;
-  /** Unset where there is no diff to open, so the timeline shows no "Open diff" button. */
-  onOpenTurnDiff: ((runId: RunId, filePath?: string) => void) | undefined;
   /**
    * Draws a published HTML visual. Unset, the row loads it from the environment; the guest page
    * loads it through its own route.

@@ -96,6 +96,9 @@ function startClientAppearance(): void {
     if (previous?.chatWidth !== settings.chatWidth) {
       root.dataset.chatWidth = settings.chatWidth;
     }
+    if (previous?.htmlPreviewWidth !== settings.htmlPreviewWidth) {
+      root.dataset.htmlPreviewWidth = settings.htmlPreviewWidth;
+    }
     if (previous?.chatCustomWidth !== settings.chatCustomWidth) {
       applyChatCustomWidth(root, settings.chatCustomWidth);
     }

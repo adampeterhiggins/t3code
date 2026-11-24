@@ -138,11 +138,9 @@ export interface DraftState {
   readonly baseRef: string;
   readonly startFromOrigin: boolean;
   readonly existingWorktreePath: string;
-  readonly modelKey: string;
+  readonly modelSelection: ModelSelection | null;
   readonly runtimeMode: RuntimeMode;
   readonly interactionMode: ProviderInteractionMode;
-  /** Retain the source selection's provider options when the picker leaves instanceId:model unchanged. */
-  readonly baseModelSelection: ModelSelection | null;
   readonly signatureEnabled: boolean;
   readonly signatureHeader: string;
   readonly signatureEncoding: "hex" | "base64";
@@ -348,10 +346,9 @@ export function taskToDraft(task: ScheduledTask): DraftState {
       task.workspaceStrategy.type === "existing_worktree"
         ? task.workspaceStrategy.worktreePath
         : "",
-    modelKey: `${task.modelSelection.instanceId}:${task.modelSelection.model}`,
+    modelSelection: task.modelSelection,
     runtimeMode: task.runtimeMode,
     interactionMode: task.interactionMode,
-    baseModelSelection: task.modelSelection,
     ...(schedule.type === "webhook" && schedule.signature !== null
       ? {
           signatureEnabled: true,
@@ -413,12 +410,6 @@ export function scheduledTaskSeedFromComposer(
             startFromOrigin: source.startFromOrigin,
           }
         : { workspaceMode: "root" };
-  const model: Partial<DraftState> = source.modelSelection
-    ? {
-        modelKey: `${source.modelSelection.instanceId}:${source.modelSelection.model}`,
-        baseModelSelection: source.modelSelection,
-      }
-    : {};
   return {
     draft: {
       prompt,
@@ -426,7 +417,7 @@ export function scheduledTaskSeedFromComposer(
       runtimeMode: source.runtimeMode,
       interactionMode: source.interactionMode,
       ...workspace,
-      ...model,
+      modelSelection: source.modelSelection,
     },
     note,
   };

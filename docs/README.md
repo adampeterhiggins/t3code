@@ -44,8 +44,8 @@ This is a fork of upstream T3 Code. See [Fork differences](./fork-differences.md
 
 ## Working on T3 Code
 
-Start with the [development runbook](./operations/00_development.md) and
-[contribution policy](../CONTRIBUTING.md).
+Start with the [development runbook](./operations/00_development.md),
+[contribution policy](../CONTRIBUTING.md), and [trademark policy](../TRADEMARK.md).
 
 Internal docs preserve architectural decisions, trust boundaries, conventions, and cross-cutting
 traps that the source alone does not explain. Most code changes do not need an internal

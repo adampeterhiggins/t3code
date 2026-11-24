@@ -29,7 +29,7 @@ import * as GitWorkflow from "../../../git/GitWorkflowService.ts";
 import * as Project from "../../../project/ProjectService.ts";
 import * as ProjectSetupScriptRunner from "../../../project/ProjectSetupScriptRunner.ts";
 import * as GitVcsDriver from "../../../vcs/GitVcsDriver.ts";
-import { assertProjectWorktree } from "../project/handlers.ts";
+import { projectWorktreePath } from "../project/handlers.ts";
 import type * as ThreadManagement from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as ThreadMessageIntake from "../../../orchestration-v2/ThreadMessageIntake.ts";
 import * as ThreadSearch from "../../../orchestration-v2/ThreadSearch.ts";
@@ -150,14 +150,14 @@ const resolveMoveCheckout = Effect.fn("mcp.resolveMoveCheckout")(function* (
   if (project === undefined) return yield* invalidMove("The destination project was not found.");
   const git = yield* GitWorkflow.GitWorkflowService;
   if (strategy.type === "existing_worktree") {
-    yield* assertProjectWorktree(project.workspaceRoot, strategy.worktreePath);
+    const worktreePath = yield* projectWorktreePath(project.workspaceRoot, strategy.worktreePath);
     const branch =
       strategy.branch ??
-      (yield* git.localStatus({ cwd: strategy.worktreePath }).pipe(
+      (yield* git.localStatus({ cwd: worktreePath }).pipe(
         Effect.map((status) => status.refName),
         Effect.orElseSucceed(() => null),
       ));
-    return { project, worktreePath: strategy.worktreePath, branch, created: false };
+    return { project, worktreePath, branch, created: false };
   }
   const driver = yield* GitVcsDriver.GitVcsDriver;
   const worktreesBefore = yield* driver

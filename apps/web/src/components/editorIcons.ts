@@ -1,4 +1,4 @@
-import { EDITORS, type CustomEditorIcon } from "@t3tools/contracts";
+import { type EDITORS, type CustomEditorIcon } from "@t3tools/contracts";
 import { CodeIcon, FolderClosedIcon, GlobeIcon, TerminalIcon } from "lucide-react";
 import { editorLabelForPlatform } from "../editorLabels";
 import { msg } from "gt-react";
@@ -9,7 +9,7 @@ import {
   CursorIcon,
   FileExplorerIcon,
   FinderIcon,
-  Icon,
+  type Icon,
   KiroIcon,
   TraeIcon,
   VisualStudioCode,
@@ -32,15 +32,15 @@ import {
   WebStormIcon,
 } from "./JetBrainsIcons";
 
-type BuiltInEditorId = (typeof EDITORS)[number]["id"];
+export interface EditorIconOption {
+  readonly Icon: Icon;
+  readonly value: (typeof EDITORS)[number]["id"];
+  readonly kind: "brand" | "generic";
+}
 
-/** Includes every application logo, even when its command is not installed on the host. */
-export function resolveEditorIconOptions(platform: string, resolve: MessageResolver = m) {
-  const baseOptions: ReadonlyArray<{
-    value: BuiltInEditorId;
-    Icon: Icon;
-    kind: "brand" | "generic";
-  }> = [
+/** Editor logos in picker order. */
+export function editorIconOptions(platform: string): ReadonlyArray<EditorIconOption> {
+  return [
     {
       Icon: CursorIcon,
       value: "cursor",
@@ -151,10 +151,6 @@ export function resolveEditorIconOptions(platform: string, resolve: MessageResol
       kind: isMacPlatform(platform) || isWindowsPlatform(platform) ? "brand" : "generic",
     },
   ];
-  return baseOptions.map((option) => ({
-    ...option,
-    label: editorLabelForPlatform(option.value, platform, resolve),
-  }));
 }
 
 export function resolveCustomEditorIconOptions(platform: string, resolve: MessageResolver = m) {
@@ -183,7 +179,10 @@ export function resolveCustomEditorIconOptions(platform: string, resolve: Messag
       Icon: GlobeIcon,
       kind: "generic",
     },
-    ...resolveEditorIconOptions(platform, resolve),
+    ...editorIconOptions(platform).map((option) => ({
+      ...option,
+      label: editorLabelForPlatform(option.value, platform, resolve),
+    })),
   ] as const;
 }
 
