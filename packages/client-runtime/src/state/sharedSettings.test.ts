@@ -333,7 +333,7 @@ describe("findSharedSettingsMismatches", () => {
           environmentId: boxId,
           label: "Remote Box",
           syncEligible: true,
-          settings: DEFAULT_SERVER_SETTINGS,
+          settings: { ...primarySettings, sidebarAutoSettleAfterDays: 14 },
         },
       ],
     });

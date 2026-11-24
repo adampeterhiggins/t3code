@@ -35,8 +35,11 @@ describe("buildT3ProjectFileJsonSchema", () => {
       "$schema",
       "defaultThreadEnvMode",
       "iconPath",
+      "ignoreRepositories",
       "pythonInterpreterPath",
       "scripts",
+      "worktreeLayout",
+      "worktreeSparsePatternsPath",
       "worktreeSubmodules",
     ]);
     expect(schema.required).toBeUndefined();
