@@ -30,10 +30,7 @@ const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon({
   const mark = brand ? INTEGRATION_ICONS[brand] : null;
   const brandIcon = sourceControlHostIcon(host);
   return (
-    <span
-      className="ms-[0.25em] me-[0.2em] inline-flex size-[14px] [vertical-align:-0.125em]"
-      aria-hidden
-    >
+    <span className="ms-[0.25em] me-[0.2em]" aria-hidden>
       {gitHubRefType ? (
         <GitHubRefIcon refType={gitHubRefType} className={MARKDOWN_LINK_FAVICON_CLASS_NAME} />
       ) : mark ? (

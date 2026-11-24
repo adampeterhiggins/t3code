@@ -381,7 +381,7 @@ const layerTest = (main: { webContents: FakeWebContents } | null, revealed: Arra
           menuOwners.push(input.window as unknown as FakePanel);
         }),
       setApplicationMenu: () => Effect.void,
-      sendActionToFirstResponder: () => Effect.void,
+      pasteAndMatchStyle: Effect.void,
       showContextMenu: () => Effect.succeedNone,
     }),
     Layer.mock(ElectronShell.ElectronShell)({

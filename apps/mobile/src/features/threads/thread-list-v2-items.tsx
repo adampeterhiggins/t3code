@@ -1206,7 +1206,9 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       title: gt("Rename", { $context: "verb, thread action" }),
       image: "square.and.pencil",
     },
-    { id: "mark-unread", title: gt("Mark unread"), image: "envelope.badge" },
+    ...(thread.latestRun?.completedAt != null && threadCanArchive(thread.runtime)
+      ? [{ id: "mark-unread", title: gt("Mark unread"), image: "envelope.badge" }]
+      : []),
     ...buildThreadTitleRegenerationMenuItems(
       {
         supported: props.titleRegenerationSupported,

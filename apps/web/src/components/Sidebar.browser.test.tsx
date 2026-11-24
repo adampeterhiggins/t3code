@@ -1,5 +1,4 @@
 import appCss from "../index.css?inline";
-import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import * as shelfHooks from "../state/olderSettledShelf";
 import { createWorkspaceFocusController, workspaceAreaProps } from "../lib/workspaceFocus";
@@ -9,10 +8,12 @@ import {
   EnvironmentId,
   type LocalApi,
   ProjectId,
+  ServerConfig,
   ThreadId,
   type ScopedThreadRef,
 } from "@t3tools/contracts";
 import { isMacPlatform } from "@t3tools/shared/keybindings";
+import * as Schema from "effect/Schema";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
 
@@ -39,6 +40,8 @@ import Sidebar from "./Sidebar";
 import { THREAD_JUMP_HINT_SHOW_DELAY_MS } from "./Sidebar.logic";
 import { SortableThreadRow } from "./sidebar/SidebarThreadRow";
 import { SidebarProvider } from "./ui/sidebar";
+
+const decodeServerConfig = Schema.decodeUnknownSync(ServerConfig);
 
 vi.mock(import("../state/olderSettledShelf"), async (original) => {
   const actual = await original();
@@ -430,6 +433,13 @@ describe("sidebar thread menu", () => {
 describe("sidebar settled pagination", () => {
   it("keeps the viewport in place when showing more settled threads", async () => {
     using stack = new DisposableStack();
+    const pageKey = "t3code:sidebar:pages";
+    const previousPages = localStorage.getItem(pageKey);
+    localStorage.setItem(pageKey, JSON.stringify(["threads", "settled"]));
+    stack.defer(() => {
+      if (previousPages === null) localStorage.removeItem(pageKey);
+      else localStorage.setItem(pageKey, previousPages);
+    });
     const style = document.createElement("style");
     style.textContent = appCss;
     document.head.append(style);
@@ -479,10 +489,35 @@ describe("sidebar settled pagination", () => {
       new Map([
         [
           activeProject.environmentId,
-          {
-            scratchWorkspaceRoot: null,
+          decodeServerConfig({
+            environment: {
+              environmentId: activeProject.environmentId,
+              label: "Local",
+              platform: { os: "linux", arch: "x64" },
+              serverVersion: "0.0.0",
+              capabilities: { repositoryIdentity: true, threadSettlement: true },
+            },
+            auth: {
+              policy: "loopback-browser",
+              bootstrapMethods: [],
+              sessionMethods: [],
+              sessionCookieName: "test",
+            },
+            cwd: activeProject.workspaceRoot,
+            keybindingsConfigPath: "/test/keybindings.json",
+            keybindings: [],
+            issues: [],
+            providers: [],
+            availableEditors: [],
+            observability: {
+              logsDirectoryPath: "/test/logs",
+              localTracingEnabled: false,
+              otlpTracesEnabled: false,
+              otlpMetricsEnabled: false,
+            },
+            settings: {},
             shellThreadFamilies: false,
-          } as unknown as EnvironmentServerConfig,
+          }),
         ],
       ]),
     );
@@ -494,10 +529,6 @@ describe("sidebar settled pagination", () => {
         <Sidebar routeReveal={{ observedKey: null, pendingKey: null }} />
       </SidebarProvider>,
     );
-    const shelf = screen.container.querySelector<HTMLElement>(
-      '[data-sidebar-row="shelf:settled"]',
-    )!;
-    if (shelf.getAttribute("aria-expanded") === "false") await act(() => shelf.click());
     const more = screen.getByRole("button", { name: "Show 25 more", exact: true });
     await expect.element(more).toBeInTheDocument();
     const moreButton = more.element() as HTMLButtonElement;

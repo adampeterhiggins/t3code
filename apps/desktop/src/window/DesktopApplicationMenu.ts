@@ -193,6 +193,7 @@ export const make = Effect.gen(function* () {
   const context = yield* Effect.context<DesktopApplicationMenuRuntimeServices>();
   const runPromise = Effect.runPromiseWith(context);
   const runFork = Effect.runForkWith(context);
+  const runSync = Effect.runSyncWith(context);
 
   const runMenuEffect = <E>(
     action: string,
@@ -217,22 +218,20 @@ export const make = Effect.gen(function* () {
     const settingsClick = () => {
       runMenuEffect("open-settings", dispatchMenuAction("open-settings"));
     };
-    // macOS shortcuts use native editing; a renderer round trip can duplicate the terminal fallback.
-    // Mouse clicks use the renderer so the composer arms its inline paste bypass.
     const pasteAsTextClick = (
       _item: Electron.MenuItem,
       _window: Electron.BaseWindow | undefined,
       event: Electron.KeyboardEvent,
     ) => {
       if (event.triggeredByAccelerator === true) {
+        // Chromium pastes this chord itself except on macOS. Paste synchronously there:
+        // a renderer round trip can land after the terminal's own clipboard read.
         if (environment.platform === "darwin") {
-          runMenuEffect(
-            "paste-as-text",
-            electronMenu.sendActionToFirstResponder("pasteAndMatchStyle:"),
-          );
+          runSync(electronMenu.pasteAndMatchStyle);
         }
         return;
       }
+      // The composer needs the renderer event to keep the menu paste inline.
       runMenuEffect("paste-as-text", dispatchMenuAction("paste-as-text"));
     };
     const zoomClick = (direction: DesktopWindow.MainWindowZoomDirection) => () => {

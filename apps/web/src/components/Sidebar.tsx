@@ -2837,6 +2837,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                 }),
                 isRegeneratingTitle,
                 isRunning: !threadRuntimeCanArchive(thread.runtime),
+                hasCompletedRun: thread.latestRun?.completedAt != null,
                 supports: {
                   settlement: configLoaded,
                   autoSettleOptOut: supportsAutoSettleOptOut,
