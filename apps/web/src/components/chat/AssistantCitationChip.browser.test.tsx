@@ -371,7 +371,7 @@ describe("citation comment destinations", () => {
     expect(textarea()).toBeNull();
   });
 
-  it("saves with Tab then Enter after typing a comment", async () => {
+  it("tabs through voice input to save a comment with Enter", async () => {
     using source = setup();
     const onSave = vi.fn(() => true);
     await using _screen = await mount(source.sourceAnchor, onSave);
@@ -379,6 +379,9 @@ describe("citation comment destinations", () => {
 
     await userEvent.keyboard("agreed");
     await userEvent.keyboard("{Tab}");
+    await expect.element(page.getByRole("button", { name: "Start voice input" })).toHaveFocus();
+    await userEvent.keyboard("{Tab}");
+    await expect.element(page.getByRole("button", { name: "Save", exact: true })).toHaveFocus();
     await userEvent.keyboard("{Enter}");
 
     expect(onSave).toHaveBeenCalledWith("agreed");

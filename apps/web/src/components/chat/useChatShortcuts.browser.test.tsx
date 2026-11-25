@@ -226,7 +226,7 @@ function SideChat(props: {
 }) {
   const [composerElement, setComposerElement] = useState<HTMLDivElement | null>(null);
   useChatShortcuts({
-    enabled: false,
+    enabled: true,
     embedded: true,
     composerElement,
     keybindings: sideChatKeybindings,

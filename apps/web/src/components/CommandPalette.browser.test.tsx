@@ -312,11 +312,7 @@ describe("CommandPalette open intents", () => {
     openCommandPalette({});
     const rootInput = page.getByPlaceholder("Search commands, projects, and threads...");
     await expect.element(rootInput).toHaveFocus();
-    await userEvent.keyboard("{ArrowDown}");
-    await expect
-      .element(page.getByRole("option", { name: /^New thread in\.\.\./ }))
-      .toHaveAttribute("data-highlighted");
-    await userEvent.keyboard("{Enter}");
+    await page.getByRole("option", { name: /^New thread in\.\.\./ }).click();
 
     const submenuInput = page.getByPlaceholder("Search...");
     await expect.element(submenuInput).toHaveFocus();

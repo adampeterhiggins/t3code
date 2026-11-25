@@ -19,13 +19,15 @@ vi.mock(
   () => ({ useAtomCommand: () => mocks.update }) as never,
 );
 
-vi.mock(import("~/browser/useOpenLink"), () => ({ useLinkClickHandler: () => () => {} }) as never);
 vi.mock(import("../ui/toast"), () => ({ toastManager: { add: mocks.notify } }) as never);
 vi.mock(import("~/state/server"), async () => {
   const { Atom } = await import("effect/reactivity");
   return { primaryServerKeybindingsAtom: Atom.make([]) } as never;
 });
-vi.mock(import("~/browser/useOpenLink"), () => ({ useOpenLink: () => async () => {} }));
+vi.mock(import("~/browser/useOpenLink"), () => ({
+  useLinkClickHandler: () => () => {},
+  useOpenLink: () => async () => {},
+}));
 vi.mock(import("./PullRequestThreadLinks"), () => ({ PullRequestThreadLinks: () => null }));
 vi.mock(
   import("./PullRequestDetailActions"),

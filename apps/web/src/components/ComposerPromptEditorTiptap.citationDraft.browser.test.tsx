@@ -193,7 +193,7 @@ it("edits a comment's chips in the composer's own editor", async () => {
   await expect.element(comment.getByText("Linked thread")).toBeVisible();
   // The panel focuses the comment with its caret after the chip.
   await expect.element(comment).toHaveFocus();
-  await userEvent.keyboard(" too{Enter}");
+  await userEvent.keyboard(" too{Control>}{Enter}{/Control}");
 
   expect(screen.container.querySelector("output")?.dataset.prompt).toBe(
     `See ${serializeAssistantCitation(withAssistantCitationComment(citation, `Compare ${chip} too`))} `,

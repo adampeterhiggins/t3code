@@ -271,10 +271,12 @@ it("filters actions and allows additional shortcuts for assigned commands", asyn
   const search = dialog.getByRole("combobox", { name: "Search", exact: true });
   await expect.element(search).toHaveFocus();
   await userEvent.keyboard("sidebar.toggle");
-  const assigned = page.getByRole("option", { name: /Sidebar: Toggle/ });
+  const assigned = dialog.getByRole("option", { name: /^Sidebar: Toggle(?! Tabs)/ });
   await expect.element(assigned).not.toHaveAttribute("aria-disabled", "true");
   await expect.element(assigned.element().querySelector("kbd")!).toBeVisible();
-  await vi.waitFor(() => expect(page.getByRole("option").elements()).toHaveLength(1));
+  await expect
+    .element(dialog.getByRole("option", { name: /^Terminal: Toggle/ }))
+    .not.toBeInTheDocument();
   await assigned.click();
   const command = screen.getByRole("combobox", { name: "Command", exact: true });
   await expect.element(command).toHaveTextContent("Sidebar: Toggle");

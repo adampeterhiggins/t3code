@@ -12,10 +12,6 @@ import {
   type ThreadIssueLink,
 } from "@t3tools/contracts";
 import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
-import {
-  compileResolvedKeybindingsConfig,
-  mergeWithDefaultKeybindings,
-} from "@t3tools/shared/keybindings";
 import type * as Context from "effect/Context";
 import * as Schema from "effect/Schema";
 import * as Effect from "effect/Effect";
@@ -31,6 +27,7 @@ import { selectThreadDiffPanelSelection, useDiffPanelStore } from "~/diffPanelSt
 import { __setClientSettingsForTests } from "~/hooks/useSettings";
 import stylesheet from "~/index.css?inline";
 import { environmentContextRecord } from "~/lib/composerContextRecords";
+import { isMacPlatform } from "~/lib/utils";
 import { startWorkspaceFocus } from "~/lib/workspaceFocus";
 import { usePromptStashStore } from "~/promptStashStore";
 import { useRightPanelStore } from "~/rightPanelStore";
@@ -593,7 +590,7 @@ it("a file picked after the phone composer collapses still attaches", async () =
   const editor = page.getByTestId("composer-editor");
   await expect.element(page.getByText(`Answer 0 for ${thread.id}.`)).toBeVisible();
   await userEvent.click(editor);
-  await expect.element(page.getByRole("button", { name: "Attach files" })).toBeVisible();
+  await expect.element(page.getByRole("button", { name: "Attach", exact: true })).toBeVisible();
   const input = document.querySelector<HTMLInputElement>(
     'form[data-chat-composer-form] input[type="file"]',
   );
@@ -601,7 +598,9 @@ it("a file picked after the phone composer collapses still attaches", async () =
 
   // Opening the native picker blurs the editor, which collapses the phone composer.
   (editor.element() as HTMLElement).blur();
-  await expect.element(page.getByRole("button", { name: "Attach files" })).not.toBeInTheDocument();
+  await expect
+    .element(page.getByRole("button", { name: "Attach", exact: true }))
+    .not.toBeInTheDocument();
   const files = new DataTransfer();
   files.items.add(new File([PNG], "picked.png", { type: "image/png" }));
   input!.files = files.files;
@@ -898,14 +897,7 @@ it("a mounted thread view lets go of the thread structures it has replaced", asy
 it("a shortcut conditioned on rightPanelOpen sees the thread's open right panel", async () => {
   await page.viewport(1280, 800);
   const thread = threadWithHistory("thread-panel-shortcut", 1);
-  using _environment = installFakeEnvironment([thread], {
-    keybindings: mergeWithDefaultKeybindings(
-      compileResolvedKeybindingsConfig([
-        { key: "ctrl+t", command: "rightPanel.new", when: "rightPanelOpen && !terminalFocus" },
-        { key: "ctrl+t", command: "rightPanel.toggle", when: "!rightPanelOpen" },
-      ]),
-    ),
-  });
+  using _environment = installFakeEnvironment([thread]);
   __setClientSettingsForTests({
     ...DEFAULT_CLIENT_SETTINGS,
     onboardingCompletedAt: "2026-01-01T00:00:00.000Z",
@@ -924,7 +916,16 @@ it("a shortcut conditioned on rightPanelOpen sees the thread's open right panel"
   await toggle.click();
   await page.getByRole("button", { name: /^Files/ }).click();
   await composer.click();
-  await userEvent.keyboard("{Control>}t{/Control}");
+  const mac = isMacPlatform(navigator.platform);
+  const shortcut = new KeyboardEvent("keydown", {
+    key: "t",
+    metaKey: mac,
+    ctrlKey: !mac,
+    bubbles: true,
+    cancelable: true,
+  });
+  await act(() => composer.element().dispatchEvent(shortcut));
+  expect(shortcut.defaultPrevented).toBe(true);
   await expect.element(page.getByRole("menuitem", { name: /Files/ })).toBeVisible();
   await expect.element(toggle).toHaveAttribute("aria-pressed", "true");
 });

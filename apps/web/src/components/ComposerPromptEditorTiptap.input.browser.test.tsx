@@ -1049,12 +1049,11 @@ describe("Markdown markers around styled text", () => {
       marks: { bold: ["Test"] },
     },
     {
-      name: "bold turned on after typed bold carries across a line break",
+      name: "Mod+B without a selection leaves the next line plain",
       value: "",
       caret: 1,
       keys: `**Test**${isMacPlatform(navigator.platform) ? "{Meta>}b{/Meta}" : "{Control>}b{/Control}"}{Shift>}{Enter}{/Shift}f`,
-      expected: "**Test**\n**f**",
-      // The caret beside f shows it as source.
+      expected: "**Test**\nf",
       marks: { bold: ["Test"] },
     },
     {
