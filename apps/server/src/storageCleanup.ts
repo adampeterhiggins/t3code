@@ -67,6 +67,7 @@ import { isFilesystemRoot, managedWorktreesDirectories } from "./worktreesDirect
 
 import * as ProviderRegistry from "./provider/ProviderRegistry.ts";
 import * as TextGeneration from "./textGeneration/TextGeneration.ts";
+import * as CheckpointCaptureIndex from "./vcs/checkpointCaptureIndex.ts";
 import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
 import { isNonRepositoryGitStderr } from "./vcs/GitVcsDriverCore.ts";
 import { isLinkedWorktree, removeLinkedWorktree } from "./vcs/worktreeRemoval.ts";
@@ -1962,7 +1963,7 @@ const make = Effect.gen(function* () {
                 root: taskFolder.root,
                 force: false,
                 forget: deleted,
-                projectCommands: TaskFolders.linkRunsProjectCommands(thread.linkOrigin),
+                projectCommands: TaskFolders.projectCommandsForLink(thread.linkOrigin),
                 inspect: (checkout) =>
                   worktreeAdminDir(checkout.worktreePath).pipe(
                     Effect.map((adminDir) => adminDirs.set(checkout.worktreePath, adminDir)),
@@ -2383,8 +2384,9 @@ const make = Effect.gen(function* () {
         ),
       );
     }
-    for (const { cwd, prefixes } of repositories.values()) {
+    for (const [commonDir, { cwd, prefixes }] of repositories) {
       yield* Effect.gen(function* () {
+        yield* CheckpointCaptureIndex.removeForScopes(fs, path, commonDir, prefixes);
         const result = yield* git.execute({
           operation: "StorageCleanup.listCheckpointRefs",
           cwd,

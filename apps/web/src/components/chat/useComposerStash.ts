@@ -72,7 +72,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { BackgroundThreadContext } from "./backgroundThread";
+import { BackgroundThreadContext, HiddenThreadContext } from "./backgroundThread";
 import { isInSideChatPane } from "../../lib/sideChatPane";
 import { useStableCallback } from "../../hooks/useStableCallback";
 
@@ -809,7 +809,8 @@ export function useComposerStash(input: {
     event.stopPropagation();
     void saveMessageDraftStable();
   });
-  const backgroundThread = use(BackgroundThreadContext);
+  const embedded = use(BackgroundThreadContext);
+  const hiddenThread = use(HiddenThreadContext);
   const readShortcutContext = useStableCallback(() => ({
     terminalOpen: Boolean(
       selectThreadTerminalUiState(
@@ -820,17 +821,19 @@ export function useComposerStash(input: {
   }));
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers the capture-phase stash shortcut with the command registry while the composer is mounted
   useEffect(() => {
-    if (backgroundThread || unfocusedSplitPane) return;
+    if (hiddenThread || unfocusedSplitPane) return;
     return registerCommands(
       { "composer.stash": handleStashShortcut, "composer.saveDraft": handleSaveDraftShortcut },
       {
         capture: true,
         context: readShortcutContext,
-        when: (event) => !isInSideChatPane(event.target),
+        // A side chat's composer takes the keys pressed in its pane; the main one takes the rest.
+        when: (event) => isInSideChatPane(event.target) === embedded,
       },
     );
   }, [
-    backgroundThread,
+    embedded,
+    hiddenThread,
     unfocusedSplitPane,
     handleStashShortcut,
     handleSaveDraftShortcut,

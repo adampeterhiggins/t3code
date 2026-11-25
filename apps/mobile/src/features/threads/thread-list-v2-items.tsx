@@ -1,3 +1,4 @@
+import { useAtomValue } from "@effect/atom-react";
 import * as Dialog from "../../components/ui/Dialog";
 import type { ThreadRowProviderInstance } from "./thread-provider-instance";
 import {
@@ -62,7 +63,7 @@ import { cn } from "../../lib/cn";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { copyThreadReference } from "../../lib/copyThreadReference";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
-import { useEnvironmentScope } from "../../state/session";
+import { useEnvironmentScope, useEnvironmentScopeDenied } from "../../state/session";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 import {
   pendingDraftBranchNeedsRefs,
@@ -400,6 +401,8 @@ type ThreadListV2ShelfHeaderProps = {
   readonly onToggle: () => void;
   readonly pane?: "screen" | "sidebar";
 };
+
+const TRIAGE_MENU_ACTION_IDS = new Set(["settle", "snooze", "unsettle", "unsnooze"]);
 
 export const ThreadListV2WorkingShelfHeader = memo(function ThreadListV2WorkingShelfHeader(
   props: ThreadListV2ShelfHeaderProps,
@@ -955,9 +958,13 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     label: statusEntry.label === null ? null : m(statusEntry.label),
   };
   const recede = shouldRecedeThreadRow({ status, selected });
+  const pendingSync = useAtomValue(
+    threadEnvironment.pendingSyncAtom(thread.environmentId),
+    (threads) => threads.has(thread.id),
+  );
   const isRegeneratingTitle = thread.titleRegeneration != null;
   // List items keep marked text so they stay the same objects across a language switch.
-  const timeLabel = props.timeLabel && m(props.timeLabel);
+  const timeLabel = pendingSync ? gt("Waiting to sync") : props.timeLabel && m(props.timeLabel);
   const snoozeWakeLabelText =
     props.snoozeWakeLabelText === undefined ? undefined : m(props.snoozeWakeLabelText);
   const rowAccessibilityLabel = threadListV2RowAccessibilityLabel(
@@ -975,7 +982,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
             ? gt("Waiting", { $context: "thread status" })
             : gt("Working", { $context: "thread status" }))),
       timeLabel,
-      snoozeWakeLabel: snoozedRow ? snoozeWakeLabelText : undefined,
+      snoozeWakeLabel: snoozedRow && !pendingSync ? snoozeWakeLabelText : undefined,
       providerNameLabel,
       hasQueuedMessages: props.hasQueuedMessages === true,
       regeneratingTitle: isRegeneratingTitle,
@@ -1000,6 +1007,10 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const handleDelete = () => onDeleteThread(thread);
   const handleRename = () => onRenameThread(thread);
   const canOperateThread = useEnvironmentScope(thread.environmentId, AuthOrchestrationOperateScope);
+  // Until the host answers, only settle, snooze and their undo are offered: they can queue.
+  const triageOnly =
+    !useEnvironmentScopeDenied(thread.environmentId, AuthOrchestrationOperateScope) &&
+    !canOperateThread;
   const canShareWithGuest = useCanShareWithGuest(thread.environmentId);
   const navigation = useNavigation();
   const handleRegenerateTitle = () => onRegenerateThreadTitle(thread);
@@ -1052,17 +1063,14 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     },
     m,
   );
-  const snoozePresetActions = useMemo<MenuAction[]>(
-    () => [
-      ...snoozePresets.map((preset) => ({
-        id: `snooze:${preset.id}`,
-        title: preset.label,
-        subtitle: preset.whenLabel,
-      })),
-      { id: "snooze:custom", title: gt("Custom…", { $context: "custom snooze time" }) },
-    ],
-    [gt, snoozePresets],
-  );
+  const snoozePresetActions: MenuAction[] = [
+    ...snoozePresets.map((preset) => ({
+      id: `snooze:${preset.id}`,
+      title: preset.label,
+      subtitle: preset.whenLabel,
+    })),
+    { id: "snooze:custom", title: gt("Custom…", { $context: "custom snooze time" }) },
+  ];
   const localized = (action: MenuAction): MenuAction => ({ ...action, title: m(action.title) });
   const arrangementMenuItems = (() => [
     ...(props.reorderSupported === true
@@ -1499,7 +1507,9 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           onPress: () => undefined,
         }
       : null)();
-  const swipeAccessibilityHint = !canOperateThread
+  const canSwipe =
+    canOperateThread || (triageOnly && TRIAGE_MENU_ACTION_IDS.has(swipeActions.primary));
+  const swipeAccessibilityHint = !canSwipe
     ? gt("Opens the thread")
     : secondaryAction === null
       ? primaryAction.swipeHint
@@ -1895,13 +1905,15 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
             )}
             style={{ fontFamily: MONO_FONT }}
           >
-            {snoozedRow && snoozeWakeLabelText !== undefined ? snoozeWakeLabelText : timeLabel}
+            {!pendingSync && snoozedRow && snoozeWakeLabelText !== undefined
+              ? snoozeWakeLabelText
+              : timeLabel}
           </Text>
         </View>
       </RowPressable>
     );
 
-  if (!canOperateThread)
+  if (!canSwipe)
     return <View style={rowAppearance.swipeContainerStyle}>{rowContent(() => {})}</View>;
 
   return (
@@ -1931,7 +1943,11 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         {(close) => (
           <Menu
             accessibilityLabel={rowAccessibilityLabel}
-            actions={menuActions}
+            actions={
+              triageOnly
+                ? menuActions.filter((action) => TRIAGE_MENU_ACTION_IDS.has(action.id ?? ""))
+                : menuActions
+            }
             onPressAction={handleMenuAction}
             shouldOpenOnLongPress
           >

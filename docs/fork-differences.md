@@ -2085,7 +2085,8 @@ Code: `checkOutPullRequest` and `checkNewWorktree` in
 ## Delegated subagents in their own worktree
 
 Upstream's `delegate_task` supports `isolation: "worktree"` to give a child a checkout based on the
-parent's local commit. The fork also supports an optional `workspaceStrategy` to choose
+parent's local commit, or on each repository's default branch in a non-Git project that tracks
+multiple repositories. The fork also supports an optional `workspaceStrategy` to choose
 `t3_thread_launch`'s `worktree` (from
 `baseRef`, optional `branch` and `startFromOrigin`) and `existing_worktree` shapes; there is no
 `root` option, and omitting it still shares the caller's checkout. `existing_worktree` accepts a
@@ -2161,9 +2162,9 @@ worktree, and fails once the thread is in one. An agent whose work then belonged
 such as a PR into a different base, ran `git worktree add` and prefixed every command with `cd`,
 so T3 neither started commands there nor tracked that checkout's diffs. In the fork the handoff
 also moves a thread that is already in a worktree, and moves it into an existing worktree when
-`branch` is checked out there and `path` names that checkout. Nothing is created or set up for an
-existing worktree unless `runSetupScript` asks, a failed move never removes it, and the worktree
-the thread leaves stays on disk. A run the move interrupts leaves a **Workspace changed** divider
+`branch` is checked out there and `path` names that checkout. Running the existing worktree's setup
+script requires `runSetupScript` and Full access. A failed move preserves that checkout, and the
+worktree the thread leaves stays on disk. A run the move interrupts leaves a **Workspace changed** divider
 in the timeline naming the checkout it continues in. The agent instructions point at the handoff
 instead of `git worktree add` or `cd`.
 

@@ -1,4 +1,7 @@
-import { assistantCitationsToPlainText } from "@t3tools/shared/assistantCitations";
+import {
+  assistantCitationsToPlainText,
+  splitsSurrogatePair,
+} from "@t3tools/shared/assistantCitations";
 import {
   isAttachmentOnlyBootstrapPrompt,
   replaceComposerContextReferences,
@@ -57,7 +60,9 @@ function resolveFinalAssistantTextForTurn(
 // The tooltip shows a few lines; bound parsing work for long messages and streaming responses.
 function markdownMinimapPreview(markdown: string | null) {
   if (markdown === null) return null;
-  const compact = markdownPlainText(markdown.slice(0, 1_500));
+  const compact = markdownPlainText(
+    markdown.slice(0, splitsSurrogatePair(markdown, 1_500) ? 1_499 : 1_500),
+  );
   return compact.length > 0 ? compact : null;
 }
 

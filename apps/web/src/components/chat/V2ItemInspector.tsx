@@ -34,6 +34,7 @@ import ChatMarkdown from "../ChatMarkdown";
 import { ChatMarkdownAssetImage } from "./ChatMarkdownMedia";
 import { PreviewCornerAction } from "./PreviewCornerAction";
 import { ToolCallBody as ToolPreviewBody } from "../ToolCallBody";
+import { FileSearchResults } from "./FileSearchResults";
 import { CommandOutputPanel, useCommandOutputStreaming } from "./CommandOutputPanel";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import { ReadFileView } from "./ReadFileView";
@@ -452,31 +453,21 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
         </div>
       ) : null}
 
-      {item.type === "file_search" && item.pattern?.trim() ? (
+      {/* The row label already shows the pattern unless the provider titled the search itself. */}
+      {item.type === "file_search" &&
+      item.pattern?.trim() &&
+      item.title &&
+      !item.title.includes(item.pattern.trim()) ? (
         <div className={cn("text-foreground/85", monoClassName)}>{item.pattern}</div>
       ) : null}
 
       {item.type === "file_search" && item.results?.length ? (
-        <ul className="space-y-1">
-          {item.results.map((result) => (
-            <li key={JSON.stringify(result)}>
-              <span className="font-mono text-foreground/80">
-                <ToolPathText
-                  text={result.fileName}
-                  environmentId={props.environmentId}
-                  workspaceRoot={props.workspaceRoot}
-                  pathOnly
-                  omitWorkspaceRoot
-                />
-                {result.line === undefined ? "" : `:${result.line}`}
-                {result.column === undefined ? "" : `:${result.column}`}
-              </span>
-              {result.preview ? (
-                <p className="mt-0.5 whitespace-pre-wrap text-muted-foreground">{result.preview}</p>
-              ) : null}
-            </li>
-          ))}
-        </ul>
+        <FileSearchResults
+          environmentId={props.environmentId}
+          pattern={item.pattern}
+          results={item.results}
+          workspaceRoot={props.workspaceRoot}
+        />
       ) : null}
 
       {item.type === "web_search" ? <WebToolDetail item={item} cwd={props.cwd} /> : null}

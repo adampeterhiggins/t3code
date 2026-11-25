@@ -69,6 +69,7 @@ import {
   isDiffToggleShortcut,
   isTerminalClearShortcut,
   isTerminalNewShortcut,
+  isTerminalCycleShortcut,
   isTerminalSplitShortcut,
   isTerminalSplitVerticalShortcut,
   isTerminalToggleShortcut,
@@ -176,6 +177,15 @@ export function writeTerminalOutputUpdate(
 }
 
 let colorProbeContext: CanvasRenderingContext2D | null = null;
+// Full-screen apps such as vim read their own modified arrows; shell motions would break them.
+export function terminalPromptNavigationData(
+  terminal: Pick<GhosttyTerminalSurface, "isAlternateScreen">,
+  event: KeyboardEvent,
+  platform?: string,
+): string | null {
+  return terminal.isAlternateScreen() ? null : terminalNavigationShortcutData(event, platform);
+}
+
 // Avoid formatting unbounded scrollback selections on every output update.
 const MAX_COMPARED_SELECTION_CELLS = 3_000;
 
@@ -1098,6 +1108,7 @@ function TerminalSessionViewport({
           isTerminalSplitShortcut(event, currentKeybindings, options) ||
           isTerminalSplitVerticalShortcut(event, currentKeybindings, options) ||
           isTerminalNewShortcut(event, currentKeybindings, options) ||
+          isTerminalCycleShortcut(event, currentKeybindings, options) ||
           isDiffToggleShortcut(event, currentKeybindings, options) ||
           // Match Sidebar's context, or a key it will reject skips the shell.
           isThreadNavigationShortcut(event, currentKeybindings, {
@@ -1107,7 +1118,10 @@ function TerminalSessionViewport({
           return false;
         }
 
-        const navigationData = terminalNavigationShortcutData(event);
+        const activeTerminal = terminalRef.current;
+        const navigationData = activeTerminal
+          ? terminalPromptNavigationData(activeTerminal, event)
+          : null;
         if (navigationData !== null) {
           event.preventDefault();
           event.stopPropagation();

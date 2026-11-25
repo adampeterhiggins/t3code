@@ -19,13 +19,15 @@ vi.mock(
   () => ({ useAtomCommand: () => mocks.update }) as never,
 );
 
-vi.mock(import("~/browser/useOpenLink"), () => ({ useLinkClickHandler: () => () => {} }) as never);
 vi.mock(import("../ui/toast"), () => ({ toastManager: { add: mocks.notify } }) as never);
 vi.mock(import("~/state/server"), async () => {
   const { Atom } = await import("effect/reactivity");
   return { primaryServerKeybindingsAtom: Atom.make([]) } as never;
 });
-vi.mock(import("~/browser/useOpenLink"), () => ({ useOpenLink: () => async () => {} }));
+vi.mock(import("~/browser/useOpenLink"), () => ({
+  useLinkClickHandler: () => () => {},
+  useOpenLink: () => async () => {},
+}));
 vi.mock(import("./PullRequestThreadLinks"), () => ({ PullRequestThreadLinks: () => null }));
 vi.mock(
   import("./PullRequestDetailActions"),
@@ -38,7 +40,8 @@ import { PullRequestActionsMenu } from "./PullRequestActionsMenu";
 const reference = { projectId: ProjectId.make("project"), repository: "owner/repo", number: 7 };
 const environmentId = EnvironmentId.make("environment");
 
-type Detail = Parameters<typeof PullRequestActionsMenu>[0]["detail"];
+// Tests restamp the detail on each reading; the menu takes that stamp beside it.
+type Detail = Parameters<typeof PullRequestActionsMenu>[0]["detail"] & { observedAt?: number };
 
 const openDetail: Detail = {
   url: "https://github.com/owner/repo/pull/7",
@@ -76,8 +79,9 @@ function setup() {
       reference={reference}
       pullRequestKey="owner/repo/7"
       detail={detail}
-      threadRef={null}
+      observedAt={detail.observedAt}
       terminology={sourceControlClients.get("github").changeRequest}
+      threadRef={null}
       linkThreadRef={null}
       onThreadPickerOpenChange={() => {}}
       refreshing={false}

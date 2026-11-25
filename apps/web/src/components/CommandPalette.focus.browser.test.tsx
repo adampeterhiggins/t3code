@@ -28,6 +28,7 @@ vi.mock("../hooks/useEnvironmentTheme", () => ({ useEnvironmentThemeDefinitions:
 vi.mock("../hooks/useSettings", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../hooks/useSettings")>()),
   useClientSettings: () => ({}),
+  useUpdatePrimarySettings: () => () => undefined,
 }));
 vi.mock("../hooks/useScratchProject", () => ({
   useScratchProject: () => ({ scratchEnvironmentId: () => null }),

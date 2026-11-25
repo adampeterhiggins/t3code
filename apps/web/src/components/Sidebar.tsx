@@ -214,7 +214,7 @@ import { primaryServerKeybindingsAtom } from "../state/server";
 import { threadEnvironment } from "../state/threads";
 import { useOlderSettledShelf, useOlderSettledShelfGrowth } from "../state/olderSettledShelf";
 import { useThreadSearch } from "../state/queries";
-import { useOrchestrationCommand } from "../state/use-orchestration-command";
+import { threadTriagePermitted, useOrchestrationCommand } from "../state/use-orchestration-command";
 import { readEnvironmentScope } from "../state/session";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { canShareWithGuestAtom } from "./chat/guestShareAvailability";
@@ -231,6 +231,7 @@ import { ProjectEnvironmentBadge } from "./ProjectEnvironmentBadge";
 import {
   buildDraftActionMenuItems,
   buildThreadActionMenuItems,
+  isThreadTriageAction,
   threadActionRequiresOperate,
   collectThreadGroupNames,
   resolveThreadGroupMenuPick,
@@ -319,7 +320,7 @@ import {
 import { requestThreadGroup } from "./ThreadGroupDialog";
 
 import { SidebarTabsMenu } from "./sidebar/SidebarTabsMenu";
-import { TooltipProvider } from "./ui/tooltip";
+import { TooltipProvider, TooltipScrollDismissArea } from "./ui/tooltip";
 import {
   composerDraftHasUserContent,
   DraftId,
@@ -364,15 +365,19 @@ const WORKING_SHELF_EXPANDED_KEY = "t3code:sidebar:working-expanded";
 const inboxReturns = createInboxReturnTracker();
 function canOperateThreads(
   threads: ReadonlyArray<Pick<SidebarThreadSummary, "environmentId">>,
+  triage = false,
 ): boolean {
   return threads.every((thread) =>
-    readEnvironmentScope(thread.environmentId, AuthOrchestrationOperateScope),
+    triage
+      ? threadTriagePermitted(thread.environmentId)
+      : readEnvironmentScope(thread.environmentId, AuthOrchestrationOperateScope),
   );
 }
 function checkThreadOperations(
   threads: ReadonlyArray<Pick<SidebarThreadSummary, "environmentId">>,
+  triage = false,
 ): boolean {
-  if (canOperateThreads(threads)) return true;
+  if (canOperateThreads(threads, triage)) return true;
   toastManager.add({
     type: "error",
     title: m(msg("Thread action unavailable")),
@@ -1122,7 +1127,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     // setTimeout delays are signed 32-bit: anything larger overflows and fires
     // immediately, turning a far-future wake (event-condition snoozes synced
     // from elsewhere) into a tight re-arm loop.
-    // oxlint-disable-next-line react/purity -- Measures the wake delay inside the effect, not during render.
     const delayMs = Math.min(Math.max(0, nextWakeAtMs - new Date().getTime()) + 50, 2147483647);
     const id = window.setTimeout(() => bumpSnoozeWakeTick(Date.now()), delayMs);
     return () => window.clearTimeout(id);
@@ -2006,7 +2010,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       activeSection,
       targetSection: activeSection,
       contextDrag: false,
-      // oxlint-disable-next-line react/purity -- Drag start stamps the move when the handler runs.
       occurredAt: new Date().toISOString(),
       activationY:
         event.activatorEvent instanceof PointerEvent ? event.activatorEvent.clientY : null,
@@ -2268,7 +2271,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       key: activeKey,
       sourceSection: activeSection,
       section: target.section,
-      // oxlint-disable-next-line react/purity -- Drop stamps the move when the handler runs.
       occurredAt: new Date().toISOString(),
       clearsSnooze:
         plan.kind === "pin" ||
@@ -2486,26 +2488,26 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
             {
               id: "settle",
               label: gt("Settle ({count})", { count }),
-              disabled: settlingThreads.length === 0 || !canOperateThreads(settlingThreads),
+              disabled: settlingThreads.length === 0 || !canOperateThreads(settlingThreads, true),
             },
             ...(canSnoozeSelection
               ? [
                   {
                     id: "snooze",
                     label: gt("Snooze ({count})", { count }),
-                    disabled: !canOperateThreads(selectedThreads),
+                    disabled: !canOperateThreads(selectedThreads, true),
                     children: [
                       ...snoozePresets.map((preset) => ({
                         id: `snooze:${preset.id}`,
                         label: preset.label,
                         detail: preset.whenLabel,
-                        disabled: !canOperateThreads(selectedThreads),
+                        disabled: !canOperateThreads(selectedThreads, true),
                       })),
                       {
                         id: "snooze:custom",
                         label: gt("Custom…"),
                         separatorBefore: snoozePresets.length > 0,
-                        disabled: !canOperateThreads(selectedThreads),
+                        disabled: !canOperateThreads(selectedThreads, true),
                       },
                     ],
                   },
@@ -2548,7 +2550,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                 })
               : selectedThreads;
       if (clicked.value === "settle" && actionTargets.length === 0) return;
-      if (clicked.value !== "mark-unread" && !checkThreadOperations(actionTargets)) return;
+      if (
+        clicked.value !== "mark-unread" &&
+        !checkThreadOperations(actionTargets, isThreadTriageAction(clicked.value))
+      )
+        return;
       if (clicked.value?.startsWith("snooze:")) {
         const preset =
           clicked.value === "snooze:custom"
@@ -2822,6 +2828,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                   threadRef.environmentId,
                   AuthOrchestrationOperateScope,
                 ),
+                canTriage: threadTriagePermitted(threadRef.environmentId),
                 branch: thread.branch ?? null,
                 projectFilter:
                   threadProjectGroup && !threadProjectGroup.archived
@@ -2886,7 +2893,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           ),
         );
         if (clicked._tag === "Failure" || clicked.value === null) return;
-        if (threadActionRequiresOperate(clicked.value) && !checkThreadOperations([thread])) return;
+        if (
+          threadActionRequiresOperate(clicked.value) &&
+          !checkThreadOperations([thread], isThreadTriageAction(clicked.value))
+        )
+          return;
         if (clicked.value?.startsWith("snooze:")) {
           const preset =
             clicked.value === "snooze:custom"
@@ -3422,6 +3433,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                     collisionAvoidance={{ side: "flip", align: "shift" }}
                     className="w-[min(18rem,var(--available-width))] overflow-hidden"
                     finalFocus={(closeType) => closeType === "keyboard"}
+                    render={<TooltipScrollDismissArea holdPositionOnExit />}
                   >
                     <ComboboxSearchInput
                       aria-label={gt("Search projects")}

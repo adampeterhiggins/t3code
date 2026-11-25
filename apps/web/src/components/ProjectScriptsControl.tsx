@@ -88,6 +88,7 @@ interface ProjectScriptsControlProps {
   environmentId: EnvironmentId;
   scripts: ReadonlyArray<ProjectScript>;
   fileScripts?: ReadonlyArray<T3ProjectFileScript>;
+  onActionsMenuOpen?: () => void;
   preferredScriptId?: string | null;
   onRunScript?: ((script: ProjectScript) => void) | undefined;
   /** Run scripts from `.conductor/settings.toml`, default first. */
@@ -109,6 +110,7 @@ export default function ProjectScriptsControl({
   environmentId,
   scripts,
   fileScripts = NO_FILE_SCRIPTS,
+  onActionsMenuOpen,
   preferredScriptId = null,
   onRunScript,
   conductorScripts = NO_CONDUCTOR_SCRIPTS,
@@ -134,6 +136,10 @@ export default function ProjectScriptsControl({
   if (actionsMenuOpen.presentation !== presentation) {
     setActionsMenuOpen({ presentation, scripts: false, imports: false });
   }
+  const openActionsMenu = (menus: { scripts: boolean; imports: boolean }) => {
+    if (menus.scripts || menus.imports) onActionsMenuOpen?.();
+    setActionsMenuOpen({ presentation, ...menus });
+  };
   const [editorRequest, setEditorRequest] = useState<ProjectScriptEditorRequest | null>(null);
   const editorRequestIdRef = React.useRef(0);
 
@@ -366,9 +372,7 @@ export default function ProjectScriptsControl({
           {scripts.length > 0 || conductorScripts.length > 0 || importableScripts.length > 0 ? (
             <MenuSub
               open={actionsMenuOpen.scripts}
-              onOpenChange={(open) =>
-                setActionsMenuOpen({ presentation, scripts: open, imports: false })
-              }
+              onOpenChange={(open) => openActionsMenu({ scripts: open, imports: false })}
             >
               <MenuSubTrigger density="touch">
                 <ScriptIcon icon="play" className="size-4" />
@@ -441,9 +445,7 @@ export default function ProjectScriptsControl({
           )}
           <Menu
             open={actionsMenuOpen.scripts}
-            onOpenChange={(open) =>
-              setActionsMenuOpen({ presentation, scripts: open, imports: false })
-            }
+            onOpenChange={(open) => openActionsMenu({ scripts: open, imports: false })}
           >
             <Tooltip>
               <TooltipTrigger
@@ -579,7 +581,7 @@ export default function ProjectScriptsControl({
               variant="ghost"
               part="primary"
               aria-label={gt("Project actions")}
-              onClick={() => setActionsMenuOpen({ presentation, scripts: false, imports: true })}
+              onClick={() => openActionsMenu({ scripts: false, imports: true })}
             >
               <WrenchIcon className={THREAD_DETAILS_PANEL_ICON_CLASS} />
               <span className={cn("min-w-0 truncate", THREAD_DETAILS_PANEL_LABEL_CLASS)}>
@@ -590,9 +592,7 @@ export default function ProjectScriptsControl({
             <Menu
               highlightItemOnHover={false}
               open={actionsMenuOpen.imports}
-              onOpenChange={(open) =>
-                setActionsMenuOpen({ presentation, scripts: false, imports: open })
-              }
+              onOpenChange={(open) => openActionsMenu({ scripts: false, imports: open })}
             >
               <MenuTrigger
                 render={
@@ -615,9 +615,7 @@ export default function ProjectScriptsControl({
           <Menu
             highlightItemOnHover={false}
             open={actionsMenuOpen.imports}
-            onOpenChange={(open) =>
-              setActionsMenuOpen({ presentation, scripts: false, imports: open })
-            }
+            onOpenChange={(open) => openActionsMenu({ scripts: false, imports: open })}
           >
             <MenuTrigger
               render={<Button size="xs" variant="outline" aria-label={gt("Project actions")} />}

@@ -111,6 +111,34 @@ describe("Esc in a shortcut recorder", () => {
     await userEvent.keyboard("{Escape}");
     expect(onOpenChange).toHaveBeenCalledWith(false, expect.anything());
   });
+
+  it.each([
+    { name: "existing binding", field: existingField, open: () => activate(existingPill, "click") },
+    {
+      name: "new binding",
+      field: newField,
+      open: async () => {
+        await activate(page.getByRole("button", { name: "Add keybinding" }), "click");
+        await activate(newField, "focus");
+      },
+    },
+  ])("records Shift+Esc in the $name field", async ({ field, open }) => {
+    const onOpenChange = vi.fn();
+    await using _screen = await render(
+      <Dialog open onOpenChange={onOpenChange}>
+        <DialogPopup>
+          <DialogTitle>Settings</DialogTitle>
+          <KeybindingsSettingsPanel />
+        </DialogPopup>
+      </Dialog>,
+    );
+
+    await open();
+    await userEvent.keyboard("{Shift>}{Escape}{/Shift}");
+
+    await expect.element(field).toHaveValue("shift+esc");
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
 });
 
 it("unassigns a default shortcut and restores its condition when one is assigned again", async () => {
@@ -191,9 +219,28 @@ it("Esc in the keybindings search clears the query without closing Settings", as
   expect(search.element().getAttribute("type")).toBe("text");
 
   await userEvent.keyboard("{Escape}");
-
   await expect.element(search).toHaveValue("");
+  await expect.element(search).toHaveFocus();
+
+  await act(() =>
+    search.element().dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Escape",
+        repeat: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    ),
+  );
+  await expect.element(search).toHaveValue("");
+  await expect.element(search).toHaveFocus();
   expect(onOpenChange).not.toHaveBeenCalled();
+
+  await search.fill("sidebar");
+  await userEvent.keyboard("{Shift>}{Escape}{/Shift}");
+  await expect.element(search).toHaveValue("sidebar");
+  await expect.element(search).toHaveFocus();
+  expect(onOpenChange).toHaveBeenCalledWith(false, expect.anything());
 });
 
 it("re-enables Save when a When editor closes on an expression it could not parse", async () => {
@@ -224,10 +271,12 @@ it("filters actions and allows additional shortcuts for assigned commands", asyn
   const search = dialog.getByRole("combobox", { name: "Search", exact: true });
   await expect.element(search).toHaveFocus();
   await userEvent.keyboard("sidebar.toggle");
-  const assigned = page.getByRole("option", { name: /Sidebar: Toggle/ });
+  const assigned = dialog.getByRole("option", { name: /^Sidebar: Toggle(?! Tabs)/ });
   await expect.element(assigned).not.toHaveAttribute("aria-disabled", "true");
   await expect.element(assigned.element().querySelector("kbd")!).toBeVisible();
-  await vi.waitFor(() => expect(page.getByRole("option").elements()).toHaveLength(1));
+  await expect
+    .element(dialog.getByRole("option", { name: /^Terminal: Toggle/ }))
+    .not.toBeInTheDocument();
   await assigned.click();
   const command = screen.getByRole("combobox", { name: "Command", exact: true });
   await expect.element(command).toHaveTextContent("Sidebar: Toggle");

@@ -240,7 +240,9 @@ describe("MessagesTimeline work rows", () => {
       ],
       { onOpenTurnDiff },
     );
-    const row = screen.container.querySelector<HTMLElement>('[data-v2-item-type="file_change"]')!;
+    const row = screen.container.querySelector<HTMLElement>(
+      '[data-v2-item-type="file_change"] [role="button"][aria-expanded]',
+    )!;
     const press = async (target: HTMLElement) => {
       await act(async () => target.focus());
       await userEvent.keyboard(key);
@@ -988,12 +990,19 @@ describe("MessagesTimeline messages", () => {
       [message(paragraphs.join("\n\n"), { role: "assistant" })],
       props,
     );
-    screen.container.style.width = "900px";
+    await document.fonts.ready;
     const viewport = props.listRef.current!.getScrollableNode()!;
     const target = page.getByText(paragraphs[15]!.trim(), { exact: true }).element();
     await vi.waitFor(() => {
       expect(viewport.scrollHeight).toBeGreaterThan(1000);
       expect(viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop).toBeLessThan(2);
+    });
+    await new Promise<void>((resolve) => {
+      const observer = new ResizeObserver(() => {
+        observer.disconnect();
+        resolve();
+      });
+      observer.observe(viewport);
     });
     await props.listRef.current!.scrollToOffset({
       offset:
@@ -1009,6 +1018,7 @@ describe("MessagesTimeline messages", () => {
     for (const width of [500, 900]) {
       screen.container.style.width = `${width}px`;
       await vi.waitFor(() => {
+        expect(viewport.getBoundingClientRect().width).toBe(width);
         const after = target.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
         expect(Math.abs(after - before)).toBeLessThan(30);
       });
@@ -1562,14 +1572,14 @@ describe("MessagesTimeline messages", () => {
       await vi.waitFor(() =>
         expect(
           screen.container.querySelector(
-            '[data-work-entry-id="tool-near-composer"][role="button"]',
+            '[data-work-entry-id="tool-near-composer"] [role="button"][aria-expanded]',
           ),
         ).not.toBeNull(),
       );
       if (mode === "grouped-delayed") {
         await click(
           screen.container.querySelector<HTMLElement>(
-            '[data-work-entry-id="tool-near-composer"][role="button"]',
+            '[data-work-entry-id="tool-near-composer"] [role="button"][aria-expanded]',
           )!,
         );
         await vi.waitFor(() => expect(screen.text()).toContain("Loading output"));
@@ -1579,7 +1589,7 @@ describe("MessagesTimeline messages", () => {
     const header = () => {
       if (mode === "grouped-end")
         return screen.container.querySelector<HTMLElement>(
-          '[data-work-entry-id="tool-near-composer"][role="button"]',
+          '[data-work-entry-id="tool-near-composer"] [role="button"][aria-expanded]',
         )!;
       if (mode === "grouped-delayed")
         return screen.container.querySelector<HTMLElement>(

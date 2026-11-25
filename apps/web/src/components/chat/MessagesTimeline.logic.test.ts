@@ -42,16 +42,32 @@ import {
   resolveTimelineMinimapCurrentIndex,
   resolveTimelineMinimapHasPersistentGutter,
   resolveTimelineMinimapHeightStyle,
-  resolveTimelineMinimapHitStripWidth,
   resolveTimelineMinimapIndexFromPointer,
   resolveTimelineMinimapNavigationInteractive,
   resolveTimelineMinimapTopPercent,
   resolveTimelineMinimapVisibleRange,
+  resolveTimelineMinimapHitStrip,
   type MessagesTimelineRow,
   workEntryDisplayLabel,
   workEntryReadOutput,
 } from "./MessagesTimeline.logic";
 import { workEntryIconName } from "./TimelineWorkEntryRow.logic";
+
+describe("resolveTimelineMinimapHitStrip", () => {
+  it.each([
+    { viewport: 1280, content: 768, left: 32, width: 40 },
+    { viewport: 768, content: 672, left: 32, width: 16 },
+    { viewport: 768, content: 704, left: 0, width: 8 },
+    { viewport: 768, content: 720, left: 0, width: 8 },
+    { viewport: 768, content: 756, left: 0, width: 6 },
+    { viewport: 768, content: 768, left: 0, width: 0 },
+  ])(
+    "keeps the minimap inside the gutter at $viewport/$content",
+    ({ viewport, content, left, width }) => {
+      expect(resolveTimelineMinimapHitStrip(viewport, content)).toEqual({ left, width });
+    },
+  );
+});
 
 describe("resolveAssistantMessageCopyState", () => {
   it("copies the rendered representation of Codex directives", () => {
@@ -2380,13 +2396,20 @@ describe("deriveMessagesTimelineRows", () => {
       completedAt: at(ordinal),
       updatedAt: at(ordinal),
     });
-    const read = (id: string, ordinal: number, filePath: string) => ({
+    const read = (
+      id: string,
+      ordinal: number,
+      filePath: string,
+      status: "completed" | "failed" = "completed",
+    ) => ({
       ...base(id, ordinal),
+      status,
       type: "dynamic_tool" as const,
       toolName: "Read",
-      // The Claude adapter tags reads of image files.
+      // Claude and ACP adapters tag reads of image files even when the read fails.
       ...(filePath.endsWith(".png") ? { viewedImagePath: filePath } : {}),
       input: { file_path: filePath },
+      ...(status === "failed" ? { output: "Error: File does not exist." } : {}),
     });
     const items = (settled: boolean) =>
       [
@@ -2402,18 +2425,19 @@ describe("deriveMessagesTimelineRows", () => {
         },
         read("read-sidebar", 1, "/repo/docs/sidebar.png"),
         read("read-notes", 2, "/repo/docs/notes.md"),
-        read("read-sidebar-again", 3, "/repo/docs/sidebar.png"),
-        read("read-topbar", 4, "/repo/docs/topbar.png"),
+        read("read-missing", 3, "/repo/docs/missing.png", "failed"),
+        read("read-sidebar-again", 4, "/repo/docs/sidebar.png"),
+        read("read-topbar", 5, "/repo/docs/topbar.png"),
         settled
           ? {
-              ...base("answer", 5),
+              ...base("answer", 6),
               type: "assistant_message" as const,
               messageId: MessageId.make("answer"),
               text: "Here are both layouts",
               streaming: false,
             }
           : {
-              ...base("ask-again", 5),
+              ...base("ask-again", 6),
               status: "waiting" as const,
               completedAt: null,
               type: "user_input_request" as const,
@@ -5464,16 +5488,6 @@ describe("timeline end and minimap geometry", () => {
     expect(resolveTimelineMinimapHasPersistentGutter(1200, 1152)).toBe(false);
     expect(resolveTimelineMinimapHasPersistentGutter(2560, 2560)).toBe(false);
 
-    expect(resolveTimelineMinimapHitStripWidth(768, 768)).toBe(0);
-    expect(resolveTimelineMinimapHitStripWidth(792, 768)).toBe(0);
-    expect(resolveTimelineMinimapHitStripWidth(820, 768)).toBe(14);
-    expect(resolveTimelineMinimapHitStripWidth(872, 768)).toBe(40);
-    expect(resolveTimelineMinimapHitStripWidth(1400, 768)).toBe(40);
-    expect(resolveTimelineMinimapHitStripWidth(2560, 2560)).toBe(0);
-    expect(resolveTimelineMinimapHitStripWidth(1204, 1152)).toBe(14);
-    expect(resolveTimelineMinimapHitStripWidth(0, 0)).toBe(0);
-    expect(resolveTimelineMinimapHitStripWidth(Number.NaN, 768)).toBe(0);
-
     expect(resolveTimelineMinimapNavigationInteractive(40)).toBe(true);
     expect(resolveTimelineMinimapNavigationInteractive(14)).toBe(true);
     expect(resolveTimelineMinimapNavigationInteractive(8)).toBe(false);
@@ -5483,12 +5497,12 @@ describe("timeline end and minimap geometry", () => {
     for (const [viewport, content, expected] of [
       [768, 768, false],
       [808, 768, false],
-      [820, 768, true],
+      [820, 768, false],
       [872, 768, true],
     ] as const) {
       expect(
         resolveTimelineMinimapNavigationInteractive(
-          resolveTimelineMinimapHitStripWidth(viewport, content),
+          resolveTimelineMinimapHitStrip(viewport, content).width,
         ),
       ).toBe(expected);
     }

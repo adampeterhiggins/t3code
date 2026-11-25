@@ -12,10 +12,6 @@ import {
   type ThreadIssueLink,
 } from "@t3tools/contracts";
 import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
-import {
-  compileResolvedKeybindingsConfig,
-  mergeWithDefaultKeybindings,
-} from "@t3tools/shared/keybindings";
 import type * as Context from "effect/Context";
 import * as Schema from "effect/Schema";
 import * as Effect from "effect/Effect";
@@ -31,6 +27,7 @@ import { selectThreadDiffPanelSelection, useDiffPanelStore } from "~/diffPanelSt
 import { __setClientSettingsForTests } from "~/hooks/useSettings";
 import stylesheet from "~/index.css?inline";
 import { environmentContextRecord } from "~/lib/composerContextRecords";
+import { isMacPlatform } from "~/lib/utils";
 import { startWorkspaceFocus } from "~/lib/workspaceFocus";
 import { usePromptStashStore } from "~/promptStashStore";
 import { useRightPanelStore } from "~/rightPanelStore";
@@ -152,7 +149,7 @@ it("opens a linked Linear issue from an inactive thread's sidebar badge", async 
     url: "https://linear.app/example/issue/WEB-123/add-keyboard-support",
     source: "manual",
     linkedAt: "2026-01-01T00:00:00.000Z",
-    displayKey: issueRef.key,
+    displayKey: "#123",
     title: "Add keyboard support",
   };
   const completed = {
@@ -165,7 +162,22 @@ it("opens a linked Linear issue from an inactive thread's sidebar badge", async 
   const grouped = threadWithHistory("issue-grouped", 1);
   using _environment = installFakeEnvironment([
     first,
-    { ...linked, issues: [issue] },
+    {
+      ...linked,
+      issues: [issue],
+      pullRequests: [
+        {
+          host: "github.com",
+          repository: "pingdotgg/t3code",
+          number: 124,
+          url: "https://github.com/pingdotgg/t3code/pull/124",
+          source: "manual",
+          linkedAt: "2026-01-01T00:00:00.000Z",
+          snapshot: null,
+          stack: null,
+        },
+      ],
+    },
     { ...grouped, issues: [completed, issue] },
   ]);
   const liveTitle = "Add keyboard shortcuts to the sidebar";
@@ -232,10 +244,21 @@ it("opens a linked Linear issue from an inactive thread's sidebar badge", async 
     name: `Issue ${issue.displayKey}: ${issue.title}, Open`,
   });
   await expect.element(badge).toBeVisible();
-  expect(badge.element().querySelector("svg")).toHaveClass(/text-emerald-600/);
+  expect(badge.element().querySelector("span")).toHaveClass(/text-emerald-600/);
+  expect(badge.element()).toHaveTextContent("123");
+  expect(badge.element()).not.toHaveTextContent("#");
+  const prBadge = page.getByRole("link", { name: "PR #124, status pending" });
+  await expect.element(prBadge).toHaveTextContent("124");
+  for (const control of [badge, prBadge]) {
+    expect(control.element().querySelector("span")).toHaveClass(
+      "contents",
+      "text-xs",
+      "tabular-nums",
+    );
+  }
   const groupedBadge = page.getByRole("button", { name: "2 linked issues" });
   await vi.waitFor(() =>
-    expect(groupedBadge.element().querySelector("svg")).toHaveClass(/text-emerald-600/),
+    expect(groupedBadge.element().querySelector("span")).toHaveClass(/text-emerald-600/),
   );
   await userEvent.hover(badge);
   const issueName = `Issue ${issue.displayKey}: ${liveTitle}`;
@@ -567,7 +590,7 @@ it("a file picked after the phone composer collapses still attaches", async () =
   const editor = page.getByTestId("composer-editor");
   await expect.element(page.getByText(`Answer 0 for ${thread.id}.`)).toBeVisible();
   await userEvent.click(editor);
-  await expect.element(page.getByRole("button", { name: "Attach files" })).toBeVisible();
+  await expect.element(page.getByRole("button", { name: "Attach", exact: true })).toBeVisible();
   const input = document.querySelector<HTMLInputElement>(
     'form[data-chat-composer-form] input[type="file"]',
   );
@@ -575,7 +598,9 @@ it("a file picked after the phone composer collapses still attaches", async () =
 
   // Opening the native picker blurs the editor, which collapses the phone composer.
   (editor.element() as HTMLElement).blur();
-  await expect.element(page.getByRole("button", { name: "Attach files" })).not.toBeInTheDocument();
+  await expect
+    .element(page.getByRole("button", { name: "Attach", exact: true }))
+    .not.toBeInTheDocument();
   const files = new DataTransfer();
   files.items.add(new File([PNG], "picked.png", { type: "image/png" }));
   input!.files = files.files;
@@ -872,14 +897,7 @@ it("a mounted thread view lets go of the thread structures it has replaced", asy
 it("a shortcut conditioned on rightPanelOpen sees the thread's open right panel", async () => {
   await page.viewport(1280, 800);
   const thread = threadWithHistory("thread-panel-shortcut", 1);
-  using _environment = installFakeEnvironment([thread], {
-    keybindings: mergeWithDefaultKeybindings(
-      compileResolvedKeybindingsConfig([
-        { key: "ctrl+t", command: "rightPanel.new", when: "rightPanelOpen && !terminalFocus" },
-        { key: "ctrl+t", command: "rightPanel.toggle", when: "!rightPanelOpen" },
-      ]),
-    ),
-  });
+  using _environment = installFakeEnvironment([thread]);
   __setClientSettingsForTests({
     ...DEFAULT_CLIENT_SETTINGS,
     onboardingCompletedAt: "2026-01-01T00:00:00.000Z",
@@ -898,7 +916,16 @@ it("a shortcut conditioned on rightPanelOpen sees the thread's open right panel"
   await toggle.click();
   await page.getByRole("button", { name: /^Files/ }).click();
   await composer.click();
-  await userEvent.keyboard("{Control>}t{/Control}");
+  const mac = isMacPlatform(navigator.platform);
+  const shortcut = new KeyboardEvent("keydown", {
+    key: "t",
+    metaKey: mac,
+    ctrlKey: !mac,
+    bubbles: true,
+    cancelable: true,
+  });
+  await act(() => composer.element().dispatchEvent(shortcut));
+  expect(shortcut.defaultPrevented).toBe(true);
   await expect.element(page.getByRole("menuitem", { name: /Files/ })).toBeVisible();
   await expect.element(toggle).toHaveAttribute("aria-pressed", "true");
 });

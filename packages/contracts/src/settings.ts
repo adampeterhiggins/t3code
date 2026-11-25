@@ -1278,13 +1278,11 @@ export const CustomAcpSettings = makeProviderSettingsSchema(
 export type CustomAcpSettings = typeof CustomAcpSettings.Type;
 
 /**
- * A read-only quota source outside this environment's provider CLIs. The
- * only kind today is a CLIProxyAPI hub, whose management API reports the
- * windows of every pooled account. The key travels in settings for now, like
- * provider environment secrets; it is redacted before reaching a client.
+ * A read-only quota source outside this environment's provider CLIs. The key
+ * is redacted before reaching a client.
  */
 export const UsageLimitSourceConfig = Schema.Struct({
-  kind: Schema.Literal("cliproxy"),
+  kind: Schema.Literals(["cliproxy", "http"]),
   label: Schema.optional(TrimmedNonEmptyString),
   url: TrimmedNonEmptyString,
   managementKey: SettingsSecretValue.pipe(
@@ -1866,6 +1864,13 @@ export type LinearAssignmentTrigger = typeof LinearAssignmentTrigger.Type;
 export const LinearAssignmentTriggers = Schema.Array(LinearAssignmentTrigger).check(
   Schema.isMaxLength(50),
 );
+
+export const DEFAULT_WORKFLOW_SKIPPED_RUNS_KEPT = 500;
+export const MAX_WORKFLOW_SKIPPED_RUNS_KEPT = 10_000;
+const WorkflowSkippedRunsKept = Schema.Int.check(
+  Schema.isBetween({ minimum: 0, maximum: MAX_WORKFLOW_SKIPPED_RUNS_KEPT }),
+);
+
 const UsageHistoryRetentionDays = Schema.Union([
   Schema.Int.check(Schema.isGreaterThan(0)),
   Schema.Literal("unlimited"),
@@ -2046,6 +2051,10 @@ export const ServerSettings = Schema.Struct({
   linkedEnvironmentsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /** Beta: durable workflows from the workflows folder of the T3 home. Off runs none of them. */
   workflowsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /** Skipped top-level runs kept per workflow; older ones are deleted. */
+  workflowSkippedRunsKept: WorkflowSkippedRunsKept.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_WORKFLOW_SKIPPED_RUNS_KEPT)),
+  ),
   /** Beta: Claude and Codex predict the next prompt after completed turns. Codex follows a change at once; open Claude threads after they restart. */
   promptSuggestionsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   sidebarAutoSettleKeepPullRequests: Schema.Boolean.pipe(
@@ -2550,6 +2559,7 @@ export const ServerSettingsPatch = Schema.Struct({
   guestSharingEnabled: Schema.optionalKey(Schema.Boolean),
   linkedEnvironmentsEnabled: Schema.optionalKey(Schema.Boolean),
   workflowsEnabled: Schema.optionalKey(Schema.Boolean),
+  workflowSkippedRunsKept: Schema.optionalKey(WorkflowSkippedRunsKept),
   promptSuggestionsEnabled: Schema.optionalKey(Schema.Boolean),
   backgroundActivity: Schema.optionalKey(
     Schema.Struct({

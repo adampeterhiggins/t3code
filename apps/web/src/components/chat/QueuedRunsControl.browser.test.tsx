@@ -176,7 +176,7 @@ it.each([false, true])(
     await expect.element(page.getByText("second.png (2/2)", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Previous media", exact: true }).click();
     await expect.element(page.getByText("first.png (1/2)", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Back, close image preview", exact: true }).click();
+    await page.getByRole("button", { name: "Close image preview", exact: true }).click();
     await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
     await expect.element(page.getByText("Later", { exact: true })).toBeVisible();
   },
@@ -233,10 +233,10 @@ it("renders queued markdown and quotes like a sent message and preserves the cit
   await expect.element(page.getByText("prod/main.tf", { exact: true })).toBeVisible();
   expect(page.getByText("```").elements()).toHaveLength(0);
   await expect
-    .element(
-      page.getByText("Make the header look like header.png and keep the logo.", { exact: true }),
-    )
+    .element(page.getByText("Make the header look like and keep the logo.", { exact: true }))
     .toBeVisible();
+
+  await expect.element(page.getByRole("button", { name: "Preview header.png" })).toBeVisible();
 
   await page.getByRole("button", { name: "Edit queued message", exact: true }).nth(1).click();
   expect(onEditQueuedRun).toHaveBeenCalledExactlyOnceWith(
