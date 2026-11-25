@@ -117,6 +117,39 @@ function withRequestId(expected: unknown, actual: unknown): unknown {
     : expected;
 }
 
+// Runtime instructions occupy their own input part and change independently of the protocol.
+function normalizeTurnStartInstructions(frame: unknown): unknown {
+  if (!isRecord(frame) || frame.method !== "turn/start" || !isRecord(frame.params)) {
+    return frame;
+  }
+  const input = frame.params.input;
+  if (!Array.isArray(input)) return frame;
+  const [instructions, ...messageParts] = input;
+  if (
+    !isRecord(instructions) ||
+    instructions.type !== "text" ||
+    typeof instructions.text !== "string" ||
+    !instructions.text.startsWith("<runtime_info>") ||
+    !instructions.text.includes("</runtime_info>")
+  ) {
+    return frame;
+  }
+  return {
+    ...frame,
+    params: {
+      ...frame.params,
+      input: [{ ...instructions, text: "<runtime_info></runtime_info>" }, ...messageParts],
+    },
+  };
+}
+
+function replayFrameMatches(expected: unknown, actual: unknown): boolean {
+  return replayValueMatches(
+    normalizeTurnStartInstructions(withRequestId(expected, actual)),
+    normalizeTurnStartInstructions(actual),
+  );
+}
+
 /** A write may not match past one of these: it would be a turn early. */
 function startsTurn(entry: ProviderReplayEntryType): boolean {
   if (entry.type !== "expect_outbound" || !isRecord(entry.frame)) return false;
@@ -250,9 +283,7 @@ class MuseReplayController {
       const entry = entries[index]!;
       const pending = entry.type === "expect_outbound" && !this.consumed.has(index);
       possible =
-        pending &&
-        entryHost(entry) === host.ordinal &&
-        replayValueMatches(withRequestId(entry.frame, actual), actual);
+        pending && entryHost(entry) === host.ordinal && replayFrameMatches(entry.frame, actual);
       if (!possible && pending && startsTurn(entry)) break;
     }
     if (!possible) {
@@ -310,7 +341,7 @@ class MuseReplayController {
       const entry = entries[index]!;
       if (entry.type !== "expect_outbound") return false;
       if (this.consumed.has(index) || entryHost(entry) !== host.ordinal) continue;
-      if (!replayValueMatches(withRequestId(entry.frame, actual), actual)) continue;
+      if (!replayFrameMatches(entry.frame, actual)) continue;
       const recordedId = clientRequestId(entry.frame);
       const actualId = clientRequestId(actual);
       if (recordedId !== undefined && actualId !== undefined) host.ids.set(recordedId, actualId);

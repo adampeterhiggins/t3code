@@ -10,7 +10,6 @@ import {
   ProviderTurnId,
   ThreadId,
   TurnItemId,
-  type OrchestrationV2DomainEvent,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -18,7 +17,6 @@ import * as Layer from "effect/Layer";
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import * as WorkspaceFolders from "../workspace/WorkspaceFolders.ts";
 import * as RuntimePolicy from "./RuntimePolicy.ts";
-import * as Fiber from "effect/Fiber";
 import * as Result from "effect/Result";
 import { planProjectCommand } from "./ProjectCommands.ts";
 import * as Queue from "effect/Queue";
@@ -141,15 +139,14 @@ it.effect.each([
           const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
           const sink = yield* EventSink.EventSinkV2;
           const threadId = ThreadId.make("thread:workspace-change-detach");
-          const providerTurnRunning = () =>
-            orchestrator.streamDomainEvents.pipe(
+          const awaitRunningTurn = (afterSequence: number) =>
+            sink.stream({ threadId, afterSequence, eventType: "provider-turn.updated" }).pipe(
               Stream.filter(
-                (event: OrchestrationV2DomainEvent) =>
+                ({ event }) =>
                   event.type === "provider-turn.updated" && event.payload.status === "running",
               ),
               Stream.take(1),
               Stream.runDrain,
-              Effect.forkScoped,
             );
           yield* orchestrator.dispatch({
             type: "thread.create",
@@ -165,7 +162,7 @@ it.effect.each([
             createdBy: "user",
             creationSource: "web",
           });
-          const firstRunning = yield* providerTurnRunning();
+          const beforeFirstTurn = yield* sink.latestSequence({ threadId });
           yield* orchestrator.dispatch({
             type: "message.dispatch",
             commandId: CommandId.make("investigate"),
@@ -178,7 +175,7 @@ it.effect.each([
             creationSource: "web",
           });
           yield* worker.drain();
-          yield* Fiber.join(firstRunning);
+          yield* awaitRunningTurn(beforeFirstTurn);
           const first = started[0]!;
           const providerTurn = (yield* orchestrator.getThreadProjection(threadId))
             .providerTurns[0]!;
@@ -271,7 +268,7 @@ it.effect.each([
               ),
             });
           }
-          const continuationRunning = yield* providerTurnRunning();
+          const beforeMove = yield* sink.latestSequence({ threadId });
           const move = {
             type: "thread.project.move" as const,
             commandId: CommandId.make("handoff"),
@@ -308,7 +305,19 @@ it.effect.each([
               creationSource: "mcp",
             });
           yield* worker.drain();
-          yield* Fiber.join(continuationRunning);
+          // The checkpoint can schedule queue promotion after the outbox drain returns.
+          yield* sink.stream({ threadId, afterSequence: beforeMove }).pipe(
+            Stream.filter(
+              ({ event }) =>
+                (event.type === "run.updated" || event.type === "run.created") &&
+                event.payload.id !== first.runId &&
+                event.payload.status === "starting",
+            ),
+            Stream.take(1),
+            Stream.runDrain,
+          );
+          yield* worker.drain();
+          yield* awaitRunningTurn(beforeMove);
 
           const after = yield* orchestrator.getThreadProjection(threadId);
           assert.deepEqual(
