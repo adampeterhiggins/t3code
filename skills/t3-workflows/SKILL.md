@@ -17,6 +17,10 @@ Put a `.ts` file in `~/.t3/workflows/` (the `workflows` folder of T3 home, or th
 
 Workflow files import nothing from T3 or Effect. `T3`, `Effect`, `Schema`, `Option`, `Duration`, and `Schedule` are injected as globals. Never `import` from `effect` (that loads a second runtime copy the engine cannot run). Node built-ins (`node:fs`, `node:crypto`) can be imported normally.
 
+Use `Schema.Struct(...)` directly. `const { Schema } = T3` shadows the injected global with `undefined` and prevents the file from loading.
+
+Give each durable call its own name, even across different primitives. Use `ask("approve-upgrade", ...)` followed by `agent("apply-upgrade", ...)`. The answer choice can still be `"upgrade"`.
+
 ```ts
 const { workflow, agent, ask, stop, title, every, Tick } = T3;
 
@@ -45,7 +49,7 @@ workflow(
       return yield* stop("not approved");
     }
 
-    yield* agent("upgrade", {
+    yield* agent("apply-upgrade", {
       thread: audit.thread,
       brief: "Upgrade the dependencies you listed, run the tests, and say what changed.",
     });
