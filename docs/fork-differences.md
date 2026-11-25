@@ -2434,11 +2434,13 @@ Code: [GranolaAuth](../apps/server/src/granola/GranolaAuth.ts),
 
 ## Devin Review
 
-Devin's public API can only start a review and report its status for a pull request URL, so
-findings come from GitHub: Devin Review posts them as review comments from
+Devin's public API can only start a review and report its status for a pull request URL. Without a
+Devin login, findings come from GitHub: Devin Review posts them as review comments from
 `devin-ai-integration[bot]`, each starting with a `<!-- devin-review-comment {…} -->` marker
 (file, lines, kind) and a severity emoji. The server reads them through the `gh` session with one
-GraphQL call per pull request, or one search for the list, so they work without a Devin key.
+GraphQL call per pull request, or one search for the list, so they work without a Devin key, but
+miss findings Devin withholds from GitHub (an org setting can hold back security findings), and
+the markdown says so.
 **Settings > Integrations > Devin Review** signs in with the environment's `devin` CLI login: Devin
 has no OAuth client registration for third parties, but its v3 API accepts the CLI's
 `credentials.toml` token, and `/v3/self` names the user's organization. The server records only
@@ -2450,11 +2452,15 @@ no push API, so a Devin Review tab polls, only while it is the visible tab of a 
 read; cached 10 s while a review is in flight, 60 s otherwise) every 15 s while a review runs and
 every 60 s otherwise, and re-reads the findings when Devin's answer changes. Devin answers a bad
 token with 403 `Unauthorized`, which is treated like a 401.
-With the CLI login, `get` also reads Devin's undocumented web-app API (`api.devin.ai/pr-review/jobs`
-and `/job-result/{job}/{version}`, the same token) for the walkthrough, review runs, and each
-finding's impact, suggested fix prompt and Devin-side state, merged into the GitHub findings by
-comment id. Finished results are immutable, so the stripped result is cached per job version. Any
-failure leaves those fields null and never fails the read; service keys skip it.
+With the CLI login, findings come from Devin's undocumented web-app API instead
+(`api.devin.ai/pr-review/jobs` and `/job-result/{job}/{version}`, the same token): bugs, analyses
+and security findings, plus the walkthrough and review runs. GitHub still supplies each posted
+finding's review thread id and resolved/outdated state, matched by thread or comment id, because
+Devin's own record of a thread lags GitHub's and has no outdated flag. A finding Devin did not post
+links to its Devin Review page and has no thread to resolve; a Devin thread missing from Devin's
+data is kept as GitHub reads it. List and summary counts use the same findings. Finished results
+are immutable, so the stripped result is cached per job version. Any failure falls back to
+GitHub-only findings and never fails the read; service keys skip it.
 While a review is queued or running, a visible Devin Review tab subscribes to
 `devinReview.subscribeProgress`. The server polls `/pr-review/lifeguard-progress/{job}` every 2 s,
 as Devin's own page does, for that subscription only, strips each tool call to one short line (the

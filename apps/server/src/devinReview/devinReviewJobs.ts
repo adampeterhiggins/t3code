@@ -1,6 +1,7 @@
 import {
   DevinReviewError,
   type DevinReviewFinding,
+  type DevinReviewSeverity,
   type DevinReviewProgress,
   type DevinReviewProgressStep,
   type DevinReviewProgressStream,
@@ -50,8 +51,17 @@ const ReviewJob = Schema.Struct({
 export type DevinReviewJob = typeof ReviewJob.Type;
 const decodeJobs = Schema.decodeUnknownEffect(Schema.Struct({ jobs: Schema.Array(ReviewJob) }));
 
+const NullableInt = Schema.optional(Schema.NullOr(Schema.Int));
+const SuggestedEdit = Schema.optional(
+  Schema.NullOr(Schema.Struct({ type: Schema.String, prompt: Text })),
+);
 const findingFields = {
   id: Schema.String,
+  title: Text,
+  file_path: Text,
+  start_line: NullableInt,
+  end_line: NullableInt,
+  pr_comment_thread_id: Text,
   pr_comment_id: Schema.optional(Schema.NullOr(Schema.Union([Schema.String, Schema.Number]))),
   pr_comment_url: Text,
   dismissed_by_user: Flag,
@@ -61,11 +71,22 @@ const findingFields = {
 };
 const Bug = Schema.Struct({
   ...findingFields,
-  suggested_edit: Schema.optional(
-    Schema.NullOr(Schema.Struct({ type: Schema.String, prompt: Text })),
-  ),
+  severity: Text,
+  description: Text,
+  suggested_edit: SuggestedEdit,
 });
-const Analysis = Schema.Struct(findingFields);
+const Analysis = Schema.Struct({ ...findingFields, analysis: Text });
+const SecurityFinding = Schema.Struct({
+  ...findingFields,
+  severity: Text,
+  category: Text,
+  confidence: Text,
+  cwe_id: Text,
+  description: Text,
+  reasoning: Text,
+  recommendation: Text,
+  suggested_edit: SuggestedEdit,
+});
 
 const JobResult = Schema.Struct({
   sections: Schema.optional(
@@ -76,6 +97,7 @@ const JobResult = Schema.Struct({
       Schema.Struct({
         bugs: Schema.optional(Schema.NullOr(Schema.Array(Bug))),
         analyses: Schema.optional(Schema.NullOr(Schema.Array(Analysis))),
+        security_findings: Schema.optional(Schema.NullOr(Schema.Array(SecurityFinding))),
       }),
     ),
   ),
@@ -83,20 +105,23 @@ const JobResult = Schema.Struct({
 type DevinReviewJobResult = typeof JobResult.Type;
 const decodeJobResult = Schema.decodeUnknownEffect(JobResult);
 
-/** What Devin knows about one finding beyond its GitHub comment. */
-interface DevinFindingDetail {
-  /** Devin's finding id and the GitHub comment id, either of which identifies the comment. */
-  readonly keys: ReadonlyArray<string>;
-  readonly impactSummary: string | null;
-  readonly suggestedFixPrompt: string | null;
-  readonly devinState: "open" | "dismissed" | "resolved";
-  readonly resolutionReason: string | null;
+/**
+ * One finding as Devin's review data has it, with the GitHub comment Devin posted it as, if any.
+ * Whether that comment's thread is resolved or outdated is only known to GitHub.
+ */
+export interface DevinFinding extends Omit<
+  DevinReviewFinding,
+  "url" | "resolved" | "outdated" | "source" | "threadId"
+> {
+  readonly threadId: string | null;
+  readonly commentId: string | null;
+  readonly commentUrl: string | null;
 }
 
 /** The few kilobytes of a job result worth keeping; the rest is file contents and diffs. */
 interface StrippedJobResult {
   readonly walkthrough: ReadonlyArray<DevinReviewWalkthroughSection>;
-  readonly findings: ReadonlyArray<DevinFindingDetail>;
+  readonly findings: ReadonlyArray<DevinFinding>;
 }
 
 export interface JobVersionRef {
@@ -111,18 +136,42 @@ const commentIdFromUrl = (url: string | null | undefined) =>
 const capText = (text: string, max: number) =>
   text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
 
-function findingDetail(
+/** Matches the emoji Devin puts on the GitHub comment: 🔴 severe, 🟡 non-severe, 🔍 analysis. */
+function severityOf(value: string | null | undefined): DevinReviewSeverity {
+  switch (value?.toLowerCase()) {
+    case "severe":
+    case "critical":
+    case "high":
+    case "error":
+      return "high";
+    case "low":
+      return "low";
+    case "info":
+      return "info";
+    default:
+      return "medium";
+  }
+}
+
+function devinFinding(
   finding: typeof Analysis.Type,
-  suggestedFixPrompt: string | null | undefined,
-): DevinFindingDetail {
-  const commentId =
-    finding.pr_comment_id == null
-      ? commentIdFromUrl(finding.pr_comment_url)
-      : String(finding.pr_comment_id);
+  fields: Pick<DevinFinding, "kind" | "severity" | "body" | "suggestedFixPrompt">,
+): DevinFinding {
+  const endLine = finding.end_line ?? finding.start_line ?? null;
   return {
-    keys: commentId === null ? [finding.id] : [finding.id, commentId],
+    id: finding.id,
+    ...fields,
+    title: finding.title?.trim() || "Devin Review finding",
+    path: finding.file_path ?? null,
+    startLine: finding.start_line ?? endLine,
+    endLine,
+    threadId: finding.pr_comment_thread_id ?? null,
+    commentId:
+      finding.pr_comment_id == null
+        ? commentIdFromUrl(finding.pr_comment_url)
+        : String(finding.pr_comment_id),
+    commentUrl: finding.pr_comment_url ?? null,
     impactSummary: finding.impact_summary ?? null,
-    suggestedFixPrompt: suggestedFixPrompt ?? null,
     // A reviewer dismissing a finding on GitHub also marks it resolved by Devin; the dismissal is
     // the more specific fact, so it wins.
     devinState: finding.dismissed_by_user
@@ -134,6 +183,25 @@ function findingDetail(
   };
 }
 
+const promptOf = (edit: typeof Bug.Type.suggested_edit) =>
+  edit?.type === "prompt" ? (edit.prompt ?? null) : null;
+
+function securityBody(finding: typeof SecurityFinding.Type): string {
+  const facts = [
+    finding.category,
+    finding.cwe_id,
+    finding.confidence ? `${finding.confidence} confidence` : null,
+  ].filter((fact) => fact != null && fact !== "");
+  return [
+    facts.length === 0 ? null : `**Security:** ${facts.join(" · ")}`,
+    finding.description,
+    finding.reasoning ? `**Reasoning:** ${finding.reasoning}` : null,
+    finding.recommendation ? `**Recommendation:** ${finding.recommendation}` : null,
+  ]
+    .filter((part) => part != null && part.trim() !== "")
+    .join("\n\n");
+}
+
 export function stripJobResult(result: DevinReviewJobResult): StrippedJobResult {
   const walkthrough = (result.sections ?? []).slice(0, MAX_SECTIONS).map((section) => ({
     title: section.title,
@@ -142,9 +210,29 @@ export function stripJobResult(result: DevinReviewJobResult): StrippedJobResult 
   const lifeguard = result.lifeguard_result;
   const findings = [
     ...(lifeguard?.bugs ?? []).map((bug) =>
-      findingDetail(bug, bug.suggested_edit?.type === "prompt" ? bug.suggested_edit.prompt : null),
+      devinFinding(bug, {
+        kind: "bug",
+        severity: severityOf(bug.severity),
+        body: bug.description ?? "",
+        suggestedFixPrompt: promptOf(bug.suggested_edit),
+      }),
     ),
-    ...(lifeguard?.analyses ?? []).map((analysis) => findingDetail(analysis, null)),
+    ...(lifeguard?.analyses ?? []).map((analysis) =>
+      devinFinding(analysis, {
+        kind: "analysis",
+        severity: "info",
+        body: analysis.analysis ?? "",
+        suggestedFixPrompt: null,
+      }),
+    ),
+    ...(lifeguard?.security_findings ?? []).map((security) =>
+      devinFinding(security, {
+        kind: "security",
+        severity: severityOf(security.severity),
+        body: securityBody(security),
+        suggestedFixPrompt: promptOf(security.suggested_edit),
+      }),
+    ),
   ];
   return { walkthrough, findings };
 }
@@ -204,28 +292,86 @@ export function reviewRuns(jobs: ReadonlyArray<DevinReviewJob>): ReadonlyArray<D
     .slice(0, MAX_RUNS);
 }
 
+/** Each finding once, as the latest result has it. Pass results oldest first. */
+export function latestFindings(
+  results: ReadonlyArray<StrippedJobResult>,
+): ReadonlyArray<DevinFinding> {
+  const byId = new Map<string, DevinFinding>();
+  for (const result of results)
+    for (const finding of result.findings) byId.set(finding.id, finding);
+  return [...byId.values()];
+}
+
+/** A Devin Review thread on the pull request, as GitHub reports it. */
+export interface GitHubReviewThread {
+  /** The thread's node id. */
+  readonly id: string | null;
+  /** The finding parsed from the thread's first comment, carrying GitHub's thread state. */
+  readonly finding: DevinReviewFinding;
+}
+
+export const githubFinding = (thread: GitHubReviewThread): DevinReviewFinding => ({
+  ...thread.finding,
+  source: "github",
+  threadId: thread.id,
+});
+
 /**
- * Adds Devin's own data to the findings read from GitHub, matched by Devin's finding id or the
- * GitHub comment id. Later details win, so pass results oldest first.
+ * Devin's findings, each with the state of the GitHub thread Devin posted it as. Devin's own
+ * record of a thread lags GitHub's, so GitHub's resolved and outdated flags win. A finding Devin
+ * did not post links to its review page instead. A Devin thread Devin's data does not list is
+ * kept as GitHub reads it, so no finding is lost.
  */
-export function mergeFindingDetails(
-  findings: ReadonlyArray<DevinReviewFinding>,
-  details: ReadonlyArray<DevinFindingDetail>,
+export function combineFindings(
+  devin: ReadonlyArray<DevinFinding>,
+  threads: ReadonlyArray<GitHubReviewThread>,
+  reviewUrl: string,
 ): ReadonlyArray<DevinReviewFinding> {
-  const byKey = new Map<string, DevinFindingDetail>();
-  for (const detail of details) for (const key of detail.keys) byKey.set(key, detail);
-  return findings.map((finding) => {
-    const commentId = commentIdFromUrl(finding.url);
-    const detail = byKey.get(finding.id) ?? (commentId === null ? undefined : byKey.get(commentId));
-    if (detail === undefined) return finding;
+  const byKey = new Map<string, GitHubReviewThread>();
+  for (const thread of threads) {
+    byKey.set(thread.finding.id, thread);
+    const commentId = commentIdFromUrl(thread.finding.url);
+    if (commentId !== null) byKey.set(`comment:${commentId}`, thread);
+    if (thread.id !== null) byKey.set(`thread:${thread.id}`, thread);
+  }
+  const matched = new Set<GitHubReviewThread>();
+  const findings = devin.map(({ threadId, commentId, commentUrl, ...finding }) => {
+    const thread =
+      (threadId === null ? undefined : byKey.get(`thread:${threadId}`)) ??
+      (commentId === null ? undefined : byKey.get(`comment:${commentId}`)) ??
+      byKey.get(finding.id);
+    if (thread !== undefined) {
+      matched.add(thread);
+      return {
+        ...finding,
+        url: thread.finding.url,
+        resolved: thread.finding.resolved,
+        outdated: thread.finding.outdated,
+        source: "github",
+        threadId: thread.id ?? threadId,
+      } satisfies DevinReviewFinding;
+    }
+    // Posted, but GitHub did not return the thread (it reads the first 100): Devin's state stands in.
+    if (threadId !== null || commentId !== null || commentUrl !== null) {
+      return {
+        ...finding,
+        url: commentUrl ?? reviewUrl,
+        resolved: finding.devinState !== "open",
+        outdated: false,
+        source: "github",
+        threadId,
+      } satisfies DevinReviewFinding;
+    }
     return {
       ...finding,
-      impactSummary: detail.impactSummary,
-      suggestedFixPrompt: detail.suggestedFixPrompt,
-      devinState: detail.devinState,
-      resolutionReason: detail.resolutionReason,
-    };
+      url: reviewUrl,
+      resolved: false,
+      outdated: false,
+      source: "devin",
+      threadId: null,
+    } satisfies DevinReviewFinding;
   });
+  return [...findings, ...threads.filter((thread) => !matched.has(thread)).map(githubFinding)];
 }
 
 const prPath = (ref: DevinReviewPullRequestRef) =>

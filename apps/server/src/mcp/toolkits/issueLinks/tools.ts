@@ -538,7 +538,7 @@ const DEVIN_STATUS =
   "Devin's status for the head commit needs Devin Review connected in Settings > Integrations and reads unknown otherwise.";
 
 const GetDevinReviewTool = Tool.make("get_devin_review", {
-  description: `Read a pull request's Devin Review: Devin's status and the findings it left as review comments, as markdown grouped by file with severity and line range, open findings first. Findings are read from GitHub with gh. ${DEVIN_STATUS}`,
+  description: `Read a pull request's Devin Review: Devin's status and findings as markdown, grouped by file with severity and line range, open findings first. With a Devin login, findings (security ones included) come from Devin, each with its GitHub thread or marked Devin-only with no thread to resolve. Otherwise they come from GitHub's review comments and may miss security findings. ${DEVIN_STATUS}`,
   parameters: Schema.Struct({
     url: DevinReviewGetInput.fields.url.annotate({
       description: "A GitHub pull request URL or an app.devin.ai/review link.",
