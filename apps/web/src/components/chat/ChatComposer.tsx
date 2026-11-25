@@ -363,7 +363,10 @@ import { usePanelAnimationSettings } from "../../panelAnimations";
 import { readEnvironmentScope, readPreparedConnection } from "../../state/session";
 import { type ReviewCommentContext } from "../../reviewCommentContext";
 import { useComposerRestingTransition } from "./useComposerRestingTransition";
-import { ComposerCommandMenuLayer } from "./ComposerCommandMenuLayer";
+import {
+  ComposerCommandMenuLayer,
+  DeferredComposerCommandMenuLayer,
+} from "./ComposerCommandMenuLayer";
 import { useRestingComposerControlsLayout } from "./useRestingComposerControlsLayout";
 import { useProviderWorkspaceSnapshotRefresh } from "./useProviderWorkspaceSnapshotRefresh";
 import { useComposerProviderModel } from "./useComposerProviderModel";
@@ -1431,9 +1434,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     );
     return [
       ...promptHistoryEntries.flatMap((entry) =>
-        (entry.kind === "message" ? (entry.message.context?.records ?? []) : []).flatMap(
-          (record) =>
-            record.kind === "repository" && "remoteUrl" in record ? [record.remoteUrl] : [],
+        (entry.kind === "message" ? (entry.message.context?.records ?? []) : []).flatMap((record) =>
+          record.kind === "repository" && "remoteUrl" in record ? [record.remoteUrl] : [],
         ),
       ),
       ...composerRepositoryContexts
@@ -4638,43 +4640,44 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     : composerMenuEmptyState
                   : ""}
               </div>
-              {composerSuggestionsVisible && (
-                <ComposerCommandMenuLayer anchor={commentMenu?.anchor ?? composerMenuAnchor}>
-                  <ComposerCommandMenu
-                    listId={composerSuggestionListId}
-                    items={composerMenuItems}
-                    resolvedTheme={resolvedTheme}
-                    isLoading={isComposerMenuLoading}
-                    triggerKind={composerTriggerKind}
-                    activeItemId={activeComposerMenuItem?.id ?? null}
-                    onHighlightedItemChange={onComposerMenuItemHighlightedStable}
-                    onSelect={onSelectComposerItemStable}
-                    environmentId={environmentId}
-                    {...(referenceMenu.open
-                      ? {
-                          ...(referenceMenu.tabs
-                            ? {
-                                tabs: {
-                                  options: referenceMenu.tabs,
-                                  activeId: referenceMenu.tab,
-                                  onSelect: referenceMenu.chooseTab,
-                                },
-                              }
-                            : {}),
-                          ...(referenceMenu.loadingText
-                            ? { loadingText: referenceMenu.loadingText }
-                            : {}),
-                          ...(referenceMenu.hint ? { hint: referenceMenu.hint } : {}),
-                          selection: {
-                            itemIds: selectedReferenceItemIds,
-                            onCommit: commitReferenceSelection,
-                          },
-                        }
-                      : {})}
-                    {...pathMenu.menuProps}
-                  />
-                </ComposerCommandMenuLayer>
-              )}
+              <DeferredComposerCommandMenuLayer
+                open={composerSuggestionsVisible}
+                anchor={commentMenu?.anchor ?? composerMenuAnchor}
+              >
+                <ComposerCommandMenu
+                  listId={composerSuggestionListId}
+                  items={composerMenuItems}
+                  resolvedTheme={resolvedTheme}
+                  isLoading={isComposerMenuLoading}
+                  triggerKind={composerTriggerKind}
+                  activeItemId={activeComposerMenuItem?.id ?? null}
+                  onHighlightedItemChange={onComposerMenuItemHighlightedStable}
+                  onSelect={onSelectComposerItemStable}
+                  environmentId={environmentId}
+                  {...(referenceMenu.open
+                    ? {
+                        ...(referenceMenu.tabs
+                          ? {
+                              tabs: {
+                                options: referenceMenu.tabs,
+                                activeId: referenceMenu.tab,
+                                onSelect: referenceMenu.chooseTab,
+                              },
+                            }
+                          : {}),
+                        ...(referenceMenu.loadingText
+                          ? { loadingText: referenceMenu.loadingText }
+                          : {}),
+                        ...(referenceMenu.hint ? { hint: referenceMenu.hint } : {}),
+                        selection: {
+                          itemIds: selectedReferenceItemIds,
+                          onCommit: commitReferenceSelection,
+                        },
+                      }
+                    : {})}
+                  {...pathMenu.menuProps}
+                />
+              </DeferredComposerCommandMenuLayer>
 
               {!isComposerCollapsedMobile &&
                 activeEditingQueuedAttachments !== null &&

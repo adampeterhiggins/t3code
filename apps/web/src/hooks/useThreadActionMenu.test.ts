@@ -61,6 +61,7 @@ vi.mock("@tanstack/react-router", () => ({
 vi.mock("../state/session", () => ({
   readEnvironmentScope: (environmentId: string, scope: string) =>
     scope === AuthOrchestrationOperateScope && state.granted.has(environmentId),
+  readEnvironmentScopeDenied: (environmentId: string) => !state.granted.has(environmentId),
 }));
 vi.mock("../state/entities", () => ({
   readEnvironmentServerConfigLoaded: () => true,
@@ -95,6 +96,7 @@ vi.mock("../state/entities", () => ({
 vi.mock("../state/environments", () => ({ usePrimaryEnvironmentId: () => "primary" }));
 vi.mock("../state/threads", () => ({ threadEnvironment: { updateMetadata: "metadata" } }));
 vi.mock("../state/use-orchestration-command", () => ({
+  threadTriagePermitted: (environmentId: string) => state.granted.has(environmentId),
   useOrchestrationCommand: () => async () => {
     recordEffect("metadata");
     return AsyncResult.success(undefined);

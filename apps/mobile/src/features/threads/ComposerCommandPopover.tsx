@@ -19,6 +19,7 @@ import type {
   ServerProviderSlashCommand,
 } from "@t3tools/contracts";
 import type { ComposerTriggerKind } from "@t3tools/shared/composerTrigger";
+import { formatProviderSkillDisplayName } from "@t3tools/shared/inlineSkills";
 import { deriveSubagentElapsedMs, formatDuration } from "@t3tools/shared/orchestrationTiming";
 import { msg, useGT, useMessages } from "gt-react-native";
 import { memo, useEffect, useState } from "react";
@@ -355,7 +356,7 @@ const CommandRow = memo(function CommandRow(props: {
         {props.isSlashSkill && props.item.type === "skill" ? (
           <>
             <Text className="text-foreground-muted">skill:</Text>
-            {props.item.skill.name}
+            {formatProviderSkillDisplayName(props.item.skill)}
           </>
         ) : (
           props.item.label

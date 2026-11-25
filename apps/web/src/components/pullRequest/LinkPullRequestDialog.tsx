@@ -12,7 +12,7 @@ import {
 } from "@t3tools/client-runtime/thread-pull-requests";
 import { useAtomValue } from "@effect/atom-react";
 import { msg, T, useGT, useMessages } from "gt-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 
 import { m, type MessageResolver } from "~/i18n/messages";
 import { cn, isMacPlatform } from "~/lib/utils";
@@ -156,6 +156,7 @@ function LinkPullRequestPicker({
   );
   const [query, setQuery] = useState("");
   const [pending, setPending] = useState(false);
+  const submittingRef = useRef(false);
   const [applyError, setApplyError] = useState<string | null>(null);
   const trimmedQuery = query.trim();
   const debouncedQuery = useDebouncedValue(trimmedQuery, SEARCH_DEBOUNCE_MS);
@@ -251,7 +252,8 @@ function LinkPullRequestPicker({
   const hasChanges = plan.link.length + plan.unlink.length > 0;
 
   const apply = async () => {
-    if (pending || !hasChanges) return;
+    if (submittingRef.current || !hasChanges) return;
+    submittingRef.current = true;
     setPending(true);
     setApplyError(null);
     try {
@@ -262,10 +264,12 @@ function LinkPullRequestPicker({
         await linking.changeLink(threadRef, candidate.url, true);
       }
     } catch (error) {
+      submittingRef.current = false;
       setPending(false);
       setApplyError(error instanceof Error ? error.message : gt("Could not update the links."));
       return;
     }
+    submittingRef.current = false;
     setPending(false);
     onClose();
   };
@@ -324,8 +328,22 @@ function LinkPullRequestPicker({
           inputProps={{
             placeholder: gt("Search pull requests, or paste a URL or #123"),
             startAddon: <PullRequestGlyph.link />,
+            readOnly: pending,
             onKeyDown: (event) => {
-              if (event.key !== "Enter" || !(event.metaKey || event.ctrlKey)) return;
+              if (event.key !== "Enter") return;
+              if (
+                pending ||
+                event.repeat ||
+                event.nativeEvent.isComposing ||
+                event.keyCode === 229
+              ) {
+                event.preventDefault();
+                (
+                  event as typeof event & { preventBaseUIHandler?: () => void }
+                ).preventBaseUIHandler?.();
+                return;
+              }
+              if (!event.metaKey && !event.ctrlKey) return;
               event.preventDefault();
               (
                 event as typeof event & { preventBaseUIHandler?: () => void }
