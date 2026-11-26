@@ -99,7 +99,6 @@ import { toastManager } from "../ui/toast";
 import { DevinReviewContent, DevinReviewToolbar } from "../devinReview/DevinReviewBody";
 import { devinReviewContextRecord } from "@t3tools/client-runtime/state/devinReview";
 import { useIssueContextStore } from "~/issueContextStore";
-import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { MiddleTruncate } from "../ui/middle-truncate";
 import {
   PullRequestChecksStatusLine,
@@ -110,7 +109,7 @@ import {
 import { PullRequestDetailGhost, PullRequestTimelineGhost } from "./PullRequestGhosts";
 import { PullRequestCopyableCode } from "./PullRequestCopyableCode";
 import { useStableCallback } from "~/hooks/useStableCallback";
-import { SharedTooltipProvider } from "../ui/shared-tooltip";
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import {
   internPullRequestReference,
   pullRequestRefKey,
@@ -1730,12 +1729,12 @@ export function PullRequestDetailPanel({
         {...(onClose ? { onClose } : {})}
         actions={
           handoffSummary ? (
-            <TooltipProvider delay={150} closeDelay={150} timeout={400}>
+            <>
               {handoffSummary.state === "open" && handoffSummary.mergeability === "conflicting"
                 ? resolveConflictsControl
                 : null}
               {checkoutControl}
-            </TooltipProvider>
+            </>
           ) : undefined
         }
       />
@@ -1744,7 +1743,7 @@ export function PullRequestDetailPanel({
 
   return (
     // One tooltip for the panel's many triggers; mounting one per trigger dominated opening it.
-    <SharedTooltipProvider>
+    <>
       <div className="relative flex h-full min-h-0 w-full flex-col bg-background">
         {threadPickerOpen && detail ? (
           <PullRequestThreadLinks
@@ -1775,7 +1774,7 @@ export function PullRequestDetailPanel({
           />
           <div className="mr-4 flex h-7 shrink-0 select-none items-center justify-end gap-1">
             {detail ? (
-              <TooltipProvider delay={150} closeDelay={150} timeout={400}>
+              <>
                 {detail.visibility === "private" ? <PullRequestPrivateBadge /> : null}
                 {context === "page" ? (
                   <PullRequestThreadLinks
@@ -1885,7 +1884,7 @@ export function PullRequestDetailPanel({
                   openOnHostText={openOnHostText}
                   copyReference={copyReference}
                 />
-              </TooltipProvider>
+              </>
             ) : null}
             {onClose ? (
               <Button
@@ -1928,6 +1927,7 @@ export function PullRequestDetailPanel({
                       <PullRequestActorLabel
                         actor={detail.author}
                         profileUrl={authorProfileUrl}
+                        threadRef={threadRef}
                         variant="avatar"
                         className="shrink-0"
                       />
@@ -1952,16 +1952,15 @@ export function PullRequestDetailPanel({
                         })}
                         className="size-3 shrink-0 opacity-60"
                       />
-                      <Tooltip>
-                        <TooltipTrigger
-                          render={
-                            <code className="flex min-w-0 flex-1">
-                              <MiddleTruncate value={detail.headBranch} showTitle={false} />
-                            </code>
-                          }
-                        />
-                        <TooltipPopup side="top">{detail.headBranch}</TooltipPopup>
-                      </Tooltip>
+                      <SharedTooltipTrigger
+                        render={
+                          <code className="flex min-w-0 flex-1">
+                            <MiddleTruncate value={detail.headBranch} showTitle={false} />
+                          </code>
+                        }
+                        label={detail.headBranch}
+                        side="top"
+                      />
                     </span>
                     <span className="ml-auto inline-flex shrink-0 items-baseline justify-end gap-2 text-2xs">
                       <span
@@ -2023,7 +2022,11 @@ export function PullRequestDetailPanel({
                     />
                   }
                   author={
-                    <PullRequestActorLabel actor={detail.author} profileUrl={authorProfileUrl} />
+                    <PullRequestActorLabel
+                      actor={detail.author}
+                      profileUrl={authorProfileUrl}
+                      threadRef={threadRef}
+                    />
                   }
                   updated={
                     <span>
@@ -2323,6 +2326,7 @@ export function PullRequestDetailPanel({
                 ? {
                     host: {
                       url: unavailableHostUrl,
+                      threadRef,
                       openLabel: openOnHostLabel(
                         sourceControlClients.get(repositoryIdentity?.provider),
                         resolve,
@@ -2463,6 +2467,7 @@ export function PullRequestDetailPanel({
                   >
                     <PullRequestCodeTab
                       scrollerRef={scrollerRefs.code}
+                      threadRef={threadRef}
                       onAddToAgentSelection={addSelectionToAgent}
                       canSaveAgentDraft={canSaveAgentDraft}
                       environmentId={environmentId}
@@ -2511,6 +2516,6 @@ export function PullRequestDetailPanel({
           </div>
         ) : null}
       </div>
-    </SharedTooltipProvider>
+    </>
   );
 }

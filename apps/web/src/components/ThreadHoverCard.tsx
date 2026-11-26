@@ -19,6 +19,7 @@ import type { ComponentProps, ReactNode } from "react";
 
 import { useComposerDraftActiveModelSelection } from "~/composerDraftStore";
 import { useSupportsMultiplePullRequests } from "~/hooks/useSupportsMultiplePullRequests";
+import { SharedTooltipTrigger } from "./ui/shared-tooltip";
 import { cn } from "~/lib/utils";
 import { shouldShowInstanceBadge } from "~/providerInstances";
 import { useProject, useThreadProjection, useThreadShell } from "~/state/entities";
@@ -39,19 +40,33 @@ import { StartedByHoverLine } from "./chat/StartedByChip";
 import { ProjectFavicon } from "./ProjectFavicon";
 import { ThreadPullRequestsMiniList, terminalStatusFromRunningIds } from "./ThreadStatusIndicators";
 import { MiddleTruncate } from "./ui/middle-truncate";
-import { TooltipPopup } from "./ui/tooltip";
 
 /*
  * The one hover preview of a thread. It is the context presentation registry's `thread` body,
  * so chips, thread links, sidebar rows and an agent's read of a thread all show this.
  */
 
-export function ThreadHoverCardPopup({ className, ...props }: ComponentProps<typeof TooltipPopup>) {
+const HOVER_CARD_CLASS_NAME = "max-w-80 text-left whitespace-normal";
+
+/** A thread hover card on `render`, drawn by the shared tooltip so a list of rows mounts none. */
+export function ThreadHoverCardTrigger({
+  card,
+  side = "right",
+  align = "start",
+  sideOffset = 4,
+  ...props
+}: Omit<ComponentProps<typeof SharedTooltipTrigger>, "label" | "variant" | "className"> & {
+  card: ReactNode;
+}) {
   return (
-    <TooltipPopup
+    <SharedTooltipTrigger
       {...props}
+      label={card}
+      side={side}
+      align={align}
+      sideOffset={sideOffset}
       variant="glass"
-      className={cn("max-w-80 text-left whitespace-normal", className)}
+      className={HOVER_CARD_CLASS_NAME}
     />
   );
 }

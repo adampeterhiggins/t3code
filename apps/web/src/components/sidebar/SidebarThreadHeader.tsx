@@ -15,7 +15,7 @@ import {
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { SidebarInput, SidebarMenuButton } from "../ui/sidebar";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 
 export interface SidebarThreadHeaderProps {
   /** Without projects there is nothing to scope, so those controls stay out. */
@@ -176,21 +176,21 @@ export function SidebarHeaderIconButton({
     </>
   );
   return (
-    <Tooltip disabled={tooltip === false}>
-      <TooltipTrigger
-        render={
-          <SidebarMenuButton
-            size="icon"
-            type="button"
-            aria-label={label}
-            {...rest}
-            className={buttonClassName}
-          />
-        }
-      >
-        {content}
-      </TooltipTrigger>
-      <TooltipPopup side="top">{tooltip}</TooltipPopup>
-    </Tooltip>
+    <SharedTooltipTrigger
+      render={
+        <SidebarMenuButton
+          size="icon"
+          type="button"
+          aria-label={label}
+          {...rest}
+          className={buttonClassName}
+        />
+      }
+      label={tooltip}
+      disabled={tooltip === false}
+      side="top"
+    >
+      {content}
+    </SharedTooltipTrigger>
   );
 }

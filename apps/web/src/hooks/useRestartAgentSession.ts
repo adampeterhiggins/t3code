@@ -40,7 +40,7 @@ export function useRestartAgentSession() {
     toastManager.add({
       type: "success",
       title: m(msg("Agent session will restart")),
-      description: m(msg("Your next message starts a fresh session.")),
+      description: m(msg("Your next message restarts the agent. This conversation is kept.")),
     });
     const project = readProject(scopeProjectRef(environmentId, thread.projectId));
     if (!project) return;

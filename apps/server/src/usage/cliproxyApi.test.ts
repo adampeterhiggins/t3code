@@ -1,5 +1,4 @@
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
-import * as HostProcess from "@t3tools/shared/HostProcess";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -55,7 +54,6 @@ function fixture(
       provider: string;
       email?: string;
       disabled?: boolean;
-      project_id?: string;
       id_token?: { chatgpt_account_id: string; plan_type?: string; chatgpt_plan_type?: string };
     }>;
     upstream?: (request: RequestBody) => { status: number; body: unknown };
@@ -487,17 +485,6 @@ describe("CLIProxyAPI built-in management API", () => {
     }),
   );
 
-  const antigravitySummary = {
-    buckets: [
-      {
-        bucketId: "gemini-weekly",
-        window: "weekly",
-        remainingFraction: 0.75,
-        resetTime: "2099-01-01T00:00:00Z",
-      },
-    ],
-  };
-
   it.effect("reads an xAI account as Grok with Grok CLI headers", () =>
     Effect.gen(function* () {
       const test = fixture({
@@ -528,105 +515,13 @@ describe("CLIProxyAPI built-in management API", () => {
     }),
   );
 
-  it.effect("reads an Antigravity summary and keys the account by its Google ID", () =>
-    Effect.gen(function* () {
-      const test = fixture({
-        accounts: [
-          {
-            id: "antigravity-g@example.com.json",
-            auth_index: "g",
-            provider: "antigravity",
-            email: "g@example.com",
-            project_id: "project-7",
-          },
-        ],
-        upstream: (request) => ({
-          status: 200,
-          body: request.url?.endsWith("/userinfo") ? { id: "google-42" } : antigravitySummary,
-        }),
-      });
-      const [account] = yield* (yield* test.api).readAccounts(config);
-      expect(account?.driver).toBe("antigravity");
-      expect(account?.email).toBeUndefined();
-      expect(account?.usageLimits.credentialFingerprint).toBe(
-        // sha256("google-account\0google-42"), as a local Antigravity probe reports it.
-        "136d4952771fd67a3600053f37492cbd05828712e0b1c89ebab03d4c22ab6554",
-      );
-      expect(account?.usageLimits.windows).toMatchObject([
-        { id: "gemini-weekly", kind: "weekly", usedPercent: 25 },
-      ]);
-      const summary = test.requests.find((request) => request.body?.method === "POST")?.body;
-      expect(summary?.url).toBe(
-        "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary",
-      );
-      expect(summary?.data).toBe(encodeJson({ project: "project-7" }));
-      expect(summary).toMatchObject({
-        auth_index: "g",
-        method: "POST",
-        header: {
-          Authorization: "Bearer $TOKEN$",
-          "Content-Type": "application/json",
-          "User-Agent":
-            "antigravity/hub/2.24.0 (aidev_client; os_type=linux; arch=x64; cl=963137146)",
-        },
-      });
-      const identityCalls = test.requests.filter((request) =>
-        request.body?.url?.endsWith("/userinfo"),
-      );
-      expect(identityCalls).toHaveLength(1);
-      expect(identityCalls[0]?.body).toMatchObject({
-        method: "GET",
-        url: "https://www.googleapis.com/oauth2/v2/userinfo",
-        header: { Authorization: "Bearer $TOKEN$" },
-      });
-    }).pipe(
-      Effect.provideService(HostProcess.Platform, "linux"),
-      Effect.provideService(HostProcess.Architecture, "x64"),
-    ),
-  );
-
-  it.effect("keeps Antigravity limits and listing email when its identity read fails", () =>
-    Effect.gen(function* () {
-      const test = fixture({
-        accounts: [
-          {
-            id: "antigravity.json",
-            auth_index: "g",
-            provider: "antigravity",
-            email: "g@example.com",
-            project_id: "project-7",
-          },
-        ],
-        upstream: (request) =>
-          request.url?.endsWith("/userinfo")
-            ? { status: 403, body: { error: "denied" } }
-            : {
-                status: 200,
-                body: antigravitySummary,
-              },
-      });
-      const result = yield* (yield* test.api).readAccounts(config);
-      expect(result).toHaveLength(1);
-      const [account] = result;
-      expect(account).toMatchObject({ driver: "antigravity", email: "g@example.com" });
-      expect(account?.usageLimits.credentialFingerprint).toBeUndefined();
-      expect(account?.usageLimits.unavailable).toBeUndefined();
-      expect(account?.usageLimits.windows).toMatchObject([
-        { id: "gemini-weekly", kind: "weekly", usedPercent: 25 },
-      ]);
-    }),
-  );
-
   it.effect.each([
     { name: "a refused xAI call", provider: "xai", status: 403, body: { error: "denied" } },
     { name: "a malformed xAI answer", provider: "xai", status: 200, body: { config: "x" } },
-    { name: "a refused Antigravity call", provider: "antigravity", status: 401, body: {} },
-    { name: "a malformed Antigravity answer", provider: "antigravity", status: 200, body: [] },
-    { name: "an empty Antigravity summary", provider: "antigravity", status: 200, body: {} },
   ])("reports $name as unreadable", ({ provider, status, body }) =>
     Effect.gen(function* () {
       const test = fixture({
-        accounts: [{ id: `${provider}.json`, auth_index: "a", provider, project_id: "project-7" }],
+        accounts: [{ id: `${provider}.json`, auth_index: "a", provider }],
         upstream: () => ({ status, body }),
       });
       const [account] = yield* (yield* test.api).readAccounts(config);
@@ -634,33 +529,14 @@ describe("CLIProxyAPI built-in management API", () => {
     }),
   );
 
-  it.effect.each([undefined, "", "  "])(
-    "rejects a missing or blank Antigravity project (%s) after discovery",
-    (project_id) =>
-      Effect.gen(function* () {
-        const test = fixture({
-          accounts: [
-            {
-              id: "antigravity.json",
-              auth_index: "a",
-              provider: "antigravity",
-              ...(project_id === undefined ? {} : { project_id }),
-            },
-          ],
-        });
-        const [account] = yield* (yield* test.api).readAccounts(config);
-        expect(account?.usageLimits.unavailable?.reason).toBe("probeFailed");
-        expect(test.requests.flatMap((request) => request.body?.url ?? [])).toEqual([
-          "https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
-        ]);
-      }),
-  );
-
   it.effect("skips accounts of providers the hub table does not know", () =>
     Effect.gen(function* () {
       const test = fixture({
         accounts: [
           { id: "kiro.json", auth_index: "k", provider: "kiro", email: "k@example.com" },
+          // Antigravity only allows ACP clients, so its internal quota API is never called.
+          { id: "antigravity.json", auth_index: "g", provider: "antigravity" },
+          { id: "gemini.json", auth_index: "gemini", provider: "gemini" },
           { ...accounts[0]!, provider: "claude" },
         ],
         upstream: () => ({ status: 200, body: { five_hour: { utilization: 1, resets_at: null } } }),
@@ -668,6 +544,8 @@ describe("CLIProxyAPI built-in management API", () => {
       const result = yield* (yield* test.api).readAccounts(config);
       expect(result.map((account) => account.driver)).toEqual(["claudeAgent"]);
       expect(test.requests.map((request) => request.body?.auth_index)).not.toContain("k");
+      expect(test.requests.map((request) => request.body?.auth_index)).not.toContain("g");
+      expect(test.requests.map((request) => request.body?.auth_index)).not.toContain("gemini");
     }),
   );
 
@@ -788,91 +666,6 @@ describe("CLIProxyAPI built-in management API", () => {
       const call = test.requests.find((request) => request.body?.url);
       expect(call?.body?.url).toBe("https://cli-chat-proxy.grok.com/v1/billing?format=credits");
       expect(call?.body?.header?.["x-xai-token-auth"]).toBe("xai-grok-cli");
-    }),
-  );
-
-  it.effect("reads Antigravity quota and falls through an empty daily host", () =>
-    Effect.gen(function* () {
-      const test = fixture({
-        accounts: [
-          {
-            id: "agy.json",
-            auth_index: "agy",
-            provider: "gemini",
-            email: "agy@example.com",
-            project_id: "project-1",
-          },
-        ],
-        upstream: (request) =>
-          request.url?.includes("daily-cloudcode-pa")
-            ? { status: 200, body: { groups: [] } }
-            : {
-                status: 200,
-                body: {
-                  groups: [
-                    {
-                      displayName: "Gemini Pro",
-                      buckets: [
-                        {
-                          window: "5h",
-                          remainingFraction: 0.25,
-                          resetTime: "2099-01-01T00:00:00Z",
-                        },
-                      ],
-                    },
-                  ],
-                },
-              },
-      });
-      const api = yield* test.api;
-      const result = yield* api.readAccounts(config);
-      expect(result[0]?.driver).toBe("antigravity");
-      expect(result[0]?.usageLimits.windows).toMatchObject([
-        {
-          id: "gemini_pro_5h",
-          kind: "session",
-          label: "Gemini Pro · 5h",
-          usedPercent: 75,
-          resetsAt: "2099-01-01T00:00:00.000Z",
-        },
-      ]);
-      expect(test.requests.flatMap((request) => request.body?.url ?? [])).toEqual([
-        "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary",
-        "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:retrieveUserQuotaSummary",
-        "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary",
-        "https://www.googleapis.com/oauth2/v2/userinfo",
-      ]);
-    }),
-  );
-
-  it.effect("discovers an Antigravity project before reading quota", () =>
-    Effect.gen(function* () {
-      const test = fixture({
-        accounts: [{ id: "agy.json", auth_index: "agy", provider: "antigravity" }],
-        upstream: (request) =>
-          request.url?.endsWith(":loadCodeAssist")
-            ? { status: 200, body: { cloudaicompanionProject: "discovered-project" } }
-            : {
-                status: 200,
-                body: {
-                  groups: [
-                    {
-                      displayName: "Claude",
-                      buckets: [{ window: "weekly", remainingFraction: 0.5 }],
-                    },
-                  ],
-                },
-              },
-      });
-      const api = yield* test.api;
-      const result = yield* api.readAccounts(config);
-      expect(result[0]?.usageLimits.windows).toMatchObject([
-        { id: "claude_weekly", kind: "weekly", usedPercent: 50 },
-      ]);
-      const quota = test.requests.find((request) =>
-        request.body?.url?.endsWith(":retrieveUserQuotaSummary"),
-      );
-      expect(quota?.body?.data).toBe(encodeJson({ project: "discovered-project" }));
     }),
   );
 

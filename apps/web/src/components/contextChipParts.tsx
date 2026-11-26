@@ -24,10 +24,10 @@ import { middleTruncateAttachmentName } from "./composerInlineChip";
 import { PullRequestContextDetails } from "./PullRequestContextDetails";
 import { ContextChip, ContextChipLabel, type ContextChipKind } from "./ContextChip";
 import { Popover, PopoverPopup, PopoverTitle, PopoverTrigger } from "./ui/popover";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { Truncatable } from "./ui/truncatable";
 import { PullRequestLinkPreview } from "./pullRequest/PullRequestLinkPreview";
 import { usePullRequestPreviewTarget } from "~/lib/openPullRequestLink";
+import { SharedTooltipTrigger } from "./ui/shared-tooltip";
 
 export const PULL_REQUEST_CHIP_KINDS = {
   open: "pr-open",
@@ -58,14 +58,7 @@ export function ContextChipShell({
     </ContextChip>
   );
   if (!tooltip) return chip;
-  return (
-    <Tooltip>
-      <TooltipTrigger render={chip} />
-      <TooltipPopup side="top" className="whitespace-pre-wrap">
-        {tooltip}
-      </TooltipPopup>
-    </Tooltip>
-  );
+  return <SharedTooltipTrigger render={chip} label={tooltip} className="whitespace-pre-wrap" />;
 }
 
 /** A chip drawn as a button, the trigger most context previews open from. */
@@ -274,12 +267,10 @@ export function PullRequestSummaryHover(props: {
     );
   }
   return (
-    <Tooltip>
-      <TooltipTrigger render={props.trigger} />
-      <TooltipPopup side="top">
-        <PullRequestContextDetails metadata={props.metadata} />
-      </TooltipPopup>
-    </Tooltip>
+    <SharedTooltipTrigger
+      render={props.trigger}
+      label={<PullRequestContextDetails metadata={props.metadata} />}
+    />
   );
 }
 
@@ -458,27 +449,24 @@ function SvgFileChip(props: ComponentProps<typeof FileChip>) {
     return <FileChip {...props} svgPreview={undefined} />;
   }
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <ImageChipButton
-            name={props.name}
-            size={props.size}
-            previewUrl={url}
-            suffix={props.suffix}
-            disabled={props.disabled}
-            onClick={props.onOpen}
-            onPreviewError={() => setFailedPreviewUrl(url)}
-            data-markdown-copy={props.copyMarkdown}
-            aria-label={props.accessibleLabel}
-            {...(props.error ? { state: "invalid" as const } : {})}
-          />
-        }
-      />
-      <TooltipPopup side="top" className="whitespace-pre-wrap">
-        {props.tooltip}
-      </TooltipPopup>
-    </Tooltip>
+    <SharedTooltipTrigger
+      render={
+        <ImageChipButton
+          name={props.name}
+          size={props.size}
+          previewUrl={url}
+          suffix={props.suffix}
+          disabled={props.disabled}
+          onClick={props.onOpen}
+          onPreviewError={() => setFailedPreviewUrl(url)}
+          data-markdown-copy={props.copyMarkdown}
+          aria-label={props.accessibleLabel}
+          {...(props.error ? { state: "invalid" as const } : {})}
+        />
+      }
+      label={props.tooltip}
+      className="whitespace-pre-wrap"
+    />
   );
 }
 

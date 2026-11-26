@@ -44,7 +44,7 @@ import {
   uploadedAttachmentContextRecord,
 } from "~/lib/composerContextRecords";
 import {
-  formatTerminalContextLabel,
+  terminalContextDisplayLabel,
   isTerminalContextExpired,
   type TerminalContextDraft,
 } from "~/lib/terminalContext";
@@ -366,7 +366,7 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
     terminal: {
       chip: (entry, { resolve }) => {
         if (entry.kind !== "terminal") return null;
-        const label = formatTerminalContextLabel(entry.record);
+        const label = terminalContextDisplayLabel(entry.record, resolve);
         const expired = isTerminalContextExpired(entry.record);
         return {
           trigger: <TerminalChipTrigger label={label} expired={expired} />,

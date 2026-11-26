@@ -1,4 +1,4 @@
-import type { OrchestrationV2TurnItem } from "@t3tools/contracts";
+import type { OrchestrationV2TurnItem, ScopedThreadRef } from "@t3tools/contracts";
 import {
   webToolView,
   webUrlBreadcrumb,
@@ -9,6 +9,7 @@ import { T, useGT, Var } from "gt-react";
 import { ExternalLinkIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
+import { useLinkClickHandler } from "../../browser/useOpenLink";
 import { cn } from "../../lib/utils";
 import ChatMarkdown from "../ChatMarkdown";
 import { Badge } from "../ui/badge";
@@ -20,9 +21,11 @@ const VISIBLE_RESULTS = 5;
 
 function ExternalLink(props: {
   readonly url: string | undefined;
+  readonly threadRef?: ScopedThreadRef | undefined;
   readonly className?: string;
   readonly children: ReactNode;
 }) {
+  const handleClick = useLinkClickHandler(props.threadRef);
   const href = props.url ? resolveExternalWebLinkHref(props.url) : null;
   if (!href) return <span className={props.className}>{props.children}</span>;
   return (
@@ -31,7 +34,10 @@ function ExternalLink(props: {
       target="_blank"
       rel="noreferrer"
       className={cn("hover:underline", props.className)}
-      onClick={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.stopPropagation();
+        handleClick(event, href);
+      }}
     >
       {props.children}
     </a>
@@ -115,7 +121,11 @@ function SectionLabel({ children }: { readonly children: ReactNode }) {
   );
 }
 
-function FetchDetail(props: { readonly view: WebToolView; readonly cwd: string | undefined }) {
+function FetchDetail(props: {
+  readonly view: WebToolView;
+  readonly cwd: string | undefined;
+  readonly threadRef: ScopedThreadRef | undefined;
+}) {
   const { view } = props;
   const gt = useGT();
   return (
@@ -150,12 +160,18 @@ function FetchDetail(props: { readonly view: WebToolView; readonly cwd: string |
           />
         </div>
       ) : null}
-      {view.results.length > 0 ? <ResultList view={view} /> : null}
+      {view.results.length > 0 ? <ResultList view={view} threadRef={props.threadRef} /> : null}
     </div>
   );
 }
 
-function ResultList({ view }: { readonly view: WebToolView }) {
+function ResultList({
+  view,
+  threadRef,
+}: {
+  readonly view: WebToolView;
+  readonly threadRef: ScopedThreadRef | undefined;
+}) {
   const gt = useGT();
   const [showAll, setShowAll] = useState(false);
   const shown = showAll ? view.results : view.results.slice(0, VISIBLE_RESULTS);
@@ -177,6 +193,7 @@ function ResultList({ view }: { readonly view: WebToolView }) {
               <div className="min-w-0 flex-1">
                 <ExternalLink
                   url={result.url}
+                  threadRef={threadRef}
                   className="block truncate font-medium text-foreground"
                 >
                   {result.title?.trim() || host || result.url || gt("Search result")}
@@ -212,7 +229,11 @@ function ResultList({ view }: { readonly view: WebToolView }) {
   );
 }
 
-function SearchDetail(props: { readonly view: WebToolView; readonly cwd: string | undefined }) {
+function SearchDetail(props: {
+  readonly view: WebToolView;
+  readonly cwd: string | undefined;
+  readonly threadRef: ScopedThreadRef | undefined;
+}) {
   const { view } = props;
   const gt = useGT();
   return (
@@ -231,7 +252,7 @@ function SearchDetail(props: { readonly view: WebToolView; readonly cwd: string 
           ) : null}
         </div>
       ) : null}
-      {view.results.length > 0 ? <ResultList view={view} /> : null}
+      {view.results.length > 0 ? <ResultList view={view} threadRef={props.threadRef} /> : null}
       {view.answer !== undefined ? (
         <Answer text={view.answer} cwd={props.cwd} label={gt("Show more")} />
       ) : null}
@@ -242,12 +263,13 @@ function SearchDetail(props: { readonly view: WebToolView; readonly cwd: string 
 /** A fetch reads as question → answer; a search as its query and ranked results. */
 export function WebToolDetail(props: {
   readonly item: Extract<OrchestrationV2TurnItem, { type: "web_search" }>;
+  readonly threadRef?: ScopedThreadRef | undefined;
   readonly cwd: string | undefined;
 }) {
   const view = webToolView(props.item);
   return view.action === "fetch" ? (
-    <FetchDetail view={view} cwd={props.cwd} />
+    <FetchDetail view={view} cwd={props.cwd} threadRef={props.threadRef} />
   ) : (
-    <SearchDetail view={view} cwd={props.cwd} />
+    <SearchDetail view={view} cwd={props.cwd} threadRef={props.threadRef} />
   );
 }

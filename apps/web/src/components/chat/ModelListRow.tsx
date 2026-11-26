@@ -7,10 +7,10 @@ import { ComboboxItem } from "../ui/combobox";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { Kbd } from "../ui/kbd";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
 import { modelPickerModelKey } from "./modelPickerKeys";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 
 export const ModelListRow = memo(function ModelListRow(props: {
   index: number;
@@ -109,64 +109,58 @@ export const ModelListRow = memo(function ModelListRow(props: {
                 "opacity-0 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover:opacity-100 group-data-highlighted:opacity-100",
             )}
           >
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    size="icon-xs"
-                    variant="ghost-muted"
-                    className="shrink-0"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      props.onFork?.();
-                    }}
-                    onKeyDown={(event) => {
-                      event.stopPropagation();
-                    }}
-                    disabled={Boolean(props.disabledReason)}
-                    aria-label={gt("Fork into new tab")}
-                  >
-                    <GitForkIcon className="size-3.5 sm:size-3" />
-                  </Button>
-                }
-              />
-              <TooltipPopup side="top" align="center">
-                {gt("Fork into new tab")}
-              </TooltipPopup>
-            </Tooltip>
+            <SharedTooltipTrigger
+              render={
+                <Button
+                  size="icon-xs"
+                  variant="ghost-muted"
+                  className="shrink-0"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    props.onFork?.();
+                  }}
+                  onKeyDown={(event) => {
+                    event.stopPropagation();
+                  }}
+                  disabled={Boolean(props.disabledReason)}
+                  aria-label={gt("Fork into new tab")}
+                >
+                  <GitForkIcon className="size-3.5 sm:size-3" />
+                </Button>
+              }
+              label={gt("Fork into new tab")}
+              align="center"
+            />
           </span>
         ) : null}
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                size="icon-xs"
-                variant="ghost-muted"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  props.onToggleFavorite(props.instanceId, props.slug);
-                }}
-                onKeyDown={(event) => {
-                  event.stopPropagation();
-                }}
-                disabled={Boolean(props.disabledReason)}
-                aria-label={props.isFavorite ? gt("Remove from favorites") : gt("Add to favorites")}
-              >
-                <StarIcon
-                  className={cn(
-                    "size-3.5 sm:size-3",
-                    props.isFavorite && "fill-current text-warning",
-                    (!props.isFavorite || props.favoriteStarOnHover) &&
-                      "opacity-0 group-hover:opacity-100 group-data-highlighted:opacity-100 in-focus-visible:opacity-100 pointer-coarse:opacity-100",
-                  )}
-                />
-              </Button>
-            }
-          />
-          <TooltipPopup side="top" align="center">
-            {props.isFavorite ? gt("Remove from favorites") : gt("Add to favorites")}
-          </TooltipPopup>
-        </Tooltip>
+        <SharedTooltipTrigger
+          render={
+            <Button
+              size="icon-xs"
+              variant="ghost-muted"
+              onClick={(event) => {
+                event.stopPropagation();
+                props.onToggleFavorite(props.instanceId, props.slug);
+              }}
+              onKeyDown={(event) => {
+                event.stopPropagation();
+              }}
+              disabled={Boolean(props.disabledReason)}
+              aria-label={props.isFavorite ? gt("Remove from favorites") : gt("Add to favorites")}
+            >
+              <StarIcon
+                className={cn(
+                  "size-3.5 sm:size-3",
+                  props.isFavorite && "fill-current text-warning",
+                  (!props.isFavorite || props.favoriteStarOnHover) &&
+                    "opacity-0 group-hover:opacity-100 group-data-highlighted:opacity-100 in-focus-visible:opacity-100 pointer-coarse:opacity-100",
+                )}
+              />
+            </Button>
+          }
+          label={props.isFavorite ? gt("Remove from favorites") : gt("Add to favorites")}
+          align="center"
+        />
         {props.jumpLabel ? <Kbd>{props.jumpLabel}</Kbd> : null}
       </div>
     </ComboboxItem>
@@ -181,12 +175,5 @@ export const ModelListRow = memo(function ModelListRow(props: {
     return row;
   }
 
-  return (
-    <Tooltip>
-      <TooltipTrigger render={row} />
-      <TooltipPopup side="left" align="center">
-        {rowTooltip}
-      </TooltipPopup>
-    </Tooltip>
-  );
+  return <SharedTooltipTrigger render={row} label={rowTooltip} side="left" align="center" />;
 });

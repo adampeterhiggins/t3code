@@ -55,18 +55,16 @@ import { workEntryIconName } from "./TimelineWorkEntryRow.logic";
 
 describe("resolveTimelineMinimapHitStrip", () => {
   it.each([
-    { viewport: 1280, content: 768, left: 32, width: 40 },
-    { viewport: 768, content: 672, left: 32, width: 16 },
-    { viewport: 768, content: 704, left: 0, width: 8 },
-    { viewport: 768, content: 720, left: 0, width: 8 },
-    { viewport: 768, content: 756, left: 0, width: 6 },
-    { viewport: 768, content: 768, left: 0, width: 0 },
-  ])(
-    "keeps the minimap inside the gutter at $viewport/$content",
-    ({ viewport, content, left, width }) => {
-      expect(resolveTimelineMinimapHitStrip(viewport, content)).toEqual({ left, width });
-    },
-  );
+    { gutter: 256, left: 32, width: 40 },
+    { gutter: 48, left: 32, width: 16 },
+    { gutter: 32, left: 0, width: 8 },
+    { gutter: 24, left: 0, width: 8 },
+    { gutter: 6, left: 0, width: 6 },
+    { gutter: 0, left: 0, width: 0 },
+    { gutter: -4, left: 0, width: 0 },
+  ])("keeps the minimap inside a $gutter px gutter", ({ gutter, left, width }) => {
+    expect(resolveTimelineMinimapHitStrip(gutter)).toEqual({ left, width });
+  });
 });
 
 describe("resolveAssistantMessageCopyState", () => {
@@ -2471,7 +2469,9 @@ describe("deriveMessagesTimelineRows", () => {
         supportsConversationRollback: false,
       });
       return rows.flatMap((row, index) =>
-        row.kind === "viewed-images" ? [{ after: rows[index - 1]?.kind, paths: row.paths }] : [],
+        row.kind === "viewed-images"
+          ? [{ after: rows[index - 1]?.kind, paths: row.images.map(({ path }) => path) }]
+          : [],
       );
     };
     const paths = ["/repo/docs/sidebar.png", "/repo/docs/topbar.png"];
@@ -5481,12 +5481,12 @@ describe("timeline end and minimap geometry", () => {
     expect(resolveTimelineMinimapIndexFromPointer({ ...rail, pointerY: 350 })).toBe(50);
     expect(resolveTimelineMinimapIndexFromPointer({ ...rail, pointerY: 999 })).toBe(100);
 
-    expect(resolveTimelineMinimapHasPersistentGutter(832, 768)).toBe(false);
-    expect(resolveTimelineMinimapHasPersistentGutter(863, 768)).toBe(false);
-    expect(resolveTimelineMinimapHasPersistentGutter(864, 768)).toBe(true);
-    expect(resolveTimelineMinimapHasPersistentGutter(1400, 1152)).toBe(true);
-    expect(resolveTimelineMinimapHasPersistentGutter(1200, 1152)).toBe(false);
-    expect(resolveTimelineMinimapHasPersistentGutter(2560, 2560)).toBe(false);
+    expect(resolveTimelineMinimapHasPersistentGutter(32)).toBe(false);
+    expect(resolveTimelineMinimapHasPersistentGutter(47)).toBe(false);
+    expect(resolveTimelineMinimapHasPersistentGutter(48)).toBe(true);
+    expect(resolveTimelineMinimapHasPersistentGutter(124)).toBe(true);
+    expect(resolveTimelineMinimapHasPersistentGutter(24)).toBe(false);
+    expect(resolveTimelineMinimapHasPersistentGutter(0)).toBe(false);
 
     expect(resolveTimelineMinimapNavigationInteractive(40)).toBe(true);
     expect(resolveTimelineMinimapNavigationInteractive(14)).toBe(true);
@@ -5494,15 +5494,15 @@ describe("timeline end and minimap geometry", () => {
     expect(resolveTimelineMinimapNavigationInteractive(0)).toBe(false);
 
     // Expanding the preview keeps navigation confined to the available gutter.
-    for (const [viewport, content, expected] of [
-      [768, 768, false],
-      [808, 768, false],
-      [820, 768, false],
-      [872, 768, true],
+    for (const [sideGutter, expected] of [
+      [0, false],
+      [20, false],
+      [26, false],
+      [52, true],
     ] as const) {
       expect(
         resolveTimelineMinimapNavigationInteractive(
-          resolveTimelineMinimapHitStrip(viewport, content).width,
+          resolveTimelineMinimapHitStrip(sideGutter).width,
         ),
       ).toBe(expected);
     }

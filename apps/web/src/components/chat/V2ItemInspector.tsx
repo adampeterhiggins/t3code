@@ -470,7 +470,13 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
         />
       ) : null}
 
-      {item.type === "web_search" ? <WebToolDetail item={item} cwd={props.cwd} /> : null}
+      {item.type === "web_search" ? (
+        <WebToolDetail
+          item={item}
+          cwd={props.cwd}
+          threadRef={{ environmentId: props.environmentId, threadId: item.threadId }}
+        />
+      ) : null}
 
       {item.type === "dynamic_tool" ? (
         preview ? (

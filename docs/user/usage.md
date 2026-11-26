@@ -245,7 +245,7 @@ usage.
 To see pooled accounts, open **Settings → Providers → Usage providers → Add hub**. Choose the
 environment that will connect to the hub and enter its URL and management key.
 
-The accounts appear under **Usage → Limits**. Codex, Claude, Grok, Antigravity, Devin, and Kimi
+The accounts appear under **Usage → Limits**. Codex, Claude, Grok, Devin, and Kimi
 accounts on the hub report their subscription windows. Codex accounts show banked reset credits;
 select an account and choose **Use reset** to redeem one. No hub plugin is required.
 

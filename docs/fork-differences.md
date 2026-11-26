@@ -711,14 +711,13 @@ Code: `usePreferredOpenPrLink` in
 
 ## Pull request host links follow Open links in
 
-The pull request panel follows **Settings → Browser → Open links in** for the header's pull request
-and repository links. The fork extends the same behavior to links in the panel's content, including
-author profiles, comment timestamps, activity links, and attachments, as well as the **Open on
-GitHub** button on the load-error screen. Cmd/Ctrl-click opens the system browser. Links from the
-standalone pull requests page open in the system browser.
+The pull request panel also applies **Settings → Browser → Open links in** to pull request and
+repository links in its header and to review attachments. Links configured to open in the system
+browser keep normal anchor behavior, including Cmd/Ctrl-click. Links from the standalone pull
+requests page open in the system browser.
 
-Code: `useLinkClickHandler` in `apps/web/src/browser/useOpenLink.ts` and
-`apps/web/src/components/pullRequest/PullRequestMarkdownContext.ts`.
+Code: `useLinkClickHandler` in [useOpenLink.ts](../apps/web/src/browser/useOpenLink.ts) and
+[PullRequestMarkdownContext.ts](../apps/web/src/components/pullRequest/PullRequestMarkdownContext.ts).
 
 ## Send a pull request comment straight to the agent
 
