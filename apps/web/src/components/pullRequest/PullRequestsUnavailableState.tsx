@@ -20,12 +20,16 @@ export function PullRequestsUnavailableState({
   error: string;
   onRetry?: () => void;
   refreshing?: boolean;
-  host?: { readonly url: string; readonly openLabel: string };
+  host?: {
+    readonly url: string;
+    readonly openLabel: string;
+    readonly threadRef?: ScopedThreadRef | null;
+  };
   /** Thread the host link can open beside; the surrounding detail's by default. */
   threadRef?: ScopedThreadRef | null;
 }) {
   const gt = useGT();
-  const onLinkClick = usePullRequestLinkClick(threadRef);
+  const onLinkClick = usePullRequestLinkClick(host?.threadRef ?? threadRef);
   return (
     <Empty className="scrollbar-gutter-both min-h-0 justify-center-safe overflow-y-auto [&>*]:shrink-0">
       <EmptyMedia variant="icon">

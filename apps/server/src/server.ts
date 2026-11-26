@@ -972,7 +972,10 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
     ),
     Layer.provideMerge(ProviderRegistry.layer),
     Layer.provideMerge(
-      ProviderInstanceRegistryHydration.layer.pipe(Layer.provide(SqlitePersistence.layerConfig)),
+      ProviderInstanceRegistryHydration.layer.pipe(
+        Layer.provide(SqlitePersistence.layerConfig),
+        Layer.provide(layerNativeTelemetry),
+      ),
     ),
     Layer.provideMerge(ProviderInstallationGate.layer),
     // Provider hydration builds the Claude runner, which reports agents to the same scanner the

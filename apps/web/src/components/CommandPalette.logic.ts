@@ -12,6 +12,7 @@ import {
 } from "@t3tools/shared/paletteSearch";
 import { threadSearchSubject } from "@t3tools/client-runtime/state/thread-search";
 import type { CommandPaletteLinkedThreads } from "../commandPaletteBus";
+import type { DraftId } from "../composerDraftStore";
 import {
   addProjectRemoteSourceLabel,
   addProjectRemoteSourcePathHint,
@@ -82,12 +83,13 @@ export type SearchOverlayMode = "command" | "files" | "content";
 
 export type CommandPaletteOpenIntent =
   | {
-      readonly kind:
-        | "add-project"
-        | "new-thread-in"
-        | "change-theme"
-        | "attention-inbox"
-        | "run-scheduled-task";
+      readonly kind: "new-thread-in" | "change-theme" | "attention-inbox" | "run-scheduled-task";
+    }
+  | { readonly kind: "new-thread-in" | "change-theme" }
+  | {
+      readonly kind: "add-project";
+      /** The draft a project is being picked for; one with user content moves to it. */
+      readonly draftId?: DraftId;
     }
   | {
       readonly kind: "search";
@@ -118,7 +120,7 @@ export type CommandPaletteUiAction =
       readonly fromFilePicker?: boolean;
     }
   | { readonly _tag: "OpenFileSearch"; readonly query: string }
-  | { readonly _tag: "OpenAddProject" }
+  | { readonly _tag: "OpenAddProject"; readonly draftId?: DraftId }
   | { readonly _tag: "OpenNewThreadIn" }
   | { readonly _tag: "OpenChangeTheme" }
   | { readonly _tag: "OpenAttentionInbox" }
@@ -184,7 +186,10 @@ export function reduceCommandPaletteUiState(
         session: session + 1,
       };
     case "OpenAddProject":
-      return openWithIntent({ kind: "add-project" });
+      return openWithIntent({
+        kind: "add-project",
+        ...(action.draftId ? { draftId: action.draftId } : {}),
+      });
     case "OpenNewThreadIn":
       return openWithIntent({ kind: "new-thread-in" });
     case "OpenChangeTheme":

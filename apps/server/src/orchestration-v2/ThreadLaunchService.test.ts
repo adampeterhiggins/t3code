@@ -68,6 +68,7 @@ import { ClaudeProviderCapabilitiesV2 } from "./Adapters/ClaudeAdapterV2.ts";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import * as CommandReceiptStore from "./CommandReceiptStore.ts";
 import * as Orchestrator from "./Orchestrator.ts";
+import * as ProjectionStore from "./ProjectionStore.ts";
 import * as EffectOutbox from "./EffectOutbox.ts";
 import * as EventSink from "./EventSink.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
@@ -305,6 +306,8 @@ function makeHarness(options: HarnessOptions = {}) {
         layerLaunchThreads,
         layerReceipts,
         layerOrchestrator,
+        ProjectionStore.layer.pipe(Layer.provide(layerDatabase)),
+        NodeServices.layer,
         IdAllocator.layer,
         options.getLaunchSettings === undefined
           ? Layer.empty
@@ -412,6 +415,26 @@ function launchInput(input: {
     creationSource: "web" as const,
   };
 }
+
+const forkSideChat = (
+  threads: ThreadManagement.ThreadManagementService["Service"],
+  sourceThreadId: ThreadId,
+  suffix: string,
+) => {
+  const targetThreadId = ThreadId.make(`thread:side-chat:${suffix}`);
+  return threads
+    .dispatch({
+      type: "thread.fork",
+      commandId: CommandId.make(`fork:side-chat:${suffix}`),
+      sourceThreadId,
+      targetThreadId,
+      sourcePoint: { type: "latest_stable" },
+      sideChat: true,
+      createdBy: "user",
+      creationSource: "web",
+    })
+    .pipe(Effect.as(targetThreadId));
+};
 
 it.effect.each(
   (["new", "existing"] as const).flatMap((target) =>
@@ -3766,7 +3789,13 @@ it.effect(
   },
 );
 
-it.live("names all task-folder worktrees before setup and removes them on cancellation", () => {
+const concurrentTaskFolderUses = [
+  "side chat",
+  "side chat without a run",
+  "independent launch",
+] as const;
+
+it.live.each(concurrentTaskFolderUses)("cancels task folder setup with %s", (concurrent) => {
   const state: TaskFoldersTestState = { workspaceRoot: "/unset", trackedFolders: [], thread: null };
   const layerGit = GitVcsDriver.layer.pipe(
     Layer.provideMerge(ServerConfig.layerTest(process.cwd(), { prefix: "t3-launch-folders-" })),
@@ -3804,9 +3833,15 @@ it.live("names all task-folder worktrees before setup and removes them on cancel
       name: path.basename(folder),
     }));
     const entered = yield* Deferred.make<void>();
+    const parentId = ThreadId.make("thread:task-folder");
+    const messageLess = concurrent === "side chat without a run";
+    const expectedBranch = messageLess ? "feature/launch" : "generated-branch";
     const harness = makeHarness({
       taskFolders: layerTaskFolders,
-      runSetup: () => Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never)),
+      runSetup: ({ threadId }) =>
+        threadId === parentId
+          ? Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never))
+          : Effect.succeed({ status: "no-script" }),
     });
     yield* Effect.gen(function* () {
       const launches = yield* ThreadLaunch.ThreadLaunchService;
@@ -3816,17 +3851,27 @@ it.live("names all task-folder worktrees before setup and removes them on cancel
       const launched = yield* launches.launch(
         launchInput({
           command: "launch:task-folder",
-          thread: "thread:task-folder",
-          message: "Start",
-          workspace: { type: "worktree", baseRef: "main" },
+          thread: parentId,
+          ...(messageLess ? {} : { message: "Start" }),
+          workspace: {
+            type: "worktree",
+            baseRef: "main",
+            ...(messageLess ? { branch: expectedBranch } : {}),
+          },
         }),
       );
       yield* Deferred.await(entered);
 
-      const { thread } = yield* threads.getThreadProjection(launched.threadId);
+      const { thread, runs } = yield* threads.getThreadProjection(launched.threadId);
+      if (messageLess) {
+        assert.isEmpty(runs);
+      } else {
+        assert.equal(runs[0]?.status, "preparing");
+        assert.equal(runs[0]?.workspacePreparation?.type, "worktree");
+      }
       const taskFolder = yield* taskFolders.find(thread.worktreePath!);
       assert.equal(thread.worktreePath, taskFolder?.projectPath);
-      assert.equal(thread.branch, "generated-branch");
+      assert.equal(thread.branch, expectedBranch);
       assert.sameMembers(
         taskFolder!.repositories.map((repository) => repository.repositoryPath),
         repositories,
@@ -3834,7 +3879,7 @@ it.live("names all task-folder worktrees before setup and removes them on cancel
       for (const repository of taskFolder!.repositories) {
         assert.equal(
           yield* run(repository.worktreePath, "symbolic-ref", "--short", "HEAD"),
-          "generated-branch",
+          expectedBranch,
         );
       }
       const stages = (yield* tracker.get(launched.threadId))!.stages;
@@ -3845,18 +3890,48 @@ it.live("names all task-folder worktrees before setup and removes them on cancel
           ["checkout", "done"],
           ["submodules", "skipped"],
           ["setup-script", "running"],
-          ["agent", "pending"],
+          ...(messageLess ? [] : [["agent", "pending"]]),
         ],
       );
       assert.match(stages[1]?.detail ?? "", /\(2 of 2\)$/);
 
+      if (concurrent === "independent launch") {
+        const checkoutPath = taskFolder!.repositories[0]!.worktreePath;
+        const sentinel = path.join(checkoutPath, "sentinel.txt");
+        const shared = yield* launches.launch(
+          launchInput({
+            command: "launch:existing-checkout",
+            thread: "thread:existing-checkout",
+            workspace: { type: "existing_worktree", worktreePath: checkoutPath },
+          }),
+        );
+        assert.equal(shared.projection.thread.worktreePath, checkoutPath);
+        yield* fileSystem.writeFileString(sentinel, "edit");
+        assert.isTrue(yield* tracker.cancel(launched.threadId));
+        assert.equal(yield* fileSystem.readFileString(sentinel), "edit");
+        assert.equal((yield* taskFolders.find(taskFolder!.root))?.root, taskFolder!.root);
+        assert.equal(
+          (yield* threads.getThreadProjection(launched.threadId)).thread.worktreePath,
+          taskFolder!.projectPath,
+        );
+        const sideChatId = yield* forkSideChat(threads, launched.threadId, "after-cancellation");
+        assert.equal(
+          (yield* threads.getThreadProjection(sideChatId)).thread.worktreePath,
+          taskFolder!.projectPath,
+        );
+        return;
+      }
+      const refused = yield* forkSideChat(threads, launched.threadId, "during-setup").pipe(
+        Effect.flip,
+      );
+      assert.equal(refused._tag, "OrchestratorDispatchError");
       assert.isTrue(yield* tracker.cancel(launched.threadId));
 
       assert.isNull((yield* threads.getThreadProjection(launched.threadId)).thread.worktreePath);
       assert.isNull(yield* taskFolders.find(taskFolder!.root));
       assert.isFalse(yield* fileSystem.exists(taskFolder!.root));
       for (const folder of repositories) {
-        assert.equal(yield* run(folder, "branch", "--list", "generated-branch"), "");
+        assert.equal(yield* run(folder, "branch", "--list", expectedBranch), "");
         assert.notInclude(yield* run(folder, "worktree", "list", "--porcelain"), taskFolder!.root);
       }
     }).pipe(Effect.provide(harness.layer));
@@ -4225,6 +4300,11 @@ it.effect.each([0, 1])("releases an async setup before its completion with exit 
       const running = yield* threads.getThreadProjection(launched.threadId);
       assert.equal(running.runs[0]?.status, "starting");
       assert.equal((yield* tracker.get(launched.threadId))?.phase, "running");
+      const sideChatId = yield* forkSideChat(threads, launched.threadId, "released-async-setup");
+      assert.equal(
+        (yield* threads.getThreadProjection(sideChatId)).thread.worktreePath,
+        running.thread.worktreePath,
+      );
       yield* Deferred.succeed(completion, { exitCode, durationMs: 1 });
       yield* tracker.stream(launched.threadId).pipe(
         Stream.filter((snapshot) => snapshot?.phase === "done"),

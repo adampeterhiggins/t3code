@@ -6,7 +6,6 @@ import {
   type UsageLimitSourceAccount,
   type UsageLimitSourceConfig,
 } from "@t3tools/contracts";
-import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Cause from "effect/Cause";
 import * as Digest from "effect/crypto/Digest";
 import * as DateTime from "effect/DateTime";
@@ -25,11 +24,6 @@ import { codexPlanLabel } from "../provider/CodexProvider.ts";
 import { codexRateLimitsToLimits } from "../provider/codexUsageLimits.ts";
 import { claudeUsageResponseToLimits } from "../provider/claudeUsageLimits.ts";
 import {
-  antigravityAccountFingerprint,
-  antigravitySummaryWindows,
-  antigravityUserAgent,
-} from "../provider/antigravityUsageLimits.ts";
-import {
   clampPercent,
   makeUnavailableUsageLimits,
   makeUsageLimits,
@@ -41,33 +35,6 @@ export interface CliproxyHub {
   readonly managementKey: string;
 }
 
-const AntigravityBucket = Schema.Struct({
-  displayName: Schema.optional(Schema.String),
-  display_name: Schema.optional(Schema.String),
-  window: Schema.optional(Schema.String),
-  remainingFraction: Schema.optional(Schema.Number),
-  remaining_fraction: Schema.optional(Schema.Number),
-  resetTime: Schema.optional(Schema.NullOr(Schema.String)),
-  reset_time: Schema.optional(Schema.NullOr(Schema.String)),
-});
-const AntigravityQuota = Schema.Struct({
-  groups: Schema.optional(
-    Schema.Array(
-      Schema.Struct({
-        displayName: Schema.optional(Schema.String),
-        display_name: Schema.optional(Schema.String),
-        buckets: Schema.optional(Schema.Array(AntigravityBucket)),
-      }),
-    ),
-  ),
-});
-const CodeAssistProject = Schema.Union([
-  Schema.String,
-  Schema.Struct({ id: Schema.optional(Schema.String) }),
-]);
-const CodeAssist = Schema.Struct({
-  cloudaicompanionProject: Schema.optional(CodeAssistProject),
-});
 const KimiDetail = Schema.Struct({
   remaining: Schema.optional(Schema.Number),
   limit: Schema.optional(Schema.Number),
@@ -114,14 +81,6 @@ const AuthFile = Schema.Struct({
   provider: Schema.String,
   email: Schema.optional(Schema.String),
   disabled: Schema.optional(Schema.Boolean),
-  project_id: Schema.optional(Schema.String),
-  projectId: Schema.optional(Schema.String),
-  metadata: Schema.optional(
-    Schema.Struct({
-      project_id: Schema.optional(Schema.String),
-      projectId: Schema.optional(Schema.String),
-    }),
-  ),
   id_token: Schema.optional(
     Schema.Struct({
       chatgpt_account_id: Schema.optional(Schema.String),
@@ -204,11 +163,8 @@ const decodeCreditList = Schema.decodeUnknownEffect(Schema.fromJsonString(Credit
 const decodeClaudeUsage = Schema.decodeUnknownEffect(Schema.fromJsonString(ClaudeUsage));
 const decodeCodexUsage = Schema.decodeUnknownEffect(Schema.fromJsonString(CodexUsage));
 const decodeGrokUsage = Schema.decodeUnknownEffect(Schema.fromJsonString(GrokUsageResponse));
-const decodeAntigravityQuota = Schema.decodeUnknownEffect(Schema.fromJsonString(AntigravityQuota));
-const decodeCodeAssist = Schema.decodeUnknownEffect(Schema.fromJsonString(CodeAssist));
 const decodeKimiUsage = Schema.decodeUnknownEffect(Schema.fromJsonString(KimiUsage));
 const decodeDevinQuota = Schema.decodeUnknownEffect(Schema.fromJsonString(DevinQuota));
-const decodeJson = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
 const isUsageLimitSourceError = Schema.is(UsageLimitSourceError);
 
 // Extra CAs can fix untrusted chains; expiry/hostname failures report codes only.
@@ -286,16 +242,12 @@ type HubCall = (
 type HubReading = Omit<UsageLimitSourceAccount, "id" | "driver">;
 interface HubProvider {
   readonly driver: ProviderDriverKind;
-  readonly header: (
-    account: AuthFile,
-    platform: NodeJS.Platform,
-    architecture: NodeJS.Architecture,
-  ) => Record<string, string>;
+  readonly header: (account: AuthFile) => Record<string, string>;
   readonly read: (input: {
     readonly account: AuthFile;
     readonly call: HubCall;
     readonly checkedAt: string;
-  }) => Effect.Effect<HubReading, UsageLimitSourceError | Schema.SchemaError, Digest.Digest>;
+  }) => Effect.Effect<HubReading, UsageLimitSourceError | Schema.SchemaError>;
 }
 
 const listedIdentity = (account: AuthFile) => ({
@@ -375,11 +327,6 @@ const CODEX_HUB: HubProvider = {
   }),
 };
 
-const ANTIGRAVITY_HOSTS = [
-  "https://daily-cloudcode-pa.googleapis.com",
-  "https://daily-cloudcode-pa.sandbox.googleapis.com",
-  "https://cloudcode-pa.googleapis.com",
-] as const;
 const KIMI_USAGE_URL = "https://api.kimi.com/coding/v1/usages";
 const KIMI_HEADERS = { Authorization: "Bearer $TOKEN$" };
 const DEVIN_QUOTA_URL =
@@ -432,10 +379,6 @@ function finiteNumber(value: number | string | undefined): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-function usedFromRemainingFraction(fraction: number): number {
-  return clampPercent((1 - Math.max(0, Math.min(1, fraction))) * 100);
-}
-
 function usedFromRemainingPercent(value: number | string | undefined): number | undefined {
   const remaining = finiteNumber(value);
   if (remaining === undefined || remaining < 0 || remaining > 100) return undefined;
@@ -457,70 +400,6 @@ function usedFromQuota(
   }
   // A ratio such as 90/100 is not exactly 10 in binary floating point.
   return clampPercent(Math.round((1 - remaining / limit) * 1000) / 10);
-}
-
-function antigravityProjectId(account: AuthFile): string | undefined {
-  return [
-    account.project_id,
-    account.projectId,
-    account.metadata?.project_id,
-    account.metadata?.projectId,
-  ]
-    .find((candidate) => candidate?.trim())
-    ?.trim();
-}
-
-function codeAssistProject(project: typeof CodeAssistProject.Type | undefined): string | undefined {
-  if (typeof project === "string") return project.trim() || undefined;
-  return project?.id?.trim() || undefined;
-}
-
-function antigravityWindowKind(window: string): {
-  readonly kind: ServerProviderUsageWindow["kind"];
-  readonly label: string;
-  readonly windowDurationMins?: number;
-} {
-  const normalized = window.trim().toLowerCase();
-  if (normalized === "5h" || normalized === "five-hour" || normalized === "five_hour") {
-    return { kind: "session", label: "5h", windowDurationMins: 5 * 60 };
-  }
-  if (normalized === "weekly" || normalized === "week") {
-    return { kind: "weekly", label: "Weekly", windowDurationMins: 7 * 24 * 60 };
-  }
-  if (normalized === "monthly" || normalized === "month") {
-    return { kind: "monthly", label: "Monthly" };
-  }
-  return { kind: "other", label: window.trim() || "Quota" };
-}
-
-function antigravityWindows(quota: typeof AntigravityQuota.Type): ServerProviderUsageWindow[] {
-  const seen = new Map<string, number>();
-  const windows: ServerProviderUsageWindow[] = [];
-  for (const group of quota.groups ?? []) {
-    const groupName = (group.displayName ?? group.display_name ?? "").trim();
-    for (const bucket of group.buckets ?? []) {
-      const fraction = bucket.remainingFraction ?? bucket.remaining_fraction;
-      if (fraction === undefined || !Number.isFinite(fraction)) continue;
-      const windowName = (bucket.window ?? bucket.displayName ?? bucket.display_name ?? "").trim();
-      const kind = antigravityWindowKind(windowName);
-      const label = groupName ? `${groupName} · ${kind.label}` : kind.label;
-      const baseId = windowId(groupName, windowName || kind.label);
-      const count = seen.get(baseId) ?? 0;
-      seen.set(baseId, count + 1);
-      const resetsAt = isoTimestamp(bucket.resetTime ?? bucket.reset_time);
-      windows.push({
-        id: count === 0 ? baseId : `${baseId}_${count + 1}`,
-        kind: kind.kind,
-        label,
-        usedPercent: usedFromRemainingFraction(fraction),
-        ...(kind.windowDurationMins !== undefined
-          ? { windowDurationMins: kind.windowDurationMins }
-          : {}),
-        ...(resetsAt ? { resetsAt } : {}),
-      });
-    }
-  }
-  return windows;
 }
 
 function kimiLimitWindow(
@@ -687,69 +566,6 @@ const HUB_PROVIDERS = new Map<string, HubProvider>([
     },
   ],
   [
-    "antigravity",
-    {
-      driver: ProviderDriverKind.make("antigravity"),
-      header: (_account, platform, architecture) => ({
-        Authorization: "Bearer $TOKEN$",
-        "Content-Type": "application/json",
-        "User-Agent": antigravityUserAgent(platform, architecture),
-      }),
-      read: Effect.fnUntraced(function* ({ account, call, checkedAt }) {
-        let project = antigravityProjectId(account);
-        if (!project) {
-          const discovered = yield* call(`${ANTIGRAVITY_HOSTS[0]}/v1internal:loadCodeAssist`, {
-            metadata: { ideType: "ANTIGRAVITY" },
-          }).pipe(
-            Effect.flatMap(decodeCodeAssist),
-            Effect.map((value) => codeAssistProject(value.cloudaicompanionProject)),
-            Effect.option,
-          );
-          if (Option.isSome(discovered)) project = discovered.value;
-        }
-        if (!project)
-          return yield* new UsageLimitSourceError({
-            detail: "Antigravity account has no project.",
-          });
-        let windows: ReadonlyArray<ServerProviderUsageWindow> = [];
-        for (const host of ANTIGRAVITY_HOSTS) {
-          const requestedAt = DateTime.toEpochMillis(yield* DateTime.now);
-          const summary = yield* call(`${host}/v1internal:retrieveUserQuotaSummary`, {
-            project,
-          }).pipe(Effect.result);
-          if (summary._tag === "Failure") continue;
-          const parsed = yield* decodeJson(summary.success).pipe(Effect.option);
-          if (Option.isNone(parsed)) continue;
-          windows = yield* antigravitySummaryWindows(parsed.value, requestedAt).pipe(
-            Effect.orElseSucceed(() => []),
-          );
-          if (windows.length === 0) {
-            const legacy = yield* decodeAntigravityQuota(summary.success).pipe(Effect.option);
-            if (Option.isSome(legacy)) windows = antigravityWindows(legacy.value);
-          }
-          if (windows.length > 0) break;
-        }
-        if (windows.length === 0)
-          return yield* new UsageLimitSourceError({
-            detail: "Antigravity returned no quota windows.",
-          });
-        // Local Antigravity reports no e-mail, so the Google account fingerprint is what pools the two.
-        const fingerprint = yield* call("https://www.googleapis.com/oauth2/v2/userinfo").pipe(
-          Effect.flatMap(decodeJson),
-          Effect.flatMap(antigravityAccountFingerprint),
-          Effect.option,
-        );
-        const usageLimits = makeUsageLimits({ checkedAt, windows });
-        return Option.match(fingerprint, {
-          onNone: () => ({ ...listedIdentity(account), usageLimits }),
-          onSome: (credentialFingerprint) => ({
-            usageLimits: { ...usageLimits, credentialFingerprint },
-          }),
-        });
-      }),
-    },
-  ],
-  [
     "kimi",
     {
       driver: ProviderDriverKind.make("kimi"),
@@ -787,8 +603,6 @@ const HUB_PROVIDERS = new Map<string, HubProvider>([
 export const makeCliproxyApi = Effect.gen(function* () {
   const client = yield* HttpClient.HttpClient;
   const digest = yield* Digest.Digest;
-  const platform = yield* HostProcess.Platform;
-  const architecture = yield* HostProcess.Architecture;
 
   const management = Effect.fn("CliproxyApi.management")(function* (
     hub: CliproxyHub,
@@ -868,10 +682,8 @@ export const makeCliproxyApi = Effect.gen(function* () {
     provider: HubProvider,
   ) {
     const checkedAt = DateTime.formatIso(yield* DateTime.now);
-    const call: HubCall = (url, data) =>
-      apiCall(hub, account, provider.header(account, platform, architecture), url, data);
+    const call: HubCall = (url, data) => apiCall(hub, account, provider.header(account), url, data);
     const reading = yield* provider.read({ account, call, checkedAt }).pipe(
-      Effect.provideService(Digest.Digest, digest),
       Effect.catch((error) =>
         Effect.succeed({
           ...listedIdentity(account),
@@ -906,8 +718,6 @@ export const makeCliproxyApi = Effect.gen(function* () {
             anthropic: "claude",
             grok: "xai",
             "x-ai": "xai",
-            "anti-gravity": "antigravity",
-            gemini: "antigravity",
             cognition: "devin",
           } as Record<string, string>
         )[account.provider.trim().toLowerCase().replaceAll("_", "-")] ??
@@ -955,7 +765,7 @@ export const makeCliproxyApi = Effect.gen(function* () {
       const body = yield* apiCall(
         hub,
         account,
-        CODEX_HUB.header(account, platform, architecture),
+        CODEX_HUB.header(account),
         `${CREDIT_URL}/consume`,
         {
           redeem_request_id: yield* creditRedeemRequestId(

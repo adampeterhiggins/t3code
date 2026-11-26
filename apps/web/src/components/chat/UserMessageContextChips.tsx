@@ -1,3 +1,4 @@
+import { terminalContextDisplayLabel } from "../../lib/terminalContext";
 import { msg, useMessages } from "gt-react";
 import type { MessageResolver } from "~/i18n/messages";
 import { useNativeFileDrag } from "../../useNativeFileDrag";
@@ -285,14 +286,16 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
     {
       kind: "terminal",
       canRender: (record) => record.kind === "terminal",
-      render: (record, context) =>
-        record.kind === "terminal" ? (
+      render: (record, context) => {
+        if (record.kind !== "terminal") return <UnavailableUserMessageContextChip {...context} />;
+        const label = terminalContextDisplayLabel(record, context.m);
+        return (
           <span data-markdown-copy={context.copyMarkdown}>
             <ContextPreviewHover
               kind="terminal"
-              accessibleLabel={context.m(msg("Terminal excerpt, {label}", { label: record.label }))}
+              accessibleLabel={context.m(msg("Terminal excerpt, {label}", { label }))}
               preview={{
-                label: record.label,
+                label,
                 terminalLabel: record.terminalLabel,
                 lineStart: record.lineStart,
                 lineEnd: record.lineEnd,
@@ -302,16 +305,15 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
               }}
               trigger={
                 <TerminalChipTrigger
-                  label={record.label}
+                  label={label}
                   expired={false}
                   copyMarkdown={context.copyMarkdown}
                 />
               }
             />
           </span>
-        ) : (
-          <UnavailableUserMessageContextChip {...context} />
-        ),
+        );
+      },
     },
     previewChip("element", (record, context) =>
       record.kind === "element"

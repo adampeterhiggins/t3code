@@ -12,7 +12,16 @@ import * as Schema from "effect/Schema";
 import { msg, T, useGT, useMessages, Var } from "gt-react";
 import type { MessageResolver } from "~/i18n/messages";
 import { ChevronDownIcon } from "lucide-react";
-import { use, useEffect, useState, type MouseEvent, type ReactNode, type RefObject } from "react";
+import {
+  use,
+  useEffect,
+  useImperativeHandle,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+  type Ref,
+  type RefObject,
+} from "react";
 
 import { useEnvironmentSpeechInput } from "~/speech/useEnvironmentSpeechInput";
 import { TextFieldSpeechControls } from "~/speech/useTextFieldSpeech";
@@ -170,6 +179,12 @@ function elsewhereChoices(
   };
 }
 
+/** Lets the popover finish a running dictation, instead of discarding it, when it is dismissed. */
+export type AssistantCitationCommentDictation = {
+  /** False when nothing is being dictated; otherwise `settle` gets the comment once it is transcribed. */
+  finish: (settle: (comment: string) => void) => boolean;
+};
+
 export function AssistantCitationCommentEditor({
   citation,
   inputRef,
@@ -182,6 +197,7 @@ export function AssistantCitationCommentEditor({
   onCancel,
   onDraftChange,
   destinations,
+  dictationRef,
 }: {
   citation: AssistantCitation;
   inputRef: RefObject<CitationCommentInputHandle | null>;
@@ -195,6 +211,7 @@ export function AssistantCitationCommentEditor({
   onDraftChange?: (comment: string) => void;
   onVoiceSetupOpenChange?: (open: boolean) => void;
   destinations?: AssistantCitationDestinations | undefined;
+  dictationRef?: Ref<AssistantCitationCommentDictation>;
 }) {
   const gt = useGT();
   const m = useMessages();
@@ -251,6 +268,13 @@ export function AssistantCitationCommentEditor({
     onVoiceSetupOpenChange?.(setupOpen);
     return () => onVoiceSetupOpenChange?.(false);
   }, [onVoiceSetupOpenChange, setupOpen]);
+  useImperativeHandle(dictationRef, () => ({
+    finish: (settle) => {
+      if (!speech.blocksSubmission || speech.preparing) return false;
+      speech.submitAfterDictation(settle);
+      return true;
+    },
+  }));
   const commentTooLong = comment.length > ASSISTANT_CITATION_MAX_COMMENT_LENGTH;
   const submitElsewhere = (action: CitationDestinationAction, text = comment) => {
     if (text.length <= ASSISTANT_CITATION_MAX_COMMENT_LENGTH && elsewhere)

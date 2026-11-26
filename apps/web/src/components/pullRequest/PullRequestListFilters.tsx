@@ -52,7 +52,6 @@ import {
   MenuSubTrigger,
   MenuTrigger,
 } from "../ui/menu";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   pullRequestAuthorChoices,
   selectedPullRequestAuthor,
@@ -66,6 +65,7 @@ import { MenuChoiceLabel } from "../MenuChoiceLabel";
 import { resolveFilterOptions } from "./pullRequestListOptions";
 import { PullRequestActorAvatar } from "./pullRequestPresentation";
 import { PullRequestGlyph } from "./pullRequestIcons";
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 
 export interface PullRequestFilterOption<Value extends string> {
   readonly value: Value;
@@ -287,12 +287,7 @@ function PullRequestFilterRadioGroup<Value extends string>({
           </MenuRadioItem>
         );
         if (!option.unavailable) return item;
-        return (
-          <Tooltip key={option.value}>
-            <TooltipTrigger render={item} />
-            <TooltipPopup side="top">{option.unavailable}</TooltipPopup>
-          </Tooltip>
-        );
+        return <SharedTooltipTrigger key={option.value} render={item} label={option.unavailable} />;
       })}
     </MenuRadioGroup>
   );

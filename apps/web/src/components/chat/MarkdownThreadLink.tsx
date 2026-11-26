@@ -24,7 +24,7 @@ import { orchestrationEnvironment } from "../../state/orchestration";
 import { useEnvironmentQuery } from "../../state/query";
 import { ContextChip, ContextChipLabel } from "../ContextChip";
 import { UnresolvedChip } from "../contextChipParts";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { useSideChatThreadLinkClick } from "../../lib/sideChatPane";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { ContextPreviewHover } from "../contextPreviewRegistry";
@@ -102,43 +102,39 @@ export function MarkdownThreadLink(props: {
     const knownTitle = props.label ?? written?.title ?? null;
     const title = knownTitle ?? gt("Thread on {label}", { label: linkedLabel });
     return (
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <ContextChip
-              kind="thread"
-              render={
-                <button
-                  type="button"
-                  {...trigger(
-                    (intent) =>
-                      openLinkedThreadRead({
-                        panelRef,
-                        target: {
-                          viaEnvironmentId: props.environmentId,
-                          ...writtenRef,
-                          label: linkedLabel,
-                          title: knownTitle,
-                        },
-                        intent,
-                        navigate,
-                      }),
-                    // Outside a thread there is no panel to read it in.
-                    { panel: panelRef !== null },
-                  )}
-                />
-              }
-              aria-label={gt("Thread, {title}", { title })}
-            >
-              <MessagesSquareIcon />
-              <ContextChipLabel>{title}</ContextChipLabel>
-            </ContextChip>
-          }
-        />
-        <TooltipPopup side="top">
-          {gt("Read the thread on {label}", { label: linkedLabel })}
-        </TooltipPopup>
-      </Tooltip>
+      <SharedTooltipTrigger
+        render={
+          <ContextChip
+            kind="thread"
+            render={
+              <button
+                type="button"
+                {...trigger(
+                  (intent) =>
+                    openLinkedThreadRead({
+                      panelRef,
+                      target: {
+                        viaEnvironmentId: props.environmentId,
+                        ...writtenRef,
+                        label: linkedLabel,
+                        title: knownTitle,
+                      },
+                      intent,
+                      navigate,
+                    }),
+                  // Outside a thread there is no panel to read it in.
+                  { panel: panelRef !== null },
+                )}
+              />
+            }
+            aria-label={gt("Thread, {title}", { title })}
+          >
+            <MessagesSquareIcon />
+            <ContextChipLabel>{title}</ContextChipLabel>
+          </ContextChip>
+        }
+        label={gt("Read the thread on {label}", { label: linkedLabel })}
+      />
     );
   }
   if (missing && resolved === null) {

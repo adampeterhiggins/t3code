@@ -40,11 +40,11 @@ import { getProviderModelCapabilities, keepsUnavailableModelOptions } from "../.
 import { m, type MessageResolver } from "~/i18n/messages";
 import { cn } from "~/lib/utils";
 import { Badge } from "../ui/badge";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ComposerControl, ComposerControlIcon, type ComposerControlSize } from "./ComposerControl";
 import { focusRequestedPermission, useComposerMenuProps } from "./composerEventScope";
 import { useComposerMenuState } from "./useComposerMenuState";
 import { EffortGlyph, resolveEffortGlyph } from "./EffortGlyph";
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 
 type ProviderOptions = ReadonlyArray<ProviderOptionSelection>;
 
@@ -652,105 +652,101 @@ export const TraitsPicker = memo(function TraitsPicker({
       }}
       onOpenChangeComplete={(open) => focusRequestedPermission(open, triggerRef.current)}
     >
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <MenuTrigger
-              render={
-                <ComposerControl
-                  ref={triggerRef}
-                  disabled={disabled}
-                  aria-label={triggerDescription}
-                  data-composer-shortcut={
-                    isComposerOwned && !isStandalone
-                      ? extraMenuOwnsModeShortcut
-                        ? "composer.effort composer.mode"
-                        : "composer.effort"
-                      : undefined
-                  }
-                  size={size}
-                  className={cn(
-                    isCodexStyle
-                      ? "min-w-0 max-w-40 shrink justify-start overflow-hidden whitespace-nowrap sm:max-w-48"
-                      : "shrink-0 whitespace-nowrap",
-                    triggerClassName,
-                    // Effort reads on from the model name, "Opus 5.5 High", at about the space
-                    // inside the name: this cancels the model chip's end padding and the row gap.
-                    isComposerOwned && (effortWord !== null ? "-ms-1 ps-0" : "-ms-1 ps-0.5"),
-                    // The word is muted next to the model name and brightens like it on hover.
-                    effortWord !== null &&
-                      "text-muted-foreground hover:text-foreground data-pressed:text-foreground data-popup-open:text-foreground",
-                  )}
-                />
-              }
-            />
-          }
-        >
-          {effortGlyph ? (
-            <span className="flex items-center gap-1.5">
-              {effortWord === null ? (
-                <EffortGlyph count={effortGlyph.count} filled={effortGlyph.filled} size={size} />
-              ) : null}
-              {effortWord !== null ? (
-                <>
-                  <span data-composer-control-label>{effortWord}</span>
-                  {/* Icon-only footers hide labels and reveal this instead. */}
-                  <GaugeIcon
-                    aria-hidden="true"
-                    data-composer-control-compact-icon
-                    className="invisible absolute size-3.5"
-                  />
-                </>
-              ) : (
-                <span data-composer-control-label className="sr-only">
-                  {triggerLabel}
-                </span>
-              )}
-              {speedLabel === "Fast" || speedLabel === "Ultrafast" ? (
-                <FastBolt ultra={speedLabel === "Ultrafast"} />
-              ) : null}
-              {otherLabels.length > 0 ? (
-                <span
-                  aria-hidden="true"
-                  // A label, so icon-only footers drop it; compacted rows drop it before the model.
-                  data-composer-control-label
-                  data-composer-secondary-trait
-                  className="max-w-24 truncate text-xs"
-                >
-                  {otherLabels.join(" · ")}
-                </span>
-              ) : null}
-            </span>
-          ) : effortWord !== null ? (
-            <>
-              <span data-composer-control-label>{effortWord}</span>
-              <GaugeIcon
-                aria-hidden="true"
-                data-composer-control-compact-icon
-                className="invisible absolute size-3.5"
+      <SharedTooltipTrigger
+        render={
+          <MenuTrigger
+            render={
+              <ComposerControl
+                ref={triggerRef}
+                disabled={disabled}
+                aria-label={triggerDescription}
+                data-composer-shortcut={
+                  isComposerOwned && !isStandalone
+                    ? extraMenuOwnsModeShortcut
+                      ? "composer.effort composer.mode"
+                      : "composer.effort"
+                    : undefined
+                }
+                size={size}
+                className={cn(
+                  isCodexStyle
+                    ? "min-w-0 max-w-40 shrink justify-start overflow-hidden whitespace-nowrap sm:max-w-48"
+                    : "shrink-0 whitespace-nowrap",
+                  triggerClassName,
+                  // Effort reads on from the model name, "Opus 5.5 High", at about the space
+                  // inside the name: this cancels the model chip's end padding and the row gap.
+                  isComposerOwned && (effortWord !== null ? "-ms-1 ps-0" : "-ms-1 ps-0.5"),
+                  // The word is muted next to the model name and brightens like it on hover.
+                  effortWord !== null &&
+                    "text-muted-foreground hover:text-foreground data-pressed:text-foreground data-popup-open:text-foreground",
+                )}
               />
-            </>
-          ) : isCodexStyle ? (
-            <span
-              className={cn(
-                "flex min-w-0 w-full items-center",
-                size === "xs" ? "gap-1" : "gap-1.5",
-              )}
-            >
-              <ComposerControlIcon icon={GaugeIcon} size={size} />
-              <span data-composer-control-label className="min-w-0 truncate">
+            }
+          />
+        }
+        label={triggerDescription}
+        side="top"
+      >
+        {effortGlyph ? (
+          <span className="flex items-center gap-1.5">
+            {effortWord === null ? (
+              <EffortGlyph count={effortGlyph.count} filled={effortGlyph.filled} size={size} />
+            ) : null}
+            {effortWord !== null ? (
+              <>
+                <span data-composer-control-label>{effortWord}</span>
+                {/* Icon-only footers hide labels and reveal this instead. */}
+                <GaugeIcon
+                  aria-hidden="true"
+                  data-composer-control-compact-icon
+                  className="invisible absolute size-3.5"
+                />
+              </>
+            ) : (
+              <span data-composer-control-label className="sr-only">
                 {triggerLabel}
               </span>
+            )}
+            {speedLabel === "Fast" || speedLabel === "Ultrafast" ? (
+              <FastBolt ultra={speedLabel === "Ultrafast"} />
+            ) : null}
+            {otherLabels.length > 0 ? (
+              <span
+                aria-hidden="true"
+                // A label, so icon-only footers drop it; compacted rows drop it before the model.
+                data-composer-control-label
+                data-composer-secondary-trait
+                className="max-w-24 truncate text-xs"
+              >
+                {otherLabels.join(" · ")}
+              </span>
+            ) : null}
+          </span>
+        ) : effortWord !== null ? (
+          <>
+            <span data-composer-control-label>{effortWord}</span>
+            <GaugeIcon
+              aria-hidden="true"
+              data-composer-control-compact-icon
+              className="invisible absolute size-3.5"
+            />
+          </>
+        ) : isCodexStyle ? (
+          <span
+            className={cn("flex min-w-0 w-full items-center", size === "xs" ? "gap-1" : "gap-1.5")}
+          >
+            <ComposerControlIcon icon={GaugeIcon} size={size} />
+            <span data-composer-control-label className="min-w-0 truncate">
+              {triggerLabel}
             </span>
-          ) : (
-            <>
-              <ComposerControlIcon icon={GaugeIcon} size={size} />
-              <span data-composer-control-label>{triggerLabel}</span>
-            </>
-          )}
-        </TooltipTrigger>
-        <TooltipPopup side="top">{triggerDescription}</TooltipPopup>
-      </Tooltip>
+          </span>
+        ) : (
+          <>
+            <ComposerControlIcon icon={GaugeIcon} size={size} />
+            <span data-composer-control-label>{triggerLabel}</span>
+          </>
+        )}
+      </SharedTooltipTrigger>
       <MenuPopup align="start" {...(isComposerOwned ? composerFloatingLayerProps : {})}>
         <TraitsMenuContent
           provider={provider}

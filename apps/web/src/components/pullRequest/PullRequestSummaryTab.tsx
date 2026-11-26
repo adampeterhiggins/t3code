@@ -119,6 +119,7 @@ import { usePullRequestLinkClick } from "./PullRequestMarkdownContext";
 import { sectionCollapseAnchorScrollTop } from "./pullRequestSummaryScroll.logic";
 
 import { changeRequestTermKind } from "./changeRequestTerm";
+import { WorkflowRunsAbout } from "../workflows/WorkflowRunsAbout";
 
 function reviewerKey(login: string): string {
   return login.toLowerCase();
@@ -127,12 +128,14 @@ function reviewerKey(login: string): string {
 function CommentIdentity({
   comment,
   detail,
+  threadRef,
 }: {
   comment: PullRequestComment;
   detail: PullRequestDetailView;
+  threadRef: ScopedThreadRef | null;
 }) {
   const gt = useGT();
-  const onLinkClick = usePullRequestLinkClick();
+  const onLinkClick = usePullRequestLinkClick(threadRef);
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const actor = comment.author;
   const commentUrl = comment.url;
@@ -141,7 +144,12 @@ function CommentIdentity({
     : null;
   return (
     <h2 className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-1 text-xs">
-      <PullRequestActorLabel actor={actor} profileUrl={profileUrl} className="max-w-full" />
+      <PullRequestActorLabel
+        actor={actor}
+        profileUrl={profileUrl}
+        threadRef={threadRef}
+        className="max-w-full"
+      />
       <SharedTooltipTrigger
         render={
           commentUrl ? (
@@ -149,8 +157,8 @@ function CommentIdentity({
               href={commentUrl}
               target="_blank"
               rel="noopener noreferrer"
-              onClick={(event) => onLinkClick(event, commentUrl)}
               className="text-muted-foreground hover:text-foreground hover:underline"
+              onClick={(event) => onLinkClick(event, commentUrl)}
             />
           ) : (
             <span className="text-muted-foreground" />
@@ -353,7 +361,7 @@ function CollapsedComment({
       <article className="group rounded-lg border border-border/60 [contain-intrinsic-block-size:44px] [content-visibility:auto]">
         <div className="p-3">
           <div className="flex flex-wrap items-baseline gap-2">
-            <CommentIdentity comment={comment} detail={detail} />
+            <CommentIdentity comment={comment} detail={detail} threadRef={editing.threadRef} />
             {replyCount > 0 ? (
               <span className="shrink-0 py-1 text-xs text-muted-foreground">
                 {gt("{count, plural, one {{count} reply} other {{count} replies}}", {
@@ -517,7 +525,11 @@ function ReviewThreadEntry({
                   return (
                     <div key={comment.id} className="group px-3 py-2.5">
                       <div className="flex flex-wrap items-center gap-2">
-                        <CommentIdentity comment={comment} detail={detail} />
+                        <CommentIdentity
+                          comment={comment}
+                          detail={detail}
+                          threadRef={editing.threadRef}
+                        />
                         <PullRequestReactionBar
                           className="ml-auto justify-end"
                           reactions={comment.reactions ?? []}
@@ -534,7 +546,9 @@ function ReviewThreadEntry({
                     </div>
                   );
                 })}
-                {entry.hasMoreReplies ? <PullRequestMoreReplies {...entry} /> : null}
+                {entry.hasMoreReplies ? (
+                  <PullRequestMoreReplies {...entry} threadRef={editing.threadRef} />
+                ) : null}
               </div>
               {canReply || canResolve ? (
                 <div className="border-t border-border/60 px-3 py-2">
@@ -1094,7 +1108,7 @@ export const PullRequestSummaryTab = memo(function PullRequestSummaryTab({
       >
         <div className="flex flex-wrap items-baseline gap-2 rounded-t-lg bg-muted/25 px-3 py-2.5">
           <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-2 text-xs text-muted-foreground">
-            <CommentIdentity comment={comment} detail={detail} />
+            <CommentIdentity comment={comment} detail={detail} threadRef={threadRef} />
             {outcome ? (
               <PullRequestReviewOutcomeBadge outcome={outcome} />
             ) : comment.reviewState ? (
@@ -1335,6 +1349,20 @@ export const PullRequestSummaryTab = memo(function PullRequestSummaryTab({
             </PullRequestMetaRow>
           ) : null}
         </div>
+        <WorkflowRunsAbout
+          environmentId={environmentId}
+          item={{
+            subject: detail.url,
+            pullRequest: {
+              projectId: reference.projectId,
+              repository: reference.repository,
+              number: reference.number,
+              host:
+                reference.host ??
+                (URL.canParse(detail.url) ? new URL(detail.url).hostname : undefined),
+            },
+          }}
+        />
       </section>
 
       <PullRequestSection

@@ -33,7 +33,7 @@ import {
   type SubagentPreviewProps,
 } from "./contextPreviews";
 import { LinkedObjectDetails } from "./linkedObjectPresentation";
-import { ThreadHoverCardPopup, ThreadPreview, type ThreadPreviewProps } from "./ThreadHoverCard";
+import { ThreadHoverCardTrigger, ThreadPreview, type ThreadPreviewProps } from "./ThreadHoverCard";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "./ui/preview-card";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
@@ -102,8 +102,6 @@ export type ContextPreview<TPreview> =
       details: "tooltip";
       Body: ComponentType<TPreview>;
       variant?: ComponentProps<typeof TooltipPopup>["variant"];
-      /** A popup of the kind's own, in place of the plain tooltip. */
-      Popup?: ComponentType<ComponentProps<typeof TooltipPopup>>;
     }
   | {
       details: "popover";
@@ -189,7 +187,7 @@ export const CONTEXT_PRESENTATION_DEFINITIONS: ContextPresentationDefinitions = 
   skill: { capabilities: COMPACT, preview: { details: "popover", Body: SkillPreview } },
   thread: {
     capabilities: COMPACT,
-    preview: { details: "tooltip", Body: ThreadPreview, Popup: ThreadHoverCardPopup },
+    preview: { details: "tooltip", Body: ThreadPreview },
   },
   "thread-tab": {
     capabilities: COMPACT,
@@ -299,23 +297,26 @@ export function ContextPreviewHover<K extends KnownComposerContextKind>(
       return props.trigger;
     case "tooltip": {
       const Body = spec.Body;
-      const Popup = spec.Popup;
+      if (props.kind === "thread") {
+        return (
+          <ThreadHoverCardTrigger
+            {...placement}
+            render={props.trigger}
+            disabled={props.disabled}
+            card={<Body {...props.preview} />}
+          />
+        );
+      }
       return (
         <Tooltip disabled={props.disabled}>
           <TooltipTrigger render={props.trigger} />
-          {Popup ? (
-            <Popup {...placement}>
-              <Body {...props.preview} />
-            </Popup>
-          ) : (
-            <TooltipPopup
-              {...placement}
-              {...(spec.variant ? { variant: spec.variant } : {})}
-              className={props.kind === "mention" ? "pointer-events-auto" : "whitespace-pre-wrap"}
-            >
-              <Body {...props.preview} />
-            </TooltipPopup>
-          )}
+          <TooltipPopup
+            {...placement}
+            {...(spec.variant ? { variant: spec.variant } : {})}
+            className={props.kind === "mention" ? "pointer-events-auto" : "whitespace-pre-wrap"}
+          >
+            <Body {...props.preview} />
+          </TooltipPopup>
         </Tooltip>
       );
     }
