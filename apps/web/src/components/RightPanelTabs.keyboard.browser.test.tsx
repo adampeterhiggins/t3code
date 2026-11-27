@@ -40,6 +40,7 @@ function panel(addFiles: () => void, overrides: PanelProps) {
       terminalLabelsById={new Map()}
       onActivate={noop}
       onCloseSurface={noop}
+      onCloseSelectedSurfaces={noop}
       onCloseOtherSurfaces={noop}
       onCloseSurfacesToRight={noop}
       onCloseAllSurfaces={noop}

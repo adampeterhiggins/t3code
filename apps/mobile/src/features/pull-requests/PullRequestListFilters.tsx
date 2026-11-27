@@ -11,6 +11,9 @@ import { environmentProjects } from "../../state/projects";
 import { environmentThreadShells } from "../../state/threads";
 import {
   DEFAULT_PR_LIST_CONTROLS,
+  distinctIgnoringCase,
+  includesIgnoringCase,
+  toggledPullRequestLabels,
   type PullRequestListControls,
   type PullRequestListFacets,
 } from "./pullRequestList";
@@ -152,8 +155,7 @@ export function usePullRequestListFilters(props: {
   const { value, facets } = props;
   const m = useMessages();
   const projects = useProjectsInSidebarOrder(props.projects);
-  const selectedLabels = value.filters.labels?.flat() ?? [];
-  const selectedLabelSet = new Set(selectedLabels);
+  const selectedLabels = distinctIgnoringCase(value.filters.labels?.flat() ?? []);
   const author = value.filters.author;
   const select = (event: string) => {
     let selection: unknown;
@@ -202,9 +204,7 @@ export function usePullRequestListFilters(props: {
         break;
       }
       case "label": {
-        const labels = selectedLabels.includes(next)
-          ? selectedLabels.filter((label) => label !== next)
-          : [...selectedLabels, next].slice(0, 10);
+        const labels = toggledPullRequestLabels(selectedLabels, next);
         props.onChange({
           ...value,
           filters: {
@@ -360,7 +360,9 @@ export function usePullRequestListFilters(props: {
       return {
         id: id("label", label.value),
         title: counted(label.value, label.count),
-        state: selectedLabelSet.has(label.value) ? ("on" as const) : ("off" as const),
+        state: includesIgnoringCase(selectedLabels, label.value)
+          ? ("on" as const)
+          : ("off" as const),
         ...(color ? { image: "circle.fill", imageColor: color } : {}),
       };
     }),
@@ -378,7 +380,8 @@ export function usePullRequestListFilters(props: {
     ...authors.map((login) => ({
       id: id("author", login.value),
       title: counted(login.value, login.count),
-      state: login.value === author ? ("on" as const) : ("off" as const),
+      state:
+        author?.toLowerCase() === login.value.toLowerCase() ? ("on" as const) : ("off" as const),
     })),
   ];
   const customized = count > 0 || value.sort !== "updated" || props.environmentId !== null;

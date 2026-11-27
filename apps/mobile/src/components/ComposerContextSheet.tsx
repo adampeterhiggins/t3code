@@ -18,7 +18,6 @@ import { changeRequestTermKind } from "../lib/changeRequestTerm";
 import { videoMimeType } from "@t3tools/shared/video";
 import { Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { REVIEW_MONO_FONT_FAMILY } from "../features/review/reviewDiffRendering";
 import { ReviewCommentCard, useReviewCommentColors } from "../features/review/ReviewCommentCard";
 import {
   composerAttachmentInlineUri,
@@ -74,6 +73,7 @@ const THREAD_TAB_SUMMARY_ROLE_LABELS = {
 function ThreadTabSummaryFields(props: { summary: string }) {
   const gt = useGT();
   const m = useMessages();
+  const { monoFontFamily } = useAppearancePreferences();
   const chats = (() => parseThreadTabSummary(props.summary))();
   if (chats === null) return <ContextField label={gt("Summary")} value={props.summary} />;
   return chats.map((chat, chatIndex) => {
@@ -139,7 +139,7 @@ function ThreadTabSummaryFields(props: { summary: string }) {
                         ? "text-sm text-danger-foreground"
                         : "text-sm text-foreground-muted"
                     }
-                    style={{ fontFamily: REVIEW_MONO_FONT_FAMILY }}
+                    style={{ fontFamily: monoFontFamily }}
                   >
                     {tool.failed ? gt("{label} (failed)", { label: tool.label }) : tool.label}
                   </Text>
@@ -192,8 +192,7 @@ function ContextField(props: {
       ) : (
         <Text
           selectable
-          className={props.code ? "text-sm text-foreground" : "text-base text-foreground"}
-          style={props.code ? { fontFamily: REVIEW_MONO_FONT_FAMILY } : undefined}
+          className={props.code ? "font-mono text-sm text-foreground" : "text-base text-foreground"}
         >
           {props.value}
         </Text>
@@ -383,9 +382,8 @@ export function ComposerContextSheet(props: {
                 >
                   <Text
                     selectable
-                    className="text-sm text-foreground"
+                    className="font-mono text-sm text-foreground"
                     style={{
-                      fontFamily: REVIEW_MONO_FONT_FAMILY,
                       fontSize: 13,
                       lineHeight: 20,
                       color: terminalTheme.foreground,

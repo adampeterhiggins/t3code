@@ -5,6 +5,7 @@ import { markdownTree } from "~/markdown/wordsHast";
 // Elements whose children run together; every other element is separated by a space.
 const INLINE_PARENTS = new Set([
   "p",
+  "li",
   "h1",
   "h2",
   "h3",

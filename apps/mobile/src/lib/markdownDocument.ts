@@ -31,16 +31,22 @@ interface MarkdownEdit {
   readonly content: string;
 }
 
+/** remark-parse omits one initial BOM from its source offsets, so they index the text after it. */
+export function splitLeadingBom(markdown: string): readonly [bom: string, source: string] {
+  return markdown.startsWith("\uFEFF") ? ["\uFEFF", markdown.slice(1)] : ["", markdown];
+}
+
 function applyMarkdownEdits(markdown: string, edits: MarkdownEdit[]): string {
   if (edits.length === 0) return markdown;
-  const parts: string[] = [];
+  const [bom, source] = splitLeadingBom(markdown);
+  const parts: string[] = [bom];
   let offset = 0;
   // AST traversal emits disjoint edits in source order.
   for (const edit of edits) {
-    parts.push(markdown.slice(offset, edit.start), edit.content);
+    parts.push(source.slice(offset, edit.start), edit.content);
     offset = edit.end;
   }
-  parts.push(markdown.slice(offset));
+  parts.push(source.slice(offset));
   return parts.join("");
 }
 
@@ -301,6 +307,7 @@ function htmlTagMarkdown(
 
 export function markdownWithHtml(markdown: string, appearance: "light" | "dark" = "light"): string {
   if (!/<(?:!--|\/?[a-z])/i.test(markdown)) return markdown;
+  const [, source] = splitLeadingBom(markdown);
   const edits: Array<{ start: number; end: number; content: string }> = [];
   const visit = (node: MarkdownNode, inTableCell: boolean, inLink: boolean) => {
     if (!("children" in node)) return;
@@ -350,8 +357,8 @@ export function markdownWithHtml(markdown: string, appearance: "light" | "dark" 
       const linkLabel = inLink || (anchors?.open ?? 0) > 0;
       if (child.type === "text") {
         if (linkLabel && start !== undefined && end !== undefined) {
-          const content = escapeLinkLabel(markdown.slice(start, end));
-          if (content !== markdown.slice(start, end)) edits.push({ start, end, content });
+          const content = escapeLinkLabel(source.slice(start, end));
+          if (content !== source.slice(start, end)) edits.push({ start, end, content });
         }
         continue;
       }
@@ -362,7 +369,7 @@ export function markdownWithHtml(markdown: string, appearance: "light" | "dark" 
       const content = markdownHtmlContent(child.value, { anchors, inTableCell, appearance });
       if (start === undefined || end === undefined) continue;
       // Text before an outermost link is never edited, so this edit cannot overlap another.
-      if (content.startsWith("[") && !linkLabel && bangBefore(markdown, start))
+      if (content.startsWith("[") && !linkLabel && bangBefore(source, start))
         edits.push({ start: start - 1, end: start, content: "\\!" });
       edits.push({ start, end, content });
     }
@@ -483,13 +490,14 @@ export function markdownReferenceDefinitions(markdown: string): string[] {
   if (!markdown.includes("]:")) return [];
   // Flattened as the renderer does it: a raw HTML block hides the definitions inside it.
   const flattened = markdownWithHtml(markdown);
+  const [, source] = splitLeadingBom(flattened);
   const definitions: string[] = [];
   const visit = (node: MarkdownNode, quotes: number) => {
     if (node.type === "definition") {
       // A wrapped definition drops its indent and the enclosing quotes' markers, not a literal ">".
       const wrap = new RegExp(`(?:\\r\\n|\\r|\\n)(?:[ \\t]*>){0,${quotes}}[ \\t]*`, "g");
       definitions.push(
-        flattened.slice(node.position?.start.offset, node.position?.end.offset).replace(wrap, " "),
+        source.slice(node.position?.start.offset, node.position?.end.offset).replace(wrap, " "),
       );
     }
     if (!("children" in node)) return;
@@ -545,6 +553,7 @@ function transformNativeMarkdown(
   }
   const linkProseFiles = fileLink !== undefined && absoluteFilePathMatches(markdown).length > 0;
   if (!linkFiles && !linkProseFiles && !breakTables) return markdown;
+  const [, source] = splitLeadingBom(markdown);
   const edits: MarkdownEdit[] = [];
   const fileEdits: MarkdownEdit[] = [];
   let rewritesPipe = false;
@@ -576,7 +585,7 @@ function transformNativeMarkdown(
       node.position?.start.offset !== undefined
     ) {
       const start = node.position.start.offset;
-      const raw = markdown.slice(start, node.position.end.offset);
+      const raw = source.slice(start, node.position.end.offset);
       for (const { index, path } of absoluteFilePathMatches(raw)) {
         // Source offsets stay valid for paths whose own text needs no Markdown decoding.
         if (raw !== node.value && /[\\&]/.test(path)) continue;
@@ -601,10 +610,10 @@ function transformNativeMarkdown(
           previous.position?.end.line === start.line - 1
         ) {
           let lineStart = start.offset;
-          while (lineStart > 0 && !/[\r\n]/.test(markdown[lineStart - 1]!)) lineStart -= 1;
+          while (lineStart > 0 && !/[\r\n]/.test(source[lineStart - 1]!)) lineStart -= 1;
           // Replace only the container prefix, leaving cell edits disjoint from the table break.
           const [, header = "", , ending = "\n", markers = ""] =
-            /^([ \t>]*)([^\r\n]*)(\r\n|\r|\n)([ \t>]*)/.exec(markdown.slice(lineStart)) ?? [];
+            /^([ \t>]*)([^\r\n]*)(\r\n|\r|\n)([ \t>]*)/.exec(source.slice(lineStart)) ?? [];
           edits.push({
             start: lineStart,
             end: lineStart + header.length,
@@ -662,6 +671,7 @@ interface DestinationToken {
 function markdownWithWindowsPathDestinations(markdown: string): string {
   // Skips the extra parse for the common message that has no Windows destination.
   if (!WINDOWS_DESTINATION.test(markdown)) return markdown;
+  const [, source] = splitLeadingBom(markdown);
   const edits: MarkdownEdit[] = [];
   function record(
     this: { resume(): string; sliceSerialize(token: DestinationToken): string },
@@ -675,7 +685,7 @@ function markdownWithWindowsPathDestinations(markdown: string): string {
     const end = token.end.offset;
     const escaped = authored.replace(/\\(?!&)/g, "\\\\");
     // A bare destination ends at an unescaped `)`, so wrap it to keep `\)` inside.
-    const angled = markdown[start - 1] === "<";
+    const angled = source[start - 1] === "<";
     edits.push({ start, end, content: angled ? escaped : `<${escaped}>` });
   }
   unified()
@@ -703,6 +713,7 @@ const isSpace = (node: MarkdownNode) =>
  */
 function markdownWithImageParagraphs(markdown: string): string {
   if (!markdown.includes("![")) return markdown;
+  const [, source] = splitLeadingBom(markdown);
   const edits = new Map<number, MarkdownEdit>();
   const split = (start: number, gap: string) => {
     const ending = /\r\n?|\n/.exec(gap)?.[0] ?? "\n";
@@ -722,8 +733,8 @@ function markdownWithImageParagraphs(markdown: string): string {
       const start = child.position?.start.offset;
       const end = child.position?.end.offset;
       if (!isImage(child) || start === undefined || end === undefined) return;
-      const before = markdown.slice(blockStart, start);
-      const after = markdown.slice(end, blockEnd);
+      const before = source.slice(blockStart, start);
+      const after = source.slice(end, blockEnd);
       const ownsLine = /(?:^|\r|\n)[ \t]*$/.test(before) && /^[ \t]*\\?(?:\r\n?|\n|$)/.test(after);
       if (before.trim() && (ownsLine || (trailingStart !== undefined && index >= trailingStart))) {
         const gap = /[ \t]*(?:\\?(?:\r\n?|\n)[ \t]*)?$/.exec(before)![0];
@@ -806,14 +817,7 @@ export function markdownWithFileEmbeds(
       );
   };
   visit(root);
-  const parts: string[] = [];
-  let offset = 0;
-  for (const edit of edits) {
-    parts.push(markdown.slice(offset, edit.start), edit.content);
-    offset = edit.end;
-  }
-  parts.push(markdown.slice(offset));
-  return { markdown: parts.join(""), fileHrefs };
+  return { markdown: applyMarkdownEdits(markdown, edits), fileHrefs };
 }
 
 const DIRECTION_MARK = { ltr: "‎", rtl: "‏" } as const;
@@ -855,7 +859,13 @@ function firstLeafOffset(node: MarkdownNode): number | undefined {
  * paragraph whose first letter disagrees gets a direction mark that the renderer reads first.
  */
 export function markdownWithTextDirection(markdown: string): string {
-  if (!hasRightToLeftLetter(markdown)) return markdown;
+  // The parser decodes numeric character references, which can spell right-to-left letters.
+  if (
+    !hasRightToLeftLetter(markdown) &&
+    !(markdown.includes("&#") && hasRightToLeftLetter(decodeHtmlEntities(markdown)))
+  ) {
+    return markdown;
+  }
   const edits: MarkdownEdit[] = [];
   for (const block of parser.parse(markdown).children) {
     if (block.type === "code" || block.type === "html") continue;

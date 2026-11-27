@@ -188,12 +188,10 @@ where you can also hide single accounts from both), show the percent left instea
 reset time and provider names on or off. Under each provider, **Limit** picks which of its limits the bar shows, such as Claude's Session and Weekly; it shows the busiest one unless you choose. If you hide everything, the bar shows **Usage** so you
 can open the panel and turn them back on.
 
-OpenCode Go reports its session, weekly, and monthly allowance when OpenCode runs locally in
-the environment. T3 cannot report limits for external OpenCode servers because their credentials
-belong to the remote server. Limits need an OpenCode Go API key, or an OpenCode Console connected
-in OpenCode with an API key. A Console browser sign-in alone does not report them. You can also add
-your Go API key as `OPENCODE_API_KEY` in the OpenCode instance's **Environment variables**, then
-refresh provider status. Cursor reports
+OpenCode 2 servers with usage reporting show Go allowances and Console budgets for the
+connected workspace. A local server can also report Go allowances using an OpenCode Go API
+key. Set `OPENCODE_API_KEY` in the OpenCode instance's **Environment variables**, then refresh
+provider status. A Console browser sign-in alone does not report allowances. Cursor reports
 its monthly allowance, including separate Auto and API usage, for each account using `CURSOR_AUTH_TOKEN` when set, then its own T3 sign-in or
 `CURSOR_API_KEY`, then its CLI login. On macOS, this includes the default Keychain login after you enable Cursor
 usage. Sign-in, API key, and Keychain login report limits only with Cursor's default API endpoint. If you configure
@@ -208,6 +206,9 @@ Until then it shows no limits. Readings are not kept across a server restart.
 
 API-key accounts may not report subscription limits. This also applies to Claude connections
 using a proxy through `ANTHROPIC_AUTH_TOKEN`.
+
+On iOS or Android, add the **Subscription usage** widget to see Codex and Claude quotas
+from your home screen.
 
 ## Stop at subscription limits
 
