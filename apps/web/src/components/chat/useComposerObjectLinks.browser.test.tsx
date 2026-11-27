@@ -144,6 +144,7 @@ describe("composer link conversion", () => {
       focus: vi.fn(),
       focusAt: vi.fn(),
       focusAtEnd: vi.fn(),
+      pasteAtCodeBlockEnd: () => false,
       readSelectionRange: () => ({ start: 0, end: 0 }),
       requestCitationComment: vi.fn(),
       readSnapshot: () => ({

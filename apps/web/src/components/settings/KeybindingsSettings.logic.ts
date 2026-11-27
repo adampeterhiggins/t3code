@@ -389,6 +389,7 @@ export function filterKeybindingRows(
   rows: ReadonlyArray<KeybindingRow>,
   query: string,
   resolve: MessageResolver = m,
+  platform = navigator.platform,
 ): ReadonlyArray<KeybindingRow> {
   const normalizedQuery = query.trim().toLowerCase();
   if (normalizedQuery.length === 0) return rows;
@@ -398,6 +399,8 @@ export function filterKeybindingRows(
       commandLabel(row.command, resolve).toLowerCase().includes(normalizedQuery) ||
       (row.command === "thread.copyReference" && "thread id".includes(normalizedQuery)) ||
       row.key.toLowerCase().includes(normalizedQuery) ||
+      // The row shows the platform label ("Ctrl+K"), not the stored "mod+k".
+      formatShortcutLabel(row.binding.shortcut, platform).toLowerCase().includes(normalizedQuery) ||
       row.when.toLowerCase().includes(normalizedQuery) ||
       row.source.toLowerCase().includes(normalizedQuery)
     );
@@ -475,6 +478,9 @@ const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "thread.editQueuedMessage": msg("Queue: Edit Last Queued Message"),
   "thread.copyReference": msg("Pull Request: Copy Link or Thread"),
   "sidebar.toggle": msg("Sidebar: Toggle"),
+  "sidebar.toggleTabs": msg("Sidebar: Toggle Tabs"),
+  "splitView.toggle": msg("Split View: Toggle"),
+  "splitView.focusOther": msg("Split View: Focus Other"),
   "navigation.back": msg("Navigation: Back"),
   "navigation.forward": msg("Navigation: Forward"),
   "terminal.toggle": msg("Terminal: Toggle"),
@@ -482,6 +488,8 @@ const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "terminal.splitVertical": msg("Terminal: Split Vertical"),
   "terminal.new": msg("Terminal: New"),
   "terminal.close": msg("Terminal: Close"),
+  "terminal.previous": msg("Terminal: Previous"),
+  "terminal.next": msg("Terminal: Next"),
   "rightPanel.toggle": msg("Right Panel: Toggle"),
   "rightPanel.new": msg("Right Panel: New"),
   "threadPanel.toggle": msg("Thread Panel: Toggle"),
@@ -491,12 +499,14 @@ const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "diff.toggle": msg("Diff: Toggle"),
   "preview.toggle": msg("Preview: Toggle"),
   "preview.refresh": msg("Preview: Refresh"),
+  "file.refresh": msg("File: Refresh"),
   "preview.zoomIn": msg("Preview: Zoom In"),
   "preview.zoomOut": msg("Preview: Zoom Out"),
   "preview.resetZoom": msg("Preview: Reset Zoom"),
   "commandPalette.toggle": msg("Command Palette: Toggle"),
   "filePicker.toggle": msg("File Picker: Toggle"),
   "projectSearch.toggle": msg("Project Search: Toggle"),
+  "attentionInbox.open": msg("Attention Inbox: Open"),
   "usage.open": msg("Usage: Toggle"),
   "theme.select": msg("Theme: Select"),
   "appearance.cycle": msg("Appearance: Cycle"),
@@ -511,7 +521,9 @@ const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "composer.workspace": msg("Composer: Workspace"),
   "composer.previousWorktree": msg("Composer: Previous Worktree"),
   "composer.branch": msg("Composer: Branch"),
+  "quickMessage.toggleWorkspaceBar": msg("Quick Message: Toggle Workspace Bar"),
   "chat.new": msg("Chat: New"),
+  "chat.startFrom": msg("Chat: Start From"),
   "chat.newLocal": msg("Chat: New Local"),
   "chat.newWithoutProject": msg("Chat: New Without Project"),
   "chat.find": msg("Chat: Find"),
@@ -526,6 +538,7 @@ const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "thread.pin": msg("Thread: Pin"),
   "thread.regenerateTitle": msg("Thread: Regenerate Title"),
   "thread.undo": msg("Thread: Undo"),
+  "thread.runScheduledTask": msg("Thread: Run Scheduled Task"),
 };
 
 // Whole labels: search titles keep the encoded message, which cannot nest another one.

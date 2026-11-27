@@ -6,7 +6,7 @@ import type {
   PullRequestRef,
   ScopedThreadRef,
 } from "@t3tools/contracts";
-import { T, useMessages } from "gt-react";
+import { T, useMessages, Var } from "gt-react";
 import { parsePullRequestAnchor, pullRequestLinkCommit } from "@t3tools/shared/pullRequestAnchor";
 import {
   cloneElement,
@@ -149,6 +149,7 @@ export function PullRequestLinkPreview({
 
   const linkedComment =
     activityQuery.data === null ? null : findPullRequestComment(activityQuery.data, originalUrl);
+  const createdAt = preview === null ? null : <RelativeTime timestamp={preview.createdAt} />;
 
   return (
     <PreviewCard
@@ -217,10 +218,16 @@ export function PullRequestLinkPreview({
                   <div className="mt-2 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
                     <PullRequestActorAvatar actor={card.author ?? null} className="size-4" />
                     <span className="min-w-0 truncate">{actorLabel(card.author ?? null)}</span>
-                    <span aria-hidden>·</span>
-                    <span className="shrink-0">
-                      opened {preview ? <RelativeTime timestamp={preview.createdAt} /> : null}
-                    </span>
+                    {createdAt === null ? null : (
+                      <>
+                        <span aria-hidden>·</span>
+                        <span className="shrink-0">
+                          <T>
+                            opened <Var>{createdAt}</Var>
+                          </T>
+                        </span>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -238,17 +245,24 @@ function LinkedComment({
   subject: Extract<ReturnType<typeof pullRequestLinkSubject>, { kind: "comment" }>;
 }) {
   const outcome = pullRequestReviewOutcome(subject.reviewState);
+  const author = (
+    <span className="min-w-0 truncate font-medium text-foreground">
+      {actorLabel(subject.author)}
+    </span>
+  );
   return (
     <div className="mt-2 min-w-0">
       <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
         <PullRequestActorAvatar actor={subject.author} className="size-4" />
-        <span className="min-w-0 truncate font-medium text-foreground">
-          {actorLabel(subject.author)}
-        </span>
         {outcome === null ? (
-          <span className="shrink-0">commented</span>
+          <T>
+            <Var>{author}</Var> <span className="shrink-0">commented</span>
+          </T>
         ) : (
-          <PullRequestReviewOutcomeBadge outcome={outcome} className="shrink-0" />
+          <>
+            {author}
+            <PullRequestReviewOutcomeBadge outcome={outcome} className="shrink-0" />
+          </>
         )}
         <span aria-hidden>·</span>
         <span className="shrink-0">

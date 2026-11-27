@@ -61,22 +61,15 @@ custom server name as GitHub once it has a credential for that host.
 ### Forgejo and Gitea
 
 Install [Forgejo CLI (`fj`)](https://codeberg.org/forgejo-contrib/forgejo-cli) or
-[Gitea CLI (`tea`)](https://gitea.com/gitea/tea) 0.16 or later on your T3 Code server.
-Sign in with `fj --host https://your-server auth add-token` or `tea login add`.
-Repeat for each server you use, including Codeberg.
+[Gitea CLI (`gt`)](https://gitea.com/gitea/cli) 2.0 or later on your T3 Code server.
+Sign in with `fj --host https://your-server auth add-token` or
+`gt auth login --host https://your-server`. If you used the archived `tea` CLI, sign in again.
 
-T3 Code prefers a matching `fj` login and falls back to `tea` when `fj` is unavailable
-or has no login for that server. Once an account is selected, failed actions stay on that
-account. Settings shows the detected CLI. Forgejo and Gitea share one integration entry.
-Servers hosted under a URL subpath, such as `https://example.com/forgejo`, use `tea` because
-fj does not preserve the subpath when checking its account.
-
-When cloning or publishing, use a full repository URL to select a specific server.
-You can use `owner/repo` when only one fj server is configured, or with your default `tea`
-login when fj is unavailable or unconfigured. With multiple fj servers, use the full URL.
-If you have multiple `tea` accounts on one server, select one with
-`tea login default <login-name>`. Git push and clone also need Git credentials or an SSH key
-for that server.
+T3 Code prefers a matching `fj` login and falls back to `gt` when needed. Use `gt` for
+servers hosted under a URL subpath. A full repository URL selects a specific server. For
+`owner/repo` shortcuts, set the default `gt` server with `gt config set default_host`.
+Use `gt auth switch <user> --host https://your-server` to choose among accounts on a server.
+Git push and clone also need Git credentials or an SSH key.
 
 ### GitLab
 
@@ -520,6 +513,11 @@ issues appear in the Linear group of the issue list, sorted with the rest by las
 each can be loaded further on its own. Agents file new issues in the first team picked unless you name another bound team. To
 connect another Linear workspace or user, add another account in the same place; each project
 reads its teams through the account you picked them under.
+
+To connect Jira Cloud, add your site, account email, and API token in **Settings → Source
+control & issues**, then bind the Jira projects you want to see. Each site can have multiple
+accounts. Jira issues follow their workflow transitions, and new issues are created as Tasks.
+Jira does not expose reactions or linked pull requests here.
 
 Select an issue to open it beside the list: description, comments, state changes, linked pull
 requests, labels, assignees, and reactions. Linked pull requests open in the same panel. You can

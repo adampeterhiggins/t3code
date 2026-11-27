@@ -359,21 +359,35 @@ export function pullRequestFilterChoices(input: {
   readonly query: string;
 }): readonly string[] {
   const needle = input.query.trim().toLowerCase();
-  const seen = new Set<string>();
-  const rows: string[] = [];
-  const add = (value: string) => {
-    const key = value.toLowerCase();
-    if (seen.has(key)) return;
-    seen.add(key);
-    rows.push(value);
-  };
   const loaded = input.suggestions.filter((value) => value.toLowerCase().includes(needle));
-  for (const value of input.selected) add(value);
-  // Loaded matches alone could fill the list, so the host's answers get room after the first half.
-  for (const value of loaded.slice(0, FILTER_CHOICE_LIMIT / 2)) add(value);
-  for (const value of input.hosted) add(value);
-  for (const value of loaded.slice(FILTER_CHOICE_LIMIT / 2)) add(value);
-  return rows.slice(0, FILTER_CHOICE_LIMIT);
+  return distinctIgnoringCase([
+    ...input.selected,
+    // Loaded matches alone could fill the list, so the host's answers get room after the first half.
+    ...loaded.slice(0, FILTER_CHOICE_LIMIT / 2),
+    ...input.hosted,
+    ...loaded.slice(FILTER_CHOICE_LIMIT / 2),
+  ]).slice(0, FILTER_CHOICE_LIMIT);
+}
+
+/** Each value once whatever its case; the first spelling wins. Hosts match labels and logins that way. */
+export function distinctIgnoringCase(values: readonly string[]) {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    const key = value.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+export const includesIgnoringCase = (values: readonly string[], value: string) =>
+  values.some((held) => held.toLowerCase() === value.toLowerCase());
+
+/** The labels picked after `label` is tapped: tapping one already picked, in any case, drops it. */
+export function toggledPullRequestLabels(selected: readonly string[], label: string) {
+  return includesIgnoringCase(selected, label)
+    ? selected.filter((held) => held.toLowerCase() !== label.toLowerCase())
+    : [...selected, label].slice(0, 10);
 }
 
 /** Each label's dot color by lowercased name; the first usable color a name carries wins. */
@@ -510,7 +524,20 @@ export function pullRequestListFacets<Entry extends ScopedPullRequestListEntry>(
     localSearchHosts,
   );
   const authored = only({ involvement: "authored" });
-  const selectedLabels = filters.labels?.flat() ?? [];
+  const selectedLabels = distinctIgnoringCase(filters.labels?.flat() ?? []);
+  const selectedAuthors = filters.author && filters.author !== "me" ? [filters.author] : [];
+  const labelSpellings = new Map(selectedLabels.map((label) => [label.toLowerCase(), label]));
+  const authorSpellings = new Map(selectedAuthors.map((author) => [author.toLowerCase(), author]));
+  for (const entry of rows) {
+    const login = entry.author?.login;
+    if (login && !authorSpellings.has(login.toLowerCase())) {
+      authorSpellings.set(login.toLowerCase(), login);
+    }
+    for (const label of entry.labels) {
+      const key = label.name.toLowerCase();
+      if (!labelSpellings.has(key)) labelSpellings.set(key, label.name);
+    }
+  }
   const facets = filterFacets(rows, {
     state: {
       values: (entry) => [ALL_CHOICE, entry.state],
@@ -534,13 +561,17 @@ export function pullRequestListFacets<Entry extends ScopedPullRequestListEntry>(
       ...(filters.review ? { matches: only({ filters: { review: filters.review } }) } : {}),
     },
     author: {
-      values: (entry) => (entry.author ? [entry.author.login] : []),
+      values: (entry) => {
+        const value = entry.author && authorSpellings.get(entry.author.login.toLowerCase());
+        return value ? [value] : [];
+      },
       // `me` is a different login on every host, so it is matched per row and never listed.
-      selected: filters.author && filters.author !== "me" ? [filters.author] : [],
+      selected: selectedAuthors,
       ...(filters.author ? { matches: only({ filters: { author: filters.author } }) } : {}),
     },
     labels: {
-      values: (entry) => entry.labels.map((label) => label.name),
+      values: (entry) =>
+        entry.labels.map((label) => labelSpellings.get(label.name.toLowerCase()) ?? label.name),
       selected: selectedLabels,
       ...(filters.labels ? { matches: only({ filters: { labels: filters.labels } }) } : {}),
     },
@@ -593,6 +624,18 @@ export function pullRequestListReviewStatus(
       tint: "accent-icon-muted",
     } as const;
   return null;
+}
+
+export function pullRequestListDiffStatsLabel(
+  entry: Pick<PullRequestListEntry, "additions" | "deletions">,
+  resolve: MessageResolver = m,
+) {
+  return resolve(
+    msg(
+      "{additions, plural, one {{additions} addition} other {{additions} additions}}, {deletions, plural, one {{deletions} deletion} other {{deletions} deletions}}",
+      { additions: entry.additions, deletions: entry.deletions },
+    ),
+  );
 }
 
 export function pullRequestLabelColor(color: string | null) {

@@ -23,7 +23,15 @@ import {
   MAX_APPEARANCE_CONTRAST,
   MIN_APPEARANCE_CONTRAST,
 } from "@t3tools/contracts/settings";
-
+import {
+  MOBILE_FONT_FAMILIES,
+  MOBILE_MONO_FONT_FAMILIES,
+  resolveMobileFontId,
+  resolveMobileMonoFontId,
+  type MobileFontFamilies,
+  type MobileFontId,
+  type MobileMonoFontId,
+} from "../../../lib/fontFamilies";
 import { appAtomRegistry } from "../../../state/atom-registry";
 import { mobilePreferencesAtom, saveMobilePreferences } from "../../../state/preferences";
 import { publishedEnvironmentThemesAtom } from "../../../state/server";
@@ -80,6 +88,12 @@ interface AppearancePreferencesContextValue {
   readonly setThemeIdForBothAppearances: (value: MobileThemeId) => void;
   readonly setThemeMode: (value: MobileThemeMode) => void;
   readonly setBaseFontSize: (value: number) => void;
+  readonly fontId: MobileFontId;
+  readonly fontFamilies: MobileFontFamilies;
+  readonly setFontId: (value: MobileFontId) => void;
+  readonly monoFontId: MobileMonoFontId;
+  readonly monoFontFamily: string;
+  readonly setMonoFontId: (value: MobileMonoFontId) => void;
   readonly setTerminalFontSize: (value: number | null) => void;
   readonly setCodeFontSize: (value: number | null) => void;
   readonly setCodeWordBreak: (value: boolean) => void;
@@ -152,6 +166,8 @@ export function resolveThemeAppearance(stored: Preferences | null): MobileThemeA
 function runtimeStateFor(stored: Preferences | null): MobileThemeRuntimeState {
   return {
     baseFontSize: resolveAppearancePreferences(stored).baseFontSize,
+    fontId: resolveMobileFontId(stored?.fontId),
+    monoFontId: resolveMobileMonoFontId(stored?.monoFontId),
     themeMode: normalizeMobileThemeMode(stored?.themeMode),
     themeAppearance: resolveThemeAppearance(stored),
   };
@@ -163,6 +179,8 @@ const themeRuntimeStateAtom = Atom.make((get) =>
   Atom.withEquality(
     (left: MobileThemeRuntimeState, right: MobileThemeRuntimeState) =>
       left.baseFontSize === right.baseFontSize &&
+      left.fontId === right.fontId &&
+      left.monoFontId === right.monoFontId &&
       left.themeMode === right.themeMode &&
       left.themeAppearance === right.themeAppearance,
   ),
@@ -343,6 +361,18 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
     updatePreferences({ baseFontSize: value });
   };
 
+  const fontId = resolveMobileFontId(storedPreferences?.fontId);
+  const setFontId = (value: MobileFontId) => {
+    applyThemeRuntime({ ...currentRuntimeState(), fontId: value });
+    updatePreferences({ fontId: value });
+  };
+
+  const monoFontId = resolveMobileMonoFontId(storedPreferences?.monoFontId);
+  const setMonoFontId = (value: MobileMonoFontId) => {
+    applyThemeRuntime({ ...currentRuntimeState(), monoFontId: value });
+    updatePreferences({ monoFontId: value });
+  };
+
   const setTerminalFontSize = (value: number | null) => {
     updatePreferences({ terminalFontSize: value });
   };
@@ -380,6 +410,12 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
       setThemeIdForBothAppearances,
       setThemeMode,
       setBaseFontSize,
+      fontId,
+      fontFamilies: MOBILE_FONT_FAMILIES[fontId],
+      setFontId,
+      monoFontId,
+      monoFontFamily: MOBILE_MONO_FONT_FAMILIES[monoFontId],
+      setMonoFontId,
       setTerminalFontSize,
       setCodeFontSize,
       setCodeWordBreak,
@@ -406,6 +442,10 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
       setThemeIdForBothAppearances,
       setThemeMode,
       setBaseFontSize,
+      fontId,
+      setFontId,
+      monoFontId,
+      setMonoFontId,
       setTerminalFontSize,
       setCodeFontSize,
       setCodeWordBreak,
